@@ -1,0 +1,11 @@
+{
+  "slug": "solve-me-first",
+  "title": "Solve Me First",
+  "difficulty": "E",
+  "timeLimitMs": 2000,
+  "memoryLimitMb": 256,
+  "allowedLanguages": ["PYTHON", "JAVA"],
+  "comparator": { "kind": "whitespace" },
+  "sampleCount": 2,
+  "originAttribution": "Task inspired by a problem of the same name used at a past Coding Night. Statement and test data written fresh for this platform."
+}
