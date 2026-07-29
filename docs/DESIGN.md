@@ -229,6 +229,28 @@ only the theatre is removed.
 Not optional, and G9 checks the parts that can be automated:
 
 - WCAG AA contrast everywhere, using §2's measured table — not eyeballed.
+
+### Muted text has a floor. Both directions. Measured.
+
+§2's table covers the six tokens at full strength. It said nothing about *muted* text, and
+four separate surfaces independently chose an opacity that fails AA — join, the lobby, the
+verdict panel, and the editor. The gap was in this document, not in anyone's judgement, so
+the floors are stated here:
+
+| Muted text | Minimum | Use | Fails below |
+|---|---|---|---|
+| `text-ink/N` on `--paper` | **57%** — use `/60` | competitor + admin surfaces | `/55` = 4.34:1, `/50` = 3.65:1, `/40` ≈ 3:1 |
+| `text-paper/N` on `--ink` | **47%** — use `/55` | projector, verdict panel, code surface | `/45` = 4.29:1, `/40` = 3.62:1 |
+
+Two rules that go with them:
+
+- **Never dim a container with `opacity-*` to mute the text inside it.** Wrapper opacity
+  *multiplies* with any alpha on the children: `opacity-60` over `text-ink/70` composites to
+  0.42 and measures 2.84:1. A locked problem row rendered that way is unreadable. Convey the
+  state with a label and the rail — both of which a screen reader gets anyway — and leave the
+  text at full strength.
+- **`disabled:opacity-*` is fine and exempt.** axe does not check contrast on disabled
+  controls, and a disabled control that looks disabled is correct.
 - Visible keyboard focus on every interactive element: 2px `--panther` ring with a 2px
   offset, never `outline: none`.
 - The entire submit flow completes keyboard-only.

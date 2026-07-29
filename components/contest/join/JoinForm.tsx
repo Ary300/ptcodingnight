@@ -76,7 +76,9 @@ export function JoinForm() {
   );
 
   const fieldClass =
-    "mt-1 w-full rounded border border-ink/25 bg-paper px-3 py-2 text-ink placeholder:text-ink/40";
+    // Placeholder at /60, not /40: ink over paper needs at least 57% opacity to clear AA's
+    // 4.5:1, and axe checks placeholder text. See DESIGN.md §7.
+    "mt-1 w-full rounded border border-ink/25 bg-paper px-3 py-2 text-ink placeholder:text-ink/60";
 
   return (
     <form
@@ -84,7 +86,7 @@ export function JoinForm() {
       className="w-full max-w-sm"
       noValidate
     >
-      <ol className="mb-6 flex gap-2 text-ink/50" style={{ fontSize: "var(--text-xs)" }} aria-hidden="true">
+      <ol className="mb-6 flex gap-2 text-ink/60" style={{ fontSize: "var(--text-xs)" }} aria-hidden="true">
         <li className={step === "code" ? "font-semibold text-panther" : ""}>1. Join code</li>
         <li>/</li>
         <li className={step === "name" ? "font-semibold text-panther" : ""}>2. Display name</li>

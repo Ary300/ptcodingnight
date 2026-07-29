@@ -15,7 +15,8 @@ import { useId, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttribu
  */
 
 const CONTROL =
-  "w-full rounded border bg-paper px-3 py-2 text-ink placeholder:text-ink/40 " +
+  // /60 is the AA floor for ink on paper; /40 measures roughly 3:1. See DESIGN.md §7.
+  "w-full rounded border bg-paper px-3 py-2 text-ink placeholder:text-ink/60 " +
   "disabled:cursor-not-allowed disabled:opacity-60";
 
 function borderFor(invalid: boolean): string {

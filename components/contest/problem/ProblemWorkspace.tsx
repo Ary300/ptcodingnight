@@ -179,7 +179,10 @@ export function ProblemWorkspace({ slug }: ProblemWorkspaceProps) {
             onChange={setChosenLanguage}
             disabled={submitBusy || judging}
           />
-          <span className="text-ink/55" style={{ fontSize: "var(--text-xs)" }}>
+          {/* 60%, not 55%: ink at 55% over paper composites to #7f7373, which measures
+              4.34:1 and fails AA's 4.5:1 at this size. 57% is the minimum that clears it;
+              60% gives 5.16:1 so a later token tweak does not silently drop it back under. */}
+          <span className="text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
             Your work is kept in this tab until you close it.
           </span>
         </div>

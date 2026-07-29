@@ -78,10 +78,18 @@ function ProblemCard({ problem }: { problem: ProblemSummary }) {
 
   if (!problem.unlocked) {
     return (
-      <li className="flex items-stretch rounded border border-ink/15 opacity-55">
+      // No container opacity. Opacity on a wrapper MULTIPLIES with any alpha inside it, so
+      // opacity-60 over text-ink/70 composited to 0.42 and measured 2.84:1 — a locked problem
+      // rendered illegible. The state is already carried by the "Locked" badge and the rail,
+      // which is what a screen reader gets anyway; dimming it was decoration that cost
+      // legibility. Muted-on-paper floor is /60, applied once, never stacked.
+      <li className="flex items-stretch rounded border border-ink/15 bg-ink/[0.03]">
         <Rail state="brand" />
         {body}
-        <span className="self-center pr-3 text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
+        <span
+          className="numeric self-center rounded bg-ink px-2 py-0.5 pr-2 text-paper"
+          style={{ fontSize: "var(--text-xs)" }}
+        >
           Locked
         </span>
       </li>

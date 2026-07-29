@@ -14,6 +14,16 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: true,
   reporter: "list",
+  /*
+   * axe's full ruleset on the competitor problem workspace measured 14-30s on this host,
+   * against Playwright's 30s default — so runs were failing on the clock rather than on a
+   * violation, which reads identically in the output and is far more misleading.
+   *
+   * This raises only the time allowed to COMPUTE the audit. The pass condition is unchanged:
+   * still zero critical or serious violations. A slow measurement is not a weaker one.
+   */
+  timeout: 120_000,
+  expect: { timeout: 15_000 },
   use: {
     baseURL: process.env.BASE_URL ?? "http://localhost:3000",
     trace: "on-first-retry",

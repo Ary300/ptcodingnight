@@ -101,7 +101,7 @@ export function StandingsCard({ standings, participantId }: StandingsCardProps) 
                     </td>
                     <td className="numeric py-1.5 pl-2" style={{ fontSize: "var(--text-sm)" }}>
                       {row.rank}
-                      {row.isTied && <span className="text-paper/45">=</span>}
+                      {row.isTied && <span className="text-paper/55">=</span>}
                     </td>
                     <td
                       className="py-1.5 pl-2 font-display"

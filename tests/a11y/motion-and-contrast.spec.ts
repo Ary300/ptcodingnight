@@ -1,0 +1,140 @@
+import { expect, test } from "@playwright/test";
+
+import { auditPage } from "./helpers/audit";
+import { openProblem } from "./helpers/journey";
+
+/**
+ * G9 — the two rules from DESIGN.md §7 that axe cannot check for us.
+ *
+ * 1. `prefers-reduced-motion` is respected by *every* animation. The global rule in
+ *    `app/globals.css` collapses durations, and `useReducedMotion` collapses the Unfreeze's
+ *    phase timings — but neither is worth anything unless it actually reaches the DOM, and the
+ *    projector is a CSS-module surface that could easily have opted out by accident.
+ * 2. Motion is theatre, never the message. Under reduced motion the board must still say
+ *    whether it is live or frozen, in words, because that is the only channel left.
+ */
+
+test.describe("prefers-reduced-motion", () => {
+  // This Playwright version carries the emulation flag on `contextOptions` rather than as a
+  // top-level test option.
+  test.use({ contextOptions: { reducedMotion: "reduce" } });
+
+  test("no animation or transition on the projector outlives the preference", async ({ page }) => {
+    await page.goto("/projector");
+    await expect(page.getByRole("heading", { name: "Park Tudor Coding Night" })).toBeVisible();
+
+    const offenders = await page.evaluate(() => {
+      const found: { selector: string; property: string; value: string }[] = [];
+
+      const describe = (element: Element): string => {
+        const id = element.id === "" ? "" : `#${element.id}`;
+        const classes =
+          typeof element.className === "string" && element.className !== ""
+            ? `.${element.className.trim().split(/\s+/).join(".")}`
+            : "";
+        return `${element.tagName.toLowerCase()}${id}${classes}`;
+      };
+
+      /** "0.01ms" and "0s" are both fine; anything a human could perceive is not. */
+      const perceptible = (value: string): boolean =>
+        value
+          .split(",")
+          .map((part) => part.trim())
+          .some((part) => {
+            const seconds = part.endsWith("ms")
+              ? Number.parseFloat(part) / 1000
+              : Number.parseFloat(part);
+            return Number.isFinite(seconds) && seconds > 0.05;
+          });
+
+      for (const element of Array.from(document.querySelectorAll("*"))) {
+        const style = window.getComputedStyle(element);
+        if (style.animationName !== "none" && perceptible(style.animationDuration)) {
+          found.push({
+            selector: describe(element),
+            property: "animation-duration",
+            value: style.animationDuration,
+          });
+        }
+        if (style.transitionProperty !== "none" && perceptible(style.transitionDuration)) {
+          found.push({
+            selector: describe(element),
+            property: "transition-duration",
+            value: style.transitionDuration,
+          });
+        }
+      }
+      return found;
+    });
+
+    expect(
+      offenders,
+      `these elements still animate under prefers-reduced-motion:\n${offenders
+        .map((o) => `  ${o.selector} { ${o.property}: ${o.value} }`)
+        .join("\n")}`,
+    ).toEqual([]);
+  });
+
+  test("the board still states live or frozen, in words", async ({ page }) => {
+    await page.goto("/projector");
+    await expect(page.getByText(/^(Live|Board frozen)$/)).toBeVisible();
+    await auditPage(page, "/projector (reduced motion)");
+  });
+
+  test("the competitor problem page is unaffected by losing its motion", async ({ page }) => {
+    await openProblem(page);
+    await expect(page.getByRole("button", { name: "Submit for judging" })).toBeEnabled();
+    await auditPage(page, "/contest/[slug] (reduced motion)");
+  });
+});
+
+test.describe("the projector is the inverse surface", () => {
+  test("ink ground, paper text — and the tokens are actually applied", async ({ page }) => {
+    await page.goto("/projector");
+    await expect(page.getByRole("heading", { name: "Park Tudor Coding Night" })).toBeVisible();
+
+    const surface = await page.evaluate(() => {
+      const root = window.getComputedStyle(document.documentElement);
+      const heading = document.querySelector("h1");
+      if (heading === null) return null;
+
+      // Walk up for the first ancestor that actually paints a background.
+      let background = "rgba(0, 0, 0, 0)";
+      let node: Element | null = heading;
+      while (node !== null) {
+        const value = window.getComputedStyle(node).backgroundColor;
+        if (value !== "rgba(0, 0, 0, 0)" && value !== "transparent") {
+          background = value;
+          break;
+        }
+        node = node.parentElement;
+      }
+
+      return {
+        ink: root.getPropertyValue("--color-ink").trim(),
+        paper: root.getPropertyValue("--color-paper").trim(),
+        headingColor: window.getComputedStyle(heading).color,
+        background,
+      };
+    });
+
+    expect(surface, "the projector heading should exist").not.toBeNull();
+    expect(surface?.ink, "--color-ink must be emitted, not tree-shaken").toBe("#1a0606");
+    expect(surface?.paper).toBe("#fbf9f8");
+
+    // #1a0606 -> rgb(26, 6, 6); #fbf9f8 -> rgb(251, 249, 248).
+    expect(surface?.background).toBe("rgb(26, 6, 6)");
+    expect(surface?.headingColor).toBe("rgb(251, 249, 248)");
+  });
+
+  test("competitor surfaces are the other way round", async ({ page }) => {
+    await page.goto("/join");
+    const body = await page.evaluate(() => {
+      const style = window.getComputedStyle(document.body);
+      return { color: style.color, background: style.backgroundColor };
+    });
+
+    expect(body.background).toBe("rgb(251, 249, 248)");
+    expect(body.color).toBe("rgb(26, 6, 6)");
+  });
+});

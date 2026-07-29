@@ -77,7 +77,7 @@ function TestRow({ result }: { result: PublicTestResult }) {
           {name}
         </span>
         {!result.isSample && (
-          <span className="text-paper/45" style={{ fontSize: "var(--text-xs)" }}>
+          <span className="text-paper/55" style={{ fontSize: "var(--text-xs)" }}>
             hidden
           </span>
         )}

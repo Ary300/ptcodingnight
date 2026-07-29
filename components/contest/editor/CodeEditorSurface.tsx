@@ -179,7 +179,7 @@ export function CodeEditorSurface({
         <div
           ref={gutterRef}
           aria-hidden="true"
-          className="numeric shrink-0 overflow-hidden bg-paper/5 py-3 pr-2 pl-3 text-right text-paper/40 select-none"
+          className="numeric shrink-0 overflow-hidden bg-paper/5 py-3 pr-2 pl-3 text-right text-paper/55 select-none"
           style={{ fontSize: "var(--text-xs)", lineHeight: "1.6" }}
         >
           {Array.from({ length: lineCount }, (_unused, index) => (
