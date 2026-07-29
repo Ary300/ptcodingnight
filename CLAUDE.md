@@ -84,6 +84,23 @@ imports nothing from either. If scoring needs a fact, it arrives as an argument.
   it as one `Problem` per normalized title, with `ContestProblem` carrying division,
   difficulty, and slot. See `docs/DECISIONS.md` for the two rows that are genuine data
   errors.
+- **Never time a submission by timing `docker run`.** Container creation on this host costs
+  2.4–15.6 s and varies run to run. Charging that to the student fails every correct
+  solution. The wall-clock kill runs as coreutils `timeout` *inside* the container, and the
+  execution time comes from the daemon's `State.StartedAt`/`FinishedAt`.
+- **Java needs a startup budget, not a bigger multiplier.** A JVM that does nothing but add
+  two integers takes 1.0–5.3 s inside the isolation flags. The limit is
+  `problemLimit × multiplier + startupBudget` (`worker/runner.ts`); a pure multiplier makes
+  short problems unjudgeable and produces *intermittent* TLEs on correct code.
+- **`timeout` does not always exit 124.** It returns 124 only when it had to kill the
+  process. The JVM handles SIGTERM and exits 143; a process that ignores it takes SIGKILL
+  and exits 137. Treat all three as TLE or Java infinite loops report as `RE`.
+- **Containers are created without `--rm` on purpose.** `docker inspect` is the only way to
+  read `OOMKilled` — the sole reliable way to tell MLE from TLE, since both exit 137.
+  Removal is explicit, with a prefix sweep as the backstop.
+- **Judge scratch goes in `.judge-tmp/`, never `os.tmpdir()`.** macOS temp lives under
+  `/var/folders`, which Docker Desktop does not share; bind-mounting it yields a silently
+  empty directory inside the container.
 - **A verdict is not a gate.** `npm run verify` output goes in the transcript verbatim. See
   **Definition of done**.
 

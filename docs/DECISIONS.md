@@ -398,3 +398,139 @@ filtered by the same cutoff.
 **Why:** it keeps the engine pure and makes both views replayable — the dramatic unfreeze at
 the end of the night is literally the same function called again without a cutoff, not a
 separate code path that could disagree with the frozen one.
+
+---
+
+## D17 — Java gets a time budget, not just a bigger multiplier (Phase 2)
+
+**Ambiguous:** PRD §7.2 defines `TLE` as "CPU or wall time exceeds the problem limit" and
+assumes one limit per problem. Applied literally to both runtimes, every correct Java
+solution fails.
+
+**Measured, not assumed.** A Java program that does nothing but read two integers and add
+them, inside the real isolation flags at `--cpus=1`:
+
+```
+1010, 1479, 1815, 2374, 3659, 5342 ms   (6 runs, 5.3x spread — pure JVM startup)
+```
+
+Python's equivalent is comfortably under a second. Container creation itself is a further
+2.4–15.6 s and is excluded from these numbers.
+
+**Chosen:** `effectiveLimit = problemLimit x multiplier + startupBudget`, with
+`PYTHON = {1x, +1s}` and `JAVA = {2x, +8s}`. The wall-clock kill stays at 3x the *effective*
+limit, preserving PRD §7.1's relationship.
+
+**Why additive and not just a bigger multiplier:** runtime startup is a fixed cost with
+nothing to do with the student's algorithm. Folding it into a multiplier makes short
+problems unjudgeable while handing long ones far too much slack. A pure 3x multiplier was
+tried first and produced an *intermittent* TLE on a correct Java submission — worse than a
+consistent failure, because a flaky TLE is indistinguishable from a broken judge to the
+student holding the keyboard.
+
+---
+
+## D18 — Timeouts are enforced inside the container, and detected by three exit codes (Phase 2)
+
+**Two bugs, one root cause.** The first implementation timed `docker run` from the host.
+Container startup on this platform costs 2.4–15.6 s and varies run to run, so that startup
+was charged to the submission and **every fixture failed as TLE**, including correct ones.
+
+**Chosen:**
+1. The wall-clock kill runs as coreutils `timeout` *inside* the container, where it measures
+   the program. Both pinned images ship it.
+2. Execution time is read from the daemon's own `State.StartedAt`/`FinishedAt`, which
+   bracket the main process and exclude image setup.
+3. The host timer survives only as a backstop at the limit plus a 90 s startup allowance.
+
+**And the exit-code subtlety:** `timeout` returns 124 only when it had to kill the command
+itself. A process that *handles* SIGTERM and exits on its own — which the JVM does, running
+shutdown hooks — exits 143, and `timeout` faithfully propagates that instead; one that
+ignores SIGTERM and takes the follow-up SIGKILL exits 137. Reading only 124 reported a Java
+infinite loop as `RE`, telling the student their program crashed when it actually ran too
+long. All three are now treated as a timeout, with 137 and 143 additionally requiring that
+the run lasted at least 80% of the limit, since a program could return either deliberately.
+
+---
+
+## D19 — MLE is detected two ways, because the runtimes fail differently (Phase 2)
+
+**Ambiguous:** PRD §7.2 defines `MLE` as "RSS exceeds the memory limit", which describes a
+kernel OOM kill. The JVM does not usually get that far.
+
+**Chosen:** `MLE` when the container was OOM-killed (`State.OOMKilled`, read via inspect
+before removal) **or** when the runtime reports exhaustion itself — `OutOfMemoryError` from
+the JVM, `MemoryError` from Python.
+
+**Why:** the JVM sizes its heap against the cgroup limit and throws `OutOfMemoryError`
+rather than being killed, which without the second check reports `RE` and hides a real
+memory-limit failure. Both are the same event from the student's point of view.
+
+Detecting `MLE` also races the clock: a memory bomb must be allowed to actually allocate.
+Under load, one fixture's allocation lost that race and reported `TLE`. The fixtures now
+commit pages as they allocate rather than relying on lazily-zeroed pages, and the MLE cases
+carry a longer `timeLimitMs` — the memory cap is what they are testing, not the clock.
+
+---
+
+## D20 — Containers are not created with `--rm` (Phase 2)
+
+**Chosen:** run without `--rm`, `docker inspect` for `OOMKilled`, `StartedAt` and
+`FinishedAt`, then remove explicitly in a `finally`, with `sweepJudgeContainers()` as a
+backstop on worker start and after every fixture run.
+
+**Why:** `--rm` deletes the container before it can be inspected, and inspection is the only
+reliable way to tell a memory kill from a timeout — both surface as exit 137 — or to measure
+execution honestly. The cost is that a crash between run and remove leaks a container, which
+is exactly what the prefix-based sweep and G5's `docker ps -a` baseline check exist to catch.
+
+---
+
+## D21 — A Python syntax error is `CE`, not `RE` (Phase 2)
+
+**Ambiguous:** Python has no build step, so a syntax error would naturally surface at run
+time as `RE`.
+
+**Chosen:** a compile *phase* for Python that parses without executing:
+`python -c "compile(open('/work/main.py').read(), 'main.py', 'exec')"`.
+
+**Why:** `RE` tells a student their algorithm crashed. `CE` tells them the file never
+parsed. Those need different fixes, and PRD §7.2 promises compiler output verbatim for `CE`.
+`py_compile` was rejected because it writes `__pycache__` next to the source, which is a
+read-only mount.
+
+---
+
+## D22 — A stdout flood is `WA` (Phase 2)
+
+**Ambiguous:** PRD's seven verdicts have no "output limit exceeded", but §7.3 requires a
+1 GB stdout flood to degrade to a clean verdict.
+
+**Chosen:** capture is capped at 1 MiB; exceeding it kills the container and yields `WA`.
+
+**Why:** the submission produced invalid output, which is a wrong answer. `RE` would imply
+the program crashed on its own. The cap is what stops a firehose from OOM-killing the worker
+that is supposed to be judging it.
+
+---
+
+## D23 — Scratch lives under the repo, not `os.tmpdir()` (Phase 2)
+
+**Chosen:** per-submission working directories are created under `.judge-tmp/` in the
+project, not the system temp directory.
+
+**Why:** on macOS `os.tmpdir()` is `/var/folders/…`, which Docker Desktop does not share by
+default. Bind-mounting it silently yields an *empty* directory inside the container, so every
+submission fails with "file not found" and the judge looks broken rather than misconfigured.
+The project directory is under `/Users`, which is shared out of the box.
+
+---
+
+## D24 — `javac -proc:none` (Phase 2)
+
+**Chosen:** Java compilation disables annotation processing.
+
+**Why:** a submission can ship an annotation processor and execute arbitrary code **at
+compile time**, inside the compile container, before any of the run-step reasoning applies.
+The compile step is a code-execution surface, not just a translation step. It runs under the
+same isolation flags for the same reason.

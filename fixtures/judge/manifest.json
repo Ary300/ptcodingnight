@@ -1,0 +1,168 @@
+{
+  "_readme": [
+    "G4 judge fixtures. Every case runs against the same three-test 'sum two integers'",
+    "problem in fixtures/judge/problem/, so the only variable is the submission itself.",
+    "24 cases: 12 Python + 12 Java, two per verdict across AC, WA, TLE, MLE, RE, CE.",
+    "IE is deliberately absent \u2014 it means the judge itself failed, so it cannot be",
+    "produced by a well-formed submission and must never appear in a passing run.",
+    "",
+    "MLE cases carry a longer timeLimitMs: proving a memory bomb requires letting it",
+    "allocate, and on a loaded judge the wall clock would otherwise win the race and",
+    "report TLE. The memory cap is what the case is testing, not the clock."
+  ],
+  "problem": {
+    "timeLimitMs": 2000,
+    "testCount": 3,
+    "pointsPerTest": 10
+  },
+  "cases": [
+    {
+      "id": "py-ac-readall",
+      "language": "PYTHON",
+      "sourceFile": "main.py",
+      "expectedVerdict": "AC"
+    },
+    {
+      "id": "py-ac-splitline",
+      "language": "PYTHON",
+      "sourceFile": "main.py",
+      "expectedVerdict": "AC"
+    },
+    {
+      "id": "py-wa-subtracts",
+      "language": "PYTHON",
+      "sourceFile": "main.py",
+      "expectedVerdict": "WA"
+    },
+    {
+      "id": "py-wa-constant",
+      "language": "PYTHON",
+      "sourceFile": "main.py",
+      "expectedVerdict": "WA"
+    },
+    {
+      "id": "py-tle-spin",
+      "language": "PYTHON",
+      "sourceFile": "main.py",
+      "expectedVerdict": "TLE"
+    },
+    {
+      "id": "py-tle-busywork",
+      "language": "PYTHON",
+      "sourceFile": "main.py",
+      "expectedVerdict": "TLE"
+    },
+    {
+      "id": "py-mle-list",
+      "language": "PYTHON",
+      "sourceFile": "main.py",
+      "expectedVerdict": "MLE",
+      "timeLimitMs": 8000
+    },
+    {
+      "id": "py-mle-bigalloc",
+      "language": "PYTHON",
+      "sourceFile": "main.py",
+      "expectedVerdict": "MLE",
+      "timeLimitMs": 8000
+    },
+    {
+      "id": "py-re-zerodiv",
+      "language": "PYTHON",
+      "sourceFile": "main.py",
+      "expectedVerdict": "RE"
+    },
+    {
+      "id": "py-re-exit",
+      "language": "PYTHON",
+      "sourceFile": "main.py",
+      "expectedVerdict": "RE"
+    },
+    {
+      "id": "py-ce-unclosed",
+      "language": "PYTHON",
+      "sourceFile": "main.py",
+      "expectedVerdict": "CE"
+    },
+    {
+      "id": "py-ce-badindent",
+      "language": "PYTHON",
+      "sourceFile": "main.py",
+      "expectedVerdict": "CE"
+    },
+    {
+      "id": "java-ac-scanner",
+      "language": "JAVA",
+      "sourceFile": "Main.java",
+      "expectedVerdict": "AC"
+    },
+    {
+      "id": "java-ac-bufferedreader",
+      "language": "JAVA",
+      "sourceFile": "Main.java",
+      "expectedVerdict": "AC"
+    },
+    {
+      "id": "java-wa-multiplies",
+      "language": "JAVA",
+      "sourceFile": "Main.java",
+      "expectedVerdict": "WA"
+    },
+    {
+      "id": "java-wa-echoes",
+      "language": "JAVA",
+      "sourceFile": "Main.java",
+      "expectedVerdict": "WA"
+    },
+    {
+      "id": "java-tle-spin",
+      "language": "JAVA",
+      "sourceFile": "Main.java",
+      "expectedVerdict": "TLE"
+    },
+    {
+      "id": "java-tle-sleep",
+      "language": "JAVA",
+      "sourceFile": "Main.java",
+      "expectedVerdict": "TLE"
+    },
+    {
+      "id": "java-mle-array",
+      "language": "JAVA",
+      "sourceFile": "Main.java",
+      "expectedVerdict": "MLE",
+      "timeLimitMs": 8000
+    },
+    {
+      "id": "java-mle-strings",
+      "language": "JAVA",
+      "sourceFile": "Main.java",
+      "expectedVerdict": "MLE",
+      "timeLimitMs": 8000
+    },
+    {
+      "id": "java-re-npe",
+      "language": "JAVA",
+      "sourceFile": "Main.java",
+      "expectedVerdict": "RE"
+    },
+    {
+      "id": "java-re-exit",
+      "language": "JAVA",
+      "sourceFile": "Main.java",
+      "expectedVerdict": "RE"
+    },
+    {
+      "id": "java-ce-missingsemi",
+      "language": "JAVA",
+      "sourceFile": "Main.java",
+      "expectedVerdict": "CE"
+    },
+    {
+      "id": "java-ce-badtype",
+      "language": "JAVA",
+      "sourceFile": "Main.java",
+      "expectedVerdict": "CE"
+    }
+  ]
+}

@@ -18,8 +18,13 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["tests/judge/**/*.test.ts"],
-    // Containers are slow; a per-fixture judge run needs far more than the 5s default.
-    testTimeout: 120_000,
-    hookTimeout: 120_000,
+    /*
+     * Generous by necessity, not by hedging. A TLE fixture must actually burn its full
+     * wall-clock kill on every test case before the verdict is known: for Java that is
+     * 3 x (2000ms x 2 + 8000ms startup budget) = 36s per case, three cases, plus container
+     * startup. Proving a timeout takes time by definition.
+     */
+    testTimeout: 600_000,
+    hookTimeout: 180_000,
   },
 });

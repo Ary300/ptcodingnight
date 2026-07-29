@@ -22,3 +22,6 @@ data/testcases/
 # local, per-machine Claude Code settings.
 # Agent definitions in .claude/agents/ ARE tracked — they are project config.
 .claude/settings.local.json
+
+# judge scratch (per-submission working dirs; must be under a Docker-shared path)
+.judge-tmp/

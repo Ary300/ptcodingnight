@@ -3,32 +3,38 @@
 Execution plan for the autonomous build described in `docs/KICKOFF.md`, against the spec in
 `docs/PRD.md`. Written at the end of Phase 0.
 
-**Status:** Phases 0, 1 and 3 complete. Phase 2 (judge) blocked on Docker image pulls.
+**Status:** Phases 0, 1, 2 and 3 complete. Next: Phase 4a (design tokens), then 4b fan-out.
 
 ---
 
 ## 1. Where the repo actually stands
 
-Skeleton, contracts, and the scoring engine are in. The judge is not.
+Skeleton, contracts, judge, and scoring engine are all in and proven against real containers.
 
 | Gate | State |
 |---|---|
-| G0 build, G1 typecheck, G2 lint, G3 unit | **PASS** |
+| G0 build, G1 typecheck, G2 lint | **PASS** |
+| G3 unit | **PASS** — 98.5% lines on `lib/scoring`, 98.4% on `lib/judge` |
+| G4 judge fixtures | **PASS** — 24/24 exact verdict match, Python + Java |
+| G5 sandbox | **PASS** — 7/7 contained, `docker ps -a` back at baseline |
 | G6 scoring golden | **PASS** — byte-identical, replay stable, order-independent |
-| G4, G5, G8, G10 | **NOT RUN** — blocked on Docker image pulls |
 | G7, G9 | not built yet (Phases 4b, 5) |
+| G8 load, G10 cold start | **NOT RUN** — need the submissions API (Phase 4b) |
 
-Toolchain: Node v22.20.0, npm 10.9.3, Docker 29.1.2, Compose v2.40.3.
+Toolchain: Node v22.20.0, npm 10.9.3, Docker 29.1.2, Compose v2.40.3. Postgres and Redis up
+via compose; migration applied and the seed loaded (125 problems, all DRAFT).
 
-**Docker is half-available.** The daemon answers — `docker ps` exits 0 and `docker ps -a`
-baseline is 0 containers — but **image pulls hang indefinitely** through Docker Desktop's
-internal proxy (`http.docker.internal:3128`). No container has ever run. Full diagnosis in
-`docs/DECISIONS.md` D1.
+Docker pulls were blocked for part of the build (`DECISIONS.md` D1) and are now working.
+Runtime images pinned and pulled: `python:3.12-slim`, `eclipse-temurin:21-jdk`.
 
-> **Phase 2 precondition:** verify `docker ps` at the start of the phase and **hard-fail** if
-> the daemon is down. Never build or "test" the judge against an absent daemon — the failure
-> mode is a suite that appears to pass because it never ran. A daemon that answers but cannot
-> pull is equally disqualifying: confirm `docker pull` completes before trusting G4/G5.
+> **Judge precondition, still enforced:** `scripts/verify.sh` checks `docker ps` and records
+> the `docker ps -a` baseline before any gate runs, and re-checks afterwards for leaked
+> containers. G4 and G5 hard-fail rather than skip when the daemon is missing — a judge suite
+> that quietly passes by not running is worse than one that fails.
+>
+> **This host is not a clean judge host.** An unrelated container stack runs alongside, which
+> is what forced Java's large startup budget (`DECISIONS.md` D17). PRD §14's mitigation — a
+> dedicated judge host — would let that tighten considerably.
 
 ---
 
@@ -38,7 +44,7 @@ internal proxy (`http.docker.internal:3128`). No container has ever run. Full di
 |---|---|---|---|
 | **0** | This plan, reconciled `CLAUDE.md`, 7 agent definitions, `DECISIONS.md` | Human review | no |
 | **1** | Next.js + TS strict skeleton, full Prisma schema (PRD §5) + migration, every shared type and Zod schema, judge job contract, stub scripts for G0–G9, docker-compose | G0 build, G1 types, G2 lint | **no — sequential** |
-| **2** | Judge worker, container isolation, verdict aggregation, comparators; `fixtures/judge/` (≥24), `fixtures/sandbox/` (7 hostile) | G4 24/24, G5 7/7 + `docker ps -a` at baseline | no |
+| **2** | Judge worker, container isolation, verdict aggregation, comparators; `fixtures/judge/` (24), `fixtures/sandbox/` (7 hostile) | G4 24/24, G5 7/7 + `docker ps -a` at baseline — **PASS** | no |
 | **3** | `lib/scoring/` pure functions, both presets, golden fixture from PRD Appendix A | G6 byte-identical, replay-stable — **PASS** | no |
 | **4a** | `docs/DESIGN.md` **token system** — written before any frontend agent starts | tokens exist and are reviewed | no |
 | **4b** | API routes, competitor UI, admin UI, projector; problem content for the 20 `solved-in-past` | G0–G3 after each merge; G7 | **yes — max 4** |
@@ -145,9 +151,8 @@ counting against the max-4 cap, because they touch no application source.
 
 ## 7. Known risks
 
-1. **Docker image pulls hang** (D1). The daemon answers but cannot pull, so Phase 2 has
-   never run a container. This is the only thing blocking the judge, and G4/G5/G8/G10 stay
-   NOT RUN until it clears. Highest-value intervention available.
+1. ~~Docker image pulls hang~~ **RESOLVED** (D1). Judge now runs real containers; G4 and G5
+   both pass. G8 and G10 remain NOT RUN pending the submissions API.
 2. **Seed data needs a language-aware dedup key** (D2, D6). 136 rows → **125 distinct
    `Problem` records**; the key is `(title, language)` for `codingbat` and `title`
    elsewhere. Keying warmups on title alone silently eats `sum67`. `db:seed` must be

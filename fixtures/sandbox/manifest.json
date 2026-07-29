@@ -1,0 +1,67 @@
+{
+  "_readme": [
+    "G5 hostile submissions. Each one attempts a specific escape named in docs/PRD.md 7.3.",
+    "",
+    "Two things must hold for every case: it degrades to a CLEAN verdict (never IE, never a",
+    "crashed worker), and the host is left healthy with docker ps -a back at its baseline.",
+    "",
+    "Any fixture printing a line starting with ESCAPED has defeated the sandbox. The suite",
+    "greps for that string, because a wrong verdict is a bug but an escape is a breach.",
+    "",
+    "If this gate fails, all other work stops (docs/KICKOFF.md Phase 2)."
+  ],
+  "problem": {
+    "timeLimitMs": 4000
+  },
+  "cases": [
+    {
+      "id": "network-egress",
+      "language": "PYTHON",
+      "sourceFile": "main.py",
+      "expectedVerdict": "RE",
+      "why": "--network=none removes the interface entirely; there is nothing to connect to."
+    },
+    {
+      "id": "fork-bomb",
+      "language": "PYTHON",
+      "sourceFile": "main.py",
+      "expectedVerdict": "RE",
+      "why": "--pids-limit caps the process table long before the host notices."
+    },
+    {
+      "id": "memory-bomb-10gb",
+      "language": "PYTHON",
+      "sourceFile": "main.py",
+      "expectedVerdict": "MLE",
+      "why": "--memory with --memory-swap equal means the allocation cannot be swapped out either."
+    },
+    {
+      "id": "read-etc-passwd",
+      "language": "PYTHON",
+      "sourceFile": "main.py",
+      "expectedVerdict": "WA",
+      "why": "Reads the CONTAINER's /etc/passwd, which is inert. The host's must be unreachable."
+    },
+    {
+      "id": "write-outside-tmp",
+      "language": "PYTHON",
+      "sourceFile": "main.py",
+      "expectedVerdict": "RE",
+      "why": "--read-only rootfs plus a read-only /work mount; only the tmpfs is writable."
+    },
+    {
+      "id": "infinite-loop",
+      "language": "PYTHON",
+      "sourceFile": "main.py",
+      "expectedVerdict": "TLE",
+      "why": "The in-container wall-clock kill fires; --cpus keeps it from starving the host."
+    },
+    {
+      "id": "stdout-flood-1gb",
+      "language": "PYTHON",
+      "sourceFile": "main.py",
+      "expectedVerdict": "WA",
+      "why": "Output is capped and the container killed, so the worker cannot be OOMed by a firehose."
+    }
+  ]
+}
