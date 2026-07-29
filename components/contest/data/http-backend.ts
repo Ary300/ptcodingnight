@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import {
-  HintBalanceSchema,
+  API_ROUTES,
   JoinResponseSchema,
   ProblemDetailSchema,
   ProblemSummarySchema,
@@ -17,6 +17,7 @@ import {
 } from "@/lib/schemas/api";
 
 import { ContestApiError, type ContestApi } from "./contest-api";
+import { readParticipant } from "./participant";
 import {
   ApiEnvelopeSchema,
   SubmissionListSchema,
@@ -36,19 +37,24 @@ import {
  * makes that guarantee reach the client instead of stopping at the server.
  */
 
-const ROUTES = {
-  join: "/api/join",
-  problems: "/api/problems",
-  problem: (slug: string) => `/api/problems/${encodeURIComponent(slug)}`,
-  runSamples: "/api/run-samples",
-  submissions: "/api/submissions",
-  submission: (id: string) => `/api/submissions/${encodeURIComponent(id)}`,
-  submissionStream: (id: string) => `/api/submissions/${encodeURIComponent(id)}/stream`,
-  standings: "/api/standings",
-  hints: "/api/hints",
-  hintBalance: (contestProblemId: string) =>
-    `/api/hints?contestProblemId=${encodeURIComponent(contestProblemId)}`,
-} as const;
+/**
+ * Resolve the contest this client is in.
+ *
+ * Every route below `/api/join` is contest-scoped (see `API_ROUTES` in lib/schemas/api.ts),
+ * because `Contest` is a first-class entity with history and a flat path would need an
+ * implicit "current contest" — hidden state that breaks the moment an organizer opens last
+ * year's board. The id arrives in the join response and is stored with the participant.
+ */
+function currentContestId(): string {
+  const participant = readParticipant();
+  if (participant === null) {
+    throw new ContestApiError(
+      "NOT_JOINED",
+      "You are not in a contest yet. Join with the code from the board.",
+    );
+  }
+  return participant.contestId;
+}
 
 async function request<T extends z.ZodType>(
   path: string,
@@ -104,46 +110,58 @@ export const httpContestApi: ContestApi = {
   label: "live server",
 
   join(request_: JoinRequest): Promise<JoinResponse> {
-    return post(ROUTES.join, JoinResponseSchema, request_);
+    return post(API_ROUTES.join, JoinResponseSchema, request_);
   },
 
   listProblems(): Promise<ProblemSummary[]> {
-    return request(ROUTES.problems, z.array(ProblemSummarySchema));
+    return request(API_ROUTES.problems(currentContestId()), z.array(ProblemSummarySchema));
   },
 
   getProblem(slug: string): Promise<ProblemDetail> {
-    return request(ROUTES.problem(slug), ProblemDetailSchema);
+    return request(API_ROUTES.problem(currentContestId(), slug), ProblemDetailSchema);
   },
 
   runSamples(request_: SubmitRequest): Promise<RunSamplesResponse> {
-    return post(ROUTES.runSamples, RunSamplesResponseSchema, request_);
+    return post(API_ROUTES.runSamples, RunSamplesResponseSchema, request_);
   },
 
   submit(request_: SubmitRequest): Promise<SubmissionView> {
-    return post(ROUTES.submissions, SubmissionViewSchema, request_);
+    return post(API_ROUTES.submissions, SubmissionViewSchema, request_);
   },
 
   getSubmission(submissionId: string): Promise<SubmissionView> {
-    return request(ROUTES.submission(submissionId), SubmissionViewSchema);
+    return request(API_ROUTES.submission(submissionId), SubmissionViewSchema);
   },
 
   listSubmissions(): Promise<SubmissionView[]> {
-    return request(ROUTES.submissions, SubmissionListSchema);
+    return request(API_ROUTES.submissions, SubmissionListSchema);
   },
 
   getStandings(): Promise<StandingsResponse> {
-    return request(ROUTES.standings, StandingsResponseSchema);
+    return request(API_ROUTES.standings(currentContestId()), StandingsResponseSchema);
   },
 
-  getHintBalance(contestProblemId: string): Promise<HintBalance> {
-    return request(ROUTES.hintBalance(contestProblemId), HintBalanceSchema);
+  // No hint route exists, by design rather than omission. docs/TODO.md T1: the PRD prices
+  // hints precisely — two warmups earn one, each costs 15% of base points — but never says
+  // what a hint CONTAINS, and no field in the schema holds hint text. There is nothing for a
+  // handler to return. Failing with a readable message beats calling a path that cannot
+  // exist and reporting the 404 as a bug.
+  getHintBalance(): Promise<HintBalance> {
+    return Promise.reject(
+      new ContestApiError("NOT_IMPLEMENTED", "Hints are not available yet."),
+    );
   },
 
-  takeHint(contestProblemId: string): Promise<HintBalance> {
-    return post(ROUTES.hints, HintBalanceSchema, { contestProblemId });
+  takeHint(): Promise<HintBalance> {
+    return Promise.reject(
+      new ContestApiError("NOT_IMPLEMENTED", "Hints are not available yet."),
+    );
   },
 
-  verdictStreamUrl(submissionId: string): string {
-    return ROUTES.submissionStream(submissionId);
+  verdictStreamUrl(): string {
+    // One contest-level stream carries verdicts, standings and contest state, rather than
+    // a socket per submission — 40 students each holding an EventSource is 40 open
+    // connections for the same firehose.
+    return API_ROUTES.stream(currentContestId());
   },
 };

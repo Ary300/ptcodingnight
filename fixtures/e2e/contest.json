@@ -1,0 +1,139 @@
+{
+  "contest": {
+    "name": "E2E Coding Night",
+    "joinCode": "E2E-PANTHERS",
+    "scoringPresetId": "coding-night-classic",
+    "startsAtOffsetMinutes": -30,
+    "endsAtOffsetMinutes": 90
+  },
+  "divisions": [
+    {
+      "key": "intermediate",
+      "name": "Intermediate",
+      "sortOrder": 0
+    },
+    {
+      "key": "advanced",
+      "name": "Advanced",
+      "sortOrder": 1
+    }
+  ],
+  "problems": [
+    {
+      "slug": "e2e-panther-sum",
+      "title": "Panther Sum",
+      "divisionKey": "intermediate",
+      "slotLabel": "Intermediate E1",
+      "difficulty": "E",
+      "basePoints": 100,
+      "state": "PUBLISHED",
+      "type": "ALGORITHM",
+      "timeLimitMs": 2000,
+      "memoryLimitMb": 256,
+      "allowedLanguages": [
+        "PYTHON",
+        "JAVA"
+      ],
+      "statementMd": "The scoreboard operator needs one more number before the round can start: the total of the two counts called out from the back of the room.\n\nRead two integers and print their sum.",
+      "inputSpec": "One line with two integers $a$ and $b$, separated by a space.",
+      "outputSpec": "One line: the value of $a + b$.",
+      "constraints": "$-10^9 \\le a, b \\le 10^9$",
+      "testCases": [
+        {
+          "ordinal": 1,
+          "dir": "panther-sum",
+          "stem": "01",
+          "isSample": true,
+          "points": 34
+        },
+        {
+          "ordinal": 2,
+          "dir": "panther-sum",
+          "stem": "02",
+          "isSample": true,
+          "points": 33
+        },
+        {
+          "ordinal": 3,
+          "dir": "panther-sum",
+          "stem": "03",
+          "isSample": false,
+          "points": 33
+        }
+      ],
+      "sampleCount": 2
+    },
+    {
+      "slug": "e2e-draft-locked",
+      "title": "Still In Draft",
+      "divisionKey": "intermediate",
+      "slotLabel": "Intermediate E2",
+      "difficulty": "E",
+      "basePoints": 100,
+      "state": "DRAFT",
+      "type": "ALGORITHM",
+      "timeLimitMs": 2000,
+      "memoryLimitMb": 256,
+      "allowedLanguages": [
+        "PYTHON"
+      ],
+      "statementMd": "",
+      "inputSpec": "",
+      "outputSpec": "",
+      "constraints": "",
+      "testCases": [
+        {
+          "ordinal": 1,
+          "dir": "panther-sum",
+          "stem": "01",
+          "isSample": true,
+          "points": 10
+        }
+      ]
+    }
+  ],
+  "rivals": [
+    {
+      "displayName": "E2E Ada",
+      "divisionKey": "intermediate",
+      "submissions": [
+        {
+          "problemSlug": "e2e-panther-sum",
+          "minutesIn": 5,
+          "verdict": "AC",
+          "score": 100
+        }
+      ]
+    },
+    {
+      "displayName": "E2E Grace",
+      "divisionKey": "intermediate",
+      "submissions": [
+        {
+          "problemSlug": "e2e-panther-sum",
+          "minutesIn": 8,
+          "verdict": "WA",
+          "score": 0
+        },
+        {
+          "problemSlug": "e2e-panther-sum",
+          "minutesIn": 12,
+          "verdict": "AC",
+          "score": 100
+        }
+      ]
+    },
+    {
+      "displayName": "E2E Hopper",
+      "divisionKey": "advanced",
+      "submissions": [
+        {
+          "problemSlug": "e2e-panther-sum",
+          "minutesIn": 6,
+          "verdict": "AC",
+          "score": 100
+        }
+      ]
+    }
+  ]
+}

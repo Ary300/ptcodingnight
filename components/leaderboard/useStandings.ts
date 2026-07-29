@@ -4,7 +4,9 @@ import { useEffect, useState } from "react";
 
 import { StandingsResponseSchema, type StandingsResponse } from "@/lib/schemas/api";
 
-import { POLL_INTERVAL_MS, STANDINGS_ENDPOINT } from "./constants";
+import { API_ROUTES } from "@/lib/schemas/api";
+
+import { POLL_INTERVAL_MS } from "./constants";
 import { PROJECTOR_SAMPLE_STANDINGS } from "./sample-standings";
 
 /**
@@ -58,9 +60,9 @@ export function useStandings(contestId: string | null): UseStandingsResult {
     let cancelled = false;
     const controller = new AbortController();
 
-    const url = contestId
-      ? `${STANDINGS_ENDPOINT}?contestId=${encodeURIComponent(contestId)}`
-      : STANDINGS_ENDPOINT;
+    // Omitting the id is meaningful, not a fallback: the projector shows whichever contest is
+    // running, because nobody types an id into a screen on a wall.
+    const url = API_ROUTES.publicStandings(contestId ?? undefined);
 
     const poll = async () => {
       try {

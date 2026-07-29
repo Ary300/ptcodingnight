@@ -16,6 +16,79 @@ import { LanguageSchema, VerdictSchema } from "@/lib/schemas/judge";
  */
 
 // ---------------------------------------------------------------------------
+// Routes — the canonical URL set, and part of the contract
+// ---------------------------------------------------------------------------
+
+/**
+ * Every path the API serves and every path a client may call.
+ *
+ * This exists because freezing the request and response *shapes* was not enough. During
+ * Phase 4b the four agents agreed on every payload and still disagreed on nine of twelve
+ * URLs: the frontend called `/api/problems` and `/api/standings`, the API served
+ * `/api/contests/[id]/problems` and `/api/contests/[id]/standings`. Typechecking cannot
+ * catch that — both sides compile perfectly and the app 404s at runtime. G7 caught it.
+ *
+ * Contest-scoped rather than flat, deliberately. `Contest` is a first-class entity with
+ * history (PRD §5); flat paths would need an implicit "current contest", which is hidden
+ * state that breaks the moment two contests exist or an organizer opens last year's board.
+ *
+ * Both sides import from here. Adding a route means adding a line here first.
+ */
+export const API_ROUTES = {
+  // --- competitor ---
+  /**
+   * Flat, not contest-scoped, and that is not an inconsistency.
+   *
+   * A student arrives holding a join CODE off the board at the front of the room, not a
+   * contest id — and `Contest.joinCode` is `@unique` in the schema precisely so the code is
+   * the lookup key. A contest-scoped join route would require an id obtainable only by
+   * joining. Every route below is scoped because by then the client knows which contest it
+   * is in; this one is how it finds out.
+   */
+  join: "/api/join",
+  problems: (contestId: string) => `/api/contests/${encodeURIComponent(contestId)}/problems`,
+  problem: (contestId: string, slug: string) =>
+    `/api/contests/${encodeURIComponent(contestId)}/problems/${encodeURIComponent(slug)}`,
+  standings: (contestId: string) => `/api/contests/${encodeURIComponent(contestId)}/standings`,
+  /**
+   * The projector's board. Un-scoped on purpose, and the only read route that is.
+   *
+   * The screen on the wall has no login and nobody types an id into it: an organizer opens it
+   * and the room expects the contest that is running now. `?contestId=` pins a specific one,
+   * which is what the awards screen links to for a finished board.
+   */
+  publicStandings: (contestId?: string) =>
+    contestId === undefined
+      ? "/api/standings"
+      : `/api/standings?contestId=${encodeURIComponent(contestId)}`,
+  /** Contest-level SSE. One stream carries verdicts, standings and contest state. */
+  stream: (contestId: string) => `/api/contests/${encodeURIComponent(contestId)}/stream`,
+
+  runSamples: "/api/run-samples",
+  submissions: "/api/submissions",
+  submission: (id: string) => `/api/submissions/${encodeURIComponent(id)}`,
+
+  // --- admin ---
+  adminSession: "/api/admin/session",
+  adminFreeze: (contestId: string) =>
+    `/api/admin/contests/${encodeURIComponent(contestId)}/freeze`,
+  adminExport: (contestId: string) =>
+    `/api/admin/contests/${encodeURIComponent(contestId)}/export`,
+  adminOverride: (submissionId: string) =>
+    `/api/admin/submissions/${encodeURIComponent(submissionId)}/override`,
+} as const;
+
+/**
+ * Routes the contract defines but NO handler implements yet. Listed so the gap is explicit
+ * rather than discovered as a 404.
+ *
+ * Hints depend on `docs/TODO.md` T1: the PRD prices hints precisely but never says what a
+ * hint contains, so there is nothing for a hint route to return. Until that is resolved the
+ * hint UI must degrade rather than call a path that cannot exist.
+ */
+export const UNIMPLEMENTED_ROUTES = ["hints"] as const;
+
+// ---------------------------------------------------------------------------
 // Envelope (rules/common/patterns.md)
 // ---------------------------------------------------------------------------
 

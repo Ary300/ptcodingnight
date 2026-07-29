@@ -117,14 +117,32 @@ export function draftProblem(seeded: SeededContest): SeededProblem {
 /**
  * Remove everything a previous run of this fixture left behind.
  *
- * Scoped to the fixture's own join code and slugs so a stray `--grep` run cannot truncate a
- * developer's real contest. Contest deletion cascades to divisions, participants, contest
- * problems, and submissions; the problems themselves are `onDelete: Restrict` from
- * `ContestProblem`, so they go afterwards.
+ * Scoped to the fixture's own slugs and join code so a stray `--grep` run cannot truncate a
+ * developer's real contest.
+ *
+ * The `ContestProblem` sweep is the important part, and it is keyed on the PROBLEM rather than
+ * the contest. The first version deleted the contest by join code and then the problems,
+ * relying on the cascade to clear `ContestProblem` — which is only correct if the previous run
+ * used the identical join code. It did not: a run from an earlier worktree left a contest
+ * coded `E2E-PANTHER` against a fixture now coded `E2E-PANTHERS`, so the delete matched
+ * nothing, the stale rows survived, and Postgres correctly refused to drop problems still
+ * referenced by them (`ContestProblem_problemId_fkey`).
+ *
+ * A reset that only works when nothing unexpected is present is not a reset. This one clears
+ * every `ContestProblem` pointing at the fixture's problems, whichever contest owns it.
  */
 export async function resetE2EData(fixture: ContestFixture = loadContestFixture()): Promise<void> {
   const db = testDb();
   const slugs = fixture.problems.map((problem) => problem.slug);
+
+  const stale = await db.problem.findMany({ where: { slug: { in: slugs } }, select: { id: true } });
+  const problemIds = stale.map((problem) => problem.id);
+
+  if (problemIds.length > 0) {
+    // Submissions and hint grants hang off ContestProblem with onDelete: Cascade, so removing
+    // the join rows takes them with it.
+    await db.contestProblem.deleteMany({ where: { problemId: { in: problemIds } } });
+  }
 
   await db.contest.deleteMany({ where: { joinCode: fixture.contest.joinCode } });
   await db.problem.deleteMany({ where: { slug: { in: slugs } } });

@@ -8,12 +8,15 @@
 /**
  * Where the board reads standings from.
  *
- * `app/api/**` belongs to the backend agent and may not exist in this worktree yet. The
- * board validates whatever comes back with `StandingsResponseSchema` and falls back to
- * `PROJECTOR_SAMPLE_STANDINGS` when the endpoint is missing, so swapping in the real route
- * is a one-line change here and nothing else.
+ * The path itself is NOT declared here. It comes from `API_ROUTES.publicStandings` in
+ * lib/schemas/api.ts, which is the single source both halves import — a second declaration in
+ * a component is exactly how the frontend and the API ended up on different URLs while both
+ * typechecked. `tests/e2e/wiring.api.spec.ts` fails if this file grows an `/api/...` literal
+ * again.
+ *
+ * The board still validates whatever comes back with `StandingsResponseSchema` and falls back
+ * to `PROJECTOR_SAMPLE_STANDINGS`, so a missing or malformed response never blanks the wall.
  */
-export const STANDINGS_ENDPOINT = "/api/standings";
 
 /**
  * SSE is the realtime path (PRD §10) but polling is the documented fallback, and the

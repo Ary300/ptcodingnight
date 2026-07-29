@@ -27,7 +27,13 @@ export interface JoinResult {
 
 export async function joinContest(
   input: JoinRequest,
-  expectedContestId: string,
+  /**
+   * Null for `POST /api/join`, where the join code IS the lookup key and the caller cannot
+   * know a contest id yet. A contest id is still checked when one is supplied, so the
+   * contest-scoped route stays strictly narrower rather than becoming a second, looser path
+   * to the same write.
+   */
+  expectedContestId: string | null,
   now: Date,
 ): Promise<JoinResult> {
   const contest = await prisma.contest.findUnique({
@@ -44,7 +50,9 @@ export async function joinContest(
 
   // A valid code for a different contest is still the wrong code for this URL. Checked before
   // anything is written, so a mismatch never leaves a stray participant behind.
-  if (contest.id !== expectedContestId) throw new NotFoundError("Contest");
+  if (expectedContestId !== null && contest.id !== expectedContestId) {
+    throw new NotFoundError("Contest");
+  }
 
   assertCanJoin(contest.state);
 

@@ -1,3 +1,5 @@
+import "dotenv/config";
+
 import { defineConfig, devices } from "@playwright/test";
 
 /**
@@ -9,7 +11,20 @@ import { defineConfig, devices } from "@playwright/test";
  */
 export default defineConfig({
   testDir: "./tests/e2e",
-  fullyParallel: true,
+  /*
+   * Serial, and not for want of trying to parallelise it.
+   *
+   * Every spec seeds the SAME contest fixture into the SAME Postgres, because that is what an
+   * end-to-end test of one contest means. Run in parallel, one worker deletes the fixture's
+   * problems while another still has ContestProblem rows pointing at them, and Postgres
+   * correctly refuses: `ContestProblem_problemId_fkey`. That is a real constraint doing its
+   * job, not flakiness to be retried away.
+   *
+   * The alternative — a database per worker — buys speed this suite does not need and adds a
+   * schema-migration step per worker that could itself drift.
+   */
+  fullyParallel: false,
+  workers: 1,
   forbidOnly: true,
   retries: process.env.CI ? 2 : 0,
   reporter: process.env.CI ? [["list"], ["html", { open: "never" }]] : "list",
@@ -21,8 +36,15 @@ export default defineConfig({
   },
   projects: [
     { name: "chromium", use: { ...devices["Desktop Chrome"] } },
-    // Students use phones (PRD §11).
-    { name: "mobile", use: { ...devices["Pixel 7"] } },
+    {
+      // Students use phones (PRD §11) — but only the BROWSER specs care which browser they
+      // are in. Running the `.api.spec.ts` files under a second device profile tests the same
+      // HTTP handlers twice, doubles the contention on the one seeded contest, and doubles the
+      // container work in the judged specs.
+      name: "mobile",
+      use: { ...devices["Pixel 7"] },
+      testIgnore: /\.api\.spec\.ts$/,
+    },
   ],
   webServer: {
     command: "npm run dev",
