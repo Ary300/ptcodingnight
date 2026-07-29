@@ -25,3 +25,6 @@ data/testcases/
 
 # judge scratch (per-submission working dirs; must be under a Docker-shared path)
 .judge-tmp/
+
+# playwright-mcp scratch output
+.playwright-mcp/
