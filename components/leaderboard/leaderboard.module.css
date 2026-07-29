@@ -1,0 +1,516 @@
+/*
+ * Projector leaderboard. docs/DESIGN.md §5 (the ledger and the rail) and §6 (the Unfreeze).
+ *
+ * Only the six tokens from app/globals.css appear here. No new hex value, no new face, no
+ * off-scale size — every size is a `--text-proj-*` token multiplied by one shared scale
+ * factor.
+ *
+ * ---------------------------------------------------------------------------
+ * 1920×1080 → 1280×720 without reflow
+ * ---------------------------------------------------------------------------
+ * School projectors are one resolution or the other and neither scrolls. Both are 16:9, so
+ * the degradation is a *uniform* scale rather than a responsive relayout: `--proj-scale`
+ * multiplies the type scale, the row height, the gaps and the padding together. Nothing
+ * wraps differently, nothing moves to a new line, no breakpoint reorders anything — the
+ * same board renders two-thirds the size, which is the same physical size on the same
+ * screen. `--text-proj-sm` remains the floor of the scale; it is never undercut relative to
+ * anything else on the board.
+ */
+
+.stage {
+  --proj-scale: 1;
+
+  --fs-sm: calc(var(--text-proj-sm) * var(--proj-scale));
+  --fs-md: calc(var(--text-proj-md) * var(--proj-scale));
+  --fs-lg: calc(var(--text-proj-lg) * var(--proj-scale));
+  --fs-xl: calc(var(--text-proj-xl) * var(--proj-scale));
+  --fs-2xl: calc(var(--text-proj-2xl) * var(--proj-scale));
+
+  /* Derived from the type scale, not chosen: a standings row is one and a half lines. */
+  --row-h: calc(var(--fs-lg) * 1.55);
+  --champ-h: calc(var(--fs-2xl) * 1.55);
+  --champ-extra: calc(var(--champ-h) - var(--row-h));
+  --gap: calc(var(--fs-sm) * 0.5);
+  --pad: calc(var(--fs-sm) * 1.2);
+
+  /* Secondary text. A mix, not a new colour, and kept well above AA on --ink. */
+  --muted: color-mix(in srgb, var(--color-paper) 72%, var(--color-ink));
+
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background: var(--color-ink);
+  color: var(--color-paper);
+  font-family: var(--font-body);
+}
+
+@media (max-height: 899px), (max-width: 1599px) {
+  .stage {
+    --proj-scale: 0.667;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Two zones: standings left ~72%, clock and division tabs stacked right.
+ * ------------------------------------------------------------------------ */
+
+.grid {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: 72fr 28fr;
+  gap: calc(var(--pad) * 1.5);
+  height: 100%;
+  padding: var(--pad);
+}
+
+.board {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+}
+
+.aside {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: calc(var(--gap) * 2);
+  border-left: 2px solid color-mix(in srgb, var(--color-paper) 16%, transparent);
+  padding-left: var(--pad);
+}
+
+.contestName {
+  font-family: var(--font-display);
+  font-size: var(--fs-md);
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.1;
+}
+
+.contestMeta {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  line-height: 1.4;
+}
+
+/* ---------------------------------------------------------------------------
+ * The plate band. Its height is reserved whether or not the plate is up, so the
+ * board does not jump when the freeze starts or the plate lifts away.
+ * ------------------------------------------------------------------------ */
+
+.plateBand {
+  display: flex;
+  height: calc(var(--fs-md) * 2.4);
+  align-items: center;
+  margin-top: calc(var(--gap) * 1.5);
+}
+
+.plate {
+  display: flex;
+  align-items: baseline;
+  border-radius: 4px;
+  background: var(--color-gold);
+  color: var(--color-ink); /* 13.44:1 — docs/DESIGN.md §2 */
+  gap: var(--gap);
+  padding: calc(var(--gap) * 0.9) calc(var(--gap) * 2.2);
+}
+
+.plateTitle {
+  font-family: var(--font-display);
+  font-size: var(--fs-md);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  line-height: 1;
+}
+
+.plateNote {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+
+.plateLifting {
+  animation: plateLift var(--plate-ms, 700ms) cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+@keyframes plateLift {
+  to {
+    opacity: 0;
+    transform: translateY(-140%);
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Standings
+ * ------------------------------------------------------------------------ */
+
+/*
+ * Header and rows share one six-track grid: rail, rank, name, delta, penalty, score.
+ *
+ * The tracks are stated twice rather than held in a custom property, because a property
+ * holding the track list would be substituted against `--num-fs` at the element that
+ * *declares* it — so the champion row's larger `--num-fs` would never reach it.
+ */
+.columns {
+  display: grid;
+  align-items: end;
+  border-bottom: 2px solid color-mix(in srgb, var(--color-paper) 16%, transparent);
+  color: var(--muted);
+  column-gap: calc(var(--num-fs) * 0.4);
+  font-size: var(--fs-sm);
+  grid-template-columns:
+    var(--rail-width)
+    calc(var(--num-fs) * 2.2)
+    minmax(0, 1fr)
+    calc(var(--num-fs) * 2.4)
+    calc(var(--num-fs) * 2)
+    calc(var(--num-fs) * 3.2);
+  letter-spacing: 0.12em;
+  padding-bottom: calc(var(--gap) * 0.6);
+  text-transform: uppercase;
+  --num-fs: var(--fs-lg);
+}
+
+/*
+ * Header cells borrow the rows' alignment but not their size — the labels stay at
+ * `--text-proj-sm`, the floor of the projector scale, so they read as a key rather than
+ * competing with the standings themselves.
+ */
+.headRank {
+  padding-left: calc(var(--gap) * 0.8);
+  text-align: right;
+}
+
+.headRight {
+  text-align: right;
+}
+
+.list {
+  position: relative;
+  overflow: hidden;
+  flex: 1 1 auto;
+  margin-top: calc(var(--gap) * 0.8);
+}
+
+.row {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: grid;
+  width: 100%;
+  height: var(--row-h);
+  align-items: center;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-paper) 10%, transparent);
+  column-gap: calc(var(--num-fs) * 0.4);
+  font-size: var(--fs-lg);
+  grid-template-columns:
+    var(--rail-width)
+    calc(var(--num-fs) * 2.2)
+    minmax(0, 1fr)
+    calc(var(--num-fs) * 2.4)
+    calc(var(--num-fs) * 2)
+    calc(var(--num-fs) * 3.2);
+  /* --num-fs keeps every numeral column a fixed width even when the champion's name grows,
+     so the reveal cannot squeeze the name it exists to celebrate. */
+  --num-fs: var(--fs-lg);
+  transform: translateY(var(--row-y, 0px));
+  transition:
+    transform var(--row-travel, 900ms) cubic-bezier(0.22, 1.2, 0.36, 1),
+    height 700ms cubic-bezier(0.22, 1.2, 0.36, 1),
+    font-size 700ms cubic-bezier(0.22, 1.2, 0.36, 1);
+  transition-delay: var(--row-delay, 0ms);
+}
+
+/*
+ * The champion's row grows to `--text-proj-2xl`. The numerals deliberately do not grow with
+ * it: they hold `--num-fs`, which keeps the five fixed columns exactly the width they were
+ * and hands the whole difference to the name. A champion whose name ellipsises at the
+ * moment of the reveal is the one failure this row cannot have.
+ */
+.champion {
+  height: var(--champ-h);
+  font-size: var(--fs-2xl);
+}
+
+/* The rail stays live through the freeze — it is the one thing that does not desaturate,
+   because it is the only remaining evidence that positions are still moving underneath. */
+.railSlot {
+  display: flex;
+  align-self: stretch;
+  flex: 0 0 var(--rail-width);
+  transform-origin: left center;
+}
+
+.railFlash {
+  animation: railFlash 700ms ease-out;
+  animation-delay: var(--row-delay, 0ms);
+}
+
+@keyframes railFlash {
+  0% {
+    filter: brightness(1);
+    transform: scaleX(1);
+  }
+  22% {
+    filter: brightness(1.7);
+    transform: scaleX(3.4);
+  }
+  100% {
+    filter: brightness(1);
+    transform: scaleX(1);
+  }
+}
+
+/*
+ * Greyscale is applied per cell, never to the row, so the rails keep their colour through
+ * the freeze (docs/DESIGN.md §6) — and so the cells stay direct children of `role="row"`,
+ * which an intervening wrapper div would break for assistive technology.
+ */
+.cell {
+  transition: filter 900ms ease;
+}
+
+.desaturated {
+  filter: grayscale(1);
+}
+
+.rank {
+  color: var(--muted);
+  font-size: var(--num-fs);
+  padding-left: calc(var(--gap) * 0.8);
+  text-align: right;
+}
+
+.tie {
+  font-size: 0.6em;
+}
+
+/* Read aloud, never drawn. The projector shows `+18`; a screen reader hears "penalty 18". */
+.visuallyHidden {
+  position: absolute;
+  overflow: hidden;
+  width: 1px;
+  height: 1px;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.name {
+  overflow: hidden;
+  font-family: var(--font-display);
+  font-weight: 700;
+  line-height: 1.05;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.delta {
+  font-size: var(--num-fs);
+  text-align: right;
+}
+
+.penalty {
+  color: var(--muted);
+  font-size: calc(var(--num-fs) * 0.62);
+  text-align: right;
+}
+
+.score {
+  font-size: var(--num-fs);
+  font-weight: 600;
+  text-align: right;
+}
+
+/*
+ * Right-aligned so it clears the crest in the opposite corner. When the crest ignites at
+ * full opacity, `--paper` over `--gold` would be 1.39:1 — the footnote simply never shares
+ * that space.
+ */
+.footnote {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: baseline;
+  justify-content: flex-end;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  gap: calc(var(--gap) * 2);
+  padding-top: calc(var(--gap) * 0.8);
+}
+
+.sampleMarker {
+  color: var(--color-gold);
+  font-weight: 700;
+  letter-spacing: 0.1em;
+}
+
+/* ---------------------------------------------------------------------------
+ * Clock and division tabs
+ * ------------------------------------------------------------------------ */
+
+.clockLabel {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.clock {
+  font-size: var(--fs-xl);
+  font-weight: 700;
+  line-height: 1;
+}
+
+.clockUrgent {
+  color: var(--color-gold);
+}
+
+.tabs {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  margin-top: calc(var(--gap) * 2);
+}
+
+.tab {
+  display: flex;
+  align-items: center;
+  border: 0;
+  border-left: var(--rail-width) solid transparent;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-family: var(--font-display);
+  font-size: var(--fs-md);
+  font-weight: 700;
+  gap: var(--gap);
+  line-height: 1.2;
+  padding: calc(var(--gap) * 0.7) 0 calc(var(--gap) * 0.7) var(--gap);
+  text-align: left;
+  transition: color 240ms ease;
+}
+
+.tab:hover {
+  color: var(--color-paper);
+}
+
+.tabActive {
+  /* --panther as chrome only: the rail marks the selection, the label stays --paper.
+     DESIGN.md §2 — panther is 3.67 on ink and never carries small text. */
+  border-left-color: var(--color-panther);
+  color: var(--color-paper);
+}
+
+.tabCount {
+  font-size: var(--fs-sm);
+  font-weight: 400;
+}
+
+.state {
+  display: flex;
+  align-items: center;
+  margin-top: auto;
+  font-size: var(--fs-sm);
+  gap: var(--gap);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.stateDot {
+  width: calc(var(--fs-sm) * 0.5);
+  height: calc(var(--fs-sm) * 0.5);
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.stateLive {
+  color: var(--color-rise);
+}
+
+.stateFrozen {
+  color: var(--color-gold);
+}
+
+/* ---------------------------------------------------------------------------
+ * The crest. Watermark bleeding off the bottom-left corner, outline while the board is
+ * frozen, and full colour exactly once — the champion reveal. Never recoloured, never
+ * stretched, never cropped (docs/DESIGN.md §8).
+ * ------------------------------------------------------------------------ */
+
+/*
+ * Sized and placed so that the visible arc sits *below* the last standings row even in the
+ * champion state, where the grown row pushes everything down. That is not a stylistic
+ * choice: at full opacity the ring is `--gold`, and `--paper` over `--gold` is 1.39:1. The
+ * ledger and the ignition never share pixels.
+ */
+.crest {
+  position: absolute;
+  bottom: calc(var(--fs-2xl) * -1.7);
+  left: calc(var(--fs-2xl) * -1.3);
+  width: calc(var(--fs-2xl) * 5);
+  height: calc(var(--fs-2xl) * 5);
+  z-index: 0;
+  pointer-events: none;
+}
+
+.crestLayer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  transition: opacity 900ms ease;
+}
+
+/* Live: the mark as a watermark at low opacity. */
+.crestOutlineLayer {
+  opacity: 0;
+}
+
+.crestColorLayer {
+  opacity: 0.1;
+}
+
+/* Frozen: drops to the outline variant. The board is holding its breath. */
+.crestFrozen .crestOutlineLayer {
+  opacity: 0.18;
+}
+
+.crestFrozen .crestColorLayer {
+  opacity: 0;
+}
+
+/* The ignition. Gold ring first, then the field. */
+.crestLit .crestOutlineLayer {
+  opacity: 0;
+}
+
+.crestLit .crestColorLayer {
+  opacity: 1;
+  transition-delay: 320ms;
+}
+
+.crestRing {
+  position: absolute;
+  border: calc(var(--fs-sm) * 0.32) solid var(--color-gold);
+  border-radius: 50%;
+  inset: 4%;
+  opacity: 0;
+}
+
+.crestLit .crestRing {
+  animation: ringIgnite 1100ms cubic-bezier(0.2, 0.8, 0.3, 1) forwards;
+}
+
+@keyframes ringIgnite {
+  0% {
+    opacity: 0;
+    transform: scale(0.86);
+  }
+  35% {
+    opacity: 0.95;
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.05);
+  }
+}

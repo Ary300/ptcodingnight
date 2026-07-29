@@ -1,0 +1,102 @@
+"use client";
+
+import { useEffect, useState } from "react";
+
+import { StandingsResponseSchema, type StandingsResponse } from "@/lib/schemas/api";
+
+import { POLL_INTERVAL_MS, STANDINGS_ENDPOINT } from "./constants";
+import { PROJECTOR_SAMPLE_STANDINGS } from "./sample-standings";
+
+/**
+ * Where the rows currently on screen came from. Surfaced in the footer, because a board
+ * showing sample data must say so.
+ */
+export type StandingsSource = "pending" | "api" | "sample";
+
+export interface UseStandingsResult {
+  standings: StandingsResponse;
+  /**
+   * The last response that arrived with `frozen: true`, kept so the Unfreeze has somewhere
+   * to travel *from*. Captured from the API's own frozen payloads rather than reconstructed,
+   * so the rows the room stared at for the last half hour are exactly the rows that move.
+   */
+  frozenSnapshot: StandingsResponse | null;
+  source: StandingsSource;
+}
+
+/**
+ * Reads the response body under either shape: the API envelope from `lib/schemas/api.ts`
+ * (`{ success, data, error }`) or a bare `StandingsResponse`. The projector is a read-only
+ * consumer of a route it does not own, so it validates rather than assumes — Zod at the
+ * trust boundary, per CLAUDE.md.
+ */
+function parseStandings(body: unknown): StandingsResponse | null {
+  const direct = StandingsResponseSchema.safeParse(body);
+  if (direct.success) return direct.data;
+
+  if (typeof body === "object" && body !== null && "data" in body) {
+    const enveloped = StandingsResponseSchema.safeParse((body as { data: unknown }).data);
+    if (enveloped.success) return enveloped.data;
+  }
+
+  return null;
+}
+
+/**
+ * Polls the standings endpoint.
+ *
+ * Polling rather than SSE on purpose: PRD §10 makes polling the documented fallback, and
+ * this is the one screen in the building that must never go blank because a stream dropped.
+ * A failed poll keeps the last good board on screen — it never clears it.
+ */
+export function useStandings(contestId: string | null): UseStandingsResult {
+  const [standings, setStandings] = useState<StandingsResponse>(PROJECTOR_SAMPLE_STANDINGS);
+  const [frozenSnapshot, setFrozenSnapshot] = useState<StandingsResponse | null>(null);
+  const [source, setSource] = useState<StandingsSource>("pending");
+
+  useEffect(() => {
+    let cancelled = false;
+    const controller = new AbortController();
+
+    const url = contestId
+      ? `${STANDINGS_ENDPOINT}?contestId=${encodeURIComponent(contestId)}`
+      : STANDINGS_ENDPOINT;
+
+    const poll = async () => {
+      try {
+        const response = await fetch(url, {
+          signal: controller.signal,
+          cache: "no-store",
+          headers: { accept: "application/json" },
+        });
+        if (!response.ok) throw new Error(`standings responded ${response.status}`);
+
+        const parsed = parseStandings(await response.json());
+        if (parsed === null) throw new Error("standings response did not match the contract");
+
+        if (!cancelled) {
+          setStandings(parsed);
+          if (parsed.frozen) setFrozenSnapshot(parsed);
+          setSource("api");
+        }
+      } catch {
+        // Deliberately quiet, and deliberately non-destructive. The endpoint may not exist
+        // yet; when it does, a transient failure must leave the previous board up rather
+        // than blank the projector mid-contest. `source` only drops to "sample" while the
+        // board has never successfully loaded.
+        if (!cancelled) setSource((current) => (current === "api" ? "api" : "sample"));
+      }
+    };
+
+    void poll();
+    const timer = window.setInterval(() => void poll(), POLL_INTERVAL_MS);
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+      window.clearInterval(timer);
+    };
+  }, [contestId]);
+
+  return { standings, frozenSnapshot, source };
+}
