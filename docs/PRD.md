@@ -312,27 +312,61 @@ contest. Use this as the shape of the golden scoring fixture (G6).
 | Advanced (M) | Gaming Array | Morgan and a String | Encryption | Drawing Book Problem |
 | Advanced (H) | Gena Playing Hanoi | Larry's Array | Magic Square | Bigger is Greater |
 
-**Group round:** five hard problems (Insertion Sort Advanced Analysis, Fraudulent Activity
+**Group round:** three hard problems (Insertion Sort Advanced Analysis, Fraudulent Activity
 Notifications, Cards Permutation) each gated behind three hints, with hints purchased at a
 rate of two CodingBat warmups per hint. The warmup pool is 60 problems, 30 Python and 30
 Java, and is imported in `problems_seed.csv` with `type=codingbat`.
 
+> Corrected from "five" — `problems_seed.csv` carries 5 `group` rows but only these 3
+> distinct titles, two of them exact duplicate rows. See §16.1 and `docs/DECISIONS.md` D3.
+> The hint economy is unaffected: 60 warmups fund far more than the 9 hints (3 problems ×
+> 3 hints) the round can absorb.
+
 ## 16. Appendix B — Seed data
 
-`problems_seed.csv` — 136 rows extracted from `Problems_List.xlsx`:
+`problems_seed.csv` — 136 rows extracted from `Problems_List.xlsx`, which seed
+**125 distinct `Problem` records**. Rows are not problems: a row is one *appearance* of a
+problem in contest history, so the same problem recurs across divisions and statuses.
 
-| type | count | meaning |
-|------|-------|---------|
-| `algorithm` | 71 | Contest problems from past nights |
-| `codingbat` | 60 | Warmup problems used as hint currency (30 Python, 30 Java) |
-| `group` | 5 | Hint-gated group-round problems |
+| type | rows | distinct | meaning |
+|------|------|----------|---------|
+| `algorithm` | 71 | 63 | Contest problems from past nights |
+| `codingbat` | 60 | 60 | Warmup problems used as hint currency (30 Python, 30 Java) |
+| `group` | 5 | 3 | Hint-gated group-round problems |
+| **total** | **136** | **125** | |
 
-| `past_status` | count | meaning |
-|---------------|-------|---------|
-| `hint-currency` | 60 | CodingBat warmups |
-| `used-in-contest` | 24 | Assigned to a specific division/difficulty slot |
-| `solved-in-past` | 20 | Someone has solved it — safe difficulty |
-| `candidate-unused` | 15 | Never used; carries HackerRank acceptance rate as a difficulty hint |
-| `used-but-zero-points` | 9 | Used and **nobody scored** — flag loudly in the picker |
-| `group-problem` | 5 | Group round |
-| `partially-solved-in-past` | 3 | Partial credit was earned |
+| `past_status` | rows | distinct | meaning |
+|---------------|------|----------|---------|
+| `hint-currency` | 60 | 60 | CodingBat warmups |
+| `used-in-contest` | 24 | 20 | Assigned to a specific division/difficulty slot |
+| `solved-in-past` | 20 | 20 | Someone has solved it — safe difficulty |
+| `candidate-unused` | 15 | 15 | Never used; carries HackerRank acceptance rate as a difficulty hint |
+| `used-but-zero-points` | 9 | 9 | Used and **nobody scored** — flag loudly in the picker |
+| `group-problem` | 5 | 3 | Group round |
+| `partially-solved-in-past` | 3 | 3 | Partial credit was earned |
+
+### 16.1 Dedup key — get this right or the seeder drops real problems
+
+**The dedup key is `(title, language)` for `codingbat` rows and `title` alone for every
+other type.** Title alone is wrong: `sum67` is a real CodingBat exercise offered in *both*
+Python and Java, so keying on title collapses two genuine warmups into one and quietly
+shrinks the hint economy. All 60 warmups are distinct.
+
+Ten titles legitimately recur and must collapse to a single `Problem`, with the
+division/difficulty/slot carried on `ContestProblem` where PRD §5 already puts it:
+
+- **Used in both divisions at different difficulties** — `Bill Division` (Int/M, Adv/E),
+  `Gaming Array` (Int/H, Adv/M), `Ice Cream Parlor` (Int/M, Adv/E), `Morgan and a String`
+  (Int/H, Adv/M).
+- **Both `solved-in-past` and `used-in-contest`** — `Circular Array Rotation`,
+  `Day of the Programmer`, `Designer PDF Viewer`, `Encryption`.
+- **Exact duplicate rows** (spreadsheet export artifact, no distinguishing field) —
+  `Insertion Sort Advanced Analysis` ×2.
+- **Spans two types** — `Fraudulent Activity Notifications` appears 3× : once as
+  `algorithm`/`used-but-zero-points` and twice as `group`/`group-problem`. It is one
+  problem that is *both* a group-round problem *and* one nobody has ever scored on. Both
+  facts must survive the merge, because §8 wants that warning surfaced loudly — and this is
+  the problem it matters most on.
+
+`db:seed` must be idempotent: running it twice produces the same 125 problems, not 250.
+G10's cold start depends on it.
