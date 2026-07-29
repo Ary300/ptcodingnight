@@ -11,6 +11,10 @@
  * The merge itself lives in lib/seed/merge.ts so it can be tested without a database.
  */
 
+// Standalone tsx entrypoint: Next.js loads .env for the web app, but this process does not
+// get that for free. Must come before anything that reads process.env.
+import "dotenv/config";
+
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

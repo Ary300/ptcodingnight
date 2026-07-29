@@ -10,6 +10,9 @@
  * platform. Refusing to start is the honest failure.
  */
 
+// Standalone tsx entrypoint — load .env before anything reads process.env.
+import "dotenv/config";
+
 import { parseServerEnv } from "@/lib/schemas/env";
 
 function main(): never {
