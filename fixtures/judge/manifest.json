@@ -8,7 +8,13 @@
     "",
     "MLE cases carry a longer timeLimitMs: proving a memory bomb requires letting it",
     "allocate, and on a loaded judge the wall clock would otherwise win the race and",
-    "report TLE. The memory cap is what the case is testing, not the clock."
+    "report TLE. The memory cap is what the case is testing, not the clock.",
+    "",
+    "py-ac-largeoutput is a REGRESSION fixture. Its correct answer is 1.29 MB, which",
+    "exceeded the judge's old fixed 1 MiB stdout cap; the container was killed and the",
+    "submission reported WA. A correct solution scored as wrong is the worst verdict",
+    "this judge can produce. It uses problem-large/ rather than problem/, because every",
+    "other fixture's output is one line and none of them could ever have caught it."
   ],
   "problem": {
     "timeLimitMs": 2000,
@@ -163,6 +169,15 @@
       "language": "JAVA",
       "sourceFile": "Main.java",
       "expectedVerdict": "CE"
+    },
+    {
+      "id": "py-ac-largeoutput",
+      "language": "PYTHON",
+      "sourceFile": "main.py",
+      "expectedVerdict": "AC",
+      "problemDir": "problem-large",
+      "testCount": 2,
+      "timeLimitMs": 8000
     }
   ]
 }

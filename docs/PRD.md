@@ -280,6 +280,19 @@ These are the acceptance tests. Every gate is a command with a binary pass condi
 | **G10 Cold start** | Fresh clone → `docker compose up -d` → `npm run db:seed` → smoke script | Working seeded instance, zero manual steps beyond copying `.env.example`, in under 10 minutes |
 | **G11 Security review** | `/security-review` on the full diff | Zero high or critical findings; every finding either fixed or documented in `SECURITY.md` with rationale |
 | **G12 Clean tree** | `git status --porcelain` | Empty output; every change committed with a real message |
+| **G13 Problem content** | `npm run test:content` | Every problem with authored content has its reference solution score `AC` with full marks **through the real judge**, in real containers, against its own test data; no non-DRAFT problem exists without authored content |
+
+> **Why G13 exists.** Verifying a reference with a local interpreter proves the *algorithm*.
+> It does not prove the problem is **judgeable**. The first run of this check failed 9 of 20
+> problems that were all algorithmically correct: 8 timed out because the judge's Python
+> startup budget was smaller than the measured interpreter startup, and 1 returned `WA`
+> because a fixed 1 MiB stdout cap truncated a legitimately 1.29 MB answer and killed the
+> container. Neither was visible locally, and neither could be caught by G4, whose fixtures
+> all used a problem whose output is one line. Without this gate, eight problems ship
+> unsolvable and one punishes every correct submission.
+>
+> G13 is container-bound and **must not run concurrently with G8** — competing container
+> workloads make both sets of timings meaningless, and G8's p95 is the entire point of G8.
 
 ## 13. Out of scope (v1)
 

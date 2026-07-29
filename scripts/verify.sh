@@ -72,6 +72,11 @@ run_gate G7 "e2e            " "npm run test:e2e"
 run_gate G8 "load           " "npm run test:load"
 run_gate G9 "a11y           " "npm run test:a11y"
 
+# G13 runs LAST among the container-bound gates, and never alongside G8. Both spawn
+# containers; interleaving them makes both sets of timings meaningless, and G8's p95 is the
+# whole point of G8.
+run_gate G13 "problem content" "npm run test:content"
+
 # G5 has a second condition beyond its exit code: no leaked containers.
 if [ "$DOCKER_UP" = "1" ]; then
   DOCKER_AFTER="$(docker ps -a -q | wc -l | tr -d ' ')"

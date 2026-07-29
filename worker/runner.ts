@@ -5,7 +5,12 @@ import { aggregate } from "@/lib/judge/aggregate";
 import { matches, UnknownCheckerError } from "@/lib/judge/comparators";
 import { buildDiffSnippet, buildErrorSnippet } from "@/lib/judge/diff";
 import type { JudgeJob, JudgeResult, JudgeTestResult, Verdict } from "@/lib/schemas/judge";
-import { runInContainer, type ContainerLimits, type ContainerRunResult } from "@/worker/docker";
+import {
+  OUTPUT_CAP_FLOOR_BYTES,
+  runInContainer,
+  type ContainerLimits,
+  type ContainerRunResult,
+} from "@/worker/docker";
 
 /**
  * Judges one submission: prepare a source directory, compile if the language needs it, run
@@ -170,11 +175,25 @@ function hitWallClock(exitCode: number | null, durationMs: number, wallClockKill
  * with the student's algorithm, and folding it into a multiplier makes short problems
  * unjudgeable while giving long ones far too much slack.
  *
- * Measured on this hardware, inside the real isolation flags at `--cpus=1`, for a program
- * that does nothing but read two integers and add them:
+ * ## MEASUREMENT CONDITIONS — read these before changing a number
  *
- *   Java   1010, 1479, 1815, 2374, 3659, 5342 ms   (5.3x spread, all pure JVM startup)
- *   Python well under 1000 ms
+ * All figures from this build host, inside the real isolation flags at `--cpus=1`, for a
+ * program that does no meaningful work. This host is **not a clean judge host**: an
+ * unrelated container stack runs alongside, which is exactly what PRD §14 says to avoid.
+ * Container creation alone costs 2.4–15.6 s and varies run to run.
+ *
+ *   Java, quiet host      1010, 1479, 1815, 2374, 3659, 5342 ms  (5.3x spread)
+ *   Python, quiet host    1006, 1042, 1114, 1319, 1377, 1418, 1505, 1651 ms  (median 1377)
+ *   Python, under churn   up to 4327 ms observed across the 20 reference solutions
+ *
+ * **The same mistake was made twice, once per language: a budget fitted on a quiet host
+ * that became wrong under load.** Python's first budget was 1000 ms — below the *minimum*
+ * startup measured on an idle machine — and it failed 8 of 20 correct reference solutions
+ * as TLE. Both numbers below are sized for the LOADED case, because a judge that is only
+ * correct when the machine is idle is not correct.
+ *
+ * Re-measure on a dedicated judge host rather than guessing; both should drop sharply,
+ * Java to roughly 3 s and Python to well under 1 s.
  *
  * A 6-second Java allowance therefore fails correct solutions intermittently — which is
  * exactly what happened to the java-wa-multiplies fixture before this change, and is far
@@ -190,10 +209,27 @@ function hitWallClock(exitCode: number | null, durationMs: number, wallClockKill
  * startup budget added once. Multiplying a fixed startup cost by three would make proving a
  * timeout take minutes without making the judgement any more correct.
  */
-const LANGUAGE_TIME_BUDGET = {
-  PYTHON: { multiplier: 1, startupBudgetMs: 1_000 },
+export const RUNTIME_BUDGETS = {
+  PYTHON: { multiplier: 1, startupBudgetMs: 6_000 },
   JAVA: { multiplier: 2, startupBudgetMs: 20_000 },
 } as const;
+
+/**
+ * Bytes of stdout to capture for one test before treating the run as a flood.
+ *
+ * Derived from the expected output, never fixed. A correct solution cannot produce
+ * meaningfully more than the expected answer, so twice it plus slack is generous, while a
+ * hostile fixture writing 1 GB still trips it within the first moments.
+ *
+ * A fixed 1 MiB cap is what made a *correct* `cut-the-sticks` submission report `WA`. Its
+ * expected output is 1.29 MB, so the judge captured a megabyte, killed the container, and
+ * returned the verdict a wrong answer gets — the worst failure this judge can produce,
+ * because the student has no way to tell it from their own bug. It survived G4 at 24/24
+ * because every fixture used a problem whose output is a single line.
+ */
+export function outputCapFor(expectedBytes: number): number {
+  return Math.max(OUTPUT_CAP_FLOOR_BYTES, expectedBytes * 2 + 64 * 1024);
+}
 
 /**
  * Wrap a command in coreutils `timeout` so the wall-clock kill measures the student's
@@ -214,7 +250,7 @@ export async function judge(job: JudgeJob, images: JudgeImages): Promise<JudgeRe
   const spec = languageSpec(job, images);
   const limits = containerLimits(job);
 
-  const budget = LANGUAGE_TIME_BUDGET[job.language];
+  const budget = RUNTIME_BUDGETS[job.language];
   const algorithmMs = job.limits.timeLimitMs * budget.multiplier;
   const timeLimitMs = algorithmMs + budget.startupBudgetMs;
   const wallClockKillMs = algorithmMs * 3 + budget.startupBudgetMs;
@@ -270,6 +306,9 @@ export async function judge(job: JudgeJob, images: JudgeImages): Promise<JudgeRe
         stdin: input,
         limits,
         name: containerName(job, `t${testCase.ordinal}`),
+        // Sized to THIS test's expected answer, so a problem with legitimately large output
+        // is not truncated into a WA. See outputCapFor.
+        outputCapBytes: outputCapFor(Buffer.byteLength(expected, "utf8")),
       });
 
       let verdict: Verdict;

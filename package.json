@@ -17,6 +17,7 @@
     "test:judge": "vitest run --config vitest.judge.config.ts",
     "test:sandbox": "vitest run --config vitest.sandbox.config.ts",
     "test:scoring:golden": "vitest run --config vitest.golden.config.ts",
+    "test:content": "tsx scripts/verify-problem-content.ts",
     "test:e2e": "playwright test",
     "test:load": "tsx scripts/load-test.ts",
     "test:a11y": "playwright test --config playwright.a11y.config.ts",

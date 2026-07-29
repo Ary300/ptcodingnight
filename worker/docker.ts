@@ -13,10 +13,19 @@ import { spawn } from "node:child_process";
 export const CONTAINER_PREFIX = "ptcn-judge-";
 
 /**
- * Cap on captured output. A submission that floods stdout must not take the worker down
- * with it — one of the hostile fixtures writes 1 GB (PRD §7.3).
+ * Floor for the captured-output cap, used when the expected output size is unknown.
+ *
+ * A submission that floods stdout must not take the worker down with it — one hostile
+ * fixture writes 1 GB (PRD §7.3). But this cap cannot be a fixed number: a *correct*
+ * solution to a problem with 200 000 lines of legitimate output blows through 1 MiB and,
+ * because exceeding the cap kills the container, gets reported as `WA` — indistinguishable
+ * from a wrong answer. That is the single worst failure this judge can produce, and it
+ * shipped undetected because every G4 fixture used a problem whose output is one line.
+ *
+ * The cap is therefore derived per test from the expected output size; see
+ * `outputCapFor()` in worker/runner.ts.
  */
-export const OUTPUT_CAP_BYTES = 1024 * 1024;
+export const OUTPUT_CAP_FLOOR_BYTES = 1024 * 1024;
 
 export interface ContainerLimits {
   readonly memoryLimitMb: number;
@@ -42,6 +51,12 @@ export interface ContainerRunOptions {
   readonly stdin?: string;
   readonly limits: ContainerLimits;
   readonly name: string;
+  /**
+   * Bytes of stdout to capture before treating the submission as a flood and killing it.
+   * Defaults to the floor; callers that know the expected output size should pass a cap
+   * derived from it.
+   */
+  readonly outputCapBytes?: number;
 }
 
 export interface ContainerRunResult {
@@ -159,6 +174,7 @@ export async function isDockerAvailable(): Promise<boolean> {
  */
 export async function runInContainer(options: ContainerRunOptions): Promise<ContainerRunResult> {
   const { image, argv, sourceDir, outputDir, stdin, limits, name } = options;
+  const outputCap = options.outputCapBytes ?? OUTPUT_CAP_FLOOR_BYTES;
 
   const args = [
     "run",
@@ -212,12 +228,12 @@ export async function runInContainer(options: ContainerRunOptions): Promise<Cont
     const capture = (chunk: Buffer, into: "out" | "err") => {
       const text = chunk.toString();
       if (into === "out") {
-        if (stdout.length < OUTPUT_CAP_BYTES) stdout += text;
+        if (stdout.length < outputCap) stdout += text;
         else if (!truncated) {
           truncated = true;
           killContainer();
         }
-      } else if (stderr.length < OUTPUT_CAP_BYTES) {
+      } else if (stderr.length < OUTPUT_CAP_FLOOR_BYTES) {
         stderr += text;
       }
     };

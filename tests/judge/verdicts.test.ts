@@ -36,6 +36,13 @@ interface Manifest {
     /** Optional per-case override; MLE cases need room to actually allocate. */
     timeLimitMs?: number;
     memoryLimitMb?: number;
+    /**
+     * Test-data directory, defaulting to `problem/`. The large-output regression fixture
+     * needs its own, because the shared problem's answer is a single line and could never
+     * have exercised the stdout cap.
+     */
+    problemDir?: string;
+    testCount?: number;
   }[];
 }
 
@@ -43,18 +50,23 @@ const manifest = JSON.parse(
   readFileSync(path.join(FIXTURES, "manifest.json"), "utf8"),
 ) as Manifest;
 
-const testCases = Array.from({ length: manifest.problem.testCount }, (_, i) => {
-  const n = i + 1;
-  return {
-    testCaseId: `t${n}`,
-    ordinal: n,
-    inputPath: path.join(FIXTURES, "problem", `${n}.in`),
-    expectedOutputPath: path.join(FIXTURES, "problem", `${n}.out`),
-    isSample: n === 1,
-    points: manifest.problem.pointsPerTest,
-    group: null,
-  };
-});
+function testCasesFor(entry: Manifest["cases"][number]) {
+  const dir = entry.problemDir ?? "problem";
+  const count = entry.testCount ?? manifest.problem.testCount;
+
+  return Array.from({ length: count }, (_, i) => {
+    const n = i + 1;
+    return {
+      testCaseId: `t${n}`,
+      ordinal: n,
+      inputPath: path.join(FIXTURES, dir, `${n}.in`),
+      expectedOutputPath: path.join(FIXTURES, dir, `${n}.out`),
+      isSample: n === 1,
+      points: manifest.problem.pointsPerTest,
+      group: null,
+    };
+  });
+}
 
 function jobFor(entry: Manifest["cases"][number]): JudgeJob {
   const sourceCode = readFileSync(
@@ -79,7 +91,7 @@ function jobFor(entry: Manifest["cases"][number]): JudgeJob {
       cpus: 1,
     },
     comparator: { kind: "whitespace" },
-    testCases,
+    testCases: testCasesFor(entry),
     attempt: 1,
   };
 }
@@ -95,8 +107,8 @@ describe("G4 judge fixtures", () => {
     await sweepJudgeContainers();
   }, 120_000);
 
-  it("has at least 24 fixtures covering every student-reachable verdict", () => {
-    expect(manifest.cases.length).toBeGreaterThanOrEqual(24);
+  it("has at least 25 fixtures covering every student-reachable verdict", () => {
+    expect(manifest.cases.length).toBeGreaterThanOrEqual(25);
 
     const covered = new Set(manifest.cases.map((c) => c.expectedVerdict));
     expect([...covered].sort()).toEqual(["AC", "CE", "MLE", "RE", "TLE", "WA"]);
@@ -112,12 +124,11 @@ describe("G4 judge fixtures", () => {
       expect(result.verdict).toBe(entry.expectedVerdict);
 
       // An AC must actually bank the points, or "AC" is just a label.
+      const fullMarks = testCasesFor(entry).length * manifest.problem.pointsPerTest;
       if (entry.expectedVerdict === "AC") {
-        expect(result.score).toBe(manifest.problem.testCount * manifest.problem.pointsPerTest);
+        expect(result.score).toBe(fullMarks);
       } else {
-        expect(result.score).toBeLessThan(
-          manifest.problem.testCount * manifest.problem.pointsPerTest,
-        );
+        expect(result.score).toBeLessThan(fullMarks);
       }
 
       // IE means the judge broke. It must never be the answer for a well-formed submission.

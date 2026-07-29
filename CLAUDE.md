@@ -36,7 +36,8 @@ npm run test:scoring:golden  # replay golden contest       (G6)
 npx playwright test      # E2E                             (G7)
 npm run test:load        # 40-submission burst             (G8)
 npm run test:a11y        # axe-core                        (G9)
-npm run verify           # runs G0–G9 in order, prints a PASS/FAIL table
+npm run test:content     # references through the judge    (G13)
+npm run verify           # runs the gates in order, prints a PASS/FAIL table
 docker compose up -d     # full stack: web, worker, postgres, redis
 npm run db:seed          # loads data/problems_seed.csv
 ```
@@ -101,6 +102,16 @@ imports nothing from either. If scoring needs a fact, it arrives as an argument.
 - **Judge scratch goes in `.judge-tmp/`, never `os.tmpdir()`.** macOS temp lives under
   `/var/folders`, which Docker Desktop does not share; bind-mounting it yields a silently
   empty directory inside the container.
+- **A reference solution that passes locally is not a judgeable problem.** Local `python3`
+  proves the algorithm; only G13 (`npm run test:content`) proves the problem survives the
+  real judge. That distinction hid 8 unsolvable problems and 1 that failed every correct
+  submission — none visible from local runs, none catchable by G4.
+- **Never cap judge output at a fixed size.** A correct answer can legitimately be
+  megabytes; truncating it kills the container and reports `WA`, which the student cannot
+  distinguish from their own bug. The cap is derived per test from the expected output
+  (`outputCapFor`).
+- **G8 and G13 must never run concurrently.** Both spawn containers, and interleaving them
+  corrupts G8's p95 latency measurement, which is the only thing G8 measures.
 - **A verdict is not a gate.** `npm run verify` output goes in the transcript verbatim. See
   **Definition of done**.
 
