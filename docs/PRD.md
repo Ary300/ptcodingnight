@@ -328,12 +328,18 @@ Java, and is imported in `problems_seed.csv` with `type=codingbat`.
 **125 distinct `Problem` records**. Rows are not problems: a row is one *appearance* of a
 problem in contest history, so the same problem recurs across divisions and statuses.
 
-| type | rows | distinct | meaning |
-|------|------|----------|---------|
+| type | rows | distinct titles | meaning |
+|------|------|-----------------|---------|
 | `algorithm` | 71 | 63 | Contest problems from past nights |
 | `codingbat` | 60 | 60 | Warmup problems used as hint currency (30 Python, 30 Java) |
 | `group` | 5 | 3 | Hint-gated group-round problems |
-| **total** | **136** | **125** | |
+| **total** | **136** | **125 problems** | |
+
+> The distinct column counts titles *within each type* and sums to 126, one more than the
+> 125 problems actually seeded. The difference is `Fraudulent Activity Notifications`, which
+> appears under both `algorithm` and `group`. It seeds as **one** problem carrying
+> `type=ALGORITHM` (its first appearance) and `isGroupProblem=true`. `isGroupProblem` — not
+> `type` — is what drives hint pricing in §6.1, so nothing is lost.
 
 | `past_status` | rows | distinct | meaning |
 |---------------|------|----------|---------|

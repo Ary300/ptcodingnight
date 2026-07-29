@@ -36,6 +36,34 @@ to after every hostile fixture run. G4, G5, G8, and G10 are unblocked.
 Standing requirement carried into Phase 2: `docker ps` is verified at the *start* of the
 phase and **hard-fails** if the daemon is down. The judge is never built or "tested" against
 an absent daemon, because the failure mode is a suite that silently passes by not running.
+`scripts/verify.sh` implements this check and records the `docker ps -a` baseline.
+
+**NEW BLOCKER (Phase 1) — the daemon is up but image pulls hang.** `docker ps` exits 0 and
+`docker info` reports a healthy server, but `docker pull redis:7-alpine` produced **zero
+bytes of output in over 20 minutes**, and `docker compose up -d postgres redis` never
+created a container. Diagnosis so far:
+
+- Not a general network fault: npm installed ~550 packages normally in the same session.
+- Not registry unavailability: `curl https://auth.docker.io/token` returns 200 in 0.13s and
+  `curl https://registry-1.docker.io/v2/` returns 401 (the expected auth challenge) in 0.6s.
+- `docker info` shows pulls routed through Docker Desktop's internal proxy:
+  `HttpProxy: http.docker.internal:3128`, `HttpsProxy: http.docker.internal:3128`. That
+  proxy inside the Desktop VM is the most likely stall point.
+- Disk is not the issue: 159 GB free.
+
+**Consequence:** no Postgres, so the initial migration could not be *applied*, and no
+runtime images, so Phase 2 cannot run a single judge container. G4, G5, G8, and G10 remain
+NOT RUN.
+
+**Worked around, not faked:** the initial migration was generated offline with
+`prisma migrate diff --from-empty --to-schema --script` and is committed
+(`prisma/migrations/00000000000000_init/`, 12 tables and 8 enums). The seed dedup is proven
+against the real CSV by `tests/unit/seed-merge.test.ts`, which needs no database. Neither
+substitutes for actually running them — both are recorded as NOT RUN, not PASS.
+
+**Unblocks when:** Docker Desktop can pull an image. Worth trying in Settings → Resources →
+Proxies (disable the manual/system proxy), or a Docker Desktop restart. Verify with
+`docker pull redis:7-alpine`; it should complete in seconds.
 
 ---
 
@@ -196,3 +224,71 @@ building against defaults produce three dialects that Phase 5 must reconcile. No
 skipped or reordered — G9 still runs in Phase 5.
 
 **Changes my mind:** Nothing; approved explicitly.
+
+---
+
+## D8 — Test data lives as file paths, not DB columns (Phase 1)
+
+**Ambiguous:** PRD §5 sketches `TestCase` with `input, expectedOutput` fields, but the prose
+directly beneath says test data is "stored as files on disk (referenced by the DB), not as
+giant DB blobs, so large cases stay cheap."
+
+**Chosen:** `TestCase.inputPath` and `TestCase.expectedOutputPath`, resolved against
+`TEST_DATA_ROOT`. The field-list shorthand loses to the explicit constraint.
+
+**Why:** The constraint is the design intent; the field list is a sketch. Storing a 1 GB
+expected output as a Postgres column would also make every `SELECT *` in the judge path
+catastrophically slow, which fights the G8 target of p95 under 10 seconds.
+
+---
+
+## D9 — Prisma 7 moves the datasource URL out of the schema (Phase 1)
+
+**Ambiguous:** `datasource { url = env("DATABASE_URL") }` is rejected by Prisma 7:
+"The datasource property `url` is no longer supported in schema files."
+
+**Chosen:** Adopt the Prisma 7 pattern — `prisma.config.ts` supplies the URL to Migrate,
+and the client receives it through the `@prisma/adapter-pg` driver adapter in `lib/db.ts`.
+
+**Why:** The alternative was pinning Prisma 6 to keep the familiar pattern. Rejected:
+starting a brand-new project on a deliberately superseded major means the first maintainer
+inherits a migration. The adapter costs two extra dependencies (`@prisma/adapter-pg`, `pg`)
+and one config file.
+
+---
+
+## D10 — Scoped dependency overrides; one advisory accepted (Phase 1)
+
+**Ambiguous:** A clean install reported 12 high-severity advisories. `npm audit fix --force`
+"resolves" them by installing `next@9.3.3` — a seven-major downgrade.
+
+**Chosen:** Scoped `overrides` for `postcss` (>=8.5.24), `sharp` (>=0.35.3), and
+`brace-expansion` (5.0.8 under `minimatch@10`, 1.1.16 under `minimatch@3`). That closes
+everything reachable and takes 12 to 9. The remaining 9 are one advisory reported across
+the ESLint chain; accepted and documented in `SECURITY.md` A1.
+
+**Why:** A first attempt pinned `brace-expansion` to `^5.0.8` globally, which crashed ESLint
+outright (`TypeError: expand is not a function`) because `minimatch@3` expects the v1/v2
+default-function export. The scoped override gives each consumer a version it can actually
+load. The residual advisory is a DoS triggered by malicious *glob patterns*; every glob here
+is one we author, ESLint is a devDependency absent from the production image, and no student
+submission can reach it. Downgrading the web framework to silence it would be a strictly
+larger regression.
+
+**Changes my mind:** ESLint dropping `minimatch@3`, or a `1.1.17` backport.
+
+---
+
+## D11 — Removed the scaffold's Google-hosted webfonts (Phase 1)
+
+**Ambiguous:** `create-next-app` wires `next/font/google` (Geist Sans + Mono) into the root
+layout by default.
+
+**Chosen:** Removed, falling back to a system font stack until `docs/DESIGN.md` names faces
+at Phase 4a.
+
+**Why:** Two reasons, either sufficient. PRD §11 asks for typography that carries the
+personality rather than a framework default — Geist is the definition of a default here.
+And `next/font/google` fetches from Google at build time, which is a network dependency in a
+project whose defining constraint is that the night has no internet. Whatever DESIGN.md
+picks must be self-hosted.

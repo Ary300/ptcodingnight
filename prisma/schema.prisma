@@ -1,0 +1,397 @@
+// Park Tudor Coding Night — domain model.
+// Spec of record: docs/PRD.md §5. Do not add fields here without updating that section.
+//
+// Two rules this schema is shaped by:
+//   1. Standings must be replayable. Nothing here stores a running total that cannot be
+//      re-derived from the Submission log by lib/scoring/. `Standing` is a cache, never a
+//      source of truth.
+//   2. Test data lives as files on disk, referenced by path — not as DB blobs (PRD §5).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// Prisma 7: the connection URL lives in prisma.config.ts (for Migrate) and reaches the
+// client via a driver adapter. It is no longer declared here.
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum Role {
+  COMPETITOR
+  ADMIN
+}
+
+enum ContestState {
+  DRAFT
+  SCHEDULED
+  RUNNING
+  FROZEN
+  ENDED
+  ARCHIVED
+}
+
+/// E = 100, M = 200, H = 300 base points by default (PRD §6.1, organizer-editable
+/// per ContestProblem).
+enum Difficulty {
+  E
+  M
+  H
+}
+
+enum Language {
+  PYTHON
+  JAVA
+}
+
+/// PRD §7.2. `IE` is never shown to a student as a failure — requeue once, then alert
+/// admin.
+enum Verdict {
+  AC
+  WA
+  TLE
+  MLE
+  RE
+  CE
+  IE
+}
+
+/// A problem cannot enter a live contest while in DRAFT. Enforced in the API, not just
+/// the UI (PRD §8).
+enum ProblemState {
+  DRAFT
+  PUBLISHED
+  RETIRED
+}
+
+/// Mirrors the `type` column of data/problems_seed.csv.
+enum ProblemType {
+  ALGORITHM
+  CODINGBAT
+  GROUP
+}
+
+/// Mirrors the `past_status` column of data/problems_seed.csv. Surfaced in the problem
+/// picker so organizers stop re-picking problems nobody could solve (PRD §8).
+enum PastStatus {
+  HINT_CURRENCY
+  USED_IN_CONTEST
+  SOLVED_IN_PAST
+  CANDIDATE_UNUSED
+  USED_BUT_ZERO_POINTS
+  GROUP_PROBLEM
+  PARTIALLY_SOLVED_IN_PAST
+}
+
+// ---------------------------------------------------------------------------
+// Identity
+// ---------------------------------------------------------------------------
+
+model User {
+  id          String   @id @default(cuid())
+  email       String?  @unique
+  displayName String
+  role        Role     @default(COMPETITOR)
+  gradYear    Int?
+  createdAt   DateTime @default(now())
+
+  participants Participant[]
+
+  @@index([role])
+}
+
+// ---------------------------------------------------------------------------
+// Contest structure
+// ---------------------------------------------------------------------------
+
+model Contest {
+  id              String       @id @default(cuid())
+  name            String
+  startsAt        DateTime
+  endsAt          DateTime
+  /// After this instant the public leaderboard stops updating while judging continues.
+  /// Admin still sees live truth (PRD §6.3).
+  freezeAt        DateTime?
+  state           ContestState @default(DRAFT)
+  /// Identifies the scoring preset in lib/scoring/ ("coding-night-classic" | "icpc").
+  scoringPresetId String       @default("coding-night-classic")
+  joinCode        String       @unique
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  divisions       Division[]
+  contestProblems ContestProblem[]
+  participants    Participant[]
+
+  @@index([state])
+}
+
+model Division {
+  id        String @id @default(cuid())
+  contestId String
+  /// "Intermediate" | "Advanced". Divisions rank independently (PRD §6.1).
+  name      String
+  sortOrder Int    @default(0)
+
+  contest         Contest          @relation(fields: [contestId], references: [id], onDelete: Cascade)
+  contestProblems ContestProblem[]
+  participants    Participant[]
+  standings       Standing[]
+
+  @@unique([contestId, name])
+  @@index([contestId])
+}
+
+// ---------------------------------------------------------------------------
+// Problem bank
+// ---------------------------------------------------------------------------
+
+model Problem {
+  id    String @id @default(cuid())
+  /// Derived from the dedup key: `(title, language)` for CODINGBAT rows, `title` alone
+  /// otherwise. See docs/DECISIONS.md D6 — keying warmups on title alone silently merges
+  /// the Python and Java `sum67` into one problem.
+  slug  String @unique
+  title String
+
+  /// Empty until an organizer writes an ORIGINAL statement. Never copied from HackerRank
+  /// (PRD §8).
+  statementMd String       @default("")
+  inputSpec   String       @default("")
+  outputSpec  String       @default("")
+  constraints String       @default("")
+  difficulty  Difficulty?
+  state       ProblemState @default(DRAFT)
+
+  type       ProblemType
+  pastStatus PastStatus?
+  /// Set only for CODINGBAT warmups, which exist per-language.
+  language   Language?
+
+  timeLimitMs      Int        @default(2000)
+  memoryLimitMb    Int        @default(256)
+  allowedLanguages Language[] @default([PYTHON, JAVA])
+
+  /// Used by the authoring flow to generate expected outputs. Must pass its own tests
+  /// before the problem may leave DRAFT (PRD §9.2).
+  referenceSolution String?
+  /// Notes the HackerRank inspiration for an imported title. Titles and history only.
+  originAttribution String?
+  isGroupProblem    Boolean   @default(false)
+  tags              String[]  @default([])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  testCases       TestCase[]
+  contestProblems ContestProblem[]
+
+  @@index([state])
+  @@index([type])
+  @@index([pastStatus])
+}
+
+model TestCase {
+  id        String @id @default(cuid())
+  problemId String
+  ordinal   Int
+
+  /// Paths on disk, not blobs (PRD §5). Resolved relative to the test-data root so the
+  /// DB stays cheap and large cases stream.
+  inputPath          String
+  expectedOutputPath String
+
+  /// Sample tests may show a full diff to the student. Hidden tests return pass/fail and
+  /// timing only, plus at most a 200-character truncated diff (PRD §7.2).
+  isSample Boolean @default(false)
+  /// Per-case points enable the partial-credit rule in PRD §6.1.
+  points   Int     @default(0)
+  /// Optional grouping label for all-or-nothing bundles of cases.
+  group    String?
+
+  problem     Problem      @relation(fields: [problemId], references: [id], onDelete: Cascade)
+  testResults TestResult[]
+
+  @@unique([problemId, ordinal])
+  @@index([problemId])
+}
+
+/// Join of a Problem into a Contest at a given Division and slot. This is where a problem
+/// used in both divisions at different difficulties lives as two rows over one Problem
+/// (docs/DECISIONS.md D2).
+model ContestProblem {
+  id         String  @id @default(cuid())
+  contestId  String
+  problemId  String
+  divisionId String?
+  /// Human label for the slot, e.g. "Intermediate E1".
+  slotLabel  String
+  basePoints Int
+  unlockAt   DateTime?
+
+  contest  Contest   @relation(fields: [contestId], references: [id], onDelete: Cascade)
+  problem  Problem   @relation(fields: [problemId], references: [id], onDelete: Restrict)
+  division Division? @relation(fields: [divisionId], references: [id], onDelete: SetNull)
+
+  submissions Submission[]
+  hintGrants  HintGrant[]
+
+  @@unique([contestId, problemId, divisionId])
+  @@index([contestId])
+  @@index([divisionId])
+}
+
+// ---------------------------------------------------------------------------
+// Participation
+// ---------------------------------------------------------------------------
+
+model Participant {
+  id         String  @id @default(cuid())
+  contestId  String
+  /// Null when the participant joined by code with a display name only — the fallback
+  /// path that must work when Google Workspace is unavailable (PRD §4).
+  userId     String?
+  displayName String
+  divisionId String?
+  /// Reserved. Team/pair programming is out of scope for v1 (PRD §13); no Team model yet.
+  teamId     String?
+
+  joinedAt DateTime @default(now())
+
+  contest  Contest   @relation(fields: [contestId], references: [id], onDelete: Cascade)
+  user     User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  division Division? @relation(fields: [divisionId], references: [id], onDelete: SetNull)
+
+  submissions Submission[]
+  hintGrants  HintGrant[]
+  standings   Standing[]
+
+  @@unique([contestId, displayName])
+  @@index([contestId])
+  @@index([divisionId])
+}
+
+// ---------------------------------------------------------------------------
+// Submissions and judging
+// ---------------------------------------------------------------------------
+
+/// The raw, append-only log. lib/scoring/ replays this to produce standings; recomputing
+/// twice must be byte-identical. Never mutate a row here to correct a score — record an
+/// override and an AuditLog entry instead.
+model Submission {
+  id               String   @id @default(cuid())
+  participantId    String
+  contestProblemId String
+  language         Language
+  sourceCode       String
+  submittedAt      DateTime @default(now())
+
+  verdict   Verdict?
+  /// Points awarded by the judge for this submission in isolation. The participant's
+  /// score for a problem is the BEST across their submissions, computed in lib/scoring/.
+  score     Int      @default(0)
+  runtimeMs Int?
+  memoryKb  Int?
+  judgedAt  DateTime?
+  /// Pointer to the structured judge log retained for dispute resolution (PRD §10).
+  judgeLogRef String?
+
+  participant    Participant    @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  contestProblem ContestProblem @relation(fields: [contestProblemId], references: [id], onDelete: Cascade)
+  testResults    TestResult[]
+
+  @@index([participantId])
+  @@index([contestProblemId])
+  @@index([submittedAt])
+  @@index([verdict])
+}
+
+model TestResult {
+  id           String  @id @default(cuid())
+  submissionId String
+  testCaseId   String
+  verdict      Verdict
+  runtimeMs    Int?
+  memoryKb     Int?
+  /// Truncated. Never the full expected output — students reconstruct hidden cases by
+  /// diffing (PRD §7.2). Enforced at the API edge as well as here.
+  diffSnippet  String?
+
+  submission Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  testCase   TestCase   @relation(fields: [testCaseId], references: [id], onDelete: Cascade)
+
+  @@unique([submissionId, testCaseId])
+  @@index([submissionId])
+}
+
+// ---------------------------------------------------------------------------
+// Hints
+// ---------------------------------------------------------------------------
+
+/// Each hint taken on a group problem deducts 15% of that problem's base points. Hints are
+/// earned at 2 CodingBat warmups = 1 hint, tracked here rather than on a clipboard
+/// (PRD §6.1).
+model HintGrant {
+  id               String   @id @default(cuid())
+  participantId    String
+  contestProblemId String
+  hintIndex        Int
+  grantedAt        DateTime @default(now())
+  /// Reference to the warmup solves that paid for this hint.
+  costPaidRef      String?
+
+  participant    Participant    @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  contestProblem ContestProblem @relation(fields: [contestProblemId], references: [id], onDelete: Cascade)
+
+  @@unique([participantId, contestProblemId, hintIndex])
+  @@index([participantId])
+}
+
+// ---------------------------------------------------------------------------
+// Derived state
+// ---------------------------------------------------------------------------
+
+/// MATERIALIZED CACHE ONLY. Every column here is re-derivable by replaying Submission and
+/// HintGrant through lib/scoring/. Truncating this table must never lose information. Do
+/// not read it in a context that requires correctness over speed.
+model Standing {
+  id            String    @id @default(cuid())
+  participantId String
+  divisionId    String
+  score         Int
+  penalty       Int
+  lastAcceptedAt DateTime?
+  rank          Int
+  /// The scoring input this row was computed from, for staleness detection.
+  computedAt    DateTime  @default(now())
+
+  participant Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  division    Division    @relation(fields: [divisionId], references: [id], onDelete: Cascade)
+
+  @@unique([participantId, divisionId])
+  @@index([divisionId, rank])
+}
+
+// ---------------------------------------------------------------------------
+// Audit
+// ---------------------------------------------------------------------------
+
+/// Every score change is written here so a disputed result can be explained (PRD §6.3).
+/// Manual verdict overrides require a reason.
+model AuditLog {
+  id     String   @id @default(cuid())
+  actor  String
+  action String
+  entity String
+  before Json?
+  after  Json?
+  reason String?
+  at     DateTime @default(now())
+
+  @@index([entity])
+  @@index([at])
+}

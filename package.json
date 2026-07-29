@@ -1,0 +1,70 @@
+{
+  "name": "park-tudor-coding-night",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "start": "next start",
+    "build": "next build",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint --max-warnings 0",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "test:judge": "vitest run --config vitest.judge.config.ts",
+    "test:sandbox": "vitest run --config vitest.sandbox.config.ts",
+    "test:scoring:golden": "vitest run --config vitest.golden.config.ts",
+    "test:e2e": "playwright test",
+    "test:load": "tsx scripts/load-test.ts",
+    "test:a11y": "playwright test --config playwright.a11y.config.ts",
+    "verify": "bash scripts/verify.sh",
+    "worker": "tsx worker/index.ts",
+    "db:migrate": "prisma migrate dev",
+    "db:deploy": "prisma migrate deploy",
+    "db:seed": "tsx prisma/seed.ts",
+    "db:studio": "prisma studio"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  },
+  "overrides": {
+    "brace-expansion": "^5.0.8",
+    "minimatch@3": {
+      "brace-expansion": "^1.1.16"
+    },
+    "postcss": "^8.5.24",
+    "sharp": "^0.35.3"
+  },
+  "dependencies": {
+    "@prisma/adapter-pg": "^7.9.1",
+    "@prisma/client": "^7.9.1",
+    "bullmq": "^5.81.2",
+    "ioredis": "^5.11.1",
+    "next": "16.2.12",
+    "pg": "^8.22.0",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.10.2",
+    "@playwright/test": "^1.56.1",
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^22",
+    "@types/pg": "^8.20.0",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@vitest/coverage-v8": "^4.1.10",
+    "babel-plugin-react-compiler": "1.0.0",
+    "eslint": "^9",
+    "eslint-config-next": "16.2.12",
+    "prisma": "^7.9.1",
+    "tailwindcss": "^4",
+    "tsx": "^4.20.6",
+    "typescript": "^5",
+    "vitest": "^4.1.10"
+  }
+}
