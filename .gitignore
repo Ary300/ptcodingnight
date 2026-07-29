@@ -28,3 +28,6 @@ data/testcases/
 
 # playwright-mcp scratch output
 .playwright-mcp/
+
+# agent worktrees — checkouts of this repo living inside it
+.claude/worktrees/

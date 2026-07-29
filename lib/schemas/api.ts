@@ -25,12 +25,33 @@ export const ApiErrorSchema = z.object({
 });
 export type ApiError = z.infer<typeof ApiErrorSchema>;
 
-export function ok<T>(data: T): { success: true; data: T; error: null } {
+/**
+ * The response envelope as a discriminated union, so `if (res.success)` narrows `data` to
+ * non-null and `error` to null on one branch and the reverse on the other.
+ *
+ * Exported as a type and a schema factory rather than left for each caller to reconstruct:
+ * a hand-rolled version of this narrows badly, and the resulting `'data' is possibly null`
+ * errors get "fixed" with a non-null assertion, which is how a null response body becomes a
+ * runtime crash during a contest.
+ */
+export type ApiResponse<T> =
+  | { success: true; data: T; error: null }
+  | { success: false; data: null; error: ApiError };
+
+export function ok<T>(data: T): ApiResponse<T> {
   return { success: true, data, error: null };
 }
 
-export function fail(error: ApiError): { success: false; data: null; error: ApiError } {
+export function fail(error: ApiError): ApiResponse<never> {
   return { success: false, data: null, error };
+}
+
+/** Zod schema for the envelope around a given payload. Use for parsing responses client-side. */
+export function apiResponseSchema<T extends z.ZodTypeAny>(data: T) {
+  return z.discriminatedUnion("success", [
+    z.object({ success: z.literal(true), data, error: z.null() }),
+    z.object({ success: z.literal(false), data: z.null(), error: ApiErrorSchema }),
+  ]);
 }
 
 // ---------------------------------------------------------------------------

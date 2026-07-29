@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes } from "react";
+import type { ButtonHTMLAttributes, Ref } from "react";
 
 /**
  * Shared button. Orchestrator-owned so three frontend scopes do not each grow their own.
@@ -19,6 +19,13 @@ const VARIANT: Record<ButtonVariant, string> = {
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant;
+  /**
+   * React 19 passes `ref` as an ordinary prop to function components, so no `forwardRef` is
+   * needed — but it still has to be declared. Needed by anything that must move focus, such
+   * as a confirmation dialog focusing its default action, which the keyboard-only
+   * requirement in G9 depends on.
+   */
+  ref?: Ref<HTMLButtonElement>;
 }
 
 export function Button({ variant = "primary", className, ...rest }: ButtonProps) {
