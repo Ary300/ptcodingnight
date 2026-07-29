@@ -22,6 +22,18 @@ export const ServerEnvSchema = z.object({
   DATABASE_URL: z.url("DATABASE_URL must be a valid postgresql:// URL"),
   REDIS_URL: z.url("REDIS_URL must be a valid redis:// URL"),
 
+  /**
+   * Signs the session cookie. Required in production and validated here so a missing secret
+   * stops the process at startup with a readable message, rather than surfacing as the first
+   * student failing to log in on contest night.
+   */
+  SESSION_SECRET: z
+    .string()
+    .min(32, "SESSION_SECRET must be at least 32 characters")
+    .optional(),
+  /** Shared passcode for the organizer console. */
+  ADMIN_PASSCODE: z.string().min(8, "ADMIN_PASSCODE must be at least 8 characters").optional(),
+
   TEST_DATA_ROOT: z.string().min(1).default("./data/testcases"),
   JUDGE_CONCURRENCY: numeric("JUDGE_CONCURRENCY", "4"),
 
