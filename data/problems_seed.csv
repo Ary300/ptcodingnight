@@ -1,0 +1,137 @@
+title,type,past_status,division,difficulty,notes
+Solve Me First,algorithm,solved-in-past,,,
+A Very Big Sum,algorithm,solved-in-past,,,
+Apple and Orange,algorithm,solved-in-past,,,
+Drawing Book,algorithm,solved-in-past,,,
+Cats and a Mouse,algorithm,solved-in-past,,,
+Beautiful Days at the Movies,algorithm,solved-in-past,,,
+Save the Prisoner!,algorithm,solved-in-past,,,
+Forming a Magic Square,algorithm,used-but-zero-points,,,
+Save Humanity,algorithm,partially-solved-in-past,,,
+Sherlock and Squares,algorithm,solved-in-past,,,
+Encryption,algorithm,solved-in-past,,,
+3D Surface Area,algorithm,partially-solved-in-past,,,
+Queen's Attack II,algorithm,used-but-zero-points,,,
+The Bomberman Game,algorithm,used-but-zero-points,,,
+Making Candies,algorithm,used-but-zero-points,,,
+Migratory Birds,algorithm,solved-in-past,,,
+Divisible Sum Pairs,algorithm,solved-in-past,,,
+Number Line Jumps,algorithm,solved-in-past,,,
+Sales by Match,algorithm,solved-in-past,,,
+Designer PDF Viewer,algorithm,solved-in-past,,,
+Day of the Programmer,algorithm,solved-in-past,,,
+Angry Professor,algorithm,solved-in-past,,,
+Circular Array Rotation,algorithm,solved-in-past,,,
+Halloween Sale,algorithm,solved-in-past,,,
+Cut the sticks,algorithm,solved-in-past,,,
+Append and Delete,algorithm,partially-solved-in-past,,,
+Jumping on the Clouds,algorithm,solved-in-past,,,
+Fraudulent Activity Notifications,algorithm,used-but-zero-points,,,
+Journey to the Moon,algorithm,used-but-zero-points,,,
+Common Child,algorithm,used-but-zero-points,,,
+Rust & Murderer,algorithm,used-but-zero-points,,,
+Signal Tower,algorithm,used-but-zero-points,,,
+Sequence Equation,algorithm,candidate-unused,,,hackerrank acceptance rate 97.67%
+Extra Long Factorials,algorithm,candidate-unused,,,hackerrank acceptance rate 95.64%
+ACM ICPC Team,algorithm,candidate-unused,,,hackerrank acceptance rate 89.88%
+The Time in Words,algorithm,candidate-unused,,,hackerrank acceptance rate 92.88%
+Chocolate Feast,algorithm,candidate-unused,,,hackerrank acceptance rate 92.44%
+Strong Password,algorithm,candidate-unused,,,hackerrank acceptance rate 86.29%
+Mars Exploration,algorithm,candidate-unused,,,hackerrank acceptance rate 93.88%
+Even Tree,algorithm,candidate-unused,,,hackerrank acceptance rate 89.35%
+Organizing Containers of Balls,algorithm,candidate-unused,,,hackerrank acceptance rate 86.79%
+The Full Counting Sort,algorithm,candidate-unused,,,hackerrank acceptance rate 84.65%
+Red Knight's Shortest Path,algorithm,candidate-unused,,,hackerrank acceptance rate 85.87%
+Count Luck,algorithm,candidate-unused,,,hackerrank acceptance rate 87.06%
+Determining DNA Health,algorithm,candidate-unused,,,hackerrank acceptance rate 40.36%
+The Value of Friendship,algorithm,candidate-unused,,,hackerrank acceptance rate 67.16%
+Circular Palindromes,algorithm,candidate-unused,,,hackerrank acceptance rate 70.13%
+Jumping on the Cloud,algorithm,used-in-contest,Intermediate,E,assigned in past contest slot
+Mini-Max Sum,algorithm,used-in-contest,Intermediate,E,assigned in past contest slot
+Simple Array Sum,algorithm,used-in-contest,Intermediate,E,assigned in past contest slot
+Circular Array Rotation,algorithm,used-in-contest,Intermediate,E,assigned in past contest slot
+Bill Division,algorithm,used-in-contest,Intermediate,M,assigned in past contest slot
+Ice Cream Parlor,algorithm,used-in-contest,Intermediate,M,assigned in past contest slot
+sWAP cASE,algorithm,used-in-contest,Intermediate,M,assigned in past contest slot
+Designer PDF Viewer,algorithm,used-in-contest,Intermediate,M,assigned in past contest slot
+Gaming Array,algorithm,used-in-contest,Intermediate,H,assigned in past contest slot
+Morgan and a String,algorithm,used-in-contest,Intermediate,H,assigned in past contest slot
+Counting Valleys,algorithm,used-in-contest,Intermediate,H,assigned in past contest slot
+Day of the Programmer,algorithm,used-in-contest,Intermediate,H,assigned in past contest slot
+Bill Division,algorithm,used-in-contest,Advanced,E,assigned in past contest slot
+Ice Cream Parlor,algorithm,used-in-contest,Advanced,E,assigned in past contest slot
+Java Primality test,algorithm,used-in-contest,Advanced,E,assigned in past contest slot
+Climbing the Leaderboard,algorithm,used-in-contest,Advanced,E,assigned in past contest slot
+Gaming Array,algorithm,used-in-contest,Advanced,M,assigned in past contest slot
+Morgan and a String,algorithm,used-in-contest,Advanced,M,assigned in past contest slot
+Encryption,algorithm,used-in-contest,Advanced,M,assigned in past contest slot
+Drawing Book Problem,algorithm,used-in-contest,Advanced,M,assigned in past contest slot
+Gena Playing Hanoi,algorithm,used-in-contest,Advanced,H,assigned in past contest slot
+Larry's Array,algorithm,used-in-contest,Advanced,H,assigned in past contest slot
+Magic Square,algorithm,used-in-contest,Advanced,H,assigned in past contest slot
+Bigger is Greater,algorithm,used-in-contest,Advanced,H,assigned in past contest slot
+extra_end,codingbat,hint-currency,,,Python; 2 solved = 1 hint on a group problem
+squirrel_play,codingbat,hint-currency,,,Python; 2 solved = 1 hint on a group problem
+hello_name,codingbat,hint-currency,,,Python; 2 solved = 1 hint on a group problem
+date_fashion,codingbat,hint-currency,,,Python; 2 solved = 1 hint on a group problem
+double_char,codingbat,hint-currency,,,Python; 2 solved = 1 hint on a group problem
+first_last6,codingbat,hint-currency,,,Python; 2 solved = 1 hint on a group problem
+frontAgain,codingbat,hint-currency,,,Java; 2 solved = 1 hint on a group problem
+double23,codingbat,hint-currency,,,Java; 2 solved = 1 hint on a group problem
+withoutX2,codingbat,hint-currency,,,Java; 2 solved = 1 hint on a group problem
+sortaSum,codingbat,hint-currency,,,Java; 2 solved = 1 hint on a group problem
+firstlast6,codingbat,hint-currency,,,Java; 2 solved = 1 hint on a group problem
+twoAsOne,codingbat,hint-currency,,,Java; 2 solved = 1 hint on a group problem
+make_out_word,codingbat,hint-currency,,,Python; 2 solved = 1 hint on a group problem
+sum2,codingbat,hint-currency,,,Python; 2 solved = 1 hint on a group problem
+non_start,codingbat,hint-currency,,,Python; 2 solved = 1 hint on a group problem
+cigar_party,codingbat,hint-currency,,,Python; 2 solved = 1 hint on a group problem
+make_pi,codingbat,hint-currency,,,Python; 2 solved = 1 hint on a group problem
+caught_speeding,codingbat,hint-currency,,,Python; 2 solved = 1 hint on a group problem
+middle3,codingbat,hint-currency,,,Java; 2 solved = 1 hint on a group problem
+twoChar,codingbat,hint-currency,,,Java; 2 solved = 1 hint on a group problem
+fizzString2,codingbat,hint-currency,,,Java; 2 solved = 1 hint on a group problem
+makeEnds,codingbat,hint-currency,,,Java; 2 solved = 1 hint on a group problem
+more20,codingbat,hint-currency,,,Java; 2 solved = 1 hint on a group problem
+maxMod5,codingbat,hint-currency,,,Java; 2 solved = 1 hint on a group problem
+end_other,codingbat,hint-currency,,,Python; 2 solved = 1 hint on a group problem
+make_chocolate,codingbat,hint-currency,,,Python; 2 solved = 1 hint on a group problem
+double_car,codingbat,hint-currency,,,Python; 2 solved = 1 hint on a group problem
+sum67,codingbat,hint-currency,,,Python; 2 solved = 1 hint on a group problem
+no_teen_sum,codingbat,hint-currency,,,Python; 2 solved = 1 hint on a group problem
+has22,codingbat,hint-currency,,,Python; 2 solved = 1 hint on a group problem
+xyzThere,codingbat,hint-currency,,,Java; 2 solved = 1 hint on a group problem
+makeBricks,codingbat,hint-currency,,,Java; 2 solved = 1 hint on a group problem
+bunnyEars,codingbat,hint-currency,,,Java; 2 solved = 1 hint on a group problem
+luckySum,codingbat,hint-currency,,,Java; 2 solved = 1 hint on a group problem
+blackjack,codingbat,hint-currency,,,Java; 2 solved = 1 hint on a group problem
+makeChocolate,codingbat,hint-currency,,,Java; 2 solved = 1 hint on a group problem
+count_code,codingbat,hint-currency,,,Python; 2 solved = 1 hint on a group problem
+lone_sum,codingbat,hint-currency,,,Python; 2 solved = 1 hint on a group problem
+cat_dog,codingbat,hint-currency,,,Python; 2 solved = 1 hint on a group problem
+count_evens,codingbat,hint-currency,,,Python; 2 solved = 1 hint on a group problem
+make_bricks,codingbat,hint-currency,,,Python; 2 solved = 1 hint on a group problem
+big_diff,codingbat,hint-currency,,,Python; 2 solved = 1 hint on a group problem
+plusOut,codingbat,hint-currency,,,Java; 2 solved = 1 hint on a group problem
+fizzArray,codingbat,hint-currency,,,Java; 2 solved = 1 hint on a group problem
+closeFar,codingbat,hint-currency,,,Java; 2 solved = 1 hint on a group problem
+sum67,codingbat,hint-currency,,,Java; 2 solved = 1 hint on a group problem
+Post4,codingbat,hint-currency,,,Java; 2 solved = 1 hint on a group problem
+pre4,codingbat,hint-currency,,,Java; 2 solved = 1 hint on a group problem
+count_hi,codingbat,hint-currency,,,Python; 2 solved = 1 hint on a group problem
+round_sum,codingbat,hint-currency,,,Python; 2 solved = 1 hint on a group problem
+xyz_there,codingbat,hint-currency,,,Python; 2 solved = 1 hint on a group problem
+centered_average,codingbat,hint-currency,,,Python; 2 solved = 1 hint on a group problem
+close_far,codingbat,hint-currency,,,Python; 2 solved = 1 hint on a group problem
+sum13,codingbat,hint-currency,,,Python; 2 solved = 1 hint on a group problem
+zeroFront,codingbat,hint-currency,,,Java; 2 solved = 1 hint on a group problem
+copyEvens,codingbat,hint-currency,,,Java; 2 solved = 1 hint on a group problem
+mixString,codingbat,hint-currency,,,Java; 2 solved = 1 hint on a group problem
+wordsWithout,codingbat,hint-currency,,,Java; 2 solved = 1 hint on a group problem
+inOrderEqual,codingbat,hint-currency,,,Java; 2 solved = 1 hint on a group problem
+scoreUp,codingbat,hint-currency,,,Java; 2 solved = 1 hint on a group problem
+Insertion Sort Advanced Analysis,group,group-problem,,H,group round; hints unlocked via CodingBat
+Fraudlent Activity Notifications,group,group-problem,,H,group round; hints unlocked via CodingBat
+Insertion Sort Advanced Analysis,group,group-problem,,H,group round; hints unlocked via CodingBat
+Fraudlent Activity Notifications,group,group-problem,,H,group round; hints unlocked via CodingBat
+Cards Permutation,group,group-problem,,H,group round; hints unlocked via CodingBat
