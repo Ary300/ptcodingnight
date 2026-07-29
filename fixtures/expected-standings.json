@@ -1,0 +1,150 @@
+{
+  "_readme": [
+    "HAND-COMPUTED expected standings for G6. Not generated from lib/scoring/ — a fixture",
+    "derived from the code under test proves nothing.",
+    "",
+    "Base points: E=100, M=200, H=300. Penalty: 5 min per rejected submission, charged only",
+    "on problems eventually scored above zero. Hints: 15% of base points each.",
+    "",
+    "What each participant is here to prove:",
+    "  int-a  best-not-last (120 then 80 keeps 120), and 3 rejections on a NEVER-scored",
+    "         problem cost 0 penalty — the rule most likely to be implemented wrong.",
+    "  int-b  clean sweep, no penalty. The control.",
+    "  int-c  an IE is dropped entirely: it is neither a rejection nor a score. Charging for",
+    "         it would bill a student for our own infrastructure fault.",
+    "  int-d  a CE is a rejection like any other.",
+    "  adv-a  ) level on score, penalty AND last-score-increase: a genuine tie that must be",
+    "  adv-b  ) displayed as a tie, both rank 2, with the next participant at rank 4.",
+    "  adv-c  two hints on a group problem: round(2 * 0.15 * 300) = 90 off a 300 solve = 210.",
+    "  adv-d  two rejections before an AC, plus a partial-credit WA that still scores.",
+    "",
+    "Arithmetic:",
+    "  int-a  100 + 120 + 0   = 220   penalty  5 + 10 + 0 = 15",
+    "  int-b  100 + 200       = 300   penalty  0",
+    "  int-c  100 + 150 + 200 = 450   penalty  0 +  5 + 0 =  5",
+    "  int-d  100 + 200       = 300   penalty  0 +  5     =  5",
+    "  adv-a  100 + 200       = 300   penalty  0",
+    "  adv-b  100 + 200       = 300   penalty  0",
+    "  adv-c  100 + 210       = 310   penalty  0",
+    "  adv-d  100 +  50       = 150   penalty 10 +  5     = 15",
+    "",
+    "Divisions rank independently: Intermediate winner int-c, Advanced winner adv-c."
+  ],
+
+  "standings": [
+    {
+      "participantId": "int-c",
+      "displayName": "Player C",
+      "divisionId": "intermediate",
+      "score": 450,
+      "penaltyMinutes": 5,
+      "lastScoreIncreaseAt": "2025-11-14T19:35:00.000Z",
+      "rank": 1,
+      "isTied": false,
+      "problems": [
+        { "contestProblemId": "int-e-c", "score": 100, "rejectedCount": 0, "penaltyMinutes": 0, "hintsTaken": 0, "hintDeduction": 0, "firstScoredAt": "2025-11-14T18:12:00.000Z" },
+        { "contestProblemId": "int-h-c", "score": 150, "rejectedCount": 1, "penaltyMinutes": 5, "hintsTaken": 0, "hintDeduction": 0, "firstScoredAt": "2025-11-14T19:35:00.000Z" },
+        { "contestProblemId": "int-m-c", "score": 200, "rejectedCount": 0, "penaltyMinutes": 0, "hintsTaken": 0, "hintDeduction": 0, "firstScoredAt": "2025-11-14T18:52:00.000Z" }
+      ]
+    },
+    {
+      "participantId": "int-b",
+      "displayName": "Player B",
+      "divisionId": "intermediate",
+      "score": 300,
+      "penaltyMinutes": 0,
+      "lastScoreIncreaseAt": "2025-11-14T18:35:00.000Z",
+      "rank": 2,
+      "isTied": false,
+      "problems": [
+        { "contestProblemId": "int-e-b", "score": 100, "rejectedCount": 0, "penaltyMinutes": 0, "hintsTaken": 0, "hintDeduction": 0, "firstScoredAt": "2025-11-14T18:15:00.000Z" },
+        { "contestProblemId": "int-m-b", "score": 200, "rejectedCount": 0, "penaltyMinutes": 0, "hintsTaken": 0, "hintDeduction": 0, "firstScoredAt": "2025-11-14T18:35:00.000Z" }
+      ]
+    },
+    {
+      "participantId": "int-d",
+      "displayName": "Player D",
+      "divisionId": "intermediate",
+      "score": 300,
+      "penaltyMinutes": 5,
+      "lastScoreIncreaseAt": "2025-11-14T19:05:00.000Z",
+      "rank": 3,
+      "isTied": false,
+      "problems": [
+        { "contestProblemId": "int-e-d", "score": 100, "rejectedCount": 0, "penaltyMinutes": 0, "hintsTaken": 0, "hintDeduction": 0, "firstScoredAt": "2025-11-14T18:18:00.000Z" },
+        { "contestProblemId": "int-m-d", "score": 200, "rejectedCount": 1, "penaltyMinutes": 5, "hintsTaken": 0, "hintDeduction": 0, "firstScoredAt": "2025-11-14T19:05:00.000Z" }
+      ]
+    },
+    {
+      "participantId": "int-a",
+      "displayName": "Player A",
+      "divisionId": "intermediate",
+      "score": 220,
+      "penaltyMinutes": 15,
+      "lastScoreIncreaseAt": "2025-11-14T18:40:00.000Z",
+      "rank": 4,
+      "isTied": false,
+      "problems": [
+        { "contestProblemId": "int-e-a", "score": 100, "rejectedCount": 1, "penaltyMinutes": 5, "hintsTaken": 0, "hintDeduction": 0, "firstScoredAt": "2025-11-14T18:20:00.000Z" },
+        { "contestProblemId": "int-h-a", "score": 0, "rejectedCount": 3, "penaltyMinutes": 0, "hintsTaken": 0, "hintDeduction": 0, "firstScoredAt": null },
+        { "contestProblemId": "int-m-a", "score": 120, "rejectedCount": 2, "penaltyMinutes": 10, "hintsTaken": 0, "hintDeduction": 0, "firstScoredAt": "2025-11-14T18:40:00.000Z" }
+      ]
+    },
+    {
+      "participantId": "adv-c",
+      "displayName": "Player C",
+      "divisionId": "advanced",
+      "score": 310,
+      "penaltyMinutes": 0,
+      "lastScoreIncreaseAt": "2025-11-14T19:20:00.000Z",
+      "rank": 1,
+      "isTied": false,
+      "problems": [
+        { "contestProblemId": "adv-e-c", "score": 100, "rejectedCount": 0, "penaltyMinutes": 0, "hintsTaken": 0, "hintDeduction": 0, "firstScoredAt": "2025-11-14T18:20:00.000Z" },
+        { "contestProblemId": "grp-1", "score": 210, "rejectedCount": 0, "penaltyMinutes": 0, "hintsTaken": 2, "hintDeduction": 90, "firstScoredAt": "2025-11-14T19:20:00.000Z" }
+      ]
+    },
+    {
+      "participantId": "adv-a",
+      "displayName": "Player A",
+      "divisionId": "advanced",
+      "score": 300,
+      "penaltyMinutes": 0,
+      "lastScoreIncreaseAt": "2025-11-14T18:30:00.000Z",
+      "rank": 2,
+      "isTied": true,
+      "problems": [
+        { "contestProblemId": "adv-e-a", "score": 100, "rejectedCount": 0, "penaltyMinutes": 0, "hintsTaken": 0, "hintDeduction": 0, "firstScoredAt": "2025-11-14T18:10:00.000Z" },
+        { "contestProblemId": "adv-m-a", "score": 200, "rejectedCount": 0, "penaltyMinutes": 0, "hintsTaken": 0, "hintDeduction": 0, "firstScoredAt": "2025-11-14T18:30:00.000Z" }
+      ]
+    },
+    {
+      "participantId": "adv-b",
+      "displayName": "Player B",
+      "divisionId": "advanced",
+      "score": 300,
+      "penaltyMinutes": 0,
+      "lastScoreIncreaseAt": "2025-11-14T18:30:00.000Z",
+      "rank": 2,
+      "isTied": true,
+      "problems": [
+        { "contestProblemId": "adv-e-b", "score": 100, "rejectedCount": 0, "penaltyMinutes": 0, "hintsTaken": 0, "hintDeduction": 0, "firstScoredAt": "2025-11-14T18:10:00.000Z" },
+        { "contestProblemId": "adv-m-b", "score": 200, "rejectedCount": 0, "penaltyMinutes": 0, "hintsTaken": 0, "hintDeduction": 0, "firstScoredAt": "2025-11-14T18:30:00.000Z" }
+      ]
+    },
+    {
+      "participantId": "adv-d",
+      "displayName": "Player D",
+      "divisionId": "advanced",
+      "score": 150,
+      "penaltyMinutes": 15,
+      "lastScoreIncreaseAt": "2025-11-14T19:10:00.000Z",
+      "rank": 4,
+      "isTied": false,
+      "problems": [
+        { "contestProblemId": "adv-e-d", "score": 100, "rejectedCount": 2, "penaltyMinutes": 10, "hintsTaken": 0, "hintDeduction": 0, "firstScoredAt": "2025-11-14T18:45:00.000Z" },
+        { "contestProblemId": "adv-m-d", "score": 50, "rejectedCount": 1, "penaltyMinutes": 5, "hintsTaken": 0, "hintDeduction": 0, "firstScoredAt": "2025-11-14T19:10:00.000Z" }
+      ]
+    }
+  ]
+}

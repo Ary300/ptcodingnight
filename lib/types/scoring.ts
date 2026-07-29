@@ -109,6 +109,18 @@ export interface Standing {
   readonly problems: readonly ProblemStanding[];
 }
 
+export interface ScoringOptions {
+  /**
+   * Consider only submissions at or before this instant.
+   *
+   * This is how freeze works, and the reason it is a parameter rather than a clock read:
+   * the public board during a freeze passes `config.freezeAt`, the admin view passes null,
+   * and the dramatic unfreeze at the end is the same function called again with null. No
+   * hidden state, and both views are replayable.
+   */
+  readonly upTo?: Date | null;
+}
+
 /**
  * The one scoring entry point. No scoring logic exists anywhere else in the codebase —
  * not in a route handler, not in a component, not in SQL.
@@ -118,13 +130,21 @@ export type ComputeStandings = (
   participants: readonly ParticipantRecord[],
   submissions: readonly SubmissionRecord[],
   hintGrants: readonly HintGrantRecord[],
+  options?: ScoringOptions,
 ) => readonly Standing[];
 
 /** Tunables for "Coding Night Classic" (PRD §6.1). */
 export const CLASSIC_PRESET = {
   penaltyMinutesPerRejection: 5,
-  /** Each hint on a group problem costs 15% of that problem's base points. */
-  hintCostFraction: 0.15,
+  /**
+   * Each hint on a group problem costs 15% of that problem's base points.
+   *
+   * Held as an integer percentage, not 0.15, and that is deliberate. `3 * 0.15 * 250`
+   * evaluates to 112.49999999999999 in IEEE-754, which rounds to 112 instead of the correct
+   * 113 — a student losing a point to binary representation. Integer arithmetic first,
+   * divide last.
+   */
+  hintCostPercent: 15,
   /** 2 CodingBat warmups buy 1 hint. */
   warmupsPerHint: 2,
 } as const;

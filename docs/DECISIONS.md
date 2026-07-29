@@ -292,3 +292,109 @@ personality rather than a framework default — Geist is the definition of a def
 And `next/font/google` fetches from Google at build time, which is a network dependency in a
 project whose defining constraint is that the night has no internet. Whatever DESIGN.md
 picks must be self-hosted.
+
+---
+
+## D12 — "Rejected submission" means non-`AC`, excluding `IE` (Phase 3)
+
+**Ambiguous:** PRD §6.1 charges "5 minutes per rejected submission" without ever defining
+*rejected*.
+
+**Chosen:** A rejection is any judged verdict that is not `AC`. `CE` counts. **`IE` never
+counts**, and `IE` submissions are dropped from scoring entirely — no score, no penalty, no
+effect on the last-score-increase time.
+
+**Why:** `IE` means the judge failed, so we do not actually know whether the submission was
+correct. Charging a student five minutes for our own infrastructure fault would contradict
+PRD §7.2, which says `IE` is never surfaced as a student-facing failure — a penalty is a
+student-facing failure by any reasonable reading. `CE` is different: it is a real failed
+attempt, and the student can compile locally before submitting.
+
+Pinned in `lib/scoring/verdicts.ts` so it is decided in exactly one place.
+
+---
+
+## D13 — Penalty counts *every* rejection on a scored problem, including after (Phase 3)
+
+**Ambiguous — and this one changes results.** PRD §6.1: "5 minutes per rejected submission
+on a problem that is *eventually* scored above zero." It does not say whether rejections
+that land *after* the participant already reached their best score count. ICPC convention
+would count only attempts before the accepted one.
+
+**Chosen:** the literal reading — every rejection on a problem whose final score is above
+zero, whenever it happened.
+
+**Why:** it is what the spec says, it is trivial for a student to verify by hand ("every
+wrong submission on a problem you scored on costs five minutes"), and quietly departing from
+explicit spec text on a *scoring* rule is exactly how a disputed result becomes
+unexplainable. Under partial credit a student genuinely can keep improving after first
+scoring, so post-first-score attempts are real attempts at the result — unlike ICPC, where
+a solve ends the problem.
+
+> **Organizers: this is the one rule worth confirming before a live night.** Under it, a
+> student who solves a problem and then submits junk an hour later loses five minutes. If
+> you want the ICPC convention instead, it is a single condition in `scoreClassic`
+> (`lib/scoring/index.ts`) — count the rejection only while `accumulator.bestScore` has not
+> yet reached its final value — and the golden fixture changes with it: `int-a` on `int-m-a`
+> submits 120 then 80, so their penalty would drop from 10 to 5 and their total penalty from
+> 15 to 10.
+
+**Note the asymmetry with ICPC**, which is deliberate rather than an oversight. The ICPC
+preset does *not* charge for attempts after the solve, because under binary scoring there is
+nothing left to gain and every published ICPC ruleset counts only pre-`AC` attempts.
+
+---
+
+## D14 — Hint cost uses integer arithmetic, and follows the grant (Phase 3)
+
+**Ambiguous:** "each hint deducts 15% of base points" leaves rounding, accumulation, and
+what happens to a grant on a non-group problem all unspecified.
+
+**Chosen:** the cost is stored as an integer percent (15), the total is computed as
+`round(hints * basePoints * 15 / 100)` — multiply in integers, divide once — and the
+deduction follows the existence of a `HintGrant`, not the problem's `isGroupProblem` flag.
+A problem's score is clamped at zero.
+
+**Why the integer arithmetic:** the obvious `hints * 0.15 * basePoints` is wrong. Three
+hints on a 250-point problem gives `112.49999999999999` in IEEE-754, which rounds to 112
+instead of 113 — a student losing a point to binary representation. A unit test pins this.
+Rounding once on the total also avoids three separate half-point roundings disagreeing with
+the arithmetic an organizer does on paper.
+
+**Why the deduction follows the grant:** in valid data, grants only exist on group problems,
+so the two rules are identical. They differ only when hint issuance is buggy — and then
+charging for a hint the student actually received is the safer failure than handing out free
+help.
+
+---
+
+## D15 — The golden fixture has eight participants, four per division (Phase 3)
+
+**Ambiguous:** PRD Appendix A lists "Player A" through "Player D" as *columns*, with rows
+for both Intermediate and Advanced slots. A `Participant` belongs to exactly one division,
+so either there are four people spanning both divisions (impossible under the model) or four
+per division.
+
+**Chosen:** eight participants — Player A–D in Intermediate, Player A–D in Advanced.
+
+**Why:** it is the only reading the domain model permits, it matches Appendix A's "four
+participants per slot", and PRD §6.1 requires an Intermediate winner *and* an Advanced
+winner — which needs a populated field in each. The 24 contest problems this produces
+(2 divisions x 3 slots x 4 players) match the 24 `used-in-contest` rows in the seed CSV
+exactly, including their 12/12 division split and 8/8/8 difficulty split, which is strong
+evidence the reading is right.
+
+---
+
+## D16 — Freeze is a parameter, not a clock read (Phase 3)
+
+**Ambiguous:** PRD §6.3 requires the public board to stop updating after `freezeAt` while
+judging continues and admins see live truth. A pure function cannot check the time.
+
+**Chosen:** `computeStandings(..., { upTo })`. The frozen public board passes
+`config.freezeAt`; the admin view and the final unfreeze pass `null`. Hint grants are
+filtered by the same cutoff.
+
+**Why:** it keeps the engine pure and makes both views replayable — the dramatic unfreeze at
+the end of the night is literally the same function called again without a cutoff, not a
+separate code path that could disagree with the frozen one.

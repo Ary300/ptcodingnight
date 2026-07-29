@@ -1,0 +1,112 @@
+{
+  "_readme": [
+    "Golden contest input for G6, reconstructed from docs/PRD.md Appendix A:",
+    "two divisions, three difficulty slots each, four participants per division.",
+    "Each player had their own problem in each slot, which is why there are 24",
+    "contest problems for 8 participants — matching the 24 `used-in-contest` rows",
+    "in data/problems_seed.csv (12 Intermediate + 12 Advanced, 8 E / 8 M / 8 H).",
+    "",
+    "The submission log is designed to exercise every rule in PRD 6.1 that could",
+    "plausibly be implemented wrong. See fixtures/expected-standings.json for the",
+    "hand-computed arithmetic and which rule each participant covers.",
+    "",
+    "Contest start is 2025-11-14T18:00:00Z; all times below are that plus offset."
+  ],
+
+  "config": {
+    "contestId": "golden-2025",
+    "presetId": "coding-night-classic",
+    "startsAt": "2025-11-14T18:00:00.000Z",
+    "endsAt": "2025-11-14T20:00:00.000Z",
+    "freezeAt": "2025-11-14T19:15:00.000Z",
+    "divisions": [
+      { "divisionId": "intermediate", "name": "Intermediate", "sortOrder": 0 },
+      { "divisionId": "advanced", "name": "Advanced", "sortOrder": 1 }
+    ],
+    "problems": [
+      { "contestProblemId": "int-e-a", "divisionId": "intermediate", "basePoints": 100, "isGroupProblem": false, "_title": "Jumping on the Cloud" },
+      { "contestProblemId": "int-e-b", "divisionId": "intermediate", "basePoints": 100, "isGroupProblem": false, "_title": "Mini-Max Sum" },
+      { "contestProblemId": "int-e-c", "divisionId": "intermediate", "basePoints": 100, "isGroupProblem": false, "_title": "Simple Array Sum" },
+      { "contestProblemId": "int-e-d", "divisionId": "intermediate", "basePoints": 100, "isGroupProblem": false, "_title": "Circular Array Rotation" },
+
+      { "contestProblemId": "int-m-a", "divisionId": "intermediate", "basePoints": 200, "isGroupProblem": false, "_title": "Bill Division" },
+      { "contestProblemId": "int-m-b", "divisionId": "intermediate", "basePoints": 200, "isGroupProblem": false, "_title": "Ice Cream Parlor" },
+      { "contestProblemId": "int-m-c", "divisionId": "intermediate", "basePoints": 200, "isGroupProblem": false, "_title": "sWAP cASE" },
+      { "contestProblemId": "int-m-d", "divisionId": "intermediate", "basePoints": 200, "isGroupProblem": false, "_title": "Designer PDF Viewer" },
+
+      { "contestProblemId": "int-h-a", "divisionId": "intermediate", "basePoints": 300, "isGroupProblem": false, "_title": "Gaming Array" },
+      { "contestProblemId": "int-h-b", "divisionId": "intermediate", "basePoints": 300, "isGroupProblem": false, "_title": "Morgan and a String" },
+      { "contestProblemId": "int-h-c", "divisionId": "intermediate", "basePoints": 300, "isGroupProblem": false, "_title": "Counting Valleys" },
+      { "contestProblemId": "int-h-d", "divisionId": "intermediate", "basePoints": 300, "isGroupProblem": false, "_title": "Day of the Programmer" },
+
+      { "contestProblemId": "adv-e-a", "divisionId": "advanced", "basePoints": 100, "isGroupProblem": false, "_title": "Bill Division" },
+      { "contestProblemId": "adv-e-b", "divisionId": "advanced", "basePoints": 100, "isGroupProblem": false, "_title": "Ice Cream Parlor" },
+      { "contestProblemId": "adv-e-c", "divisionId": "advanced", "basePoints": 100, "isGroupProblem": false, "_title": "Java Primality test" },
+      { "contestProblemId": "adv-e-d", "divisionId": "advanced", "basePoints": 100, "isGroupProblem": false, "_title": "Climbing the Leaderboard" },
+
+      { "contestProblemId": "adv-m-a", "divisionId": "advanced", "basePoints": 200, "isGroupProblem": false, "_title": "Gaming Array" },
+      { "contestProblemId": "adv-m-b", "divisionId": "advanced", "basePoints": 200, "isGroupProblem": false, "_title": "Morgan and a String" },
+      { "contestProblemId": "adv-m-c", "divisionId": "advanced", "basePoints": 200, "isGroupProblem": false, "_title": "Encryption" },
+      { "contestProblemId": "adv-m-d", "divisionId": "advanced", "basePoints": 200, "isGroupProblem": false, "_title": "Drawing Book Problem" },
+
+      { "contestProblemId": "adv-h-a", "divisionId": "advanced", "basePoints": 300, "isGroupProblem": false, "_title": "Gena Playing Hanoi" },
+      { "contestProblemId": "adv-h-b", "divisionId": "advanced", "basePoints": 300, "isGroupProblem": false, "_title": "Larry's Array" },
+      { "contestProblemId": "adv-h-c", "divisionId": "advanced", "basePoints": 300, "isGroupProblem": false, "_title": "Magic Square" },
+      { "contestProblemId": "adv-h-d", "divisionId": "advanced", "basePoints": 300, "isGroupProblem": false, "_title": "Bigger is Greater" },
+
+      { "contestProblemId": "grp-1", "divisionId": null, "basePoints": 300, "isGroupProblem": true, "_title": "Insertion Sort Advanced Analysis" }
+    ]
+  },
+
+  "participants": [
+    { "participantId": "int-a", "displayName": "Player A", "divisionId": "intermediate" },
+    { "participantId": "int-b", "displayName": "Player B", "divisionId": "intermediate" },
+    { "participantId": "int-c", "displayName": "Player C", "divisionId": "intermediate" },
+    { "participantId": "int-d", "displayName": "Player D", "divisionId": "intermediate" },
+    { "participantId": "adv-a", "displayName": "Player A", "divisionId": "advanced" },
+    { "participantId": "adv-b", "displayName": "Player B", "divisionId": "advanced" },
+    { "participantId": "adv-c", "displayName": "Player C", "divisionId": "advanced" },
+    { "participantId": "adv-d", "displayName": "Player D", "divisionId": "advanced" }
+  ],
+
+  "submissions": [
+    { "submissionId": "s01", "participantId": "int-a", "contestProblemId": "int-e-a", "submittedAt": "2025-11-14T18:10:00.000Z", "verdict": "WA", "score": 0 },
+    { "submissionId": "s02", "participantId": "int-a", "contestProblemId": "int-e-a", "submittedAt": "2025-11-14T18:20:00.000Z", "verdict": "AC", "score": 100 },
+    { "submissionId": "s03", "participantId": "int-a", "contestProblemId": "int-m-a", "submittedAt": "2025-11-14T18:40:00.000Z", "verdict": "WA", "score": 120 },
+    { "submissionId": "s04", "participantId": "int-a", "contestProblemId": "int-m-a", "submittedAt": "2025-11-14T18:55:00.000Z", "verdict": "WA", "score": 80 },
+    { "submissionId": "s05", "participantId": "int-a", "contestProblemId": "int-h-a", "submittedAt": "2025-11-14T19:10:00.000Z", "verdict": "RE", "score": 0 },
+    { "submissionId": "s06", "participantId": "int-a", "contestProblemId": "int-h-a", "submittedAt": "2025-11-14T19:20:00.000Z", "verdict": "RE", "score": 0 },
+    { "submissionId": "s07", "participantId": "int-a", "contestProblemId": "int-h-a", "submittedAt": "2025-11-14T19:30:00.000Z", "verdict": "TLE", "score": 0 },
+
+    { "submissionId": "s08", "participantId": "int-b", "contestProblemId": "int-e-b", "submittedAt": "2025-11-14T18:15:00.000Z", "verdict": "AC", "score": 100 },
+    { "submissionId": "s09", "participantId": "int-b", "contestProblemId": "int-m-b", "submittedAt": "2025-11-14T18:35:00.000Z", "verdict": "AC", "score": 200 },
+
+    { "submissionId": "s10", "participantId": "int-c", "contestProblemId": "int-e-c", "submittedAt": "2025-11-14T18:12:00.000Z", "verdict": "AC", "score": 100 },
+    { "submissionId": "s11", "participantId": "int-c", "contestProblemId": "int-m-c", "submittedAt": "2025-11-14T18:50:00.000Z", "verdict": "IE", "score": 0 },
+    { "submissionId": "s12", "participantId": "int-c", "contestProblemId": "int-m-c", "submittedAt": "2025-11-14T18:52:00.000Z", "verdict": "AC", "score": 200 },
+    { "submissionId": "s13", "participantId": "int-c", "contestProblemId": "int-h-c", "submittedAt": "2025-11-14T19:35:00.000Z", "verdict": "WA", "score": 150 },
+
+    { "submissionId": "s14", "participantId": "int-d", "contestProblemId": "int-e-d", "submittedAt": "2025-11-14T18:18:00.000Z", "verdict": "AC", "score": 100 },
+    { "submissionId": "s15", "participantId": "int-d", "contestProblemId": "int-m-d", "submittedAt": "2025-11-14T19:00:00.000Z", "verdict": "CE", "score": 0 },
+    { "submissionId": "s16", "participantId": "int-d", "contestProblemId": "int-m-d", "submittedAt": "2025-11-14T19:05:00.000Z", "verdict": "AC", "score": 200 },
+
+    { "submissionId": "s17", "participantId": "adv-a", "contestProblemId": "adv-e-a", "submittedAt": "2025-11-14T18:10:00.000Z", "verdict": "AC", "score": 100 },
+    { "submissionId": "s18", "participantId": "adv-a", "contestProblemId": "adv-m-a", "submittedAt": "2025-11-14T18:30:00.000Z", "verdict": "AC", "score": 200 },
+
+    { "submissionId": "s19", "participantId": "adv-b", "contestProblemId": "adv-e-b", "submittedAt": "2025-11-14T18:10:00.000Z", "verdict": "AC", "score": 100 },
+    { "submissionId": "s20", "participantId": "adv-b", "contestProblemId": "adv-m-b", "submittedAt": "2025-11-14T18:30:00.000Z", "verdict": "AC", "score": 200 },
+
+    { "submissionId": "s21", "participantId": "adv-c", "contestProblemId": "adv-e-c", "submittedAt": "2025-11-14T18:20:00.000Z", "verdict": "AC", "score": 100 },
+    { "submissionId": "s22", "participantId": "adv-c", "contestProblemId": "grp-1", "submittedAt": "2025-11-14T19:20:00.000Z", "verdict": "AC", "score": 300 },
+
+    { "submissionId": "s23", "participantId": "adv-d", "contestProblemId": "adv-e-d", "submittedAt": "2025-11-14T18:25:00.000Z", "verdict": "WA", "score": 0 },
+    { "submissionId": "s24", "participantId": "adv-d", "contestProblemId": "adv-e-d", "submittedAt": "2025-11-14T18:35:00.000Z", "verdict": "WA", "score": 0 },
+    { "submissionId": "s25", "participantId": "adv-d", "contestProblemId": "adv-e-d", "submittedAt": "2025-11-14T18:45:00.000Z", "verdict": "AC", "score": 100 },
+    { "submissionId": "s26", "participantId": "adv-d", "contestProblemId": "adv-m-d", "submittedAt": "2025-11-14T19:10:00.000Z", "verdict": "WA", "score": 50 }
+  ],
+
+  "hintGrants": [
+    { "participantId": "adv-c", "contestProblemId": "grp-1", "hintIndex": 0, "grantedAt": "2025-11-14T19:00:00.000Z" },
+    { "participantId": "adv-c", "contestProblemId": "grp-1", "hintIndex": 1, "grantedAt": "2025-11-14T19:05:00.000Z" }
+  ]
+}
