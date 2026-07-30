@@ -73,6 +73,22 @@ else
   printf '  \033[1;31mdocker daemon    DOWN\033[0m — G4/G5/G8 and the api-judged E2E project cannot pass\n'
 fi
 
+# Runtime images. G4, G5 and G13 judge in all five, and a missing image surfaces as a pile of
+# confusing per-fixture failures rather than as "you did not build the images". ptcn-go is the
+# one that is BUILT rather than pulled, so it is the one most likely to be absent.
+if [ "$DOCKER_UP" -eq 1 ]; then
+  MISSING_IMAGES=""
+  for image in python:3.12-slim eclipse-temurin:21-jdk gcc:14 node:22-slim ptcn-go:1.23; do
+    docker image inspect "$image" >/dev/null 2>&1 || MISSING_IMAGES="$MISSING_IMAGES $image"
+  done
+  if [ -z "$MISSING_IMAGES" ]; then
+    printf '  runtime images   all 5 present\n'
+  else
+    printf '  \033[1;31mruntime images   MISSING:%s\033[0m — run `scripts/build-judge-images.sh --verify`\n' \
+      "$MISSING_IMAGES"
+  fi
+fi
+
 if [ -f .env ]; then
   printf '  .env             present\n'
 else
