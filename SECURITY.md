@@ -160,7 +160,26 @@ already made once).
 
 **Tracked in `docs/TODO.md`.** Fix before a contest where the judge host also holds anything else.
 
-### A3 — Re-joining re-rolls the problem-set assignment (medium, accepted with a caveat)
+### A3 — Re-joining re-rolls the problem-set assignment (medium, **no longer accepted — fixed**)
+
+**Superseded.** This was accepted on the reasoning below; the organizer has since ruled that a
+student who rejoins until they like their set defeats the contest format, which makes it a cheating
+vector rather than a leak to be tolerated.
+
+**Fixed** with a signed, `HttpOnly` join-claim cookie that makes joining idempotent per browser: a
+rejoin returns the same participant and the same stored `chosenSetId`, and a second name from a
+browser that has already joined is refused and audit-logged. The claim is HMAC-signed because an
+unauthenticated participant pointer would be a straightforward account takeover — a student sees
+their own id in every response.
+
+Residual, unchanged and deliberate: clearing cookies or a private window still creates a second
+participant, and sign-out releases the claim so a shared classroom laptop is not bricked. The
+complete fix remains an organizer-issued roster. See `docs/TODO.md` T5 and
+`tests/e2e/rejoin.api.spec.ts`.
+
+The original acceptance, kept because the reasoning is what changed:
+
+
 
 `joinContest` creates a new `Participant` per call, and a fresh participant has no team, so
 `assignSetForOne` effectively draws a fresh random set. A student can join as "x1", note their set,

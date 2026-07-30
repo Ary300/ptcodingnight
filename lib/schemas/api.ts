@@ -160,6 +160,14 @@ export const JoinResponseSchema = z.object({
    * appears to be competing and is not.
    */
   needsTeam: z.boolean(),
+  /**
+   * True when this call returned an existing participant instead of creating one.
+   *
+   * Joining is idempotent per browser: a second join presenting a valid join claim is handed back
+   * the same participant and, critically, the same `chosenSetId`. Re-joining used to draw a fresh
+   * set, which made it a way to preview the other sets before the round (docs/TODO.md T5).
+   */
+  rejoined: z.boolean(),
 });
 
 // ---------------------------------------------------------------------------

@@ -25,6 +25,14 @@ export const AUDIT_ACTIONS = {
   contestFreeze: "contest.freeze",
   contestUnfreeze: "contest.unfreeze",
   participantJoin: "participant.join",
+  /// A browser presenting a valid join claim was handed its existing participant back. The row
+  /// carries `chosenSetId` on EVERY rejoin, not just the first: the set must never change, and a
+  /// trail that records it each time is how a set that did change stops being deniable.
+  participantRejoin: "participant.rejoin",
+  /// A browser that already holds a participant tried to join under a different name — the
+  /// set-sampling attempt T5 describes. Logged because the organizer roster is where this is
+  /// meant to be visible, and a refusal nobody can see is not a control.
+  participantRejoinRefused: "participant.rejoin_refused",
   standingsExport: "standings.export",
   /// Problem-set assignment. The `after` value carries the SEED, not the result: the seed is what
   /// makes the assignment re-derivable, and a re-assignment overwrites Contest.setAssignmentSeed

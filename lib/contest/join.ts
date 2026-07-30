@@ -19,6 +19,22 @@ import { invalidateScoringInput } from "@/lib/contest/standings";
  * them pick a different name costs one retype.
  */
 
+/**
+ * Whether a failed join looks like someone guessing a code.
+ *
+ * `joinContest` answers a wrong code and a code for another contest with the same `NOT_FOUND`,
+ * deliberately, so that neither enumerates which codes exist. Everything else it can throw —
+ * a taken display name, a browser that already joined, a contest not open, an unknown division —
+ * is something a student hits honestly.
+ *
+ * The distinction matters because the wrong-code budget is one shared bucket for the whole room.
+ * Charging every failure to it meant twenty ordinary conflicts could stop forty students from
+ * joining at all.
+ */
+export function isWrongJoinCode(error: unknown): boolean {
+  return error instanceof DomainError && error.code === "NOT_FOUND";
+}
+
 export interface JoinResult {
   readonly participantId: string;
   readonly contestId: string;
@@ -35,6 +51,13 @@ export interface JoinResult {
    * size is the divisor in every team score.
    */
   readonly needsTeam: boolean;
+  /**
+   * True when this call resolved an existing participant rather than creating one.
+   *
+   * Surfaced so the UI can say "welcome back" instead of "welcome", and so a test can assert the
+   * difference between the two paths without inspecting the database.
+   */
+  readonly rejoined: boolean;
 }
 
 export async function joinContest(
@@ -47,6 +70,17 @@ export async function joinContest(
    */
   expectedContestId: string | null,
   now: Date,
+  /**
+   * The verified join claim this browser presented, if any (`lib/contest/join-claim.ts`).
+   *
+   * This is what makes joining **idempotent**. Without it every call created a participant, and
+   * under `RANDOM_ASSIGNED` every new participant drew a new set — so re-joining was a way to
+   * sample the other sets before the round, which is precisely the property assigned-and-never-
+   * previewed sets exist to prevent (PRD §6.2).
+   *
+   * Already signature-verified by the caller; a forged or absent claim arrives here as null.
+   */
+  claim: { readonly participantId: string; readonly contestId: string } | null = null,
 ): Promise<JoinResult> {
   const contest = await prisma.contest.findUnique({
     where: { joinCode: input.joinCode },
@@ -76,12 +110,86 @@ export async function joinContest(
     throw new ValidationError("That division is not part of this contest");
   }
 
+  /**
+   * The idempotent path.
+   *
+   * Taken before anything is created, and it writes nothing but an audit row: the participant's
+   * `chosenSetId` is returned exactly as stored and is never recomputed. That is the whole fix —
+   * re-joining cannot re-roll a set it does not touch.
+   */
+  const held = await heldParticipant(claim, contest.id);
+  if (held !== null) {
+    if (held.displayName !== input.displayName) {
+      /**
+       * A different name from a browser that has already joined is the sampling attempt. Refused
+       * by name so the shared-classroom-laptop case is actionable rather than mysterious: the
+       * previous student signs out AND clears the claim through the sign-out route, and the next
+       * one joins normally.
+       */
+      await writeAudit({
+        actor: `participant:${held.id}`,
+        action: AUDIT_ACTIONS.participantRejoinRefused,
+        entity: `Participant:${held.id}`,
+        after: {
+          contestId: contest.id,
+          heldDisplayName: held.displayName,
+          attemptedDisplayName: input.displayName,
+          chosenSetId: held.chosenSetId,
+        },
+        reason: "browser already holds a participant in this contest",
+      });
+
+      throw new DomainError(
+        "CONFLICT",
+        `This browser already joined as “${held.displayName}”. Sign out first if someone else ` +
+          "needs to use it.",
+      );
+    }
+
+    await writeAudit({
+      actor: `participant:${held.id}`,
+      action: AUDIT_ACTIONS.participantRejoin,
+      entity: `Participant:${held.id}`,
+      after: {
+        contestId: contest.id,
+        displayName: held.displayName,
+        // Recorded on every rejoin precisely so that a set which DID change is visible in the
+        // trail rather than deniable. It must never change; this is how that is checked.
+        chosenSetId: held.chosenSetId,
+      },
+    });
+
+    return {
+      participantId: held.id,
+      contestId: contest.id,
+      displayName: held.displayName,
+      divisionId: held.divisionId,
+      chosenSetId: held.chosenSetId,
+      chosenSetLabel:
+        contest.problemSets.find((set) => set.id === held.chosenSetId)?.label ?? null,
+      needsTeam: held.teamId === null,
+      rejoined: true,
+    };
+  }
+
   const existing = await prisma.participant.findFirst({
     where: { contestId: contest.id, displayName: input.displayName },
     select: { id: true },
   });
   if (existing !== null) {
-    throw new DomainError("CONFLICT", "That display name is taken — pick another");
+    /**
+     * No claim, and the name is taken. The name alone is not proof of identity — the join code is
+     * public and read off the board — so handing over the existing participant here would let
+     * anyone take anyone's submissions and score by typing their name.
+     *
+     * The student who genuinely lost their cookie needs an organizer. The message says so rather
+     * than leaving them retyping the same name.
+     */
+    throw new DomainError(
+      "CONFLICT",
+      "That display name is taken — pick another. If it is yours and you were signed out, ask " +
+        "an organizer to look you up.",
+    );
   }
 
   const participant = await prisma.participant.create({
@@ -166,5 +274,38 @@ export async function joinContest(
     chosenSetLabel:
       contest.problemSets.find((set) => set.id === chosenSetId)?.label ?? null,
     needsTeam: participant.teamId === null,
+    rejoined: false,
   };
+}
+
+/**
+ * The participant this browser's claim points at, or null.
+ *
+ * Null covers every way a claim can fail to resolve — absent, for another contest, or pointing at
+ * a participant an organizer has since removed — because the caller treats all of them the same
+ * way: as a browser that has not joined. A claim for a deleted participant in particular must not
+ * be an error; a student whose row was cleaned up should be able to join again.
+ */
+async function heldParticipant(
+  claim: { readonly participantId: string; readonly contestId: string } | null,
+  contestId: string,
+): Promise<{
+  readonly id: string;
+  readonly displayName: string;
+  readonly divisionId: string | null;
+  readonly chosenSetId: string | null;
+  readonly teamId: string | null;
+} | null> {
+  if (claim === null || claim.contestId !== contestId) return null;
+
+  return prisma.participant.findFirst({
+    where: { id: claim.participantId, contestId },
+    select: {
+      id: true,
+      displayName: true,
+      divisionId: true,
+      chosenSetId: true,
+      teamId: true,
+    },
+  });
 }

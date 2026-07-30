@@ -195,7 +195,26 @@ The comment in `app/api/auth/[provider]/route.ts` used to claim the opposite —
 nothing" — while the code correctly set `lax`. A later reader tidying that discrepancy in the wrong
 direction would have broken OAuth entirely.
 
-### 5.4 Clearing a cookie must repeat its attributes
+### 5.4 The join claim is a second cookie, and it outlives the session
+
+`ptcn_join` (`lib/contest/join-claim.ts`) answers "which participant is this browser", where the
+session answers "are you authenticated right now". The second deliberately outlives the first.
+
+It exists because joining was not idempotent: every call created a `Participant`, every new
+participant drew a new problem set, and re-joining was therefore a way to preview the other sets
+before the round (T5). A rejoin presenting a valid claim now returns the same participant and the
+same stored set.
+
+It is HMAC-signed with `SESSION_SECRET`. Unsigned it would be strictly worse than absent — a
+student's own participant id appears in their own API responses, so an unauthenticated pointer
+would hand over anyone's participant to anyone who pasted an id in. Every failure mode — absent,
+malformed, wrong signature, replayed into another contest — returns the same `null`, so a forgery
+attempt learns nothing about which part was wrong.
+
+**Sign-out is the only thing that clears it**, and that is the one deliberate hole: a shared
+classroom laptop must not be unusable for the next student. See `docs/TODO.md` T5 for the residual.
+
+### 5.5 Clearing a cookie must repeat its attributes
 
 A browser treats `Secure`, `Path` and `SameSite` as part of a cookie's identity. Clearing with a
 different set writes a *second* cookie and leaves the live one in place, so sign-out appears to work

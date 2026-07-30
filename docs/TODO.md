@@ -18,7 +18,7 @@ and a couple are reachable but wrong on this hardware.
 | T2 | Java time limits are unenforceable on a slow host — a *scoring* error, not a speed one | **high** |
 | T3 | Verdict latency misses G8 by 11–28× | high, hardware |
 | T4 | A submission can fill the judge host's disk | medium |
-| T5 | Re-joining re-rolls the problem set, leaking other sets | medium |
+| T5 | ~~Re-joining re-rolls the problem set, leaking other sets~~ **fixed**; one residual stated | low |
 | T6 | Monaco is specified but not installed | medium |
 | T7 | Team management and awards UI are missing | medium |
 | T8 | `/admin` has no server-side gate — future risk, not present | low |
@@ -122,22 +122,49 @@ code, which this project has already shipped once.
 
 ---
 
-## T5 — Re-joining re-rolls the problem-set assignment
+## T5 — Re-joining re-rolls the problem-set assignment — **fixed, with one stated residual**
 
-**Severity: medium.** Security review A3.
+**Was: medium.** Security review A3. The re-roll itself is closed; read the residual before
+assuming the vector is gone entirely.
 
-`joinContest` creates a new `Participant` per call, and a fresh participant has no team, so
-`assignSetForOne` draws what is effectively a fresh random set. Join as "x1", note the set, read it;
-join as "x2", get another. A handful of joins reads the whole room's Round 1 before it starts.
+`joinContest` created a `Participant` on every call, and a fresh participant drew a fresh set. Join
+as "x1", read set A; join as "x2", read set B. A handful of joins read the whole room's Round 1
+before it started, and the join-failure limiter never saw it because every one of those joins
+*succeeded*.
 
-The join-failure limiter does not help: these joins *succeed*.
+**Fixed** by making a join idempotent per browser, using a signed **join claim** cookie
+(`lib/contest/join-claim.ts`):
 
-**Why it is still open:** the fix is a roster policy question rather than a code question — bind a
-join to an existing session, to an account, or to an organizer-issued allowlist? Getting it wrong
-locks out a student whose browser dropped a cookie, on the night, which is worse than the leak.
+- A browser presenting a valid claim is handed **the same participant and the same
+  `chosenSetId`**, which is read as stored and never recomputed. There is no second draw to win.
+- A browser holding a claim cannot join under a *different* name; the attempt is refused and
+  audit-logged as `participant.rejoin_refused`, so it shows up in the roster rather than nowhere.
+- The claim is HMAC-signed with `SESSION_SECRET`. Unsigned it would be worse than nothing — a
+  student sees their own participant id in every response, so an unauthenticated pointer would let
+  anyone become anyone by pasting one in.
+- Every rejoin writes `participant.rejoin` carrying the set it returned. Recorded on *every*
+  rejoin, not just the first, so a set that did change would be visible rather than deniable.
 
-**Mitigation until then:** every join is audit-logged with its assigned set, and duplicates are
-visible in the admin roster. A student doing this appears as "x1, x2, x3".
+It also closes a lockout that was there before: the claim deliberately outlives the session, so a
+student whose session cookie was dropped gets back to **their own** participant instead of the
+`CONFLICT` that used to lock them out of their own submissions mid-contest.
+
+Coverage: `tests/e2e/rejoin.api.spec.ts` (12 specs — 10 consecutive rejoins return an identical
+set, ten rejoins create exactly one row, forged claims in four shapes are refused, and every
+competitor route is enumerated against an unassigned set), plus `lib/contest/join-claim.test.ts`
+and the idempotency block in `lib/contest/set-assignment.test.ts`.
+
+**Residual, stated rather than hidden: clearing cookies or opening a private window still creates a
+second participant.** Sign-out releases the claim on purpose — a shared classroom laptop must not
+be bricked for the next student — so sign-out-then-join is also a second draw. What this changes is
+the cost: sampling now requires clearing site data between every attempt and leaves "x1, x2, x3" in
+the roster with an audit row each. **The complete fix is an organizer-issued roster allowlist**,
+which is a policy decision rather than a code one and is not made here.
+
+While fixing this: the wrong-join-code limiter was consuming its budget on *every* join failure,
+including ordinary conflicts. The bucket is a single shared 20-per-5-minutes for the whole room, so
+twenty honest conflicts could have stopped forty students from joining at all. It now consumes only
+on `NOT_FOUND`, which is the wrong-code case.
 
 ---
 

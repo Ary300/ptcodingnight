@@ -1,10 +1,17 @@
 import type { NextResponse } from "next/server";
 
 import { JoinRequestSchema, JoinResponseSchema } from "@/lib/schemas/api";
+import { sessionSecret } from "@/lib/contest/env";
 import { NO_STORE, handle, jsonOk, readJson } from "@/lib/contest/http";
-import { joinContest } from "@/lib/contest/join";
+import { isWrongJoinCode, joinContest } from "@/lib/contest/join";
+import {
+  JOIN_CLAIM_COOKIE,
+  joinClaimCookieOptions,
+  mintJoinClaim,
+  readJoinClaim,
+} from "@/lib/contest/join-claim";
 import { joinFailureLimiter } from "@/lib/contest/rate-limit";
-import { SESSION_COOKIE, sessionCookieOptions } from "@/lib/contest/session";
+import { SESSION_COOKIE, parseCookieHeader, sessionCookieOptions } from "@/lib/contest/session";
 import { issueSession } from "@/lib/contest/session-store";
 
 /**
@@ -34,17 +41,31 @@ export async function POST(request: Request): Promise<NextResponse> {
     // Only a WRONG CODE is penalised, below. That is the behaviour worth limiting: guessing.
 
     const input = await readJson(request, JoinRequestSchema);
+
+    // The claim is what makes this idempotent: a browser that has already joined is handed its
+    // existing participant, with the set it was already assigned, rather than a new one with a
+    // freshly drawn set (docs/TODO.md T5).
+    const claim = readJoinClaim(
+      parseCookieHeader(request.headers.get("cookie"))[JOIN_CLAIM_COOKIE],
+      sessionSecret(),
+    );
+
     let joined;
     try {
-      joined = await joinContest(input, null, now);
+      joined = await joinContest(input, null, now, claim);
     } catch (error: unknown) {
-      // A bad code is the only thing worth throttling. Consuming AFTER the failure means a room
-      // full of legitimate joins never touches this budget.
-      joinFailureLimiter.consumeOrThrow(
-        "join-failures",
-        now,
-        "Too many wrong join codes. Wait a few minutes.",
-      );
+      // A bad code is the only thing worth throttling, and it must be the ONLY thing: the budget
+      // is a single shared bucket of 20, so anything else that consumes it spends the whole
+      // room's allowance. A taken display name and an already-joined browser are both ordinary
+      // CONFLICTs a student can hit honestly — charging them here would let twenty rejoins lock
+      // everyone out of joining at all.
+      if (isWrongJoinCode(error)) {
+        joinFailureLimiter.consumeOrThrow(
+          "join-failures",
+          now,
+          "Too many wrong join codes. Wait a few minutes.",
+        );
+      }
       throw error;
     }
 
@@ -62,6 +83,13 @@ export async function POST(request: Request): Promise<NextResponse> {
 
     const response = jsonOk(JoinResponseSchema.parse(joined), NO_STORE);
     response.cookies.set(SESSION_COOKIE, session.token, sessionCookieOptions());
+    // Re-issued on a rejoin as well as a first join, so the claim's lifetime tracks the student
+    // actually being here rather than expiring mid-contest on a long night.
+    response.cookies.set(
+      JOIN_CLAIM_COOKIE,
+      mintJoinClaim(joined.participantId, joined.contestId, sessionSecret()),
+      joinClaimCookieOptions(),
+    );
     return response;
   });
 }

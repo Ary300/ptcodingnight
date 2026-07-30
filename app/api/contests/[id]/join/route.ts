@@ -9,10 +9,18 @@ import {
   readJson,
   readParams,
 } from "@/lib/contest/http";
-import { joinContest } from "@/lib/contest/join";
+import { sessionSecret } from "@/lib/contest/env";
+import { isWrongJoinCode, joinContest } from "@/lib/contest/join";
+import {
+  JOIN_CLAIM_COOKIE,
+  joinClaimCookieOptions,
+  mintJoinClaim,
+  readJoinClaim,
+} from "@/lib/contest/join-claim";
 import { joinFailureLimiter } from "@/lib/contest/rate-limit";
 import {
   SESSION_COOKIE,
+  parseCookieHeader,
   sessionCookieOptions,
 } from "@/lib/contest/session";
 import { issueSession } from "@/lib/contest/session-store";
@@ -42,17 +50,27 @@ export async function POST(
     // Only a WRONG CODE is penalised, below. That is the behaviour worth limiting: guessing.
 
     const input = await readJson(request, JoinRequestSchema);
+
+    // Same claim handling as the flat route — this one must not be the looser of the two paths
+    // to the same write, or the fix would be one URL away from being bypassed (T5).
+    const claim = readJoinClaim(
+      parseCookieHeader(request.headers.get("cookie"))[JOIN_CLAIM_COOKIE],
+      sessionSecret(),
+    );
+
     let joined;
     try {
-      joined = await joinContest(input, id, now);
+      joined = await joinContest(input, id, now, claim);
     } catch (error: unknown) {
-      // A bad code is the only thing worth throttling. Consuming AFTER the failure means a room
-      // full of legitimate joins never touches this budget.
-      joinFailureLimiter.consumeOrThrow(
-        "join-failures",
-        now,
-        "Too many wrong join codes. Wait a few minutes.",
-      );
+      // Same narrowing as the flat route, and for the same reason: the bucket is shared, so a
+      // CONFLICT a student can hit honestly must not spend the room's wrong-code allowance.
+      if (isWrongJoinCode(error)) {
+        joinFailureLimiter.consumeOrThrow(
+          "join-failures",
+          now,
+          "Too many wrong join codes. Wait a few minutes.",
+        );
+      }
       throw error;
     }
 
@@ -69,6 +87,11 @@ export async function POST(
 
     const response = jsonOk(JoinResponseSchema.parse(joined), NO_STORE);
     response.cookies.set(SESSION_COOKIE, session.token, sessionCookieOptions());
+    response.cookies.set(
+      JOIN_CLAIM_COOKIE,
+      mintJoinClaim(joined.participantId, joined.contestId, sessionSecret()),
+      joinClaimCookieOptions(),
+    );
     return response;
   });
 }

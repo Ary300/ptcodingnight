@@ -373,6 +373,8 @@ export const stubContestApi: ContestApi = {
       divisionId: request.divisionId ?? "div-intermediate",
       chosenSetId: "stub-set-a",
       chosenSetLabel: "A",
+      // The stub has no cookie jar, so every stub join is a first join.
+      rejoined: false,
       // The stub deliberately reports a team, so the "you have no team" path is exercised by
       // pointing at the real backend rather than being the default everyone sees.
       needsTeam: false,
