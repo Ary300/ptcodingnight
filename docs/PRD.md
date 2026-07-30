@@ -144,9 +144,6 @@ Browser → POST /api/submissions → enqueue job (Redis/BullMQ)
                      per-test verdict → aggregate → persist → SSE push
 ```
 
-Language runtimes ship as pinned images: `python:3.12-slim`, `eclipse-temurin:21-jdk`.
-Java compiles once per submission, then runs each test against the compiled class.
-
 ### 7.2 Verdict rules
 
 | Verdict | Trigger |
@@ -162,7 +159,55 @@ Java compiles once per submission, then runs each test against the compiled clas
 Output comparison is pluggable: exact, whitespace-normalized (default), float-with-epsilon,
 and a special-judge hook for problems with multiple valid answers.
 
-### 7.3 Non-negotiables
+### 7.3 Languages
+
+The registry (`lib/judge/runtimes.ts`) has two levels, and the split is the design:
+
+- A **runtime** owns a container image, a *measured* startup budget, and a fixture set.
+  Five of them, because there are five images and five things to measure.
+- A **variant** is a compile-flag entry on top of a runtime. Ten of them, because that is how
+  many choices a student sees in the dropdown.
+
+| Runtime | Image | Variants |
+|---|---|---|
+| `python312` | `python:3.12-slim` | Python 3.12 |
+| `jdk21` | `eclipse-temurin:21-jdk` | Java 8, 11, 17, 21 — `javac --release` selects the level |
+| `gcc14` | `gcc:14` | C++11, C++17, C17 — `-std=` selects the standard |
+| `node22` | `node:22-slim` | JavaScript (Node 22) |
+| `go123` | **`ptcn-go:1.23`, built locally** | Go 1.23 |
+
+Java's four levels share one JVM and therefore one budget; the three GCC standards share one
+compiler. Measuring them separately would be measuring the same thing repeatedly and inviting
+drift between numbers that describe one runtime.
+
+**Adding C++20 or Rust is a registry line, never a change to `worker/runner.ts`.** If the
+runner has to change to add a language, the registry is missing an axis.
+
+Go does not use the stock `golang` image. Since Go 1.20 the standard library is not shipped
+pre-compiled, so a fresh container recompiles it on every submission — measured 65.8 s
+in-container against 2.5–11.8 s with a pre-warmed cache. `docker/go/Dockerfile` bakes the
+cache; **`scripts/build-judge-images.sh` must run on the judge host before the night**, and
+its `--verify` mode proves the cache is live. A missed cache is silent: it reports CE on
+correct code by exceeding the compile timeout.
+
+Compile limits are separate from run limits on five axes — timeout, memory, pids, tmpfs, and
+CPUs. A cgroup has one cap each, so sizing them for the compiler would mean an 800 MB program
+is never OOM-killed and MLE detection quietly stops working. Compiled languages therefore get
+two containers: a build container at the compiler's limits, then a run container at the
+problem's. §7.1's "one ephemeral container per submission" governs the *untrusted program*,
+which still gets exactly one.
+
+A `CE` returns the compiler's **verbatim stderr**. The compiler is describing the student's own
+code, so nothing about the hidden tests leaks (§7.2), and a paraphrased template error is
+useless to them.
+
+`allowedLanguages` is per problem and enforced **in the API on both the judged and the
+run-samples path**, not only in the picker. The picker is a hint; anyone can POST anything.
+
+Startup budgets are currently **provisional and Docker-Desktop-sized** — see `docs/HOSTING.md`
+§6 step 3 for re-measurement on the real judge host.
+
+### 7.4 Non-negotiables
 
 - A submission cannot read another submission's files, the host filesystem, the database,
   or the network.
@@ -298,7 +343,12 @@ These are the acceptance tests. Every gate is a command with a binary pass condi
 
 Team/pair programming with shared editors · plagiarism detection · email notifications ·
 mobile native apps · problem difficulty auto-calibration · public internet hosting with
-untrusted registration · languages beyond Python and Java (C++ is a v2 candidate).
+untrusted registration.
+
+**Multi-language is no longer out of scope.** v1 ships ten language choices across five
+runtimes — see §7.3. What remains out of scope is any language needing a *new runtime image*
+(Rust, Kotlin, C#): adding one is a `RUNTIMES` entry plus a measured startup budget plus a
+fixture set, and the measurement is the expensive part, not the registry line.
 
 ## 14. Risks
 

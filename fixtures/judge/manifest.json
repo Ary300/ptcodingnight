@@ -2,13 +2,32 @@
   "_readme": [
     "G4 judge fixtures. Every case runs against the same three-test 'sum two integers'",
     "problem in fixtures/judge/problem/, so the only variable is the submission itself.",
-    "24 cases: 12 Python + 12 Java, two per verdict across AC, WA, TLE, MLE, RE, CE.",
+    "",
+    "51 cases across all FIVE runtimes, covering AC, WA, TLE, MLE, RE and CE for each.",
     "IE is deliberately absent \u2014 it means the judge itself failed, so it cannot be",
     "produced by a well-formed submission and must never appear in a passing run.",
     "",
+    "Coverage is per RUNTIME, not per variant, because a runtime is what gets measured:",
+    "python312, jdk21, gcc14, node22, go123. The four Java levels share one JVM and the",
+    "three GCC standards share one compiler, so testing all six verdicts against each of",
+    "the ten variants would run the same code paths repeatedly for no new information.",
+    "",
+    "What IS tested per variant is the flag itself, in the four variant-* cases. Each",
+    "pair is the SAME SOURCE FILE judged at two language levels:",
+    "",
+    "  variant-cpp17-ok          / variant-cpp17-under-cpp11   -> AC / CE",
+    "  variant-java21-ok         / variant-java21-under-java8   -> AC / CE",
+    "",
+    "These exist because a silently-ignored -std= or --release is invisible everywhere",
+    "else: the code would simply compile, and a student could use a language feature the",
+    "problem forbids with nothing to catch it. If a variant-*-under-* case starts passing",
+    "as AC, the flag has stopped being applied \u2014 that is the bug, not the fixture.",
+    "",
     "MLE cases carry a longer timeLimitMs: proving a memory bomb requires letting it",
     "allocate, and on a loaded judge the wall clock would otherwise win the race and",
-    "report TLE. The memory cap is what the case is testing, not the clock.",
+    "report TLE. The memory cap is what the case is testing, not the clock. Every MLE",
+    "fixture also TOUCHES the pages it allocates \u2014 reserving address space is not",
+    "something the kernel OOM-kills, and a fixture that only reserves reports TLE.",
     "",
     "py-ac-largeoutput is a REGRESSION fixture. Its correct answer is 1.29 MB, which",
     "exceeded the judge's old fixed 1 MiB stdout cap; the container was killed and the",
@@ -24,160 +43,322 @@
   "cases": [
     {
       "id": "py-ac-readall",
-      "language": "PYTHON",
+      "language": "PYTHON_312",
       "sourceFile": "main.py",
       "expectedVerdict": "AC"
     },
     {
       "id": "py-ac-splitline",
-      "language": "PYTHON",
+      "language": "PYTHON_312",
       "sourceFile": "main.py",
       "expectedVerdict": "AC"
     },
     {
       "id": "py-wa-subtracts",
-      "language": "PYTHON",
+      "language": "PYTHON_312",
       "sourceFile": "main.py",
       "expectedVerdict": "WA"
     },
     {
       "id": "py-wa-constant",
-      "language": "PYTHON",
+      "language": "PYTHON_312",
       "sourceFile": "main.py",
       "expectedVerdict": "WA"
     },
     {
       "id": "py-tle-spin",
-      "language": "PYTHON",
+      "language": "PYTHON_312",
       "sourceFile": "main.py",
       "expectedVerdict": "TLE"
     },
     {
       "id": "py-tle-busywork",
-      "language": "PYTHON",
+      "language": "PYTHON_312",
       "sourceFile": "main.py",
       "expectedVerdict": "TLE"
     },
     {
       "id": "py-mle-list",
-      "language": "PYTHON",
+      "language": "PYTHON_312",
       "sourceFile": "main.py",
       "expectedVerdict": "MLE",
       "timeLimitMs": 8000
     },
     {
       "id": "py-mle-bigalloc",
-      "language": "PYTHON",
+      "language": "PYTHON_312",
       "sourceFile": "main.py",
       "expectedVerdict": "MLE",
       "timeLimitMs": 8000
     },
     {
       "id": "py-re-zerodiv",
-      "language": "PYTHON",
+      "language": "PYTHON_312",
       "sourceFile": "main.py",
       "expectedVerdict": "RE"
     },
     {
       "id": "py-re-exit",
-      "language": "PYTHON",
+      "language": "PYTHON_312",
       "sourceFile": "main.py",
       "expectedVerdict": "RE"
     },
     {
       "id": "py-ce-unclosed",
-      "language": "PYTHON",
+      "language": "PYTHON_312",
       "sourceFile": "main.py",
       "expectedVerdict": "CE"
     },
     {
       "id": "py-ce-badindent",
-      "language": "PYTHON",
+      "language": "PYTHON_312",
       "sourceFile": "main.py",
       "expectedVerdict": "CE"
     },
     {
       "id": "java-ac-scanner",
-      "language": "JAVA",
+      "language": "JAVA_21",
       "sourceFile": "Main.java",
       "expectedVerdict": "AC"
     },
     {
       "id": "java-ac-bufferedreader",
-      "language": "JAVA",
+      "language": "JAVA_21",
       "sourceFile": "Main.java",
       "expectedVerdict": "AC"
     },
     {
       "id": "java-wa-multiplies",
-      "language": "JAVA",
+      "language": "JAVA_21",
       "sourceFile": "Main.java",
       "expectedVerdict": "WA"
     },
     {
       "id": "java-wa-echoes",
-      "language": "JAVA",
+      "language": "JAVA_21",
       "sourceFile": "Main.java",
       "expectedVerdict": "WA"
     },
     {
       "id": "java-tle-spin",
-      "language": "JAVA",
+      "language": "JAVA_21",
       "sourceFile": "Main.java",
       "expectedVerdict": "TLE"
     },
     {
       "id": "java-tle-sleep",
-      "language": "JAVA",
+      "language": "JAVA_21",
       "sourceFile": "Main.java",
       "expectedVerdict": "TLE"
     },
     {
       "id": "java-mle-array",
-      "language": "JAVA",
+      "language": "JAVA_21",
       "sourceFile": "Main.java",
       "expectedVerdict": "MLE",
       "timeLimitMs": 8000
     },
     {
       "id": "java-mle-strings",
-      "language": "JAVA",
+      "language": "JAVA_21",
       "sourceFile": "Main.java",
       "expectedVerdict": "MLE",
       "timeLimitMs": 8000
     },
     {
       "id": "java-re-npe",
-      "language": "JAVA",
+      "language": "JAVA_21",
       "sourceFile": "Main.java",
       "expectedVerdict": "RE"
     },
     {
       "id": "java-re-exit",
-      "language": "JAVA",
+      "language": "JAVA_21",
       "sourceFile": "Main.java",
       "expectedVerdict": "RE"
     },
     {
       "id": "java-ce-missingsemi",
-      "language": "JAVA",
+      "language": "JAVA_21",
       "sourceFile": "Main.java",
       "expectedVerdict": "CE"
     },
     {
       "id": "java-ce-badtype",
-      "language": "JAVA",
+      "language": "JAVA_21",
       "sourceFile": "Main.java",
       "expectedVerdict": "CE"
     },
     {
       "id": "py-ac-largeoutput",
-      "language": "PYTHON",
+      "language": "PYTHON_312",
       "sourceFile": "main.py",
       "expectedVerdict": "AC",
       "problemDir": "problem-large",
       "testCount": 2,
       "timeLimitMs": 8000
+    },
+    {
+      "id": "cpp-ac-iostream",
+      "language": "CPP_17",
+      "sourceFile": "main.cpp",
+      "expectedVerdict": "AC"
+    },
+    {
+      "id": "cpp-wa-multiplies",
+      "language": "CPP_17",
+      "sourceFile": "main.cpp",
+      "expectedVerdict": "WA"
+    },
+    {
+      "id": "cpp-tle-spin",
+      "language": "CPP_17",
+      "sourceFile": "main.cpp",
+      "expectedVerdict": "TLE"
+    },
+    {
+      "id": "cpp-mle-vector",
+      "language": "CPP_17",
+      "sourceFile": "main.cpp",
+      "expectedVerdict": "MLE",
+      "timeLimitMs": 8000,
+      "memoryLimitMb": 256
+    },
+    {
+      "id": "cpp-re-abort",
+      "language": "CPP_17",
+      "sourceFile": "main.cpp",
+      "expectedVerdict": "RE"
+    },
+    {
+      "id": "cpp-ce-missingsemi",
+      "language": "CPP_17",
+      "sourceFile": "main.cpp",
+      "expectedVerdict": "CE"
+    },
+    {
+      "id": "c-ac-scanf",
+      "language": "C_17",
+      "sourceFile": "main.c",
+      "expectedVerdict": "AC"
+    },
+    {
+      "id": "c-ce-undeclared",
+      "language": "C_17",
+      "sourceFile": "main.c",
+      "expectedVerdict": "CE"
+    },
+    {
+      "id": "js-ac-readfile",
+      "language": "JAVASCRIPT_NODE22",
+      "sourceFile": "main.js",
+      "expectedVerdict": "AC"
+    },
+    {
+      "id": "js-wa-concatenates",
+      "language": "JAVASCRIPT_NODE22",
+      "sourceFile": "main.js",
+      "expectedVerdict": "WA"
+    },
+    {
+      "id": "js-tle-spin",
+      "language": "JAVASCRIPT_NODE22",
+      "sourceFile": "main.js",
+      "expectedVerdict": "TLE"
+    },
+    {
+      "id": "js-mle-buffers",
+      "language": "JAVASCRIPT_NODE22",
+      "sourceFile": "main.js",
+      "expectedVerdict": "MLE",
+      "timeLimitMs": 8000,
+      "memoryLimitMb": 256
+    },
+    {
+      "id": "js-re-throw",
+      "language": "JAVASCRIPT_NODE22",
+      "sourceFile": "main.js",
+      "expectedVerdict": "RE"
+    },
+    {
+      "id": "js-ce-unclosed",
+      "language": "JAVASCRIPT_NODE22",
+      "sourceFile": "main.js",
+      "expectedVerdict": "CE"
+    },
+    {
+      "id": "go-ac-bufio",
+      "language": "GO_123",
+      "sourceFile": "main.go",
+      "expectedVerdict": "AC"
+    },
+    {
+      "id": "go-wa-subtracts",
+      "language": "GO_123",
+      "sourceFile": "main.go",
+      "expectedVerdict": "WA"
+    },
+    {
+      "id": "go-tle-spin",
+      "language": "GO_123",
+      "sourceFile": "main.go",
+      "expectedVerdict": "TLE"
+    },
+    {
+      "id": "go-mle-slices",
+      "language": "GO_123",
+      "sourceFile": "main.go",
+      "expectedVerdict": "MLE",
+      "timeLimitMs": 8000,
+      "memoryLimitMb": 256
+    },
+    {
+      "id": "go-re-panic",
+      "language": "GO_123",
+      "sourceFile": "main.go",
+      "expectedVerdict": "RE"
+    },
+    {
+      "id": "go-ce-unusedvar",
+      "language": "GO_123",
+      "sourceFile": "main.go",
+      "expectedVerdict": "CE"
+    },
+    {
+      "id": "variant-cpp17-ok",
+      "language": "CPP_17",
+      "sourceFile": "main.cpp",
+      "expectedVerdict": "AC"
+    },
+    {
+      "id": "variant-cpp17-under-cpp11",
+      "language": "CPP_11",
+      "sourceFile": "main.cpp",
+      "expectedVerdict": "CE"
+    },
+    {
+      "id": "variant-java21-ok",
+      "language": "JAVA_21",
+      "sourceFile": "Main.java",
+      "expectedVerdict": "AC"
+    },
+    {
+      "id": "variant-java21-under-java8",
+      "language": "JAVA_8",
+      "sourceFile": "Main.java",
+      "expectedVerdict": "CE"
+    },
+    {
+      "id": "java11-ac-plain",
+      "language": "JAVA_11",
+      "sourceFile": "Main.java",
+      "expectedVerdict": "AC"
+    },
+    {
+      "id": "java17-ac-plain",
+      "language": "JAVA_17",
+      "sourceFile": "Main.java",
+      "expectedVerdict": "AC"
     }
   ]
 }

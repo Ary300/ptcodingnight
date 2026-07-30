@@ -1,5 +1,7 @@
 import { expect, test, type APIRequestContext } from "@playwright/test";
 
+import { LANGUAGE_IDS } from "@/lib/judge/runtimes";
+
 import { ContestApi, readEnvelope } from "./helpers/api";
 import {
   closeTestDb,
@@ -108,6 +110,35 @@ test.describe("contest journey (no judge required)", () => {
     expect(detail.samples[0]?.input.trim()).toBe("2 3");
     expect(detail.samples[0]?.expectedOutput.trim()).toBe("5");
     expect(detail.allowedLanguages).toContain("PYTHON_312");
+  });
+
+  test("a language the problem does not allow is refused by the API, not merely absent from the dropdown", async () => {
+    // The registry offers ten languages; a problem may allow a subset. The picker only shows
+    // the allowed ones, but the picker is a hint, not a control — anyone can POST whatever
+    // they like. Both judged and unjudged paths must refuse, and run-samples matters more
+    // here, not less: it is free and rate-limited rather than attempt-limited, so it is the
+    // cheaper of the two to probe with.
+    const live = liveProblem(seeded);
+    const detail = await competitor.getProblem(live.slug);
+
+    const forbidden = LANGUAGE_IDS.find((id) => !detail.allowedLanguages.includes(id));
+    expect(forbidden, "fixture allows every language, so this test proves nothing").toBeDefined();
+    if (forbidden === undefined) return;
+
+    const body = {
+      contestProblemId: detail.contestProblemId,
+      language: forbidden,
+      sourceCode: "print(1)",
+    };
+
+    for (const [label, response] of [
+      ["submit", await competitor.submitRaw(body)],
+      ["run-samples", await competitor.runSamplesRaw(body)],
+    ] as const) {
+      const envelope = await readEnvelope(response);
+      expect(envelope.status, `${label} accepted a disallowed language`).toBeGreaterThanOrEqual(400);
+      expect(envelope.status, `${label} should be a client error`).toBeLessThan(500);
+    }
   });
 
   test("the DRAFT problem is refused by the API, not merely hidden by the UI", async () => {

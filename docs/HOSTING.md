@@ -15,7 +15,7 @@ before buying or borrowing anything.
 `docs/PRD.md` §12, gate G8: **40 concurrent submissions, zero dropped jobs, zero `IE`
 verdicts, p95 verdict latency under 10 seconds.**
 
-That 40 is not arbitrary — PRD §7.3 derives it from how a Coding Night actually ends, with
+That 40 is not arbitrary — PRD §7.4 derives it from how a Coding Night actually ends, with
 20–40 people all submitting in the last few minutes. The 10 seconds is what keeps a student
 looking at the screen instead of asking an organizer whether it broke.
 

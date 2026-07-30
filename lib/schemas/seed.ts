@@ -65,12 +65,31 @@ export function dedupKey(row: SeedRow): string {
   return lang === null ? title : `${title}::${lang.toLowerCase()}`;
 }
 
-/** URL-safe slug derived from the dedup key, used as `Problem.slug`. */
+/**
+ * Version-free slug token for a warmup's language.
+ *
+ * Deliberately NOT the registry's `LanguageId`. A slug is a URL and a database key, so it must
+ * not change when a runtime is upgraded — deriving it from `PYTHON_312` would give
+ * `sum67-python-312` and turn a bump to Python 3.13 into a slug migration that orphans every
+ * warmup row and every bookmarked link. The language matters to the slug; the point release
+ * does not.
+ */
+const SLUG_LANGUAGE_TOKEN: Readonly<Record<"PYTHON_312" | "JAVA_21", string>> = {
+  PYTHON_312: "python",
+  JAVA_21: "java",
+};
+
+/** URL-safe slug, used as `Problem.slug`. */
 export function slugFor(row: SeedRow): string {
-  return dedupKey(row)
-    .replace(/::/g, "-")
+  const title = row.title
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
+
+  const language = warmupLanguage(row);
+  return language === null ? title : `${title}-${SLUG_LANGUAGE_TOKEN[language]}`;
 }
 
 /**

@@ -503,7 +503,7 @@ read-only mount.
 
 ## D22 — A stdout flood is `WA` (Phase 2)
 
-**Ambiguous:** PRD's seven verdicts have no "output limit exceeded", but §7.3 requires a
+**Ambiguous:** PRD's seven verdicts have no "output limit exceeded", but §7.4 requires a
 1 GB stdout flood to degrade to a clean verdict.
 
 **Chosen:** capture is capped at 1 MiB; exceeding it kills the container and yields `WA`.

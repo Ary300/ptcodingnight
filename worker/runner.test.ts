@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
+
 import { describe, expect, it } from "vitest";
 
 import { OUTPUT_CAP_FLOOR_BYTES } from "@/worker/docker";
@@ -134,6 +137,34 @@ describe("registry integrity", () => {
           "/build",
         );
       }
+    }
+  });
+
+  it("gives a compiled runtime more build CPU than the run container", () => {
+    // The run container is pinned to one CPU so every student is timed against the same
+    // machine. A build is not timed, so starving it only inflates latency — 94-127s against
+    // 44s for the same `go build`.
+    expect(RUNTIMES.go123.compileCpus).toBeGreaterThan(1);
+    for (const id of LANGUAGE_IDS) {
+      expect(runtimeFor(id).compileCpus, `${id} has a nonsensical compile CPU count`)
+        .toBeGreaterThanOrEqual(1);
+    }
+  });
+
+  it("prepares every image the registry names in scripts/build-judge-images.sh", () => {
+    // The night has no internet, so an image nobody pulls in advance is a contest that cannot
+    // start. This is the check that makes adding a runtime fail loudly here rather than at
+    // 6pm on the night.
+    const script = readFileSync(
+      path.join(__dirname, "..", "scripts", "build-judge-images.sh"),
+      "utf8",
+    );
+
+    for (const runtime of Object.values(RUNTIMES)) {
+      expect(
+        script.includes(runtime.image),
+        `${runtime.id}'s image ${runtime.image} is never pulled or built by scripts/build-judge-images.sh`,
+      ).toBe(true);
     }
   });
 

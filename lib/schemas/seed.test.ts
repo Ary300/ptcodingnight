@@ -81,6 +81,20 @@ describe("slugFor", () => {
     expect(slugFor(row({ title: "sum67", type: "codingbat", notes: "Java; x" }))).toBe("sum67-java");
   });
 
+  it("keeps the runtime's version OUT of the slug", () => {
+    // Regression. The language ids became PYTHON_312/JAVA_21 with the runtime registry, and
+    // deriving the slug from them produced `sum67-python-312`. A slug is a URL and a database
+    // key: bumping to Python 3.13 would then rename every warmup, orphaning its rows and every
+    // bookmarked link. The language belongs in the slug; the point release does not.
+    // A digits-free title, so what is asserted is the language suffix and not "sum67".
+    expect(slugFor(row({ title: "Make Bricks", type: "codingbat", notes: "Python; x" }))).toBe(
+      "make-bricks-python",
+    );
+    expect(slugFor(row({ title: "Make Bricks", type: "codingbat", notes: "Java; x" }))).toBe(
+      "make-bricks-java",
+    );
+  });
+
   it("does not start or end with a separator", () => {
     const slug = slugFor(row({ title: "!!! sWAP cASE !!!" }));
     expect(slug.startsWith("-")).toBe(false);

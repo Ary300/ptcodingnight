@@ -40,6 +40,9 @@ npm run test:content     # references through the judge    (G13)
 npm run verify           # runs the gates in order, prints a PASS/FAIL table
 docker compose up -d     # full stack: web, worker, postgres, redis
 npm run db:seed          # loads data/problems_seed.csv
+
+scripts/build-judge-images.sh --verify   # pull + build every runtime image. REQUIRED before
+                                         # the night and before G4/G5/G13 on a new host.
 ```
 
 Single test: `npm test -- --run path/to/file.test.ts`, or `-t "name"` to filter by name.
@@ -49,7 +52,9 @@ Single test: `npm test -- --run path/to/file.test.ts`, or `-t "name"` to filter 
 - `app/` — Next.js App Router. Route handlers are thin: validate, delegate, respond.
 - `lib/scoring/` — **pure functions only.** `computeStandings(config, submissions, hints)`.
   No I/O, no Date.now(), no randomness. All time comes in as arguments.
-- `lib/judge/` — job definition, verdict aggregation, output comparators.
+- `lib/judge/` — job definition, verdict aggregation, output comparators. `runtimes.ts` is the
+  language registry: five runtimes (image + measured budget + compile limits), ten variants
+  (compile flags on top of a runtime).
 - `worker/` — the judge worker process. Spawns one ephemeral Docker container per
   submission and reaps it.
 - `prisma/` — schema and migrations.
@@ -99,6 +104,31 @@ imports nothing from either. If scoring needs a fact, it arrives as an argument.
 - **Containers are created without `--rm` on purpose.** `docker inspect` is the only way to
   read `OOMKilled` — the sole reliable way to tell MLE from TLE, since both exit 137.
   Removal is explicit, with a prefix sweep as the backstop.
+- **Adding a language is a line in `lib/judge/runtimes.ts`, never a change to
+  `worker/runner.ts`.** The runner does not switch on language anywhere and must not start. A
+  new *variant* (C++20) is a `VARIANTS` entry; a new *runtime* (Rust) is also a measured startup
+  budget, compile limits, and a fixture set — the measurement is the expensive part.
+- **Go does not use the stock `golang` image, and this one bites hard.** Since Go 1.20 the
+  standard library is not shipped pre-compiled, so a fresh container rebuilds it every
+  submission: 65.8 s in-container against 2.5–11.8 s warm. It does not fail loudly — it blows
+  `compileTimeoutMs` and reports **CE on correct code**. `docker/go/Dockerfile` bakes a
+  world-readable cache at `/opt/gocache` on the read-only rootfs (Go reads a cache it cannot
+  write to; the one new entry goes to `GOTMPDIR` in tmpfs). Build flags are part of Go's cache
+  key, so **any flag in the registry's `compileCommand` that the Dockerfile did not also use
+  silently misses the entire cache.** `scripts/build-judge-images.sh --verify` is what catches
+  that, and it must run on the judge host before the night.
+- **Compile limits are separate from run limits on all five axes** — timeout, memory, pids,
+  tmpfs, cpus. A cgroup has one cap each. Size them for the compiler and an 800 MB program is
+  never OOM-killed, so MLE detection silently stops working; size them for the problem and
+  `javac` or `go build` fails and the student sees CE on code that compiles fine. Each of those
+  five axes is a bug this project actually shipped.
+- **A slug must never carry a runtime version.** `Problem.slug` is a URL and a database key.
+  Deriving it from the registry's `LanguageId` gives `sum67-python-312`, and bumping to Python
+  3.13 then renames every warmup, orphaning its rows and every bookmarked link. See
+  `SLUG_LANGUAGE_TOKEN` in `lib/schemas/seed.ts`.
+- **`fixtures/` is excluded from eslint on purpose.** The CE fixtures do not parse and the TLE
+  fixtures are infinite loops. Every lint finding in there is a fixture working correctly, and
+  "fixing" them destroys the suite. The judge validates them, not the linter.
 - **Judge scratch goes in `.judge-tmp/`, never `os.tmpdir()`.** macOS temp lives under
   `/var/folders`, which Docker Desktop does not share; bind-mounting it yields a silently
   empty directory inside the container.
