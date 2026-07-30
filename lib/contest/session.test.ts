@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   SESSION_COOKIE,
+  SESSION_MAX_AGE_MS,
   clearedSessionCookieOptions,
   hashSessionToken,
   newSessionToken,
@@ -109,5 +110,35 @@ describe("sessionCookieOptions", () => {
 
   it("clears with maxAge 0", () => {
     expect(clearedSessionCookieOptions().maxAge).toBe(0);
+  });
+
+  /**
+   * `secure` was hardcoded `false` and justified by a classroom LAN with no certificate. The
+   * deployment is a real domain behind Let's Encrypt, so a non-`Secure` cookie is a session
+   * token handed to anything on the network path.
+   */
+  it("is Secure by default, so a missing COOKIE_SECURE cannot silently downgrade it", () => {
+    expect(sessionCookieOptions().secure).toBe(true);
+  });
+
+  it("takes secure from its argument, so a dev server can serve plain HTTP", () => {
+    expect(sessionCookieOptions(SESSION_MAX_AGE_MS, false).secure).toBe(false);
+    expect(sessionCookieOptions(SESSION_MAX_AGE_MS, true).secure).toBe(true);
+  });
+
+  /**
+   * A browser treats `Secure` and `Path` as part of a cookie's identity. Clearing with a
+   * different `secure` writes a *second* cookie and leaves the live session in place, so
+   * sign-out would appear to work and revoke nothing at the browser.
+   */
+  it("clears with the same attributes it set, or sign-out silently does nothing", () => {
+    const set = sessionCookieOptions(SESSION_MAX_AGE_MS, true);
+    const cleared = clearedSessionCookieOptions(true);
+    expect(cleared.secure).toBe(set.secure);
+    expect(cleared.path).toBe(set.path);
+    expect(cleared.sameSite).toBe(set.sameSite);
+    expect(cleared.httpOnly).toBe(set.httpOnly);
+
+    expect(clearedSessionCookieOptions(false).secure).toBe(false);
   });
 });

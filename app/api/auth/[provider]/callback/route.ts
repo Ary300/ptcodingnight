@@ -4,7 +4,7 @@ import { z } from "zod";
 
 import { DomainError } from "@/lib/errors";
 import { linkedUserFor, providerLabel } from "@/lib/contest/accounts";
-import { oauthConfig } from "@/lib/contest/env";
+import { cookiesAreSecure, oauthConfig } from "@/lib/contest/env";
 import { handle, readParams } from "@/lib/contest/http";
 import {
   OAUTH_STATE_COOKIE,
@@ -108,8 +108,16 @@ export async function GET(
       destination(request, user.role === "ADMIN" ? "/admin" : "/contest"),
     );
     response.cookies.set(SESSION_COOKIE, session.token, sessionCookieOptions());
-    // The state cookie has done its job; leaving it would let a stale value be replayed.
-    response.cookies.set(OAUTH_STATE_COOKIE, "", { path: "/api/auth", maxAge: 0 });
+    // The state cookie has done its job; leaving it would let a stale value be replayed. The
+    // attributes have to match the ones it was set with — `Secure` and `Path` are part of a
+    // cookie's identity, so clearing without them leaves the original in place.
+    response.cookies.set(OAUTH_STATE_COOKIE, "", {
+      path: "/api/auth",
+      maxAge: 0,
+      httpOnly: true,
+      sameSite: "lax",
+      secure: cookiesAreSecure(),
+    });
     return response;
   });
 }

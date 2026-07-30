@@ -146,16 +146,65 @@ on every SSE tick and projector refresh would add contention to the database the
 
 ---
 
-## 5. The cookie is not `Secure`, on purpose
+## 5. Cookie attributes
 
-`secure: false`. The deployment serves plain HTTP on a classroom LAN with no certificate, and a
-`Secure` cookie would simply never be stored — every student signed out on the one night it matters.
+### 5.1 `Secure` — from the environment, defaulting to on
 
-**Flagged for the security review.** If the deployment ever gains TLS this must become `true`. It is
-the one place in this file where the safe-looking option is the one that breaks the event.
+`secure` comes from `COOKIE_SECURE`, **defaults to `true`, and production refuses to start when it
+is `false`** (`assertAuthEnvIsDeployable`, called from `instrumentation.ts`).
 
-`httpOnly: true` and `sameSite: "lax"` are both set: script cannot read the cookie, and following a
-link into the contest still works.
+This was previously a hardcoded `false`, justified by a classroom LAN over plain HTTP with no
+certificate. **That justification is dead.** The deployment is `ptcodingnight.com` behind Let's
+Encrypt. A session cookie without `Secure` is attached by the browser to *any* `http://` request to
+the same host — a mistyped URL, a stale bookmark, an HTTP asset — so anything on the network path
+reads a live token and becomes that student. With the organizer's session, it becomes everyone.
+
+The variable exists for exactly one case: a plain-HTTP `npm run dev`, where a `Secure` cookie may
+not be stored at all and nobody can sign in. That is why `.env.example` sets it to `false` and
+`.env.production.example` sets it to `true`.
+
+The check lives in `ContestEnvSchema`, so every entry point inherits it — web, worker, scripts.
+`instrumentation.ts` only changes *when* it fires: a boot failure an operator sees while deploying,
+rather than a sign-in failure forty students see at once.
+
+`COOKIE_SECURE` accepts only the literal strings `true` and `false`. `0`, `no`, `False` and an empty
+string are rejected rather than coerced — each is something an operator would plausibly write
+meaning "off", and a loose parser silently disagrees with half of them.
+
+### 5.2 `HttpOnly` — always on
+
+Nothing in the client reads this cookie; the session is resolved server-side from the `Cookie`
+header. There is no `document.cookie` access to preserve, and any XSS that lands should not also
+hand over a session token.
+
+### 5.3 `SameSite=Lax` — and why `strict` is wrong here, twice
+
+`lax` already withholds the cookie from cross-site `POST` and `fetch`, which is the CSRF-relevant
+case: every mutation in this application is a `POST`, `PATCH` or `DELETE` issued by our own script.
+
+Tightening to `strict` would break two things and harden nothing:
+
+1. **The session cookie.** A student following a *link* into the contest — from the projector, from
+   a shared problem URL, from a chat message — would arrive apparently signed out and re-join. On
+   this platform that is not a cosmetic annoyance: re-joining is the T5 problem-set re-roll path.
+2. **The OAuth state cookie**, and this one is absolute. It is *read* on the provider's redirect
+   back, which is a cross-site top-level navigation — precisely the request a `strict` cookie is
+   withheld from. `strict` there makes every Google and GitHub sign-in fail with a state mismatch.
+
+The comment in `app/api/auth/[provider]/route.ts` used to claim the opposite — that `strict` "costs
+nothing" — while the code correctly set `lax`. A later reader tidying that discrepancy in the wrong
+direction would have broken OAuth entirely.
+
+### 5.4 Clearing a cookie must repeat its attributes
+
+A browser treats `Secure`, `Path` and `SameSite` as part of a cookie's identity. Clearing with a
+different set writes a *second* cookie and leaves the live one in place, so sign-out appears to work
+and revokes nothing at the browser. `clearedSessionCookieOptions` therefore derives from
+`sessionCookieOptions`, and the OAuth state clear in the callback repeats its attributes explicitly.
+
+The server-side revocation is what actually ends the session, so this is defence in depth rather
+than the only control — but a cookie that survives sign-out is still a token sitting in a browser
+that someone believes they signed out of.
 
 ---
 
@@ -169,6 +218,7 @@ link into the contest still works.
 | Join code justified by "OAuth needs the network" | Join code justified by "OAuth fails for its own reasons" | The conclusion survived the premise changing — but not for the original reason, and that is worth being explicit about |
 | One credential path (shared passcode) | Four | — |
 | `SESSION_SECRET` signed every cookie | No longer used for sessions | There is no signature to verify; the token is looked up |
+| Cookie hardcoded `secure: false`, justified by a LAN with no certificate | `COOKIE_SECURE`, default `true`, production refuses to boot on `false` | The deployment is a real domain behind Let's Encrypt. The premise the `false` rested on is gone |
 
 The shared organizer passcode (`ADMIN_PASSCODE`) still exists and still works, and now issues a
 session with `method: ADMIN_PASSCODE`. It is the operational fallback for the night.

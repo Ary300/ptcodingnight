@@ -1,5 +1,7 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 
+import { cookiesAreSecure } from "@/lib/contest/env";
+
 /**
  * Session tokens.
  *
@@ -96,32 +98,66 @@ function safeDecode(value: string): string {
 }
 
 export interface SessionCookieOptions {
+  /**
+   * Always true. Nothing in the client reads this cookie — the session is resolved server-side
+   * from the `Cookie` header — so there is no legitimate `document.cookie` access to preserve,
+   * and any XSS that lands should not also hand over a session token.
+   */
   readonly httpOnly: true;
+  /**
+   * `lax`, and **not** `strict`.
+   *
+   * `lax` already withholds the cookie from cross-site POST/fetch, which is the CSRF-relevant
+   * case: every mutation in this application is a POST, PATCH or DELETE issued by our own
+   * script. What `strict` would additionally break is a student following a *link* into the
+   * contest — from the projector, from a shared problem URL, from a chat message — who would
+   * arrive apparently signed out and re-join, which is the T5 re-roll path.
+   */
   readonly sameSite: "lax";
   readonly path: "/";
   readonly maxAge: number;
   /**
-   * Deliberately false.
+   * From `COOKIE_SECURE`, defaulting to true, and production refuses to start when it is false.
    *
-   * The night runs on a classroom LAN over plain HTTP with no certificate (docs/PRD.md §10).
-   * A `Secure` cookie would simply never be stored, and every student would be logged out on
-   * the one night it matters. **Flagged for the security review:** if the deployment ever
-   * gains TLS, this must become true.
+   * This was hardcoded `false` and justified by a classroom LAN with no certificate. The
+   * deployment is now a real domain behind Let's Encrypt, which makes a non-`Secure` session
+   * cookie a plain credential leak: the browser attaches it to any `http://` request to the same
+   * host, so anything on the network path reads a token and becomes that student — or, with the
+   * organizer's session, everyone.
+   *
+   * It stays configurable for exactly one case: a plain-HTTP `npm run dev`, where a `Secure`
+   * cookie is never stored and nobody can sign in at all.
    */
-  readonly secure: false;
+  readonly secure: boolean;
 }
 
-export function sessionCookieOptions(maxAgeMs: number = SESSION_MAX_AGE_MS): SessionCookieOptions {
+/**
+ * `secure` is a parameter with an environment-derived default rather than a direct env read, so
+ * that these stay plain functions — a test states the value it wants instead of mutating
+ * `process.env` and racing every other test in the file.
+ */
+export function sessionCookieOptions(
+  maxAgeMs: number = SESSION_MAX_AGE_MS,
+  secure: boolean = cookiesAreSecure(),
+): SessionCookieOptions {
   return {
     httpOnly: true,
     sameSite: "lax",
     path: "/",
     maxAge: Math.floor(maxAgeMs / 1000),
-    secure: false,
+    secure,
   };
 }
 
-/** Attributes for clearing the cookie on sign-out. */
-export function clearedSessionCookieOptions(): SessionCookieOptions & { maxAge: 0 } {
-  return { ...sessionCookieOptions(), maxAge: 0 };
+/**
+ * Attributes for clearing the cookie on sign-out.
+ *
+ * The attributes must match the ones it was set with — a browser treats `Secure` and `Path` as
+ * part of the cookie's identity, so clearing with a different `secure` leaves the original in
+ * place and sign-out silently does nothing.
+ */
+export function clearedSessionCookieOptions(
+  secure: boolean = cookiesAreSecure(),
+): SessionCookieOptions & { maxAge: 0 } {
+  return { ...sessionCookieOptions(SESSION_MAX_AGE_MS, secure), maxAge: 0 };
 }

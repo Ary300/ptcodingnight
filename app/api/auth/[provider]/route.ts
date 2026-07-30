@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { DomainError } from "@/lib/errors";
-import { oauthConfig } from "@/lib/contest/env";
+import { cookiesAreSecure, oauthConfig } from "@/lib/contest/env";
 import { handle, readParams } from "@/lib/contest/http";
 import {
   OAUTH_STATE_COOKIE,
@@ -53,13 +53,17 @@ export async function GET(
 
     response.cookies.set(OAUTH_STATE_COOKIE, hashOAuthState(state), {
       httpOnly: true,
-      // `lax` would be enough for the redirect back, but the state cookie is only ever read by our
-      // own callback, so the tighter value costs nothing.
+      // `lax` is REQUIRED here, not merely sufficient. This cookie is read on the provider's
+      // redirect back, which is a cross-site top-level navigation — exactly the request a
+      // `strict` cookie is withheld from. Tightening this to `strict` does not harden anything;
+      // it makes every Google and GitHub sign-in fail with a state mismatch.
       sameSite: "lax",
       path: "/api/auth",
       maxAge: Math.floor(OAUTH_STATE_MAX_AGE_MS / 1000),
-      // Same reason as the session cookie: the LAN serves plain HTTP (docs/AUTH.md §5).
-      secure: false,
+      // Same source as the session cookie, and for the same reason (docs/AUTH.md §5). The state
+      // value is a CSRF defence for the OAuth flow, so serving it over plain HTTP would let the
+      // network path forge the thing that proves the flow was not forged.
+      secure: cookiesAreSecure(),
     });
 
     return response;
