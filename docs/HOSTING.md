@@ -28,15 +28,27 @@ experiences. It is not "how long the program ran".
 
 ## 2. What one submission costs
 
-Since the per-submission container change, judging one submission is **exactly one container**
-(PRD §7.1's wording, singular). Inside it:
+Since the per-submission container change, judging an interpreted submission is **exactly one
+container** (PRD §7.1's wording, singular) — down from one per test case. A compiled submission
+costs two: one to build, one to run. Inside them:
 
 | Step | Cost on the build machine |
 |---|---|
 | Container creation | **2,400 – 15,600 ms** — measured, 6.5× spread |
-| Compile / syntax check | Python ~300 ms · Java ~3,000 ms (cold `javac`) |
-| Each test case | Python 62 – 154 ms · Java 480 – 667 ms |
+| Compile / syntax check | Python ~300 ms · Java ~3,000 ms (cold `javac`) · C++ ~2,000 ms · Go 2,500 – 11,800 ms *(warm cache; 65,800 ms cold — see §6 step 2)* |
+| Each test case | Python 62 – 154 ms · Java 480 – 667 ms · C/C++ 10 – 250 ms · Go 27 – 204 ms |
 | **Total, 3-test Python problem** | **~7,000 – 9,000 ms**, of which ~90% is container creation |
+| **Total, 3-test compiled problem** | **~14,000 – 36,000 ms** — two containers, since a compiled language builds in its own |
+
+A compiled language costs **two** containers, not one: the build runs at the compiler's memory
+and CPU limits, then the program runs at the problem's. A cgroup has one memory cap, so a
+single container cannot both give `javac` its 1 GB and hold the student's program to 256 MB —
+sized for the compiler, an 800 MB program is never OOM-killed and MLE detection silently stops
+working. PRD §7.1's "one ephemeral container per submission" governs the *untrusted program*,
+which still gets exactly one.
+
+On this host that doubling matters enormously, because container creation is the dominant cost.
+On a host where creation is ~200 ms it is close to irrelevant.
 
 The shape of that table is the entire finding. **Container creation dominates by an order of
 magnitude over the work being judged.** A student's algorithm is a rounding error next to the
@@ -49,7 +61,7 @@ Python   1006, 1042, 1114, 1319, 1377, 1418, 1505, 1651 ms   (median 1377)
 Java     1010, 1479, 1815, 2374, 3659, 5342 ms               (5.3× spread)
 ```
 
-Those numbers are why `RUNTIME_BUDGETS` in `worker/runner.ts` adds a fixed per-language startup
+Those numbers are why `RUNTIMES` in `lib/judge/runtimes.ts` adds a fixed per-runtime startup
 budget instead of multiplying the problem's time limit. On a faster host they should drop
 sharply and should be **re-measured, not guessed** — §6 covers it.
 
@@ -192,16 +204,44 @@ cp .env.example .env          # set SESSION_SECRET and ADMIN_PASSCODE
 docker compose up -d postgres redis
 npx prisma migrate deploy
 npm run db:seed               # 125 problems, all DRAFT
-docker pull eclipse-temurin:21-jdk
+
+# Pulls the four stock runtime images AND builds ptcn-go:1.23. Not optional, and not
+# just a convenience wrapper around `docker pull` — see the note below.
+scripts/build-judge-images.sh --verify
 ```
+
+**Why Go needs a build step.** Since Go 1.20 the standard library is not shipped
+pre-compiled; the build cache is populated on first build. Every submission gets a fresh
+container with an empty cache, so the stock `golang` image recompiles std *every single
+submission*: measured in-container on the build laptop at **65.8 s cold against 2.5–11.8 s
+warm**. `docker/go/Dockerfile` bakes a world-readable cache into the image.
+
+This failure is silent in the worst way. A cold build does not error — it exceeds
+`compileTimeoutMs` and reports **CE on a correct program**. `--verify` compiles a known-good
+file and fails if it takes longer than 30 s, which is the only cheap way to tell a warm cache
+from a cold one. Run it.
+
+If `--verify` fails, the usual cause is a flag mismatch: build flags are part of Go's cache
+key, so any flag in the registry's `compileCommand` that `docker/go/Dockerfile` did not also
+use misses the entire cache.
 
 ### Step 3 — re-measure the startup budgets (2 minutes)
 
-`RUNTIME_BUDGETS` in `worker/runner.ts` is sized for the build laptop and will be far too
-generous here. Run the loop from step 1 for each runtime image, take the **maximum** in-container
-duration, and set `startupBudgetMs` above it with margin. Do not guess: a budget below real
-startup fails correct solutions as TLE, which is how this project lost 8 of 20 problems once
-already.
+`RUNTIMES` in `lib/judge/runtimes.ts` is sized for the build laptop and will be far too
+generous here. There are **five** budgets, one per runtime — `python312`, `jdk21`, `gcc14`,
+`node22`, `go123`. The variants share them: Java's four language levels are one JVM and the
+three GCC standards are one compiler, so there are five numbers to measure and not ten.
+
+Run the loop from step 1 against each runtime's image, take the **maximum** in-container
+duration, and set `startupBudgetMs` above it with margin. Measure under churn, not on an idle
+host — the contest is the churn.
+
+Do not guess. A budget below real startup fails correct solutions as TLE, which is how this
+project lost 8 of 20 problems once already: Python was set to 1000 ms against a measured floor
+of 1006 ms.
+
+Two of the five are currently genuine measurements (`python312`, `jdk21`); `gcc14`, `node22`
+and `go123` are generous estimates. See `docs/TODO.md` T6 for which is which.
 
 ### Step 4 — run the gate (5 minutes)
 
