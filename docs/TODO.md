@@ -14,7 +14,7 @@ and a couple are reachable but wrong on this hardware.
 
 | # | What | Severity |
 |---|---|---|
-| T1 | Hints have no content — a student can pay for nothing | **blocker for hints** |
+| T1 | Hints have no content — **deferred**, and the UI no longer offers to sell one | blocker for hints only |
 | T2 | Java time limits are unenforceable on a slow host — a *scoring* error, not a speed one | **high** |
 | T3 | Verdict latency tracks host load — G8 passes at load 4, fails 28× at load 32 | medium, hardware |
 | T4 | ~~A submission can fill the judge host's disk~~ **fixed** | resolved |
@@ -28,9 +28,31 @@ and a couple are reachable but wrong on this hardware.
 
 ---
 
-## T1 — Hints have no content. Students can pay for nothing. **(blocker for the hint feature)**
+## T1 — Hints have no content. **DEFERRED, and the UI no longer offers one.**
 
-**Severity: high.** This is a hole in `docs/PRD.md`, not just in the implementation.
+**Severity: high for the hint feature, and it blocks nothing else.** Deferred deliberately for the
+demo deployment: the contest works without hints, and shipping a purchase that returns nothing is
+worse than shipping no purchase.
+
+**The hint economy is specified and implemented; hint CONTENT is neither.** The ledger, the
+pricing, the balance and the earn rule all work. What does not exist is the thing being bought.
+
+**What changed for the deferral:** `components/contest/hints/HintPanel.tsx` no longer renders a
+"Take a hint" button or the confirm flow. It used to offer the purchase and then say "ask an
+organizer; the platform cannot show it yet" — honest about the outcome, and it still took 15% of
+the problem's points. **No UI now offers a hint it cannot deliver.** The balance figures remain
+where the API supplies them, because "you have earned two hints" is true and useful; where it does
+not, the panel says hints are unavailable in plain words rather than showing an error a student
+would retry.
+
+The API side already refused: `httpContestApi.getHintBalance` and `takeHint` both reject with
+`NOT_IMPLEMENTED`, and `UNIMPLEMENTED_ROUTES` in `lib/schemas/api.ts` records that no hint route
+exists. So the deferral holds at both layers, not just in the component.
+
+**Restoring it is small** — put the confirm flow back and render the returned text — but the PRD
+decision has to come first. Everything below is what that decision needs to cover.
+
+This is a hole in `docs/PRD.md`, not just in the implementation.
 
 The PRD specifies the hint *economy* precisely — §6.3: two CodingBat warmups earn one hint, each hint
 deducts 15% of a group problem's base points, and the ledger is tracked by the platform rather than

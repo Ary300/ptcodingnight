@@ -1,23 +1,33 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback } from "react";
 
-import { Button } from "@/components/ui";
-
-import { contestApi, errorMessageOf } from "../data/backend";
+import { contestApi } from "../data/backend";
 import type { HintBalance } from "../data/contract";
 import { useResource } from "../data/useResource";
 
 /**
- * Hints — balance, warmups solved, and what the next one costs, **shown before the student
- * commits** (PRD §9.1).
+ * Hints — balance and price, and **no way to buy one**.
  *
- * That ordering is the whole feature. A student deciding whether to spend a hint is doing a
- * cost-benefit calculation, and a UI that reveals the price after the click has made the
- * decision for them. So the cost is on the button itself, and confirming is a second,
- * separate action that restates the price and the resulting balance.
+ * ## Why the spend control is gone rather than disabled
  *
- * Colour is never the signal here either: "2 hints left" is a number, not a green dot.
+ * The hint economy is fully specified (PRD §6.3, §9.1): two warmups earn a hint, each hint costs
+ * 15% of a group problem's base points, and the price must be shown before the student commits.
+ * All of that is implemented. What is not specified anywhere — not in the PRD, not in the domain
+ * model, not in `prisma/schema.prisma` — is what a hint IS. `HintGrant` records that a hint was
+ * taken and what it cost; **no field in the schema holds hint text**, and no screen lets an
+ * organizer write one.
+ *
+ * So a purchase here charges a student 15% of a problem and returns nothing. This panel used to
+ * offer exactly that, and then say "ask an organizer; the platform cannot show it yet" — which is
+ * honest about the outcome and still takes the points. **A UI must not offer what it cannot
+ * deliver**, so the button is removed until `docs/TODO.md` T1 is resolved.
+ *
+ * The balance figures stay when the API can supply them: "you have earned two hints" is true and
+ * useful even while spending them is not possible.
+ *
+ * Restoring this is deliberately small — put back the confirm flow below and render the returned
+ * hint text. The PRD decision has to come first.
  */
 
 export interface HintPanelProps {
@@ -45,26 +55,7 @@ export function HintPanel({ contestProblemId, problemTitle }: HintPanelProps) {
   );
   const balance = useResource<HintBalance>(load);
 
-  const [confirming, setConfirming] = useState(false);
-  const [taking, setTaking] = useState(false);
-  const [taken, setTaken] = useState<HintBalance | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  const current = taken ?? balance.data;
-
-  const take = useCallback(async () => {
-    setTaking(true);
-    setError(null);
-    try {
-      const next = await contestApi.takeHint(contestProblemId);
-      setTaken(next);
-      setConfirming(false);
-    } catch (caught: unknown) {
-      setError(errorMessageOf(caught));
-    } finally {
-      setTaking(false);
-    }
-  }, [contestProblemId]);
+  const current = balance.data;
 
   if (balance.status === "loading") {
     return (
@@ -79,14 +70,20 @@ export function HintPanel({ contestProblemId, problemTitle }: HintPanelProps) {
   if (current === null) {
     return (
       <section aria-label="Hints" className="rounded border border-ink/15 p-4">
-        <p className="text-ink/70" style={{ fontSize: "var(--text-xs)" }}>
-          {balance.error ?? "Hint balance unavailable."}
+        <h2 className="font-display font-bold" style={{ fontSize: "var(--text-md)" }}>
+          Hints
+        </h2>
+        {/*
+          A statement, not an error. "Hint balance unavailable" reads as a transient fault a
+          student might retry; this is a feature that is not finished, and saying so plainly is
+          the only thing that does not waste their time.
+        */}
+        <p className="mt-2 text-ink/75" style={{ fontSize: "var(--text-xs)" }}>
+          Hints are not available in this contest. Ask an organizer if you are stuck.
         </p>
       </section>
     );
   }
-
-  const canAfford = current.hintsAvailable > 0;
 
   return (
     <section aria-label="Hints" className="rounded border border-ink/15 p-4">
@@ -106,69 +103,17 @@ export function HintPanel({ contestProblemId, problemTitle }: HintPanelProps) {
         problem&rsquo;s score. Solving warmups earns more.
       </p>
 
-      {!canAfford && (
-        <p className="mt-3 text-ink/70" style={{ fontSize: "var(--text-xs)" }}>
-          You have no hints left. Solve another warmup to earn one.
-        </p>
-      )}
+      {/*
+        Where the "Take a hint" button used to be.
 
-      {canAfford && !confirming && (
-        <Button
-          type="button"
-          variant="secondary"
-          className="mt-3"
-          style={{ fontSize: "var(--text-xs)" }}
-          onClick={() => setConfirming(true)}
-        >
-          Take a hint — costs {current.nextHintCost} pts
-        </Button>
-      )}
-
-      {canAfford && confirming && (
-        // Deliberately a second, explicit step. The price is restated, not remembered.
-        <div className="mt-3 rounded border border-panther/40 p-3">
-          <p style={{ fontSize: "var(--text-xs)" }}>
-            Take a hint on <strong>{problemTitle}</strong>? It costs{" "}
-            <span className="numeric font-semibold">{current.nextHintCost}</span> points, and
-            you will have{" "}
-            <span className="numeric font-semibold">{current.hintsAvailable - 1}</span> hint
-            {current.hintsAvailable - 1 === 1 ? "" : "s"} left. This cannot be undone.
-          </p>
-          <div className="mt-3 flex gap-2">
-            <Button
-              type="button"
-              onClick={() => void take()}
-              disabled={taking}
-              style={{ fontSize: "var(--text-xs)" }}
-            >
-              {taking ? "Taking…" : `Yes, spend ${current.nextHintCost} pts`}
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() => setConfirming(false)}
-              disabled={taking}
-              style={{ fontSize: "var(--text-xs)" }}
-            >
-              Cancel
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {taken !== null && (
-        <p className="mt-3 text-ink/75" aria-live="polite" style={{ fontSize: "var(--text-xs)" }}>
-          Hint taken. {/* The contract has no response field carrying the hint text — see the
-                          report. Until it does, there is nothing honest to render here. */}
-          Ask an organizer for the hint text; the platform cannot show it yet.
-        </p>
-      )}
-
-      {error !== null && (
-        <p role="alert" className="mt-3 text-panther" style={{ fontSize: "var(--text-xs)" }}>
-          {error}
-        </p>
-      )}
+        Spending is not offered because there is nothing to hand back: no field in the schema
+        holds hint text (docs/TODO.md T1). Charging 15% of a problem for that is not a degraded
+        feature, it is taking a student's points for nothing.
+      */}
+      <p className="mt-3 text-ink/70" style={{ fontSize: "var(--text-xs)" }}>
+        Hints cannot be taken in this contest yet — ask an organizer if you are stuck. Your earned
+        balance is shown above and is not lost.
+      </p>
     </section>
   );
 }
