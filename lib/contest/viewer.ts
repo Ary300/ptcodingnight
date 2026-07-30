@@ -1,11 +1,6 @@
 import { ForbiddenError } from "@/lib/errors";
-import {
-  SESSION_COOKIE,
-  parseCookieHeader,
-  verifySession,
-  type SessionClaims,
-} from "@/lib/contest/session";
-import { sessionSecret } from "@/lib/contest/env";
+import { SESSION_COOKIE, parseCookieHeader } from "@/lib/contest/session";
+import { loadSession, touchSession, type LoadedSession } from "@/lib/contest/session-store";
 
 /**
  * Who is calling.
@@ -39,34 +34,53 @@ export type Viewer = AnonymousViewer | CompetitorViewer | AdminViewer;
 export const ANONYMOUS: AnonymousViewer = { kind: "anonymous" };
 
 /**
- * Turn verified claims into a viewer.
+ * Turn a loaded session row into a viewer.
  *
- * A COMPETITOR token missing its participant or contest id is treated as anonymous rather
+ * A COMPETITOR session missing its participant or contest id is treated as anonymous rather
  * than as a competitor with holes in it: a half-populated session is exactly the shape a
- * forged one would have.
+ * corrupted or hand-edited row would have, and defaulting to "less access" is the only safe
+ * direction to be wrong in.
+ *
+ * Kept as a pure function so the role mapping is unit-testable without a database.
  */
-export function viewerFromClaims(claims: SessionClaims | null): Viewer {
-  if (claims === null) return ANONYMOUS;
+export function viewerFromSession(session: LoadedSession | null): Viewer {
+  if (session === null) return ANONYMOUS;
 
-  if (claims.role === "ADMIN") {
-    return { kind: "admin", displayName: claims.displayName, sessionId: claims.sid };
+  if (session.role === "ADMIN") {
+    return { kind: "admin", displayName: session.displayName, sessionId: session.id };
   }
 
-  if (claims.participantId === null || claims.contestId === null) return ANONYMOUS;
+  if (session.participantId === null || session.contestId === null) return ANONYMOUS;
 
   return {
     kind: "competitor",
-    participantId: claims.participantId,
-    contestId: claims.contestId,
-    displayName: claims.displayName,
-    sessionId: claims.sid,
+    participantId: session.participantId,
+    contestId: session.contestId,
+    displayName: session.displayName,
+    sessionId: session.id,
   };
 }
 
-export function viewerFromRequest(request: Request, now: Date = new Date()): Viewer {
+/**
+ * Resolve the caller from the request's cookie.
+ *
+ * Async because the session lives in Postgres rather than in the cookie — which is what makes
+ * mid-contest revocation possible. A revoked session is refused on the very next request.
+ */
+export async function viewerFromRequest(
+  request: Request,
+  now: Date = new Date(),
+): Promise<Viewer> {
   const token = parseCookieHeader(request.headers.get("cookie"))[SESSION_COOKIE];
   if (token === undefined) return ANONYMOUS;
-  return viewerFromClaims(verifySession(token, sessionSecret(), { now }));
+
+  const session = await loadSession(token, now);
+  if (session === null) return ANONYMOUS;
+
+  // Bookkeeping only, deliberately not awaited. See touchSession.
+  touchSession(session.id, now);
+
+  return viewerFromSession(session);
 }
 
 export function isAdmin(viewer: Viewer): viewer is AdminViewer {

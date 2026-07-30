@@ -22,7 +22,7 @@ export async function GET(
   return handle(async () => {
     const now = new Date();
     const { id } = await readParams(context.params, SubmissionIdParamsSchema);
-    const viewer = viewerFromRequest(request, now);
+    const viewer = await viewerFromRequest(request, now);
 
     return jsonOk(await getSubmissionView(id, viewer, now), NO_STORE);
   });

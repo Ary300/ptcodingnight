@@ -19,7 +19,7 @@ export async function GET(
   return handleRaw(async () => {
     const now = new Date();
     const { id } = await readParams(context.params, ContestIdParamsSchema);
-    const admin = requireAdmin(viewerFromRequest(request, now));
+    const admin = requireAdmin(await viewerFromRequest(request, now));
 
     const { csv, filename } = await exportStandings(id, admin, now);
 

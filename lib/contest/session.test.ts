@@ -1,125 +1,113 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  SESSION_MAX_AGE_MS,
+  SESSION_COOKIE,
+  clearedSessionCookieOptions,
+  hashSessionToken,
+  newSessionToken,
   parseCookieHeader,
   sessionCookieOptions,
-  signSession,
-  verifySession,
-  type SessionClaims,
+  sessionHashesMatch,
 } from "@/lib/contest/session";
 
 /**
- * The signature check is the whole authorization story, so it is tested as an adversary rather
- * than as a happy path: forged payloads, swapped signatures, borrowed secrets, and stale
- * cookies each have to come back as "anonymous".
+ * The pure half of the session layer.
+ *
+ * The cookie used to BE the session — a signed claims blob verified with no server-side lookup —
+ * and this file used to test that signature as an adversary. It now tests the token and cookie
+ * primitives instead, because the authorization decision moved into Postgres where it can be
+ * revoked mid-contest.
+ *
+ * "A revoked session stops working" is only meaningful against a real database, so it lives in
+ * `tests/e2e/session-revocation.api.spec.ts` rather than here.
  */
 
-const SECRET = "a".repeat(32);
-const NOW = new Date("2026-07-29T18:00:00.000Z");
-
-function claims(overrides: Partial<SessionClaims> = {}): SessionClaims {
-  return {
-    sid: "session-1",
-    role: "COMPETITOR",
-    participantId: "p-1",
-    contestId: "c-1",
-    displayName: "Ada",
-    issuedAtMs: NOW.getTime(),
-    ...overrides,
-  };
-}
-
-describe("signSession / verifySession", () => {
-  it("round-trips claims", () => {
-    const token = signSession(claims(), SECRET);
-    expect(verifySession(token, SECRET, { now: NOW })).toEqual(claims());
+describe("newSessionToken", () => {
+  it("never returns the same token twice", () => {
+    const tokens = new Set(Array.from({ length: 500 }, () => newSessionToken()));
+    expect(tokens.size).toBe(500);
   });
 
-  it("rejects a token signed with a different secret", () => {
-    const token = signSession(claims(), SECRET);
-    expect(verifySession(token, "b".repeat(32), { now: NOW })).toBeNull();
+  it("carries enough entropy that storing only a fast hash is safe", () => {
+    // 32 random bytes in base64url. If this ever shrinks, hashSessionToken's use of plain
+    // SHA-256 rather than a slow KDF stops being justifiable — the safety rests on there being
+    // no dictionary to attack, not on a work factor.
+    const token = newSessionToken();
+    expect(token.length).toBeGreaterThanOrEqual(43);
+    expect(token).toMatch(/^[A-Za-z0-9_-]+$/);
+  });
+});
+
+describe("hashSessionToken", () => {
+  it("is stable for the same token", () => {
+    const token = newSessionToken();
+    expect(hashSessionToken(token)).toBe(hashSessionToken(token));
   });
 
-  it("rejects a payload edited after signing", () => {
-    const token = signSession(claims(), SECRET);
-    const [, mac] = token.split(".");
-    const forged = Buffer.from(
-      JSON.stringify(claims({ role: "ADMIN", participantId: null, contestId: null })),
-      "utf8",
-    ).toString("base64url");
-
-    expect(verifySession(`${forged}.${String(mac)}`, SECRET, { now: NOW })).toBeNull();
+  it("differs for different tokens", () => {
+    expect(hashSessionToken(newSessionToken())).not.toBe(hashSessionToken(newSessionToken()));
   });
 
-  it("rejects a signature borrowed from another token", () => {
-    const mine = signSession(claims(), SECRET);
-    const theirs = signSession(claims({ participantId: "p-2", sid: "session-2" }), SECRET);
-    const [payload] = mine.split(".");
-    const [, mac] = theirs.split(".");
+  it("never returns the token itself", () => {
+    // The point of hashing at rest: a database dump must not yield usable cookies.
+    const token = newSessionToken();
+    expect(hashSessionToken(token)).not.toBe(token);
+    expect(hashSessionToken(token)).not.toContain(token);
+  });
+});
 
-    expect(verifySession(`${String(payload)}.${String(mac)}`, SECRET, { now: NOW })).toBeNull();
+describe("sessionHashesMatch", () => {
+  it("accepts an identical hash and rejects a different one", () => {
+    const a = hashSessionToken("one");
+    expect(sessionHashesMatch(a, hashSessionToken("one"))).toBe(true);
+    expect(sessionHashesMatch(a, hashSessionToken("two"))).toBe(false);
   });
 
-  it.each(["", ".", "notatoken", "a.b.c", "a."])("rejects the malformed token %o", (token) => {
-    expect(verifySession(token, SECRET, { now: NOW })).toBeNull();
-  });
-
-  it("rejects a token whose payload is not the claims shape", () => {
-    const payload = Buffer.from(JSON.stringify({ role: "ADMIN" }), "utf8").toString("base64url");
-    // Sign it properly: the point is that a valid signature over invalid claims still fails.
-    const token = signSession(claims(), SECRET);
-    const [, mac] = token.split(".");
-    expect(verifySession(`${payload}.${String(mac)}`, SECRET, { now: NOW })).toBeNull();
-  });
-
-  it("expires", () => {
-    const token = signSession(claims(), SECRET);
-    const later = new Date(NOW.getTime() + SESSION_MAX_AGE_MS + 1);
-    expect(verifySession(token, SECRET, { now: later })).toBeNull();
-  });
-
-  it("accepts a token right at the edge of its lifetime", () => {
-    const token = signSession(claims(), SECRET);
-    const edge = new Date(NOW.getTime() + SESSION_MAX_AGE_MS);
-    expect(verifySession(token, SECRET, { now: edge })).not.toBeNull();
-  });
-
-  it("rejects a token stamped well into the future", () => {
-    const token = signSession(claims({ issuedAtMs: NOW.getTime() + 600_000 }), SECRET);
-    expect(verifySession(token, SECRET, { now: NOW })).toBeNull();
+  it("returns false rather than throwing on a length mismatch", () => {
+    // timingSafeEqual throws on mismatched lengths, and a throw here would turn a malformed
+    // cookie into a 500 instead of an anonymous viewer.
+    expect(sessionHashesMatch("short", hashSessionToken("x"))).toBe(false);
+    expect(sessionHashesMatch("", "")).toBe(true);
   });
 });
 
 describe("parseCookieHeader", () => {
-  it("returns an empty jar for a missing header", () => {
+  it("reads the session cookie out of a realistic header", () => {
+    const jar = parseCookieHeader(`theme=dark; ${SESSION_COOKIE}=abc-def; other=1`);
+    expect(jar[SESSION_COOKIE]).toBe("abc-def");
+  });
+
+  it("is empty for a missing or blank header", () => {
     expect(parseCookieHeader(null)).toEqual({});
     expect(parseCookieHeader(undefined)).toEqual({});
     expect(parseCookieHeader("")).toEqual({});
   });
 
-  it("parses several cookies and url-decodes values", () => {
-    expect(parseCookieHeader("a=1; b=hello%20world; c=x=y")).toEqual({
-      a: "1",
-      b: "hello world",
-      c: "x=y",
-    });
+  it("ignores malformed segments instead of throwing", () => {
+    const jar = parseCookieHeader("=novalue; ; noequals; good=1");
+    expect(jar.good).toBe("1");
   });
 
-  it("keeps a value with a stray percent verbatim rather than throwing", () => {
-    expect(parseCookieHeader("a=100%")).toEqual({ a: "100%" });
-  });
-
-  it("ignores segments with no name", () => {
-    expect(parseCookieHeader("=novalue; ok=1")).toEqual({ ok: "1" });
+  it("takes a percent-mangled value verbatim rather than failing to decode", () => {
+    // Let the store's lookup reject it; a stray % is not a 500.
+    const jar = parseCookieHeader(`${SESSION_COOKIE}=100%bad`);
+    expect(jar[SESSION_COOKIE]).toBe("100%bad");
   });
 });
 
 describe("sessionCookieOptions", () => {
-  it("is httpOnly and lax so a session cannot be read by script or sent cross-site", () => {
+  it("is httpOnly and lax so script cannot read it and links still work", () => {
     const options = sessionCookieOptions();
     expect(options.httpOnly).toBe(true);
     expect(options.sameSite).toBe("lax");
-    expect(options.maxAge).toBe(SESSION_MAX_AGE_MS / 1000);
+    expect(options.path).toBe("/");
+  });
+
+  it("expresses maxAge in seconds", () => {
+    expect(sessionCookieOptions(60_000).maxAge).toBe(60);
+  });
+
+  it("clears with maxAge 0", () => {
+    expect(clearedSessionCookieOptions().maxAge).toBe(0);
   });
 });

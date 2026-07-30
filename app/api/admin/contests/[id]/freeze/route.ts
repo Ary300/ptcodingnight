@@ -30,7 +30,7 @@ export async function POST(
   return handle(async () => {
     const now = new Date();
     const { id } = await readParams(context.params, ContestIdParamsSchema);
-    const admin = requireAdmin(viewerFromRequest(request, now));
+    const admin = requireAdmin(await viewerFromRequest(request, now));
     const { frozen } = await readJson(request, FreezeRequestSchema);
 
     return jsonOk(await setFrozen(id, frozen, admin, now), NO_STORE);

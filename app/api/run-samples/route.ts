@@ -20,7 +20,7 @@ export const maxDuration = 120;
 export async function POST(request: Request): Promise<NextResponse> {
   return handle(async () => {
     const now = new Date();
-    const viewer = requireCompetitor(viewerFromRequest(request, now));
+    const viewer = requireCompetitor(await viewerFromRequest(request, now));
     const input = await readJson(request, RunSamplesRequestSchema);
 
     const result = await runSamples(input, viewer, now);

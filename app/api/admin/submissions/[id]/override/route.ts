@@ -31,7 +31,7 @@ export async function POST(
   return handle(async () => {
     const now = new Date();
     const { id } = await readParams(context.params, SubmissionIdParamsSchema);
-    const admin = requireAdmin(viewerFromRequest(request, now));
+    const admin = requireAdmin(await viewerFromRequest(request, now));
     const input = await readJson(request, OverrideVerdictRequestSchema);
 
     // The URL is the authority. A body naming a different submission is a mistake worth

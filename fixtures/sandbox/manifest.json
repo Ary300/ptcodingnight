@@ -8,7 +8,13 @@
     "Any fixture printing a line starting with ESCAPED has defeated the sandbox. The suite",
     "greps for that string, because a wrong verdict is a bug but an escape is a breach.",
     "",
-    "If this gate fails, all other work stops (docs/KICKOFF.md Phase 2)."
+    "If this gate fails, all other work stops (docs/KICKOFF.md Phase 2).",
+    "",
+    "Containment is enforced by the CONTAINER FLAGS, which are language-agnostic, so these",
+    "cases are not per-runtime for their own sake. They exist because each runtime reaches",
+    "the kernel by a different path \u2014 raw BSD sockets in C++, Go's own network poller, libuv",
+    "in Node \u2014 and a flag that failed to apply would surface in one of them first. Proving",
+    "the boundary once in Python does not prove the boundary a C++ submission sees."
   ],
   "problem": {
     "timeLimitMs": 4000
@@ -16,52 +22,94 @@
   "cases": [
     {
       "id": "network-egress",
-      "language": "PYTHON",
+      "language": "PYTHON_312",
       "sourceFile": "main.py",
       "expectedVerdict": "RE",
       "why": "--network=none removes the interface entirely; there is nothing to connect to."
     },
     {
       "id": "fork-bomb",
-      "language": "PYTHON",
+      "language": "PYTHON_312",
       "sourceFile": "main.py",
       "expectedVerdict": "RE",
       "why": "--pids-limit caps the process table long before the host notices."
     },
     {
       "id": "memory-bomb-10gb",
-      "language": "PYTHON",
+      "language": "PYTHON_312",
       "sourceFile": "main.py",
       "expectedVerdict": "MLE",
       "why": "--memory with --memory-swap equal means the allocation cannot be swapped out either."
     },
     {
       "id": "read-etc-passwd",
-      "language": "PYTHON",
+      "language": "PYTHON_312",
       "sourceFile": "main.py",
       "expectedVerdict": "WA",
       "why": "Reads the CONTAINER's /etc/passwd, which is inert. The host's must be unreachable."
     },
     {
       "id": "write-outside-tmp",
-      "language": "PYTHON",
+      "language": "PYTHON_312",
       "sourceFile": "main.py",
       "expectedVerdict": "RE",
       "why": "--read-only rootfs plus a read-only /work mount; only the tmpfs is writable."
     },
     {
       "id": "infinite-loop",
-      "language": "PYTHON",
+      "language": "PYTHON_312",
       "sourceFile": "main.py",
       "expectedVerdict": "TLE",
       "why": "The in-container wall-clock kill fires; --cpus keeps it from starving the host."
     },
     {
       "id": "stdout-flood-1gb",
-      "language": "PYTHON",
+      "language": "PYTHON_312",
       "sourceFile": "main.py",
       "expectedVerdict": "WA",
       "why": "Output is capped and the container killed, so the worker cannot be OOMed by a firehose."
+    },
+    {
+      "id": "cpp-network-egress",
+      "language": "CPP_17",
+      "sourceFile": "main.cpp",
+      "expectedVerdict": "RE",
+      "why": "Raw BSD sockets \u2014 the lowest-level reach of any runtime here, so the first to notice if --network=none were not applied."
+    },
+    {
+      "id": "go-network-egress",
+      "language": "GO_123",
+      "sourceFile": "main.go",
+      "expectedVerdict": "RE",
+      "why": "Go's net.Dial. The Go runtime manages its own poller, so its failure path differs from libc's."
+    },
+    {
+      "id": "js-network-egress",
+      "language": "JAVASCRIPT_NODE22",
+      "sourceFile": "main.js",
+      "expectedVerdict": "RE",
+      "why": "Node's net module over libuv, a third distinct path to the same absent interface."
+    },
+    {
+      "id": "cpp-write-outside-tmp",
+      "language": "CPP_17",
+      "sourceFile": "main.cpp",
+      "expectedVerdict": "RE",
+      "why": "--read-only rootfs. Nothing outside the size-capped tmpfs is writable."
+    },
+    {
+      "id": "go-write-outside-tmp",
+      "language": "GO_123",
+      "sourceFile": "main.go",
+      "expectedVerdict": "RE",
+      "why": "Same rootfs guarantee, reached through Go's os package rather than libc."
+    },
+    {
+      "id": "js-write-outside-tmp",
+      "language": "JAVASCRIPT_NODE22",
+      "sourceFile": "main.js",
+      "expectedVerdict": "RE",
+      "why": "Same rootfs guarantee, reached through Node's fs."
     }
   ]
 }

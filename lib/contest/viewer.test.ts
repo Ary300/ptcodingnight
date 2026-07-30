@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { ForbiddenError } from "@/lib/errors";
-import type { SessionClaims } from "@/lib/contest/session";
+import type { LoadedSession } from "@/lib/contest/session-store";
 import {
   ANONYMOUS,
   actorLabel,
@@ -9,32 +9,34 @@ import {
   requireAdmin,
   requireCompetitor,
   requireCompetitorOf,
-  viewerFromClaims,
+  viewerFromSession,
   type Viewer,
 } from "@/lib/contest/viewer";
 
-const competitorClaims: SessionClaims = {
-  sid: "s-1",
+const competitorSession: LoadedSession = {
+  id: "s-1",
   role: "COMPETITOR",
+  method: "JOIN_CODE",
   participantId: "p-1",
   contestId: "c-1",
+  userId: null,
   displayName: "Ada",
-  issuedAtMs: 0,
 };
 
-const adminClaims: SessionClaims = {
-  sid: "s-2",
+const adminSession: LoadedSession = {
+  id: "s-2",
   role: "ADMIN",
+  method: "ADMIN_PASSCODE",
   participantId: null,
   contestId: null,
+  userId: null,
   displayName: "Organizer",
-  issuedAtMs: 0,
 };
 
-const competitor: Viewer = viewerFromClaims(competitorClaims);
-const admin: Viewer = viewerFromClaims(adminClaims);
+const competitor: Viewer = viewerFromSession(competitorSession);
+const admin: Viewer = viewerFromSession(adminSession);
 
-describe("viewerFromClaims", () => {
+describe("viewerFromSession", () => {
   it("maps a competitor session", () => {
     expect(competitor).toEqual({
       kind: "competitor",
@@ -50,12 +52,12 @@ describe("viewerFromClaims", () => {
   });
 
   it("treats a half-populated competitor session as anonymous", () => {
-    expect(viewerFromClaims({ ...competitorClaims, participantId: null })).toEqual(ANONYMOUS);
-    expect(viewerFromClaims({ ...competitorClaims, contestId: null })).toEqual(ANONYMOUS);
+    expect(viewerFromSession({ ...competitorSession, participantId: null })).toEqual(ANONYMOUS);
+    expect(viewerFromSession({ ...competitorSession, contestId: null })).toEqual(ANONYMOUS);
   });
 
   it("treats no session as anonymous", () => {
-    expect(viewerFromClaims(null)).toEqual(ANONYMOUS);
+    expect(viewerFromSession(null)).toEqual(ANONYMOUS);
   });
 });
 

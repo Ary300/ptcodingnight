@@ -114,32 +114,30 @@ five of them, not one.
 
 ---
 
-## T6 — Three of the five startup budgets are estimates, not measurements
+## T6 — Startup budgets are measured, but on the wrong machine *(resolved on this host)*
 
-**Severity: medium.** A budget below real startup fails correct solutions as TLE, which this
-project has already done twice — Python at 1000 ms against a 1006 ms floor (8 of 20 reference
-solutions lost), and Java before the additive budget existed.
+All five budgets are now **measured under churn** rather than estimated:
 
-`RUNTIMES` in `lib/judge/runtimes.ts` is honest about which is which:
+| Runtime | Measured under churn | Budget | Headroom |
+|---|---|---|---|
+| `python312` | 77 – 512 ms | 6000 ms | 11.7× |
+| `jdk21` | 423 – 7837 ms | 20000 ms | 2.6× |
+| `gcc14` | 18 – 605 ms | 4000 ms | 6.6× |
+| `node22` | 314 – 3636 ms | 10000 ms | 2.8× |
+| `go123` | 74 – 845 ms | 4000 ms | 4.7× |
 
-| Runtime | Budget | Basis |
-|---|---|---|
-| `python312` | 6000 ms | **Measured.** 1006–1651 ms quiet, 4327 ms under container churn. |
-| `jdk21` | 20000 ms | **Measured.** 1010–5342 ms, tail past 12 s under the full fixture suite. |
-| `gcc14` | 4000 ms | Estimate. A compiled binary has almost no startup, so this is very likely generous — but "likely" is not "measured". |
-| `node22` | 6000 ms | Estimate, by analogy to Python. Node's startup is in the same class. |
-| `go123` | 4000 ms | Estimate. Same reasoning as `gcc14`. |
+`node22` was raised from 6000 ms, where it had only 1.65× headroom — the thinnest of the five and
+the same shape of margin that failed Python.
 
-All three estimates are *generous* rather than tight, so the failure mode they risk is a slow
-solution passing, not a correct one failing. That is the right direction to be wrong in, and it
-is still worth closing.
+**The measurement understates what the runner sees, and that is deliberate slack, not sloppiness.**
+It times the interpreter directly inside an existing container; a real test also pays for
+`timeout`, a shell, and bind-mount reads and writes, and bind-mount I/O is expensive on Docker
+Desktop specifically. Measuring Python through the full judge path gave 1006–1651 ms where the
+direct method gives 77–512 ms. Every budget is therefore sized as a multiple of the measurement,
+not fitted to it.
 
-The measurement is cheap — the same under-churn method used for Python — but it **must not run
-concurrently with G8 or G13**, because competing container workloads make every timing
-meaningless. That sequencing is the only reason this is still open.
-
-Re-measurement procedure: `docs/HOSTING.md` §6 step 3. It has to happen on the real judge host
-anyway, since every number here is Docker-Desktop-sized.
+**Still open:** every number is Docker-Desktop-sized and will be far too generous on a real judge
+host. Re-measure there — `docs/HOSTING.md` §6 step 3.
 
 ---
 

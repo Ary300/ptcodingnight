@@ -21,7 +21,7 @@ export async function GET(
   return handle(async () => {
     const now = new Date();
     const { id, slug } = await readParams(context.params, ProblemParamsSchema);
-    const viewer = viewerFromRequest(request, now);
+    const viewer = await viewerFromRequest(request, now);
 
     return jsonOk(await getProblemDetail(id, slug, viewer, now), NO_STORE);
   });

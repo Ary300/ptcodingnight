@@ -21,7 +21,7 @@ export const dynamic = "force-dynamic";
 export async function POST(request: Request): Promise<NextResponse> {
   return handle(async () => {
     const now = new Date();
-    const viewer = requireCompetitor(viewerFromRequest(request, now));
+    const viewer = requireCompetitor(await viewerFromRequest(request, now));
     const input = await readJson(request, SubmitRequestSchema);
 
     return jsonOk(await createSubmission(input, viewer, now), { ...NO_STORE, status: 202 });
@@ -31,7 +31,7 @@ export async function POST(request: Request): Promise<NextResponse> {
 export async function GET(request: Request): Promise<NextResponse> {
   return handle(async () => {
     const now = new Date();
-    const viewer = requireCompetitor(viewerFromRequest(request, now));
+    const viewer = requireCompetitor(await viewerFromRequest(request, now));
 
     return jsonOk(await listMySubmissions(viewer, now), NO_STORE);
   });

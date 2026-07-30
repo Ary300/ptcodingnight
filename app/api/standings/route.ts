@@ -45,7 +45,7 @@ export async function GET(request: Request): Promise<NextResponse> {
     const now = new Date();
     const requested = new URL(request.url).searchParams.get("contestId");
     const contestId = requested !== null && requested.length > 0 ? requested : await currentContestId();
-    const viewer = viewerFromRequest(request, now);
+    const viewer = await viewerFromRequest(request, now);
 
     return jsonOk(await getStandings(contestId, viewer, now), NO_STORE);
   });

@@ -22,7 +22,7 @@ export async function GET(
   return handleRaw(async () => {
     const now = new Date();
     const { id } = await readParams(context.params, ContestIdParamsSchema);
-    const viewer = viewerFromRequest(request, now);
+    const viewer = await viewerFromRequest(request, now);
 
     return new Response(openContestStream(id, viewer, request.signal), { headers: SSE_HEADERS });
   });

@@ -1,7 +1,6 @@
 import type { NextResponse } from "next/server";
 
 import { JoinRequestSchema, JoinResponseSchema } from "@/lib/schemas/api";
-import { sessionSecret } from "@/lib/contest/env";
 import {
   ContestIdParamsSchema,
   NO_STORE,
@@ -14,10 +13,9 @@ import { joinContest } from "@/lib/contest/join";
 import { clientKey, joinLimiter } from "@/lib/contest/rate-limit";
 import {
   SESSION_COOKIE,
-  newSessionId,
   sessionCookieOptions,
-  signSession,
 } from "@/lib/contest/session";
+import { issueSession } from "@/lib/contest/session-store";
 
 /**
  * `POST /api/contests/{id}/join` — join with a code and a display name (docs/PRD.md §9.1).
@@ -46,22 +44,19 @@ export async function POST(
     const input = await readJson(request, JoinRequestSchema);
     const joined = await joinContest(input, id, now);
 
-    const response = jsonOk(JoinResponseSchema.parse(joined), NO_STORE);
-    response.cookies.set(
-      SESSION_COOKIE,
-      signSession(
-        {
-          sid: newSessionId(),
-          role: "COMPETITOR",
-          participantId: joined.participantId,
-          contestId: joined.contestId,
-          displayName: joined.displayName,
-          issuedAtMs: now.getTime(),
-        },
-        sessionSecret(),
-      ),
-      sessionCookieOptions(),
+    const session = await issueSession(
+      {
+        role: "COMPETITOR",
+        method: "JOIN_CODE",
+        participantId: joined.participantId,
+        contestId: joined.contestId,
+        displayName: joined.displayName,
+      },
+      now,
     );
+
+    const response = jsonOk(JoinResponseSchema.parse(joined), NO_STORE);
+    response.cookies.set(SESSION_COOKIE, session.token, sessionCookieOptions());
     return response;
   });
 }

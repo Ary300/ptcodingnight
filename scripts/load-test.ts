@@ -9,7 +9,8 @@ import IORedis from "ioredis";
 
 import { JUDGE_QUEUE_NAME } from "@/lib/judge/queue";
 import { parseServerEnv } from "@/lib/schemas/env";
-import { SESSION_COOKIE, newSessionId, signSession } from "@/lib/contest/session";
+import { SESSION_COOKIE } from "@/lib/contest/session";
+import { issueSession } from "@/lib/contest/session-store";
 import { SubmissionViewSchema, apiResponseSchema } from "@/lib/schemas/api";
 
 import {
@@ -156,24 +157,30 @@ function assertSharedSessionSecret(): string {
 
 // --- the burst -------------------------------------------------------------
 
-function cookieFor(
-  secret: string,
+/**
+ * Mint a real session row per synthetic competitor.
+ *
+ * Async now that sessions live in Postgres. This is a real cost G8 should carry rather than
+ * bypass: the night's 40 students each have a session row and every request they make does the
+ * same lookup, so a load test that faked its way past that would be measuring a different
+ * system than the one being shipped.
+ */
+async function cookieFor(
   seeded: SeededContest,
   participantId: string,
   displayName: string,
-): string {
-  const token = signSession(
+): Promise<string> {
+  const session = await issueSession(
     {
-      sid: newSessionId(),
       role: "COMPETITOR",
+      method: "JOIN_CODE",
       participantId,
       contestId: seeded.contestId,
       displayName,
-      issuedAtMs: Date.now(),
     },
-    secret,
+    new Date(),
   );
-  return `${SESSION_COOKIE}=${token}`;
+  return `${SESSION_COOKIE}=${session.token}`;
 }
 
 const SubmissionEnvelope = apiResponseSchema(SubmissionViewSchema);
@@ -319,18 +326,31 @@ async function main(): Promise<void> {
     console.log(`  problem           : ${problem.slug} (${problem.contestProblemId})`);
     console.log("");
 
+    // --- sessions, minted BEFORE the clock starts --------------------------
+    // Sessions live in Postgres now, so minting 40 of them is 40 INSERTs. On the night those
+    // happen minutes earlier as students join, so charging them to verdict latency would
+    // measure a burst that never happens. What G8 must carry is the per-request session
+    // LOOKUP, and it does — every request below goes through it.
+    const cookies = await Promise.all(
+      names.map((participant) => {
+        const participantId = seeded.rivalIds.get(participant);
+        if (participantId === undefined) throw new Error(`participant ${participant} was not seeded`);
+        return cookieFor(seeded, participantId, participant);
+      }),
+    );
+
     // --- burst ------------------------------------------------------------
     const deadline = Date.now() + OVERALL_DEADLINE_MS;
     const startedAt = Date.now();
 
     const samples = await Promise.all(
       names.map((participant, index) => {
-        const participantId = seeded.rivalIds.get(participant);
-        if (participantId === undefined) throw new Error(`participant ${participant} was not seeded`);
+        const cookie = cookies[index];
+        if (cookie === undefined) throw new Error(`no session minted for ${participant}`);
         return submitAndWait(
           index,
           participant,
-          cookieFor(secret, seeded, participantId, participant),
+          cookie,
           problem.contestProblemId,
           sourceCode,
           deadline,

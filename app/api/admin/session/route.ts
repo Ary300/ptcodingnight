@@ -1,15 +1,15 @@
 import type { NextResponse } from "next/server";
 
 import { AdminLoginSchema, authenticateAdmin } from "@/lib/contest/admin";
-import { sessionSecret } from "@/lib/contest/env";
 import { NO_STORE, handle, jsonOk, readJson } from "@/lib/contest/http";
 import { clientKey } from "@/lib/contest/rate-limit";
 import {
   SESSION_COOKIE,
-  newSessionId,
+  clearedSessionCookieOptions,
+  parseCookieHeader,
   sessionCookieOptions,
-  signSession,
 } from "@/lib/contest/session";
+import { issueSession, revokeSessionByToken } from "@/lib/contest/session-store";
 
 /**
  * `POST /api/admin/session` — organizer sign-in; `DELETE` — sign-out.
@@ -30,30 +30,29 @@ export async function POST(request: Request): Promise<NextResponse> {
 
     authenticateAdmin(input, clientKey(request), now);
 
-    const response = jsonOk({ role: "ADMIN" as const }, NO_STORE);
-    response.cookies.set(
-      SESSION_COOKIE,
-      signSession(
-        {
-          sid: newSessionId(),
-          role: "ADMIN",
-          participantId: null,
-          contestId: null,
-          displayName: "Organizer",
-          issuedAtMs: now.getTime(),
-        },
-        sessionSecret(),
-      ),
-      sessionCookieOptions(),
+    // ADMIN_PASSCODE: the night's fallback, and the path that must work with no internet.
+    const session = await issueSession(
+      { role: "ADMIN", method: "ADMIN_PASSCODE", displayName: "Organizer" },
+      now,
     );
+
+    const response = jsonOk({ role: "ADMIN" as const }, NO_STORE);
+    response.cookies.set(SESSION_COOKIE, session.token, sessionCookieOptions());
     return response;
   });
 }
 
-export async function DELETE(): Promise<NextResponse> {
+export async function DELETE(request: Request): Promise<NextResponse> {
   return handle(async () => {
+    // Sign-out now REVOKES the row rather than only clearing the cookie. Clearing the cookie
+    // alone left a token that still authenticated if anyone had captured it.
+    const token = parseCookieHeader(request.headers.get("cookie"))[SESSION_COOKIE];
+    if (token !== undefined) {
+      await revokeSessionByToken(token, "signed out", new Date());
+    }
+
     const response = jsonOk({ role: null }, NO_STORE);
-    response.cookies.set(SESSION_COOKIE, "", { ...sessionCookieOptions(), maxAge: 0 });
+    response.cookies.set(SESSION_COOKIE, "", clearedSessionCookieOptions());
     return response;
   });
 }

@@ -26,6 +26,22 @@ enum Role {
   ADMIN
 }
 
+/// How a session was established.
+///
+/// Recorded per session so "who was signed in, and how" is answerable after the fact, and so
+/// the "Google is never the only way in" rule is auditable rather than merely intended.
+enum AuthMethod {
+  /// Competitor typed a contest join code. The primary competitor path; needs no internet.
+  JOIN_CODE
+  /// Organizer typed the shared passcode from the environment. The night's fallback.
+  ADMIN_PASSCODE
+  /// Organizer signed in with an admin-issued email + password held in User.passwordHash.
+  ADMIN_PASSWORD
+  /// Optional convenience, and ONLY ever a second way into an account that already has a
+  /// local credential. Requires internet, so it can never be the path used on the night.
+  GOOGLE
+}
+
 enum ContestState {
   DRAFT
   SCHEDULED
@@ -106,16 +122,75 @@ enum PastStatus {
 // ---------------------------------------------------------------------------
 
 model User {
-  id          String   @id @default(cuid())
-  email       String?  @unique
+  id          String    @id @default(cuid())
+  email       String?   @unique
   displayName String
-  role        Role     @default(COMPETITOR)
+  role        Role      @default(COMPETITOR)
   gradYear    Int?
-  createdAt   DateTime @default(now())
+  createdAt   DateTime  @default(now())
+  disabledAt  DateTime?
+
+  /// Scrypt hash of an admin-issued password. **Required, and that is the enforcement.**
+  ///
+  /// An account with no local credential would be reachable only through Google, which needs
+  /// internet — and PRD §10 guarantees the contest room has none. Rather than checking that
+  /// invariant in application code where a future code path could forget it, the column is NOT
+  /// NULL: a Google-only account is unrepresentable in this schema.
+  ///
+  /// The Google sign-in path therefore never INSERTs a User. It only ever links to one that
+  /// already exists. See lib/contest/google.ts.
+  passwordHash String
+
+  /// Google's stable subject claim (`sub`), if this account has been linked. Never an email:
+  /// emails get reassigned, `sub` does not.
+  googleSub String? @unique
 
   participants Participant[]
+  sessions     Session[]
 
   @@index([role])
+}
+
+/// A server-side session. **The cookie is a pointer, not a credential.**
+///
+/// Previously the cookie WAS the session: a signed claims blob with no server-side record, so
+/// there was no way to revoke one before it expired and no way to answer "who is signed in".
+/// Both matter mid-contest — an organizer must be able to cut off a session that is being
+/// misused while the round is still running.
+///
+/// Rows survive a web or worker restart because they are in Postgres, which is the other half
+/// of the requirement: a redeploy mid-contest must not sign 40 students out.
+model Session {
+  id String @id @default(cuid())
+
+  /// SHA-256 of the cookie token, never the token. A database dump therefore yields no usable
+  /// sessions — the same reason passwords are not stored in the clear.
+  tokenHash String @unique
+
+  role          Role
+  method        AuthMethod
+  /// Set for a competitor session; null for an organizer.
+  participantId String?
+  contestId     String?
+  /// Set when the session belongs to a User account (organizer sign-in). Null for join-by-code,
+  /// which deliberately has no account behind it.
+  userId        String?
+  displayName   String
+
+  createdAt     DateTime  @default(now())
+  lastSeenAt    DateTime  @default(now())
+  expiresAt     DateTime
+  /// Non-null means revoked. Kept rather than deleted so the audit trail survives the
+  /// revocation, and so "why am I signed out" has an answer.
+  revokedAt     DateTime?
+  revokedReason String?
+
+  participant Participant? @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  user        User?        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([participantId])
+  @@index([userId])
+  @@index([expiresAt])
 }
 
 // ---------------------------------------------------------------------------
@@ -195,8 +270,8 @@ model Problem {
   referenceSolution String?
   /// Notes the HackerRank inspiration for an imported title. Titles and history only.
   originAttribution String?
-  isGroupProblem    Boolean   @default(false)
-  tags              String[]  @default([])
+  isGroupProblem    Boolean  @default(false)
+  tags              String[] @default([])
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -238,7 +313,7 @@ model TestCase {
 /// used in both divisions at different difficulties lives as two rows over one Problem
 /// (docs/DECISIONS.md D2).
 model ContestProblem {
-  id         String  @id @default(cuid())
+  id         String    @id @default(cuid())
   contestId  String
   problemId  String
   divisionId String?
@@ -264,15 +339,15 @@ model ContestProblem {
 // ---------------------------------------------------------------------------
 
 model Participant {
-  id         String  @id @default(cuid())
-  contestId  String
+  id          String  @id @default(cuid())
+  contestId   String
   /// Null when the participant joined by code with a display name only — the fallback
   /// path that must work when Google Workspace is unavailable (PRD §4).
-  userId     String?
+  userId      String?
   displayName String
-  divisionId String?
+  divisionId  String?
   /// Reserved. Team/pair programming is out of scope for v1 (PRD §13); no Team model yet.
-  teamId     String?
+  teamId      String?
 
   joinedAt DateTime @default(now())
 
@@ -283,6 +358,7 @@ model Participant {
   submissions Submission[]
   hintGrants  HintGrant[]
   standings   Standing[]
+  sessions    Session[]
 
   @@unique([contestId, displayName])
   @@index([contestId])
@@ -304,13 +380,13 @@ model Submission {
   sourceCode       String
   submittedAt      DateTime @default(now())
 
-  verdict   Verdict?
+  verdict     Verdict?
   /// Points awarded by the judge for this submission in isolation. The participant's
   /// score for a problem is the BEST across their submissions, computed in lib/scoring/.
-  score     Int      @default(0)
-  runtimeMs Int?
-  memoryKb  Int?
-  judgedAt  DateTime?
+  score       Int       @default(0)
+  runtimeMs   Int?
+  memoryKb    Int?
+  judgedAt    DateTime?
   /// Pointer to the structured judge log retained for dispute resolution (PRD §10).
   judgeLogRef String?
 
@@ -373,15 +449,15 @@ model HintGrant {
 /// HintGrant through lib/scoring/. Truncating this table must never lose information. Do
 /// not read it in a context that requires correctness over speed.
 model Standing {
-  id            String    @id @default(cuid())
-  participantId String
-  divisionId    String
-  score         Int
-  penalty       Int
+  id             String    @id @default(cuid())
+  participantId  String
+  divisionId     String
+  score          Int
+  penalty        Int
   lastAcceptedAt DateTime?
-  rank          Int
+  rank           Int
   /// The scoring input this row was computed from, for staleness detection.
-  computedAt    DateTime  @default(now())
+  computedAt     DateTime  @default(now())
 
   participant Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
   division    Division    @relation(fields: [divisionId], references: [id], onDelete: Cascade)

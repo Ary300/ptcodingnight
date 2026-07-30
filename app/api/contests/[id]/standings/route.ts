@@ -23,7 +23,7 @@ export async function GET(
   return handle(async () => {
     const now = new Date();
     const { id } = await readParams(context.params, ContestIdParamsSchema);
-    const viewer = viewerFromRequest(request, now);
+    const viewer = await viewerFromRequest(request, now);
 
     return jsonOk(await getStandings(id, viewer, now), NO_STORE);
   });

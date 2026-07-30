@@ -1,112 +1,68 @@
-import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
-
-import { z } from "zod";
+import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 
 /**
- * Session cookies.
+ * Session tokens.
  *
- * The whole authorization story rests on this file, so it is deliberately small and pure:
- * claims in, signed string out, and nothing that touches a database or a clock it was not
- * handed. Everything here is unit-tested, because the alternative to a tested signature check
- * is a spectator who reads a `participantId` off the projector leaderboard, pastes it into a
- * cookie, and reads somebody else's submissions (docs/PRD.md §4).
+ * **The cookie is a pointer, not a credential.** It carries an opaque random token; the session
+ * itself lives in Postgres (`Session` in `prisma/schema.prisma`). This file holds only the pure
+ * parts — minting a token, hashing it, cookie attributes — so authorization stays testable as
+ * plain functions. The database half is `lib/contest/session-store.ts`.
  *
- * Format: `base64url(claimsJson).base64url(hmacSha256)`. The MAC covers the encoded payload
- * verbatim, so key order and whitespace inside the JSON cannot change the signature.
+ * ## Why this is not a signed claims blob any more
+ *
+ * It used to be: `base64url(claims).base64url(hmac)`, verified with no server-side lookup. That
+ * is a legitimate design and it is faster, but it cannot do two things this contest needs:
+ *
+ *  1. **Revoke a session mid-contest.** A signed token is valid until it expires, by
+ *     construction. There is no way to cut off a session that is being misused while the round
+ *     is still running, which is precisely when it matters.
+ *  2. **Answer "who is signed in".** Useful for an organizer, and impossible without records.
+ *
+ * A server-side session costs one indexed primary-key lookup per request against a Postgres on
+ * localhost. That is the right trade for a contest platform.
+ *
+ * ## Why the token is hashed at rest
+ *
+ * The database stores SHA-256 of the token, never the token. A database dump therefore yields no
+ * usable sessions — the same reason passwords are not stored in the clear. Plain SHA-256 rather
+ * than a slow KDF is correct here and would not be for a password: the token is 256 bits of
+ * `randomBytes`, so there is no dictionary to attack and nothing for a work factor to buy.
  */
 
 export const SESSION_COOKIE = "ptcn_session";
 
-/** A contest night is a few hours; twelve gives slack without leaving a cookie alive for days. */
+/** A contest night is a few hours; twelve gives slack without leaving a session alive for days. */
 export const SESSION_MAX_AGE_MS = 12 * 60 * 60 * 1000;
 
 /**
- * Tolerance for a cookie stamped slightly in the future. A token minted more than this ahead
- * of now is refused rather than trusted: a far-future `issuedAtMs` is how an attacker would
- * try to mint a session that never expires.
+ * 32 bytes = 256 bits of entropy, which is what makes storing only a fast hash safe: guessing a
+ * token is infeasible, so there is nothing for a KDF's work factor to protect.
  */
-const CLOCK_SKEW_MS = 60_000;
+const TOKEN_BYTES = 32;
 
-export const SessionRoleSchema = z.enum(["COMPETITOR", "ADMIN"]);
-export type SessionRole = z.infer<typeof SessionRoleSchema>;
-
-export const SessionClaimsSchema = z.object({
-  /** Random per-session id. Gives the audit log something to name that is not a secret. */
-  sid: z.string().min(1),
-  role: SessionRoleSchema,
-  /** Null for an admin session: organizers are not participants. */
-  participantId: z.string().min(1).nullable(),
-  contestId: z.string().min(1).nullable(),
-  displayName: z.string().min(1).max(64),
-  issuedAtMs: z.number().int().nonnegative(),
-});
-export type SessionClaims = z.infer<typeof SessionClaimsSchema>;
-
-export function newSessionId(): string {
-  return randomUUID();
+/** Mint a fresh cookie token. Returned to the caller once and never recoverable from the row. */
+export function newSessionToken(): string {
+  return randomBytes(TOKEN_BYTES).toString("base64url");
 }
 
-function macFor(payload: string, secret: string): string {
-  return createHmac("sha256", secret).update(payload).digest("base64url");
-}
-
-export function signSession(claims: SessionClaims, secret: string): string {
-  const payload = Buffer.from(JSON.stringify(claims), "utf8").toString("base64url");
-  return `${payload}.${macFor(payload, secret)}`;
-}
-
-export interface VerifyOptions {
-  readonly now?: Date;
-  readonly maxAgeMs?: number;
+/** What goes in `Session.tokenHash`. */
+export function hashSessionToken(token: string): string {
+  return createHash("sha256").update(token, "utf8").digest("base64url");
 }
 
 /**
- * Verify and decode a session token. Returns null for anything that is not a currently valid,
- * correctly signed session — a bad MAC, a mangled payload, unknown claims, or an expired one.
+ * Constant-time comparison of two token hashes.
  *
- * Null rather than a thrown error on purpose: at the call site "no valid session" and "no
- * cookie at all" are the same situation, and both mean anonymous.
+ * Lookups go through the unique index on `tokenHash` rather than through this, so it exists for
+ * the places that compare a hash they already hold. Length is checked first because
+ * `timingSafeEqual` throws on a mismatch, and a thrown error here would turn a malformed cookie
+ * into a 500.
  */
-export function verifySession(
-  token: string,
-  secret: string,
-  options?: VerifyOptions,
-): SessionClaims | null {
-  const parts = token.split(".");
-  if (parts.length !== 2) return null;
-
-  const [payload, mac] = parts;
-  if (payload === undefined || mac === undefined || payload === "" || mac === "") return null;
-
-  const expected = Buffer.from(macFor(payload, secret), "utf8");
-  const provided = Buffer.from(mac, "utf8");
-  // Length check first: timingSafeEqual throws on a length mismatch, and a thrown error here
-  // would turn a malformed cookie into a 500.
-  if (expected.length !== provided.length) return null;
-  if (!timingSafeEqual(expected, provided)) return null;
-
-  const decoded = decodePayload(payload);
-  if (decoded === null) return null;
-
-  const parsed = SessionClaimsSchema.safeParse(decoded);
-  if (!parsed.success) return null;
-
-  const now = options?.now?.getTime() ?? Date.now();
-  const maxAgeMs = options?.maxAgeMs ?? SESSION_MAX_AGE_MS;
-  const age = now - parsed.data.issuedAtMs;
-  if (age > maxAgeMs) return null;
-  if (age < -CLOCK_SKEW_MS) return null;
-
-  return parsed.data;
-}
-
-/** A payload that is not base64url-encoded JSON is a malformed cookie, not an error worth raising. */
-function decodePayload(payload: string): unknown {
-  try {
-    return JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as unknown;
-  } catch {
-    return null;
-  }
+export function sessionHashesMatch(a: string, b: string): boolean {
+  const left = Buffer.from(a, "utf8");
+  const right = Buffer.from(b, "utf8");
+  if (left.length !== right.length) return false;
+  return timingSafeEqual(left, right);
 }
 
 /**
@@ -134,7 +90,7 @@ function safeDecode(value: string): string {
     return decodeURIComponent(value);
   } catch {
     // A cookie with a stray `%` is not a decoding failure worth raising; take it verbatim and
-    // let signature verification reject it.
+    // let the store's lookup reject it.
     return value;
   }
 }
@@ -163,4 +119,9 @@ export function sessionCookieOptions(maxAgeMs: number = SESSION_MAX_AGE_MS): Ses
     maxAge: Math.floor(maxAgeMs / 1000),
     secure: false,
   };
+}
+
+/** Attributes for clearing the cookie on sign-out. */
+export function clearedSessionCookieOptions(): SessionCookieOptions & { maxAge: 0 } {
+  return { ...sessionCookieOptions(), maxAge: 0 };
 }
