@@ -26,6 +26,13 @@ export const AUDIT_ACTIONS = {
   contestUnfreeze: "contest.unfreeze",
   participantJoin: "participant.join",
   standingsExport: "standings.export",
+  /// Problem-set assignment. The `after` value carries the SEED, not the result: the seed is what
+  /// makes the assignment re-derivable, and a re-assignment overwrites Contest.setAssignmentSeed
+  /// so without it the previous assignment would become unexplainable.
+  setAssignment: "contest.assign_sets",
+  setReassignment: "contest.reassign_sets",
+  sideActivity: "team.side_activity",
+  sessionRevoked: "session.revoked",
 } as const;
 
 export interface AuditEntry {
