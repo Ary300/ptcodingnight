@@ -7,6 +7,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import type { JudgeJob, JudgeResult, Verdict } from "@/lib/schemas/judge";
 import { isDockerAvailable, sweepJudgeContainers } from "@/worker/docker";
+import { VARIANTS } from "@/lib/judge/runtimes";
 import { judge } from "@/worker/runner";
 
 /**
@@ -104,9 +105,23 @@ describe("G5 hostile submission containment", () => {
     await sweepJudgeContainers();
   }, 180_000);
 
-  it("covers every hostile scenario named in PRD §7.3", () => {
-    expect(manifest.cases).toHaveLength(7);
-    expect(manifest.cases.map((c) => c.id).sort()).toEqual([
+  it("covers every hostile scenario named in PRD §7.4", () => {
+    // Asserted as SCENARIOS present, not as an exact id list.
+    //
+    // Fixtures are named `[<runtime>-]<scenario>`, because containment is enforced by the container
+    // flags — which are language-agnostic — while each runtime reaches the kernel by a different
+    // path: raw BSD sockets in C++, Go's own network poller, libuv in Node. An exact-id assertion
+    // made adding a per-runtime variant look like a failure, which is backwards: more coverage of
+    // the same scenario is the thing this suite wants.
+    const RUNTIME_PREFIXES = ["cpp-", "go-", "js-", "py-", "java-"];
+    const scenarioOf = (id: string): string => {
+      const prefix = RUNTIME_PREFIXES.find((p) => id.startsWith(p));
+      return prefix === undefined ? id : id.slice(prefix.length);
+    };
+
+    const scenarios = new Set(manifest.cases.map((c) => scenarioOf(c.id)));
+
+    expect([...scenarios].sort()).toEqual([
       "fork-bomb",
       "infinite-loop",
       "memory-bomb-10gb",
@@ -115,6 +130,13 @@ describe("G5 hostile submission containment", () => {
       "stdout-flood-1gb",
       "write-outside-tmp",
     ]);
+  });
+
+  it("probes the kernel boundary from more than one runtime", () => {
+    // Proving the boundary once in Python does not prove the boundary a C++ submission sees. The
+    // flags are the same; the syscall path is not.
+    const runtimes = new Set(manifest.cases.map((c) => VARIANTS[c.language].runtime));
+    expect(runtimes.size).toBeGreaterThanOrEqual(4);
   });
 
   for (const entry of manifest.cases) {
