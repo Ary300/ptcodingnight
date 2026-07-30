@@ -19,10 +19,11 @@ The application exists. `app/`, `lib/`, `worker/`, `prisma/`, `fixtures/`, `comp
 | G1 typecheck, G2 lint, G3 unit | PASS | 292 unit tests |
 | G4 judge fixtures | PASS | 57/57 across all five runtimes |
 | G5 sandbox | PASS | 17/17, 13 hostile fixtures across four runtimes |
-| G6 golden scoring | PASS | includes the team formula |
-| G7 E2E, G9 a11y | **stale** | written against individual scoring; need rewriting for teams |
-| G8 load | **FAIL, and it is a hardware answer** | p95 110,767 ms against a 10,000 ms target — 11×. See `docs/HOSTING.md`; the threshold was never lowered |
-| G13 problem content | needs a re-run | after the registry rewrite |
+| G6 golden scoring | PASS | includes the team formula and its variants |
+| G7 E2E | PASS | 77/77, rewritten for teams; covers both sign-in paths |
+| G9 a11y | **stale** | points at the individual leaderboard, which teams displaced |
+| G8 load | **FAIL, and it is a hardware answer** | p95 283,436 ms against 10,000 ms — 28× at host load 32, 11× at load ~8. Correctness is fine: 40/40 AC, zero IE, zero dropped. See `docs/HOSTING.md` §3; the threshold was never lowered |
+| G13 problem content | PASS | 20/20 references, 297 test cases, 0 containers leaked |
 
 **Docker is running and all five runtime images are built**, including `ptcn-go:1.23`, which is
 built locally rather than pulled. Run `scripts/build-judge-images.sh --verify` on any new host.

@@ -17,6 +17,7 @@ import {
   closeTestDb,
   liveProblem,
   repoRoot,
+  pinParticipantToProblemSet,
   seedE2EContest,
   type SeededContest,
 } from "../tests/e2e/helpers/seed";
@@ -312,6 +313,23 @@ async function main(): Promise<void> {
       extraParticipants: names.map((displayName) => ({ displayName, divisionKey: DIVISION_KEY })),
     });
     const problem = liveProblem(seeded);
+
+    // Pin every synthetic competitor onto the set that HOLDS this problem.
+    //
+    // Sets are randomly assigned, so without this the guard correctly refuses most of the burst and
+    // G8 reports "40 of 40 never accepted" — which is a broken measurement, not a latency result. It
+    // did exactly that on the first run after sets landed.
+    //
+    // This is setup, not a shortcut: on the night every student submits to a problem in their own
+    // set, so pinning reproduces the real condition rather than bypassing a check. Set visibility is
+    // gated by G7 (tests/e2e/team-scoring.api.spec.ts), not by G8.
+    await Promise.all(
+      names.map((participant) => {
+        const participantId = seeded.rivalIds.get(participant);
+        if (participantId === undefined) throw new Error(`participant ${participant} was not seeded`);
+        return pinParticipantToProblemSet(participantId, problem.contestProblemId);
+      }),
+    );
     const sourceCode = readFileSync(
       path.join(repoRoot(), "fixtures", "load", "burst-solution.py"),
       "utf8",

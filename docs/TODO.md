@@ -191,10 +191,13 @@ Missing:
 ## T9 — G7 and G9 are stale, and G5 needs a re-run
 
 - **G5 — resolved. 17/17 PASS**, 13 hostile fixtures across four runtimes.
-- **G7** — every spec assumes individual scoring and a single problem list. They need rewriting for
-  teams, and per the instruction they must cover **both** the join-code and the credentialed sign-in
-  paths rather than dropping either.
-- **G9** — a11y specs point at the individual leaderboard, which is being replaced.
+- **G7 — resolved. 77/77 PASS.** Rewritten for teams, with new suites for team scoring, set
+  enforcement, and both sign-in paths. Running them found three real defects rather than confirming
+  the specs: the worker's image overrides were keyed to nothing, the projector rendered no heading in
+  any failure state, and two suites assumed a set assignment they never asked for.
+- **G9 — still stale.** The a11y specs point at the individual leaderboard, which teams displaced on
+  `/projector`. The new `TeamStandingsBoard` has had no axe pass at all, and it is the screen the
+  whole room reads — so this is the most consequential remaining gap in the list.
 
 ---
 

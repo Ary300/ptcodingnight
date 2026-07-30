@@ -4,9 +4,14 @@ Written to support one decision: **what hardware the judge runs on**. Every numb
 measured on the build machine, and §6 tells you how to re-measure on a candidate host in about
 ten minutes so you are not taking these figures on faith.
 
-Short version: **the build laptop misses the throughput target by 11×, and the cause is Docker
-Desktop's VM, not the code.** A modest Linux box with native Docker should clear it. Read §5
-before buying or borrowing anything.
+Short version: **the build laptop misses the throughput target by 11× to 28×, the cause is Docker
+Desktop's VM plus whatever else the machine is doing, and it is not the code.** The range is not
+imprecision — it is the finding. The same code measured 11× at host load ~8 and 28× at load 32, so
+the number depends on what else is running. A modest *dedicated* Linux box with native Docker should
+clear it. Read §5 before buying or borrowing anything.
+
+Correctness is not the problem: the most recent runs are 40/40 accepted, 40/40 `AC`, zero `IE`, zero
+dropped jobs. It is only latency.
 
 ---
 
@@ -34,7 +39,7 @@ costs two: one to build, one to run. Inside them:
 
 | Step | Cost on the build machine |
 |---|---|
-| Container creation | **2,400 – 15,600 ms** — measured, 6.5× spread |
+| Container creation | **2,400 – 15,600 ms** at host load ~8; **7,300 – 16,000 ms** at load 32 — measured, and the floor moves with host load |
 | Compile / syntax check | Python ~300 ms · Java ~3,000 ms (cold `javac`) · C++ ~2,000 ms · Go 2,500 – 11,800 ms *(warm cache; 65,800 ms cold — see §6 step 2)* |
 | Each test case | Python 62 – 154 ms · Java 480 – 667 ms · C/C++ 10 – 250 ms · Go 27 – 204 ms |
 | **Total, 3-test Python problem** | **~7,000 – 9,000 ms**, of which ~90% is container creation |
@@ -76,15 +81,16 @@ burst                     40 submissions  =  40 containers
 worker concurrency         4
 sequential slots          40 / 4          =  10
 therefore, per container   10 s / 10 slots =  1.0 s   to hit a 10 s p95
-measured per container    111.6 s * 4 / 40 = 11.2 s
+measured per container    111.6 s * 4 / 40 = 11.2 s   at host load ~8
+                          283.4 s * 4 / 40 = 28.3 s   at host load 32
                                              ------
-shortfall                                     11×
+shortfall                                     11x to 28x
 ```
 
-Put another way: **each container has a one-second budget and currently takes eleven.**
-Container creation alone is 2.4–15.6 s, so it exceeds the entire budget before any code runs.
-No amount of tuning the judge closes an 11× gap when one unavoidable step is 2–15× the target
-on its own.
+Put another way: **each container has a one-second budget and takes eleven to twenty-eight.**
+Container creation alone is 2.4–16 s depending on load, so it exceeds the entire budget before any
+code runs. No amount of tuning the judge closes that gap when one unavoidable step is 2–16× the
+target on its own.
 
 ### Measured G8 progression on this machine
 
@@ -96,8 +102,37 @@ not — the first three gaps were bugs and were fixed; the last one is the machi
 | Per-test containers, connection leak | — | 5/40 | — | 35 refused: `too many clients already` |
 | Connection pool fixed | 290,783 ms | 32/40 | 1 | 8 still queued at the deadline |
 | One container per submission | 148,757 ms | 40/40 | 5 | 2.0× faster |
-| BullMQ `returnvalue` race fixed | **110,767 ms** | **40/40** | **1** | 2.6× total |
-| Target | **10,000 ms** | 40/40 | 0 | **11× away** |
+| BullMQ `returnvalue` race fixed | **110,767 ms** | **40/40** | **1** | 2.6× total, host load ~8 |
+| Re-run, team scoring + DB sessions, dev server | 220,903 ms | 40/40 | **0** | host load ~30 |
+| Re-run, production build | **283,436 ms** | **40/40** | **0** | host load **32** |
+| Target | **10,000 ms** | 40/40 | 0 | **28× away at load 32** |
+
+### The last two rows are the same code on a busier machine
+
+They are not a regression, and the difference is worth being precise about because it would be easy
+to blame the wrong thing.
+
+**Correctness went UP**: 40/40 accepted, 40/40 `AC`, **zero `IE`**, zero dropped, on both runs. The
+earlier 110,767 ms row still had one `IE`.
+
+What changed is the host. Container creation re-measured at the same moment as the 283,436 ms run:
+
+```
+7.3, 7.3, 9.2, 10.4, 16.0 s      load average 32.06
+```
+
+against **2.4–15.6 s at load ~8** when the 110,767 ms figure was taken. The floor tripled. Per
+container, `283,436 ms ÷ 10 sequential rounds ≈ 28 s`, against ~11 s before — which tracks the
+creation cost almost exactly, and the workload here is Python, so it is **one** container per
+submission on an unchanged code path.
+
+**The production build measured worse than the dev server** (283 s against 221 s), which rules out
+build mode as the explanation and is itself the finding: at this load level the numbers are dominated
+by scheduling noise, and the same command an hour apart differs by 30%.
+
+This is the argument for PRD §14's dedicated host stated as a measurement rather than a preference. A
+judge sharing a machine with anything else does not have a slow p95, it has an **unpredictable** one,
+and an unpredictable p95 cannot be tuned toward a target.
 
 Enqueue p95 is **991 ms** and every submission is accepted, so the API, Postgres and Redis are
 comfortably fine. The judge is the whole bottleneck.
@@ -116,8 +151,14 @@ Two independent observations support this rather than "the laptop is slow":
 
 - The **work** is fast. Python test cases execute in 62–154 ms inside a container that already
   exists. The machine has no trouble running the code.
-- The variance is enormous and unrelated to load. A cost that swings 2.4 s to 15.6 s for an
-  identical operation is scheduling and I/O layering, not CPU.
+- The variance is enormous **and it tracks host load**, which is the more useful version of this
+  claim. An earlier draft of this document asserted the variance was *unrelated* to load; a later
+  measurement disproved that directly — the creation floor moved from 2.4 s at load ~8 to 7.3 s at
+  load 32. Both figures are far above the 1.0 s budget, so the conclusion is unchanged, but "the
+  laptop is slow no matter what" was wrong and "the laptop is slow and gets worse under load" is
+  right.
+- Even so, the *floor* is the damning part. 2.4 s for a container that runs `pass` is not CPU
+  contention on an otherwise idle machine; it is the virtualisation boundary.
 
 This host also runs an unrelated container stack alongside the judge, which PRD §14 explicitly
 says to avoid. That inflates the tail but does not explain the floor.
