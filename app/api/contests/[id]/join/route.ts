@@ -17,7 +17,12 @@ import {
   mintJoinClaim,
   readJoinClaim,
 } from "@/lib/contest/join-claim";
-import { clientKey, joinFailureLimiter, joinLimiter } from "@/lib/contest/rate-limit";
+import {
+  clientKey,
+  hasTrustedProxy,
+  joinFailureLimiter,
+  joinLimiter,
+} from "@/lib/contest/rate-limit";
 import {
   SESSION_COOKIE,
   parseCookieHeader,
@@ -55,14 +60,24 @@ export async function POST(
      * participants, each carrying its own submission and run-samples budget. That is the amplifier
      * that turns one leaked join code into a saturated judge queue.
      *
+     * **Only when a trusted proxy makes `clientKey` meaningful.** Without one it returns the
+     * constant `"direct"`, so this becomes a single bucket for everybody — and a room-wide join
+     * limit refuses the forty students it exists to serve. Measured: wired unconditionally, it
+     * failed three G9 specs inside `npm run verify` because G7's joins had already spent the
+     * budget. The public deployment sets `TRUSTED_PROXY_COUNT=1`; a LAN deployment publishing the
+     * web port directly gets the behaviour it had before, with the join claim still bounding the
+     * per-browser total.
+     *
      * Consumed BEFORE the write, so a refusal costs nothing. A WRONG code is penalised separately
      * below, on a bucket that only guessing touches.
      */
-    joinLimiter.consumeOrThrow(
-      clientKey(request),
-      now,
-      "Too many joins from this network just now. Wait a moment and try again.",
-    );
+    if (hasTrustedProxy()) {
+      joinLimiter.consumeOrThrow(
+        clientKey(request),
+        now,
+        "Too many joins from this network just now. Wait a moment and try again.",
+      );
+    }
 
     const input = await readJson(request, JoinRequestSchema);
 

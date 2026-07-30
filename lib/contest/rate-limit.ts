@@ -122,6 +122,25 @@ export const joinLimiter = new RateLimiter(JOIN_RULE);
  * and even then the value is taken from the right-hand end (the entry the nearest trusted proxy
  * appended), not the left-hand end that the client controls.
  */
+/**
+ * Whether `clientKey` can actually tell two clients apart.
+ *
+ * Without a trusted proxy it cannot: Next does not expose the socket address on `Request`, so
+ * `clientKey` returns the constant `"direct"` and every caller shares one bucket. **A per-client
+ * limit keyed on a constant is a room-wide denial of service** — which is exactly what happened
+ * when the join limiter was first wired up: `npm run verify` ran G7 and then G9, their joins
+ * shared the single bucket, and the last three a11y specs were refused. In a classroom that is
+ * forty students unable to join two minutes before the round.
+ *
+ * So limits that are only safe when keyed per client are enforced only when they can be.
+ * `docker-compose.prod.yml` sets `TRUSTED_PROXY_COUNT=1` because Caddy is in front, which is the
+ * deployment exposed to the internet and the one that needs them.
+ */
+export function hasTrustedProxy(source: NodeJS.ProcessEnv = process.env): boolean {
+  const hops = Number.parseInt(source.TRUSTED_PROXY_COUNT ?? "0", 10);
+  return Number.isInteger(hops) && hops > 0;
+}
+
 export function clientKey(request: Request, source: NodeJS.ProcessEnv = process.env): string {
   const trustedHops = Number.parseInt(source.TRUSTED_PROXY_COUNT ?? "0", 10);
 
