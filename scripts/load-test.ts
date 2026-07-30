@@ -143,17 +143,13 @@ async function assertWorkerListening(queue: Queue): Promise<number> {
   return workers.length;
 }
 
-function assertSharedSessionSecret(): string {
-  const secret = process.env.SESSION_SECRET;
-  if (secret === undefined || secret.length < 32) {
-    fail(
-      "SESSION_SECRET must be at least 32 characters in .env. Without a shared secret this " +
-        "process cannot mint sessions the web server will accept, every submission would come " +
-        "back 403, and that would read as forty dropped jobs.",
-    );
-  }
-  return secret;
-}
+// A shared SESSION_SECRET check used to live here: when the cookie WAS the session, a secret
+// mismatch between this process and the web server meant 40 x 403, which reads as forty dropped
+// jobs rather than as a configuration error.
+//
+// Sessions are rows now, so there is no shared secret to get wrong — this process INSERTs and the
+// web server SELECTs. The equivalent mistake is pointing at a different DATABASE_URL, and
+// parseServerEnv already requires that.
 
 // --- the burst -------------------------------------------------------------
 
@@ -287,7 +283,6 @@ function sleep(ms: number): Promise<void> {
 
 async function main(): Promise<void> {
   const env = parseServerEnv();
-  const secret = assertSharedSessionSecret();
 
   console.log(`G8 load — ${TARGET_CONCURRENT_SUBMISSIONS} concurrent submissions`);
   console.log(`  web server        : ${BASE_URL}`);

@@ -13,8 +13,11 @@ Coding Night currently runs on HackerRank. HackerRank judges submissions, but it
 model the way Coding Night actually scores a night:
 
 - Results have to be exported and re-keyed into a spreadsheet.
-- Divisions (Intermediate / Advanced), per-player problem slots, partial credit, group
-  rounds, and the CodingBat-for-hints mechanic are all reconciled by hand.
+- **HackerRank cannot score a team contest at all.** It ranks individuals on identical problem
+  sets; Coding Night runs players on *different* sets, then totals each team and divides by team
+  size. That single mismatch is what forces the spreadsheet.
+- Per-player problem sets, partial credit, group rounds, non-coding side activities, and the
+  CodingBat-for-hints mechanic are all reconciled by hand.
 - The winner is computed manually, after everyone has gone home, which kills the moment.
 - Past problem history lives in one fragile spreadsheet (`Problems_List.xlsx`), so
   organizers re-pick problems that were already used or that nobody could solve.
@@ -26,12 +29,13 @@ model the way Coding Night actually scores a night:
 A self-hosted Park Tudor Coding Night web platform that:
 
 1. Hosts contests with problems, sample cases, and hidden test cases.
-2. Judges Python and Java submissions automatically in a sandbox, with real verdicts
+2. Judges submissions in ten languages automatically in a sandbox (§7.3), with real verdicts
    (Accepted / Wrong Answer / Time Limit Exceeded / Memory Limit Exceeded / Runtime Error /
    Compile Error) and per-test detail.
-3. Scores every submission the instant it lands, using the Coding Night rules — divisions,
-   difficulty weights, partial credit, penalties, hint costs, group rounds.
-4. Shows a live leaderboard on the projector and declares a winner the second the clock
+3. Scores every submission the instant it lands, using the Coding Night rules — **team scoring
+   normalised by team size**, parallel problem sets, difficulty weights, partial credit,
+   penalties, hint costs, group rounds, and admin-entered side activities.
+4. Shows a live **team** leaderboard on the projector and declares a winner the second the clock
    hits zero, with zero spreadsheet work.
 5. Keeps a permanent problem bank so organizers can see what has been used, what was
    solved, and what nobody has ever cracked.
@@ -57,71 +61,170 @@ The project is done when, on a real Coding Night:
 | **Organizer / Admin** | Faculty sponsor, student officers | Create contests, author problems + test cases, assign divisions, start/stop/freeze, override verdicts, export results |
 | **Spectator / Projector** | Anyone in the room | Read-only full-screen live leaderboard, no login |
 
-Auth: Google sign-in restricted to the school domain is preferred; a fallback of
-admin-issued join codes + display names must exist so the platform works even if Google
-Workspace access is not available on the night.
+Auth: **three providers** — Google, GitHub, and email/password — plus admin-issued join codes as
+an operational fallback. Sessions are server-side rows in Postgres, never self-contained JWTs, so
+an organizer can **revoke a session mid-contest** and so a redeploy does not sign the room out.
+See §10 and `docs/AUTH.md`.
+
+Competitors are also **team members**: a participant belongs to exactly one team, and the team is
+what gets ranked.
 
 ## 5. Core domain model
 
+**The contest is team-based.** This is the reason HackerRank forced a spreadsheet: it scores
+individuals on identical problem sets, and cannot total across different people working different
+problems and then normalise by team size.
+
 ```
-User            id, email, displayName, role, gradYear
-Contest         id, name, startsAt, endsAt, freezeAt, state, scoringPresetId, joinCode
-Division        id, contestId, name ("Intermediate" | "Advanced"), sortOrder
+User            id, email, displayName, role, gradYear, passwordHash, googleSub?, githubSub?
+Session         id, tokenHash, role, method, participantId?, contestId?, userId?,
+                expiresAt, revokedAt, revokedReason, lastSeenAt
+Contest         id, name, startsAt, endsAt, freezeAt, state, scoringPresetId, joinCode,
+                setAssignmentSeed, config (see §6.4)
+Division        id, contestId, name, sortOrder            -- OPTIONAL; a contest may have none
+Team            id, contestId, name                       -- members via Participant.teamId
+ProblemSet      id, contestId, label ("A".."D")           -- problems via ContestProblem.setId
 Problem         id, slug, title, statementMd, inputSpec, outputSpec, constraints,
-                difficulty (E|M|H), timeLimitMs, memoryLimitMb, allowedLanguages[],
-                referenceSolution, originAttribution, isGroupProblem, tags[]
+                difficulty (E|M|H), round (INDIVIDUAL|GROUP), timeLimitMs, memoryLimitMb,
+                allowedLanguages[], referenceSolution, originAttribution, tags[]
 TestCase        id, problemId, ordinal, input, expectedOutput, isSample, points, group
-ContestProblem  contestId, problemId, divisionId, slotLabel, basePoints, unlockAt
-Participant     id, contestId, userId|displayName, divisionId, teamId?
+ContestProblem  contestId, problemId, setId?, divisionId?, slotLabel, basePoints, unlockAt
+Participant     id, contestId, userId?, displayName, teamId, chosenSetId?, divisionId?
 Submission      id, participantId, contestProblemId, language, sourceCode, submittedAt,
                 verdict, score, runtimeMs, memoryKb, judgedAt, judgeLogRef
 TestResult      submissionId, testCaseId, verdict, runtimeMs, memoryKb, diffSnippet
 HintGrant       id, participantId, contestProblemId, hintIndex, grantedAt, costPaidRef
-Standing        (materialized) participantId, divisionId, score, penalty, lastAcceptedAt, rank
+TeamSideActivity id, teamId, label, points, enteredBy, enteredAt   -- admin-only, audit-logged
+Standing        (materialized) teamId, score, rank, plus per-participant breakdown
 AuditLog        actor, action, entity, before, after, at
 ```
 
 Problem statements are stored as Markdown with KaTeX math support. Test data is stored as
 files on disk (referenced by the DB), not as giant DB blobs, so large cases stay cheap.
 
+`Division` is now optional. The team dimension replaced it as the primary axis, and a contest
+that groups by team does not necessarily also split by skill level.
+
+### 5.1 Contest shape
+
+**Round 1 — 45 minutes, individual, parallel problem sets.**
+Sets are labelled A, B, C, D. Each set holds one Easy, one Medium and one Hard problem, and the
+sets are calibrated to be of equal difficulty so that which set a player gets does not change what
+their points are worth.
+
+A set is assigned to a **player**, not to a team — so a team of four is typically working four
+different sets at once. `Participant.chosenSetId` records the assignment.
+
+**Round 2 — group.** Two harder problems solved by the team together. One submission counts for
+the whole team.
+
+**Side activities.** Non-coding: a metal puzzle, train tracks, Connections. An organizer enters
+points per team; there is no submission and nothing to judge.
+
 ## 6. Scoring engine (this is the part that replaces the spreadsheet)
 
 Scoring must be a **pure, deterministic, unit-tested function**:
 
 ```
-score(contestConfig, submissions[], hintGrants[]) -> Standing[]
+score(contestConfig, submissions[], hintGrants[], sideActivities[], teams[]) -> Standing[]
 ```
 
 No scoring logic anywhere else in the codebase. The API and UI read its output only.
 
-### 6.1 Default preset — "Coding Night Classic"
+### 6.1 Team score — the formula
+
+```
+teamScore = (sum of ALL player points, group problems included) / teamSize
+            + sideActivityPoints
+```
+
+The divisor is the team's **actual** size, which is what makes uneven teams (2 to 5 players)
+comparable. Group problem points sit **inside** the mean, treated exactly like individual problem
+points. Side activity points are added **flat**, not divided.
+
+**Worked example**, from a real scoring sheet. Players score 400, 250, 400 and 400; the team
+solves one 125-point group problem; side activities award 20 + 80 + 50.
+
+```
+individual sum   400 + 250 + 400 + 400  = 1450
+group points                            =  125
+team size                               =    4
+side activities  20 + 80 + 50           =  150
+
+teamScore = (1450 + 125) / 4 + 150
+          = 1575 / 4 + 150
+          = 393.75 + 150
+          = 543.75
+```
+
+**The sheet itself produced 512.5**, which is `1450 / 4 + 150` — it dropped the group points
+entirely. That is a spreadsheet error, and eliminating exactly this class of error is why this
+platform exists. It is pinned in `fixtures/expected-standings.json` as a **named wrong answer**
+with a test asserting we do not reproduce it. See `docs/SCORING.md`.
+
+### 6.2 Problem set assignment
+
+Sets are **randomly assigned, never previewed and chosen.** A player does not see the other sets
+before assignment.
+
+- **Seeded and reproducible.** `Contest.setAssignmentSeed` is stored, so any assignment can be
+  re-derived from the seed and the participant list. A disputed assignment has to be
+  *explainable* rather than argued about.
+- **Balanced, not naively random.** Assignment spreads players across sets, so a team of four gets
+  four different sets where the set count allows. Naive random would sometimes hand three players
+  the same set.
+- Every assignment is written to `AuditLog`.
+- `config.allowReadingUnassignedSets` (default **false**) controls whether a player may read a set
+  they were not assigned. **Enforced in the API, not merely hidden in the UI.**
+
+### 6.3 Per-problem scoring — "Coding Night Classic"
 
 - Each contest problem has `basePoints` derived from difficulty: **E = 100, M = 200, H = 300**
   (organizer-editable per problem).
-- **Partial credit:** test cases carry points. A submission's score for a problem is the
-  best score any of that participant's submissions achieved. This preserves the
-  spreadsheet's existing "partially solved" concept.
-- **Penalty:** 5 minutes per rejected submission on a problem that is *eventually* scored
-  above zero. Rejected submissions on never-scored problems cost nothing.
-- **Hints:** each hint taken on a group problem deducts 15% of that problem's base points.
-  Hints are earned by solving CodingBat-style warmups — **2 warmups = 1 hint** — and the
-  ledger is tracked by the platform, not by an organizer with a clipboard.
-- **Ranking:** score DESC → total penalty ASC → time of last score-increasing submission ASC.
-  Any remaining tie is displayed as a genuine tie, never broken arbitrarily.
-- Divisions rank independently. There is an Intermediate winner and an Advanced winner.
+- **Partial credit:** test cases carry points. A participant's score for a problem is the best
+  score any of their submissions achieved. This preserves the spreadsheet's "partially solved".
+- **Penalty:** 5 minutes per rejected submission on a problem that is *eventually* scored above
+  zero. Rejected submissions on never-scored problems cost nothing.
+- **Hints:** each hint taken on a group problem deducts 15% of that problem's base points. Hints
+  are earned by solving CodingBat-style warmups — **2 warmups = 1 hint** — and the ledger is
+  tracked by the platform, not by an organizer with a clipboard.
+- **Ranking is by team:** teamScore DESC → total team penalty ASC → time of last score-increasing
+  submission by any member ASC. Any remaining tie is displayed as a genuine tie, never broken
+  arbitrarily.
 
-### 6.2 Alternate preset — "ICPC"
+### 6.4 Scoring config flags
 
-Binary AC/no-AC, 20-minute penalty per wrong submission on solved problems, rank by
-solve count then penalty. Selectable per contest.
+Both alternate readings below were open questions, resolved by the organizer in favour of the
+defaults. They stay implemented as flags so the decision is reversible without a code change, and
+each has its own golden-fixture variant.
 
-### 6.3 Hard requirements
+| Flag | Default | Alternate | Example result |
+|---|---|---|---|
+| `groupPointsInsideMean` | `true` — group points inside the per-player mean | `false` — added to the team total after the mean | 543.75 vs 637.50 |
+| `sideActivitiesFlat` | `true` — added flat to the team total | `false` — divided by team size | 543.75 vs 431.25 |
+| `setSelection` | `RANDOM_ASSIGNED` | `PLAYER_CHOOSES`, `ONE_SET_PER_TEAM` | — |
+| `allowReadingUnassignedSets` | `false` | `true` | — |
 
-- Recomputing standings from the raw submission log must produce byte-identical output
-  every time (idempotent replay).
-- Freeze: after `freezeAt`, the public leaderboard stops updating but judging continues.
-  Admin view still shows live truth. Unfreeze reveals the final board dramatically.
-- Every score change is written to `AuditLog` so a disputed result can be explained.
+`setSelection` covers both formats the organizer described: each player independently on their own
+set, or one set per team.
+
+### 6.5 Alternate preset — "ICPC"
+
+Binary AC/no-AC, 20-minute penalty per wrong submission on solved problems, rank by solve count
+then penalty. Selectable per contest.
+
+### 6.6 Hard requirements
+
+- Recomputing standings from the raw submission log must produce byte-identical output every time
+  (idempotent replay).
+- **Fractional team scores are exact.** The mean makes non-integer scores normal (543.75), and
+  floating point is not acceptable in a scoring engine — this project has already shipped one
+  float bug where `3 * 0.15 * 250` produced `112.49999999999999` and cost a student a point.
+  Scores are computed in integer hundredths of a point with a documented rounding rule.
+- Freeze: after `freezeAt`, the public leaderboard stops updating but judging continues. Admin
+  view still shows live truth. Unfreeze reveals the final board dramatically.
+- Every score change, side-activity entry and set assignment is written to `AuditLog` so a
+  disputed result can be explained.
 
 ## 7. The judge (highest-risk component — build it first)
 
@@ -246,35 +349,56 @@ candidates. Surface those flags in the problem picker so organizers stop repeati
 
 ### 9.1 Competitor experience
 
-- **Join:** enter code or sign in → pick display name → land in contest lobby.
-- **Contest view:** problem list with slot label, difficulty, points, own status
-  (unsolved / partial n pts / solved), and a countdown clock.
-- **Problem view:** statement, constraints, sample I/O with a copy button, language picker,
-  Monaco editor with syntax highlighting and Tab-to-indent, "Run samples" (free, no penalty)
-  and "Submit" (judged, counts).
-- **Verdict panel:** streams live. Per-test rows: sample tests show the diff, hidden tests
-  show pass/fail and timing only.
-- **Hints:** shows hint balance, warmups solved, and what the next hint costs before the
-  student commits to taking it.
+- **Join:** sign in (Google, GitHub, or email/password) or enter an admin-issued join code → pick
+  display name → **be placed on a team** → land in contest lobby.
+- **Set assignment:** on Round 1 start the player is *told* which set they were assigned. There is
+  no set picker, because sets are randomly assigned and never previewed (§6.2). The lobby shows
+  which set they have and why it is fair — equal-difficulty sets, seeded assignment.
+- **Contest view:** the player's own set's problems with slot label, difficulty, points, own status
+  (unsolved / partial n pts / solved), the group-round problems, and a countdown clock. Problems
+  from sets the player was not assigned are **not listed and not readable**, unless
+  `config.allowReadingUnassignedSets` is on.
+- **Problem view:** statement, constraints, sample I/O with a copy button, language picker, Monaco
+  editor with syntax highlighting and Tab-to-indent, "Run samples" (free, no penalty) and "Submit"
+  (judged, counts).
+- **Verdict panel:** streams live. Per-test rows: sample tests show the diff, hidden tests show
+  pass/fail and timing only.
+- **Hints:** shows hint balance, warmups solved, and what the next hint costs before the student
+  commits to taking it.
+- **My team:** team name, members, each member's points, the team's side-activity points, and the
+  team total with the arithmetic shown. A student who can see how the mean was computed does not
+  need to trust it.
 - **My submissions:** full history with code, verdict, and score.
 
 ### 9.2 Organizer experience
 
-- **Contest builder:** name, window, divisions, scoring preset, join code, freeze time.
-- **Problem authoring:** Markdown editor with live preview; test case editor with bulk
-  paste and file upload; reference solution runner that generates expected outputs and
-  **fails loudly if the reference solution does not pass its own tests**.
-- **Live console:** submissions feed, queue depth, judge health, per-participant drill-down,
-  manual rejudge, manual verdict override (audit-logged, with a required reason).
-- **Awards screen:** final standings per division, top-3 podium, and a one-click export to
-  CSV/XLSX so the results still land in a spreadsheet if anyone wants one — but as an
-  *output*, never as an input.
+- **Contest builder:** name, window, teams, problem sets, optional divisions, scoring preset, join
+  code, freeze time, and the §6.4 scoring config flags.
+- **Team management:** create teams, assign participants, and see team sizes. Since team size is
+  the divisor in the score, a wrong size is a wrong result — the UI shows each team's size
+  prominently and flags a team of one.
+- **Set assignment:** trigger assignment, see the resulting distribution, and re-derive it from
+  `setAssignmentSeed` to demonstrate it was not tampered with. Assignment is audit-logged.
+- **Problem authoring:** Markdown editor with live preview; test case editor with bulk paste and
+  file upload; reference solution runner that generates expected outputs and **fails loudly if the
+  reference solution does not pass its own tests**.
+- **Side-activity entry:** per team, a labelled point entry (metal puzzle, train tracks,
+  Connections). Admin-only, audit-logged with who entered it and when. This is the one score input
+  with no submission behind it, so its audit trail is the only record that exists.
+- **Live console:** submissions feed, queue depth, judge health, per-participant and per-team
+  drill-down, manual rejudge, manual verdict override (audit-logged, with a required reason),
+  and **session revocation** for a named participant.
+- **Awards screen:** final team standings, top-3 podium, per-team breakdown, and a one-click export
+  to CSV/XLSX so the results still land in a spreadsheet if anyone wants one — but as an *output*,
+  never as an input.
 
 ### 9.3 Projector view
 
-Full-screen, high-contrast, auto-refreshing leaderboard readable from the back of a
-classroom. Shows division tabs, rank movement animation, frozen-board indicator, and the
-countdown. No login, no chrome, no scrollbars.
+Full-screen, high-contrast, auto-refreshing **team** leaderboard readable from the back of a
+classroom. Shows team rank, team score, rank movement animation, frozen-board indicator, and the
+countdown. Per-player breakdown is expandable in the admin and competitor views; the projector
+stays at team level, because a room reads ranks and not arithmetic. No login, no chrome, no
+scrollbars.
 
 ## 10. Technical requirements
 
@@ -289,7 +413,28 @@ countdown. No login, no chrome, no scrollbars.
 | Migrations | Prisma migrations checked in; `db:seed` loads `problems_seed.csv` |
 | Logs | Structured JSON; judge logs retained per submission for dispute resolution |
 | Backups | `pg_dump` cron in compose; documented restore procedure |
-| Offline | The platform must work on a LAN with no internet, because school Wi-Fi will fail on the one night it matters. No CDN-only assets, no runtime calls to third-party APIs on the critical path |
+| Auth | Three providers — Google OAuth, GitHub OAuth, email/password (scrypt). Sessions are **rows in Postgres**, not JWTs: revocable mid-contest and durable across a restart. Admin-issued join codes remain as an operational fallback. See `docs/AUTH.md` |
+| Networking | **Internet is guaranteed at the event.** OAuth round trips and CDN assets are therefore acceptable. This reverses the earlier LAN-first requirement — see the note below |
+
+### 10.1 On dropping the LAN-first requirement
+
+Earlier versions of this document required the platform to run on a LAN with no internet at all: no
+CDN-only assets, no runtime third-party calls on any critical path. **The organizer has confirmed
+internet is guaranteed at the event, so that requirement is dropped.**
+
+What this unblocks: Google and GitHub OAuth (both need a round trip the room previously could not
+make), and CDN-loaded editor assets.
+
+What is still worth keeping, and why it is not merely superstition:
+
+- **The join code path stays.** Not for lack of internet, but because OAuth has failure modes that
+  have nothing to do with the venue — an expired client secret, a consent screen, a student without
+  a school account. A contest that cannot start because Google is having an afternoon is a contest
+  that cannot start.
+- **No third-party call on the judging path.** Judging is the one thing that must not depend on
+  anything outside the box, and it never did.
+- **Vendored editor assets remain preferable.** A CDN is now allowed but is still a runtime
+  dependency for the single most important screen. See `docs/TODO.md` T2.
 
 ## 11. Design direction
 
@@ -356,7 +501,9 @@ fixture set, and the measurement is the expensive part, not the registry line.
 |------|------------|
 | Sandbox escape | G5 is a hard gate; judge runs as non-root in a network-less container; deploy the judge on a host with nothing else on it |
 | Judge is slow at the end when everyone submits at once | Queue + horizontal worker scaling; G8 proves the target |
-| School Wi-Fi dies | LAN-first deployment, no CDN-only assets |
+| Internet or OAuth fails at the event | Admin-issued join codes are always available as a sign-in path (§10.1); judging never makes a third-party call |
+| A team's size is recorded wrong | Team size is the divisor in every team score, so a wrong size is a wrong result. The admin UI shows sizes prominently and flags a team of one; §12 G6 replays a golden fixture with uneven teams |
+| A player disputes their assigned problem set | Assignment is seeded from `Contest.setAssignmentSeed` and audit-logged, so it can be re-derived and shown rather than argued about (§6.2) |
 | Nobody maintains it after the authors graduate | README, seeded demo contest, and an admin UI that requires no SQL |
 | Copyright on imported problems | §8 — titles only, statements written fresh, `DRAFT` gate enforced in the API |
 | An overnight autonomous build produces something that compiles but does not work | Gates G4–G8 are behavior tests, not build tests; the goal condition names them explicitly |
