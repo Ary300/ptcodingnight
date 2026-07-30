@@ -24,6 +24,10 @@ HOST="${HOST%%/*}"
 
 PASS=0
 FAIL=0
+# Set only when a participant is actually created, so the trailer cannot claim one that is not
+# there.
+JOINED=0
+NAME=""
 JAR="$(mktemp -t ptcn-smoke-XXXXXX)"
 trap 'rm -f "$JAR"' EXIT
 
@@ -59,7 +63,14 @@ fi
 
 # Trusted by the system store, not merely present. `-k` would hide exactly the failure that
 # matters here, so it is never used in this script.
-if curl -fsS -o /dev/null --max-time 20 "$BASE_URL/"; then
+#
+# Guarded on the scheme: against an `http://` BASE_URL this request succeeds for the ordinary
+# reason that there is no TLS involved, and reported "the certificate is trusted" — a pass that
+# says nothing, on the check most worth trusting.
+if [ "${BASE_URL#https://}" = "$BASE_URL" ]; then
+  bad "BASE_URL is not https, so nothing in this section can be verified: $BASE_URL"
+  note "that is expected against a local dev server; a real deployment must be https"
+elif curl -fsS -o /dev/null --max-time 20 "$BASE_URL/"; then
   ok "the certificate is trusted (curl without -k)"
 else
   bad "curl rejected the certificate, or the site did not answer"
@@ -112,6 +123,7 @@ else
             -H 'content-type: application/json' \
             -d "{\"joinCode\":\"$JOIN_CODE\",\"displayName\":\"$NAME\",\"divisionId\":null}" 2>/dev/null || true)"
   if printf '%s' "$join" | grep -q '"success":true'; then
+    JOINED=1
     ok "join code accepted, session issued"
   else
     bad "join failed"
@@ -255,9 +267,18 @@ check_page() {
 check_page "/join" "Join the contest" "the join screen renders"
 check_page "/projector" "Team standings" "the projector renders the team board"
 
-# The banner that says a screen is showing invented data. On a live deployment it must be
-# ABSENT — its presence means NEXT_PUBLIC_CONTEST_BACKEND=stub reached production.
-if curl -fsS --max-time 30 "$BASE_URL/join" 2>/dev/null | grep -q "not a live contest"; then
+# The banner that says a screen is showing invented data. On a live deployment it must be ABSENT
+# — its presence means NEXT_PUBLIC_CONTEST_BACKEND=stub reached production.
+#
+# **The page must be known to have LOADED before its absence means anything.** The first version
+# of this check grepped the response for the banner and passed when it was not found — which it
+# never is in an empty body, so it reported "the UI is wired to the real API" against a host that
+# was refusing connections. A smoke test that passes when the site is down is worse than no smoke
+# test, because it is the one check someone trusts at 8pm.
+join_body="$(curl -fsS --max-time 30 "$BASE_URL/join" 2>/dev/null || true)"
+if ! printf '%s' "$join_body" | grep -q "Join the contest"; then
+  bad "cannot check for the demo-data banner: /join did not load"
+elif printf '%s' "$join_body" | grep -q "not a live contest"; then
   bad "the DEMO DATA banner is showing — this deployment is wired to the stub backend"
 else
   ok "no demo-data banner: the UI is wired to the real API"
@@ -266,8 +287,11 @@ fi
 # ---------------------------------------------------------------------------
 printf '\n\033[1m=== %d passed, %d failed ===\033[0m\n' "$PASS" "$FAIL"
 
-if [ -n "${JOIN_CODE:-}" ]; then
-  printf '\nA smoke-test participant was created. Remove it from the admin roster when done.\n'
+# Only when one actually exists. Saying "a participant was created" after the join failed sends
+# an organizer looking through the roster for a row that is not there.
+if [ "$JOINED" = "1" ]; then
+  printf '\nA smoke-test participant was created (%s). Remove it from the admin roster when done.\n' \
+    "$NAME"
 fi
 
 [ "$FAIL" -eq 0 ]
