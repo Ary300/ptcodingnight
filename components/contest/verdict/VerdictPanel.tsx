@@ -58,7 +58,9 @@ function Chip({ verdict }: { verdict: Verdict }) {
 function TestRow({ result }: { result: PublicTestResult }) {
   const presentation = VERDICT_DISPLAY[result.verdict];
   const passed = result.verdict === "AC";
-  const name = result.isSample ? `Sample ${result.ordinal + 1}` : `Test ${result.ordinal + 1}`;
+  // `ordinal` is 1-based (lib/schemas/api.ts). Adding one here labelled the first sample of
+  // every problem "Sample 2" — correct only against the stub, which was 0-based.
+  const name = result.isSample ? `Sample ${result.ordinal}` : `Test ${result.ordinal}`;
 
   return (
     <li className="border-t border-paper/10 py-2 first:border-t-0">
@@ -97,7 +99,7 @@ function TestRow({ result }: { result: PublicTestResult }) {
         <pre
           tabIndex={0}
           role="region"
-          aria-label={`Difference for sample ${result.ordinal + 1}`}
+          aria-label={`Difference for sample ${result.ordinal}`}
           className="mt-2 overflow-x-auto rounded bg-paper/5 p-2 font-mono text-paper/80"
           style={{ fontSize: "var(--text-xs)" }}
         >

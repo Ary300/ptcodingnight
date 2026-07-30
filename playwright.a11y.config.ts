@@ -13,7 +13,20 @@ import { defineConfig, devices } from "@playwright/test";
  */
 export default defineConfig({
   testDir: "./tests/a11y",
-  fullyParallel: true,
+  /*
+   * Serial, for the same reason G7 is (see playwright.config.ts).
+   *
+   * These specs used to be read-only against a stub backend, where parallelism was free. They now
+   * exercise the real API: each one joins the SAME seeded contest and writes a participant row,
+   * and the ones behind the lobby then assign that participant a division and a set. Run in
+   * parallel against one contest and one dev server, they contend — and the symptom is a test
+   * that passes alone and fails in the suite, which reads as flakiness rather than as contention.
+   *
+   * The audits themselves are the slow part and they are unaffected; this only stops the setup
+   * from racing itself.
+   */
+  fullyParallel: false,
+  workers: 1,
   forbidOnly: true,
   reporter: "list",
   /*

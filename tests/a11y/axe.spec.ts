@@ -61,17 +61,26 @@ test.describe("axe-core: zero critical or serious", () => {
     await auditPage(page, "/submissions");
   });
 
+  /**
+   * The heading is `Team standings`, not `Park Tudor Coding Night`.
+   *
+   * These two asserted the individual board's heading and kept asserting it after teams became the
+   * default at `/projector` (b5efe9e). That is not a cosmetic staleness — an assertion for a
+   * heading that no longer exists fails on the *first line* of the test, so **the audit below it
+   * never ran**, and the projector board the room stares at for an hour was silently unaudited at
+   * both projector resolutions while the gate reported the reason as a missing heading.
+   */
   test("projector", async ({ page }) => {
     await page.setViewportSize({ width: 1920, height: 1080 });
     await page.goto("/projector");
-    await expect(page.getByRole("heading", { name: "Park Tudor Coding Night" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /team standings/i })).toBeVisible();
     await auditPage(page, "/projector");
   });
 
   test("projector at the smaller of the two projector resolutions", async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 720 });
     await page.goto("/projector");
-    await expect(page.getByRole("heading", { name: "Park Tudor Coding Night" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /team standings/i })).toBeVisible();
     await auditPage(page, "/projector @1280x720");
   });
 });

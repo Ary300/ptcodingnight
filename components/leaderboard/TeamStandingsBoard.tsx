@@ -64,9 +64,24 @@ export function TeamStandingsBoard({
     });
   };
 
+  /**
+   * The board renders on two grounds, and the DESIGN.md §7 contrast floors are stated per ground:
+   * `text-ink/N` on `--paper` has a floor of 57%, `text-paper/N` on `--ink` has a floor of 47%.
+   * The same class is therefore not merely a different colour on the projector, it is a different
+   * *measurement* — muted ink text on the ink ground is unreadable rather than subtle.
+   *
+   * Named here rather than repeated inline so a new row cannot pick one and forget the other.
+   */
+  const muted = projector ? "text-paper/70" : "text-ink/65";
+  const dim = projector ? "text-paper/70" : "text-ink/60";
+  const rule = projector ? "border-paper/20" : "border-ink/15";
+  const hairline = projector ? "border-paper/12" : "border-ink/10";
+  /** Panther red is chrome on the ink ground, never body text — DESIGN.md §2. */
+  const accent = projector ? "text-gold" : "text-panther";
+
   if (teams.length === 0) {
     return (
-      <p role="status" className="text-ink/60" style={{ fontSize: "var(--text-sm)" }}>
+      <p role="status" className={dim} style={{ fontSize: "var(--text-sm)" }}>
         No teams yet. An organizer creates teams and assigns players before the round starts.
       </p>
     );
@@ -81,17 +96,17 @@ export function TeamStandingsBoard({
     >
       <div
         role="row"
-        className="grid grid-cols-[3rem_1fr_auto] items-baseline gap-3 border-b border-ink/15 pb-2"
+        className={`grid grid-cols-[3rem_1fr_auto] items-baseline gap-3 border-b ${rule} pb-2`}
       >
-        <span role="columnheader" className="numeric text-ink/65" style={{ fontSize: "var(--text-xs)" }}>
+        <span role="columnheader" className={`numeric ${muted}`} style={{ fontSize: "var(--text-xs)" }}>
           #
         </span>
-        <span role="columnheader" className="text-ink/65" style={{ fontSize: "var(--text-xs)" }}>
+        <span role="columnheader" className={muted} style={{ fontSize: "var(--text-xs)" }}>
           Team
         </span>
         <span
           role="columnheader"
-          className="numeric text-right text-ink/65"
+          className={`numeric text-right ${muted}`}
           style={{ fontSize: "var(--text-xs)" }}
         >
           Score
@@ -108,20 +123,20 @@ export function TeamStandingsBoard({
               role="row"
               aria-rowindex={index + 1}
               className={[
-                "grid grid-cols-[3rem_1fr_auto] items-baseline gap-3 border-b border-ink/10 py-3",
+                `grid grid-cols-[3rem_1fr_auto] items-baseline gap-3 border-b ${hairline} py-3`,
                 mine ? "bg-panther/8" : "",
               ].join(" ")}
             >
               <span
                 role="cell"
-                className="numeric font-display font-bold text-panther"
+                className={`numeric font-display font-bold ${accent}`}
                 style={{ fontSize: projector ? "var(--text-lg)" : "var(--text-md)" }}
               >
                 {team.rank}
                 {/* A genuine tie is shown as one. Two teams level on every key did equally well,
                     and inventing an order would be a lie the projector tells the room. */}
                 {team.isTied && (
-                  <span className="text-ink/60" aria-label="tied" style={{ fontSize: "var(--text-xs)" }}>
+                  <span className={dim} aria-label="tied" style={{ fontSize: "var(--text-xs)" }}>
                     =
                   </span>
                 )}
@@ -134,12 +149,12 @@ export function TeamStandingsBoard({
                 >
                   {team.name}
                 </span>
-                <span className="numeric block text-ink/65" style={{ fontSize: "var(--text-xs)" }}>
+                <span className={`numeric block ${muted}`} style={{ fontSize: "var(--text-xs)" }}>
                   {arithmeticFor(team)}
                   {team.teamSize === 1 && (
                     // Team size is the divisor, so a team of one is worth flagging: it is usually a
                     // roster mistake rather than an intended format.
-                    <span className="ml-2 text-panther">· one player only</span>
+                    <span className={`ml-2 ${accent}`}>· one player only</span>
                   )}
                 </span>
               </span>
@@ -165,8 +180,20 @@ export function TeamStandingsBoard({
               </span>
             </div>
 
+            {/*
+              A `row` holding one `cell`, and that wrapper is not decoration. `role="rowgroup"`
+              may contain only rows, so putting the `ul`/`dl` straight inside it is a CRITICAL
+              `aria-required-children` violation — and a screen reader in table mode does not
+              announce content that is not in a cell. The one screen built so a student can check
+              their own team's arithmetic was the screen where that arithmetic could not be read
+              out.
+
+              Unseen until now because the expanded panel only exists when there is real team
+              data, and G9 was auditing the stub backend.
+            */}
             {isOpen && !projector && (
-              <div className="border-b border-ink/10 bg-ink/3 px-3 py-2">
+              <div role="row" className="border-b border-ink/10 bg-ink/3 px-3 py-2">
+                <div role="cell">
                 <ul className="space-y-1">
                   {team.players.map((player) => (
                     <li
@@ -202,6 +229,7 @@ export function TeamStandingsBoard({
                   <dt className="font-bold text-ink">Team score</dt>
                   <dd className="text-right font-bold text-ink">{formatScore(team.score)}</dd>
                 </dl>
+                </div>
               </div>
             )}
           </div>

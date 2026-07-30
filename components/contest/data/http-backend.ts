@@ -113,11 +113,26 @@ export const httpContestApi: ContestApi = {
     return post(API_ROUTES.join, JoinResponseSchema, request_);
   },
 
-  listProblems(): Promise<ProblemSummary[]> {
+  /**
+   * `async`, and that keyword is load-bearing on every method that calls `currentContestId()`.
+   *
+   * Without it the not-joined throw is **synchronous**, so it escapes the caller's rejection
+   * handling entirely — `useResource` passes `load()` to a `.then(onFulfilled, onRejected)` pair,
+   * and a function that throws before returning a promise never reaches `onRejected`. The error
+   * went straight past the three states that screen is written to draw and took the React tree
+   * with it.
+   *
+   * That made `/join` unusable against the real API: `CompetitorChrome` wraps the whole route
+   * group and reads standings, so the one page a student reaches *before* joining crashed with
+   * "This page couldn't load". It was invisible only because the UI defaulted to the stub.
+   *
+   * A contract method must reject, never throw.
+   */
+  async listProblems(): Promise<ProblemSummary[]> {
     return request(API_ROUTES.problems(currentContestId()), z.array(ProblemSummarySchema));
   },
 
-  getProblem(slug: string): Promise<ProblemDetail> {
+  async getProblem(slug: string): Promise<ProblemDetail> {
     return request(API_ROUTES.problem(currentContestId(), slug), ProblemDetailSchema);
   },
 
@@ -137,7 +152,7 @@ export const httpContestApi: ContestApi = {
     return request(API_ROUTES.submissions, SubmissionListSchema);
   },
 
-  getStandings(): Promise<StandingsResponse> {
+  async getStandings(): Promise<StandingsResponse> {
     return request(API_ROUTES.standings(currentContestId()), StandingsResponseSchema);
   },
 
@@ -158,10 +173,17 @@ export const httpContestApi: ContestApi = {
     );
   },
 
-  verdictStreamUrl(): string {
+  verdictStreamUrl(): string | null {
     // One contest-level stream carries verdicts, standings and contest state, rather than
     // a socket per submission — 40 students each holding an EventSource is 40 open
     // connections for the same firehose.
+    //
+    // Null rather than a throw when there is no contest to stream. This is called **during
+    // render** (`useVerdictStream`), where a throw is not an error state a component can draw —
+    // it is a crashed tree. The contract already allows null, and the caller already reads it as
+    // "fall back to polling", which is the correct behaviour for a client that cannot open a
+    // stream.
+    if (readParticipant() === null) return null;
     return API_ROUTES.stream(currentContestId());
   },
 };

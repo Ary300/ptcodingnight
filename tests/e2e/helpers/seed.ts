@@ -149,7 +149,26 @@ export async function resetE2EData(fixture: ContestFixture = loadContestFixture(
     await db.contestProblem.deleteMany({ where: { problemId: { in: problemIds } } });
   }
 
-  await db.contest.deleteMany({ where: { joinCode: fixture.contest.joinCode } });
+  /**
+   * Delete by NAME as well as by join code.
+   *
+   * By join code alone, a contest seeded from an *older* fixture survives forever — and it
+   * survives in state `RUNNING`. Found on this machine: a contest coded `E2E-PANTHER` from a
+   * previous fixture sitting alongside the current `E2E-PANTHERS`, both RUNNING, both named
+   * "E2E Coding Night".
+   *
+   * That is not merely untidy. Every un-scoped "the contest running now" lookup — `/api/standings`
+   * and the projector behind it — resolves with `findFirst`, so with two of them the board on the
+   * wall shows whichever Postgres felt like returning. It made G9 fail against the right code.
+   *
+   * The name is the stable identifier across fixture revisions; the join code is exactly the thing
+   * that drifted. Same lesson as the `ContestProblem` sweep above, one table across.
+   */
+  await db.contest.deleteMany({
+    where: {
+      OR: [{ joinCode: fixture.contest.joinCode }, { name: fixture.contest.name }],
+    },
+  });
   await db.problem.deleteMany({ where: { slug: { in: slugs } } });
 
   // Team, ProblemSet, TeamSideActivity and Session all cascade from Contest, so the delete above

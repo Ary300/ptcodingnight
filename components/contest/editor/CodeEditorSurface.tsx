@@ -1,6 +1,15 @@
 "use client";
 
-import { useCallback, useId, useMemo, useRef, useState, type KeyboardEvent, type UIEvent } from "react";
+import {
+  useCallback,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type UIEvent,
+} from "react";
 
 import { LANGUAGE_LABEL, type CodeEditorProps } from "./types";
 
@@ -51,18 +60,51 @@ export function CodeEditorSurface({
 
   const lineCount = useMemo(() => value.split("\n").length, [value]);
 
-  /** Apply an edit and restore the caret, since React re-renders a controlled textarea. */
+  /**
+   * Where the caret belongs after the pending edit commits.
+   *
+   * A controlled textarea loses its caret on every re-render, so an edit that rewrites `value` —
+   * auto-indent, Tab, block dedent — has to put it back.
+   */
+  const pendingSelection = useRef<readonly [number, number] | null>(null);
+
+  /** Apply an edit and remember where the caret should land. */
   const applyEdit = useCallback(
     (next: string, selectionStart: number, selectionEnd: number) => {
+      pendingSelection.current = [selectionStart, selectionEnd];
       onChange(next);
-      requestAnimationFrame(() => {
-        const element = textareaRef.current;
-        if (element === null) return;
-        element.setSelectionRange(selectionStart, selectionEnd);
-      });
     },
     [onChange],
   );
+
+  /**
+   * Restore the caret in a LAYOUT effect, not a `requestAnimationFrame`.
+   *
+   * rAF runs *after* the frame is committed, and the browser will happily deliver more keystrokes
+   * in the meantime — those land wherever the re-render left the caret, which is not where the
+   * student is typing. The symptom is scrambled text under fast input, and it is worst after
+   * Enter, because auto-indent is the edit that rewrites the value on the most common keystroke:
+   *
+   *     import sys
+   *     ys.stdin.read().split()
+   *     (int(a) + int(b))a, b = sprint
+   *
+   * That is measured output from G9's keyboard spec, not a hypothetical. It went unseen because
+   * the suite ran against a stub backend whose editor started empty and whose typing was slower
+   * than a real student's.
+   *
+   * `useLayoutEffect` runs synchronously after the DOM is mutated and before paint, so the caret
+   * is correct before the next key is processed.
+   */
+  useLayoutEffect(() => {
+    const pending = pendingSelection.current;
+    if (pending === null) return;
+    pendingSelection.current = null;
+
+    const element = textareaRef.current;
+    if (element === null) return;
+    element.setSelectionRange(pending[0], pending[1]);
+  });
 
   const indentSelection = useCallback(
     (element: HTMLTextAreaElement, dedent: boolean) => {

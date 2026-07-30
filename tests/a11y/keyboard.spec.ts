@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { JOIN_CODE, nextDisplayName } from "./helpers/journey";
+import { JOIN_CODE, nextDisplayName, placeInDivisionAndSet } from "./helpers/journey";
 
 /**
  * G9 — the submit flow completes keyboard-only.
@@ -79,6 +79,10 @@ test.describe("keyboard-only", () => {
     await page.keyboard.press("Enter");
 
     await page.waitForURL("**/contest");
+    // Setup, not interaction: the join form cannot send a division (an organizer assigns those),
+    // and every fixture problem carries one, so the lobby is empty until the participant is
+    // placed. Nothing below this line uses anything but the keyboard.
+    await placeInDivisionAndSet(page);
     await expect(page.getByRole("heading", { name: "Problems", level: 1 })).toBeVisible();
     await expect(page.getByRole("listitem").getByRole("link").first()).toBeVisible();
 
@@ -101,7 +105,11 @@ test.describe("keyboard-only", () => {
     // --- write code ----------------------------------------------------------
     await tabUntil(page, "the editor", (snapshot) => snapshot.tag === "textarea");
 
-    await page.keyboard.press("Control+a");
+    // `ControlOrMeta`, not `Control`. On macOS Ctrl+A is the emacs binding for "start of line",
+    // so this selected nothing and typed INTO the starter template instead of replacing it. It
+    // passed only because the stub backend served an empty editor; a real problem ships starter
+    // code, which is the case a student actually meets.
+    await page.keyboard.press("ControlOrMeta+a");
     await page.keyboard.type("import sys");
     await page.keyboard.press("Enter");
     await page.keyboard.type("a, b = sys.stdin.read().split()");
@@ -202,6 +210,7 @@ test.describe("keyboard-only", () => {
     await page.getByLabel("Display name").fill(nextDisplayName());
     await page.getByRole("button", { name: "Join the contest" }).click();
     await page.waitForURL("**/contest");
+    await placeInDivisionAndSet(page);
 
     await page.getByRole("listitem").getByRole("link").first().click();
     await page.waitForURL(/\/contest\/[^/]+$/);
@@ -214,8 +223,16 @@ test.describe("keyboard-only", () => {
     await expect(page.getByRole("region", { name: "Verdict" })).toBeVisible();
   });
 
+  /**
+   * `?mode=individual`, because division tabs are an individual-board concept.
+   *
+   * Teams replaced divisions as the ranking axis (PRD §6.1) and the team board has no tabs at all,
+   * so this pointed at a screen that could never satisfy it. The individual board is still the
+   * ICPC preset's only display, so the behaviour is still worth holding — it just lives at the
+   * other URL now.
+   */
   test("every division tab on the projector is reachable by arrow key", async ({ page }) => {
-    await page.goto("/projector");
+    await page.goto("/projector?mode=individual");
     const tabs = page.getByRole("tab");
     await expect(tabs.first()).toBeVisible();
 

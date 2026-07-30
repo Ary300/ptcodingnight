@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { useCallback, type ReactNode } from "react";
 
 import { Countdown } from "./Countdown";
+import type { StandingsResponse } from "@/lib/schemas/api";
 import { contestApi, isStubBackend } from "./data/backend";
 import { clearParticipant, useParticipant } from "./data/participant";
 import { useResource } from "./data/useResource";
@@ -41,7 +42,22 @@ export function CompetitorChrome({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const participant = useParticipant();
 
-  const loadStandings = useCallback(() => contestApi.getStandings(), []);
+  /**
+   * Not fetched until the student is actually in a contest.
+   *
+   * This chrome wraps the whole competitor route group, `/join` included — and `/join` is by
+   * definition the page reached before joining, where a contest-scoped read has no contest to
+   * scope to. Asking anyway produced a request that could only fail, on the first screen a
+   * student sees.
+   *
+   * Keyed on `participant.status` rather than read once, so the countdown appears the moment the
+   * join completes instead of after a reload.
+   */
+  const joined = participant.status === "joined";
+  const loadStandings = useCallback(
+    (): Promise<StandingsResponse | null> => (joined ? contestApi.getStandings() : Promise.resolve(null)),
+    [joined],
+  );
   const standings = useResource(loadStandings);
 
   const leave = useCallback(() => {
@@ -96,18 +112,34 @@ export function CompetitorChrome({ children }: { children: ReactNode }) {
             })}
           </nav>
 
-          <div className="ml-auto flex items-center gap-4">
-            {standings.status === "ready" && <Countdown endsAt={standings.data.endsAt} />}
+          {/*
+            `min-w-0` on both flex boxes, and the name truncates.
+
+            A flex item's default `min-width: auto` refuses to shrink below its content, so a long
+            display name pushed this whole block past the viewport rather than wrapping: measured
+            at 385px inside a 360px phone, which puts the Submit button off-screen behind a
+            sideways scroll (DESIGN.md §7, PRD §11 — students are on phones). Display names are
+            student-supplied and allowed up to 40 characters, so this is the normal case rather
+            than an edge one.
+          */}
+          <div className="ml-auto flex min-w-0 items-center gap-4">
+            {standings.status === "ready" && standings.data !== null && (
+              <Countdown endsAt={standings.data.endsAt} />
+            )}
 
             {participant.status === "joined" && (
-              <div className="flex items-center gap-2">
-                <span className="text-ink/70" style={{ fontSize: "var(--text-xs)" }}>
+              <div className="flex min-w-0 items-center gap-2">
+                <span
+                  className="min-w-0 truncate text-ink/70"
+                  title={participant.participant.displayName}
+                  style={{ fontSize: "var(--text-xs)" }}
+                >
                   {participant.participant.displayName}
                 </span>
                 <button
                   type="button"
                   onClick={leave}
-                  className="text-ink/60 underline underline-offset-2 hover:text-panther"
+                  className="shrink-0 text-ink/60 underline underline-offset-2 hover:text-panther"
                   style={{ fontSize: "var(--text-xs)" }}
                 >
                   Leave

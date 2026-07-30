@@ -174,9 +174,17 @@ export const JoinResponseSchema = z.object({
 // Problems
 // ---------------------------------------------------------------------------
 
-/** A sample case. Samples are published by definition, so full I/O is fine here. */
+/**
+ * A sample case. Samples are published by definition, so full I/O is fine here.
+ *
+ * **`ordinal` is 1-BASED**, matching `TestCase.ordinal` in the database and the worker, which
+ * numbers tests `index + 1`. Stated here because it was not, and the two sides disagreed: the
+ * client rendered `ordinal + 1`, which is right for a 0-based feed and shows a student "Sample 2"
+ * for the first sample of every problem. It looked correct for as long as the UI was reading a
+ * stub that happened to be 0-based.
+ */
 export const SampleCaseSchema = z.object({
-  ordinal: z.number().int().nonnegative(),
+  ordinal: z.number().int().positive(),
   input: z.string(),
   expectedOutput: z.string(),
 });
@@ -232,7 +240,8 @@ export type SubmitRequest = z.infer<typeof SubmitRequestSchema>;
  * is the moment to stop: students will diff their way to the test data (PRD §7.2).
  */
 export const PublicTestResultSchema = z.object({
-  ordinal: z.number().int().nonnegative(),
+  /** 1-based, like `SampleCaseSchema.ordinal` and `TestCase.ordinal`. */
+  ordinal: z.number().int().positive(),
   isSample: z.boolean(),
   verdict: VerdictSchema,
   runtimeMs: z.number().int().nonnegative().nullable(),

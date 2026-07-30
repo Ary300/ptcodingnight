@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { loadContestFixture, readSolution } from "./helpers/seed";
+import { loadContestFixture, readSolution, testDb } from "./helpers/seed";
 
 /**
  * G7 — the journey a student actually walks, in a browser.
@@ -9,24 +9,43 @@ import { loadContestFixture, readSolution } from "./helpers/seed";
  *
  * ## Which backend this runs against
  *
- * Whichever one the server is configured with. `components/contest/data/backend.ts` selects the
- * in-memory stub unless `NEXT_PUBLIC_CONTEST_BACKEND=http`, and when the stub is in play the
- * chrome renders a "Demo data" banner — which this spec asserts on, so a run can never be
- * mistaken for a live-contest run.
+ * **The real one, by default.** `components/contest/data/backend.ts` used to select the in-memory
+ * stub unless `NEXT_PUBLIC_CONTEST_BACKEND=http`; it now selects the real API unless that variable
+ * says `stub`, because an unset variable on a deployed server meant serving invented data to a
+ * room full of students.
  *
- * That the app cannot presently be pointed at the real API is a defect, and it is asserted
- * directly by `wiring.api.spec.ts` rather than left implicit here. This file's job is narrower
- * and still worth having: the screens, the two-step join, the two buttons that are deliberately
- * not the same button, and the verdict panel all work under a real browser.
+ * The banner assertion below survives that change and is still the point: a run against the stub
+ * must announce itself, so a demo run can never be mistaken for a contest run.
  *
  * The join code comes from the seeded fixture so the same spec passes unchanged once the UI is
  * wired to the API.
  */
 
 const JOIN_CODE = loadContestFixture().contest.joinCode;
-const DISPLAY_NAME = "E2E Browser Student";
 
-async function join(page: Page): Promise<void> {
+/**
+ * Unique per call. `Participant` is unique on `(contestId, displayName)`, so a fixed name works
+ * for exactly ONE test per seeded contest and every later join returns `CONFLICT` — which
+ * surfaces as `waitForURL` hanging, not as "that name is taken".
+ *
+ * It never bit while the UI talked to the stub, because the stub accepts any name.
+ */
+let joinCounter = 0;
+function nextDisplayName(): string {
+  joinCounter += 1;
+  return `E2E Browser Student ${Date.now()}-${joinCounter}`;
+}
+
+/**
+ * Join, then place the participant in a division and a set.
+ *
+ * The join form cannot send a division — an organizer assigns those (PRD §61) — and every fixture
+ * problem carries one, so a UI join sees an empty problem list until the participant is placed.
+ * `pinParticipantToProblemSet` exists for the same reason on the API specs: a test about
+ * something other than scoping states the scope it needs rather than depending on a coin flip.
+ */
+async function join(page: Page): Promise<string> {
+  const displayName = nextDisplayName();
   await page.goto("/join");
 
   await expect(page.getByRole("heading", { name: "Join the contest" })).toBeVisible();
@@ -36,19 +55,36 @@ async function join(page: Page): Promise<void> {
   // name also starts with "Next", and an ambiguous locator here would look like a UI bug.
   await page.locator("form").getByRole("button", { name: "Next", exact: true }).click();
 
-  await page.getByLabel("Display name").fill(DISPLAY_NAME);
+  await page.getByLabel("Display name").fill(displayName);
   await page.getByRole("button", { name: "Join the contest" }).click();
 
   await page.waitForURL("**/contest");
+
+  const raw = await page.evaluate(() => window.sessionStorage.getItem("ptcn.participant"));
+  const stored = JSON.parse(raw ?? "{}") as { participantId?: string };
+  expect(stored.participantId, "the join did not record a participant").toBeTruthy();
+
+  const db = testDb();
+  const target = await db.contestProblem.findFirst({
+    where: { problem: { state: "PUBLISHED" }, contest: { joinCode: JOIN_CODE } },
+    select: { divisionId: true, setId: true },
+  });
+  await db.participant.update({
+    where: { id: stored.participantId ?? "" },
+    data: { divisionId: target?.divisionId ?? null, chosenSetId: target?.setId ?? null },
+  });
+
+  await page.reload();
+  return displayName;
 }
 
 test.describe("the competitor journey in a browser", () => {
   test("a student joins, reads a problem, runs the samples, and submits", async ({ page }) => {
-    await join(page);
+    const displayName = await join(page);
 
     // --- lobby ---------------------------------------------------------------
     await expect(page.getByRole("heading", { name: "Problems", level: 1 })).toBeVisible();
-    await expect(page.getByText(DISPLAY_NAME)).toBeVisible();
+    await expect(page.getByText(displayName)).toBeVisible();
 
     const problemLinks = page.getByRole("listitem").getByRole("link");
     await expect(problemLinks.first()).toBeVisible();
@@ -116,7 +152,9 @@ test.describe("the competitor journey in a browser", () => {
     await join(page);
 
     const banner = page.getByText(/wired to .*, not a live contest/);
-    const live = process.env.NEXT_PUBLIC_CONTEST_BACKEND === "http";
+    // Live is the DEFAULT now; the stub is opt-in. An unset variable used to mean "stub", which
+    // meant a deployment with nothing set served invented data.
+    const live = process.env.NEXT_PUBLIC_CONTEST_BACKEND !== "stub";
 
     if (live) {
       await expect(banner, "a live-backend run must not show the demo banner").toHaveCount(0);

@@ -76,8 +76,8 @@ const PROBLEMS: readonly StubProblem[] = [
     memoryLimitMb: 256,
     allowedLanguages: ["PYTHON_312", "JAVA_21"],
     samples: [
-      { ordinal: 0, input: "5", expectedOutput: "2" },
-      { ordinal: 1, input: "100", expectedOutput: "10" },
+      { ordinal: 1, input: "5", expectedOutput: "2" },
+      { ordinal: 2, input: "100", expectedOutput: "10" },
     ],
     hintsTaken: 0,
     hintCost: 20,
@@ -115,8 +115,8 @@ const PROBLEMS: readonly StubProblem[] = [
     memoryLimitMb: 256,
     allowedLanguages: ["PYTHON_312", "JAVA_21"],
     samples: [
-      { ordinal: 0, input: "4 10\n3 3 4 6", expectedOutput: "YES" },
-      { ordinal: 1, input: "3 5\n4 4 4", expectedOutput: "NO" },
+      { ordinal: 1, input: "4 10\n3 3 4 6", expectedOutput: "YES" },
+      { ordinal: 2, input: "3 5\n4 4 4", expectedOutput: "NO" },
     ],
     hintsTaken: 1,
     hintCost: 40,
@@ -155,7 +155,7 @@ const PROBLEMS: readonly StubProblem[] = [
     timeLimitMs: 3000,
     memoryLimitMb: 256,
     allowedLanguages: ["PYTHON_312", "JAVA_21"],
-    samples: [{ ordinal: 0, input: "3\n0 50\n45 90\n60 120", expectedOutput: "2" }],
+    samples: [{ ordinal: 1, input: "3\n0 50\n45 90\n60 120", expectedOutput: "2" }],
     hintsTaken: 0,
     hintCost: 40,
     hiddenCaseCount: 8,
@@ -187,8 +187,8 @@ const PROBLEMS: readonly StubProblem[] = [
     memoryLimitMb: 256,
     allowedLanguages: ["PYTHON_312", "JAVA_21"],
     samples: [
-      { ordinal: 0, input: "3", expectedOutput: "3" },
-      { ordinal: 1, input: "6", expectedOutput: "13" },
+      { ordinal: 1, input: "3", expectedOutput: "3" },
+      { ordinal: 2, input: "6", expectedOutput: "13" },
     ],
     hintsTaken: 0,
     hintCost: 70,
@@ -267,8 +267,10 @@ function allCases(problem: StubProblem, verdict: Verdict): PublicTestResult[] {
   const total = sampleCount + problem.hiddenCaseCount;
   const failFrom = verdict === "AC" ? total : Math.max(1, Math.floor(total / 2));
 
-  return Array.from({ length: total }, (_unused, ordinal) =>
-    caseResult(ordinal, ordinal < sampleCount, verdict, failFrom),
+  // 1-based, like the real feed (lib/schemas/api.ts). This was 0-based, which is what made the
+  // UI look correct while it added one.
+  return Array.from({ length: total }, (_unused, index) =>
+    caseResult(index + 1, index < sampleCount, verdict, failFrom),
   );
 }
 
@@ -402,8 +404,8 @@ export const stubContestApi: ContestApi = {
     const sampleCount = problem.samples.length;
     const failFrom = verdict === "AC" ? sampleCount : 1;
     return {
-      results: Array.from({ length: sampleCount }, (_unused, ordinal) =>
-        caseResult(ordinal, true, verdict, failFrom),
+      results: Array.from({ length: sampleCount }, (_unused, index) =>
+        caseResult(index + 1, true, verdict, failFrom),
       ),
     };
   },

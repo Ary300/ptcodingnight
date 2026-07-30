@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 import { auditPage } from "./helpers/audit";
-import { openProblem } from "./helpers/journey";
+import { openProblem, runningContestId } from "./helpers/journey";
 
 /**
  * G9 — the two rules from DESIGN.md §7 that axe cannot check for us.
@@ -19,9 +19,14 @@ test.describe("prefers-reduced-motion", () => {
   // top-level test option.
   test.use({ contextOptions: { reducedMotion: "reduce" } });
 
+  /**
+   * `/projector` serves the TEAM board by default (b5efe9e); its heading is `Team standings`.
+   * Asserting the individual board's heading failed before the measurement below ever ran, so the
+   * reduced-motion guarantee was going unchecked on the one surface that has a reveal animation.
+   */
   test("no animation or transition on the projector outlives the preference", async ({ page }) => {
     await page.goto("/projector");
-    await expect(page.getByRole("heading", { name: "Park Tudor Coding Night" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /team standings/i })).toBeVisible();
 
     const offenders = await page.evaluate(() => {
       const found: { selector: string; property: string; value: string }[] = [];
@@ -75,8 +80,17 @@ test.describe("prefers-reduced-motion", () => {
     ).toEqual([]);
   });
 
+  /**
+   * Pinned to a contest with `?contest=`, because the board only states live-or-frozen once it has
+   * standings to state it about. Unpinned it renders its titled empty state — audited separately
+   * in `team-screens.spec.ts` — and this assertion could never pass there.
+   *
+   * The id is read from the API's own un-scoped resolution rather than hardcoded, so this follows
+   * whichever contest is running instead of pinning the test to a fixture id that changes on every
+   * reseed.
+   */
   test("the board still states live or frozen, in words", async ({ page }) => {
-    await page.goto("/projector");
+    await page.goto(`/projector?contest=${await runningContestId(page)}`);
     await expect(page.getByText(/^(Live|Board frozen)$/)).toBeVisible();
     await auditPage(page, "/projector (reduced motion)");
   });
@@ -91,7 +105,7 @@ test.describe("prefers-reduced-motion", () => {
 test.describe("the projector is the inverse surface", () => {
   test("ink ground, paper text — and the tokens are actually applied", async ({ page }) => {
     await page.goto("/projector");
-    await expect(page.getByRole("heading", { name: "Park Tudor Coding Night" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /team standings/i })).toBeVisible();
 
     const surface = await page.evaluate(() => {
       const root = window.getComputedStyle(document.documentElement);
