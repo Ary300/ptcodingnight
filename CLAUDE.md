@@ -212,6 +212,11 @@ imports nothing from either. If scoring needs a fact, it arrives as an argument.
   (`outputCapFor`).
 - **G8 and G13 must never run concurrently.** Both spawn containers, and interleaving them
   corrupts G8's p95 latency measurement, which is the only thing G8 measures.
+- **Nothing that drives a browser may run immediately AFTER G8 either.** G8's 40-submission burst
+  leaves the queue draining and the host loaded long after its own measurement ends, so G9's
+  navigations time out at 120 s — measured, 29/32 inside `npm run verify` against 32/32
+  standalone, which reads as an accessibility regression and is nothing of the kind. `verify.sh`
+  therefore runs G9 *before* G8.
 - **A verdict is not a gate.** `npm run verify` output goes in the transcript verbatim. See
   **Definition of done**.
 

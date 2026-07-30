@@ -25,7 +25,7 @@ requires() {
     G4|G5) printf 'needs the Docker daemon' ;;
     G7)    printf 'needs Postgres + Redis; the api-judged project also needs the worker and Docker' ;;
     G8)    printf 'needs Postgres + Redis + a judge worker + Docker + a WEB SERVER on :3000 (it does not start one)' ;;
-    G9)    printf 'needs a dev server on port 3100' ;;
+    G9)    printf 'needs Postgres + Redis; it starts its own dev server on 3000' ;;
     G13)   printf 'needs the Docker daemon' ;;
     *)     printf '' ;;
   esac
@@ -148,8 +148,20 @@ fi
 
 run_gate G6 "scoring golden " "npm run test:scoring:golden"
 run_gate G7 "e2e            " "npm run test:e2e"
-run_gate G8 "load           " "npm run test:load"
+
+# G9 BEFORE G8, and the order is load-bearing.
+#
+# G8 fires 40 concurrent submissions and leaves the judge queue draining and the host loaded well
+# after its own measurement finishes. Run straight afterwards, G9's browser navigations time out
+# at 120 s waiting for a page the busy dev server has not rendered — measured, 29/32 inside
+# `npm run verify` against 32/32 standalone, which reads as an accessibility regression and is
+# nothing of the kind.
+#
+# G9 spawns no containers, so nothing is lost by putting it first. This is the same class as the
+# rule that keeps G8 and G13 apart (CLAUDE.md): a gate that measures latency cannot share a
+# machine with one that creates it.
 run_gate G9 "a11y           " "npm run test:a11y"
+run_gate G8 "load           " "npm run test:load"
 
 # G13 runs AFTER G8, never alongside it. Both spawn containers, and interleaving them would
 # corrupt G8's p95 latency — the only thing G8 measures. This script is strictly sequential,
