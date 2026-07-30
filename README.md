@@ -62,7 +62,10 @@ npm run dev                   # http://localhost:3000
 npm run worker                # in a second terminal — nothing is judged without it
 ```
 
-The seed script prints a join code. Open `/join`, use it, and you are in.
+The seed script prints a **randomly generated** join code. Open `/join`, use it, and you are in.
+Set `SEED_JOIN_CODE` to pin it if you want the same one every time — it is generated rather than
+fixed because it is the credential that admits anyone to a running contest, and a value committed
+to this repository would be a public one.
 
 > `build-judge-images.sh` is not optional and is not a wrapper around `docker pull`.
 > `ptcn-go:1.23` is built locally and exists on no registry: since Go 1.20 the standard library
@@ -96,19 +99,24 @@ npm run verify        # runs them in order and prints a PASS/FAIL table
 | G0 build | `npm run build` | it compiles for production |
 | G1 typecheck | `npx tsc --noEmit` | strict TypeScript, no `any` |
 | G2 lint | `npm run lint` | zero warnings |
-| G3 unit | `npm test -- --run` | 340 tests, 80%+ coverage |
+| G3 unit | `npm test -- --run` | 352 tests, 96% statements |
 | G4 judge | `npm run test:judge` | 57 verdict fixtures across five runtimes |
-| G5 sandbox | `npm run test:sandbox` | 18 hostile submissions contained, no leaked containers |
+| G5 sandbox | `npm run test:sandbox` | 19 hostile submissions contained, no leaked containers |
 | G6 scoring | `npm run test:scoring:golden` | a replayed contest matches byte-for-byte |
 | G7 E2E | `npx playwright test` | 89 specs through the real HTTP API |
 | G8 load | `npm run test:load` | 40-submission burst latency |
 | G9 a11y | `npm run test:a11y` | 32 specs, zero critical or serious axe violations |
 | G13 content | `npm run test:content` | every reference solution through the real judge |
 
-**G8 does not pass on modest hardware, and the threshold has never been lowered.** Correctness is
-unaffected — 40/40 accepted, zero internal errors — but verdicts take longer than the 10 s target
-by a factor that depends entirely on the host. `docs/HOSTING.md` has the arithmetic and
-`docs/TODO.md` T3 has the honest summary.
+**G8 measures the host, not the code, and the threshold has never been lowered.** The same code
+measured a 7,363 ms p95 on a quiet machine (host load 4.25 — a pass) and 283,436 ms on a busy one
+(load 32). A 38× spread, because container creation dominates and degrades with load. **A green G8
+means the machine was quiet when the gate ran.**
+
+Correctness never varied across any of those runs: 40/40 accepted, 40/40 `AC`, zero internal
+errors, zero dropped. Students get the right verdict; on a busy host they wait for it.
+`docs/HOSTING.md` has the arithmetic and a ten-minute procedure for re-measuring on whatever
+machine will actually run the contest.
 
 ---
 
