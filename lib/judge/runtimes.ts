@@ -35,7 +35,14 @@ export type LanguageId =
 
 export interface Runtime {
   readonly id: RuntimeId;
-  /** Pinned by digest-able tag. The night has no internet, so these are pulled in advance. */
+  /**
+   * Pinned by digest-able tag, and pulled or built in advance by
+   * `scripts/build-judge-images.sh`.
+   *
+   * Not because the room lacks internet — PRD §10.1 now guarantees it — but because pulling a
+   * multi-hundred-megabyte image for the first time while 40 students wait is not a thing to
+   * discover at 7pm. `go123` is BUILT rather than pulled and cannot be fetched at all.
+   */
   readonly image: string;
   /**
    * Multiplier applied to the problem's stated time limit.
@@ -48,33 +55,60 @@ export interface Runtime {
   /**
    * Fixed allowance for interpreter or VM start, in milliseconds.
    *
-   * **PROVISIONAL AND DOCKER-DESKTOP-SIZED.** Every number here was measured on the macOS build
-   * laptop, where container creation alone costs 2.4-15.6 s and the whole judge misses G8 by
-   * 11x. They are deliberately generous so correct solutions are never failed as TLE on this
-   * machine, and they will be far too generous on a real judge host.
+   * Deliberately generous. A budget below real startup fails correct solutions as TLE; a budget
+   * above it lets a slow solution pass. The second is a much cheaper mistake than the first.
    *
-   * **Re-measure before a contest: `docs/HOSTING.md` §6 step 3.** Do not guess — a budget below
-   * real startup fails correct solutions as TLE, which this project has already done once,
-   * losing 8 of 20 problems to a Python budget of 1000 ms against a measured floor of 1006 ms.
+   * ## How these were measured, and the mistake not to repeat
    *
-   * ## Measurement conditions for the numbers below
+   * **Measured through the FULL JUDGE PATH** — `judge()` on a correct three-test solution, under
+   * container churn, recording the per-test `durationMs` the runner itself reports. That is the
+   * exact quantity compared against `problemLimit * multiplier + startupBudgetMs`, so it is apples
+   * to apples by construction. Reproduce with `scripts/measure-startup-budgets.ts`.
    *
-   * All five measured **under churn** — four to eight concurrent workers continuously creating
-   * and reaping containers, so the daemon was at a loaded steady state rather than idle. A budget
-   * fitted on a quiet host is the mistake this project has already made twice; the contest IS the
-   * churn.
+   * **This is the third time a budget has been fitted to the wrong baseline.** Each time, correct
+   * solutions were failed as TLE:
    *
-   * Timed with `date +%s%N` immediately around the command *inside* an already-created container,
-   * which is the same quantity the runner compares against `problemLimit * multiplier +
-   * startupBudgetMs`. Container creation is excluded on purpose — it is charged to the host, not
-   * the student (`docs/HOSTING.md` §2).
+   *   1. Python at 1000 ms against a measured floor of 1006 ms — lost 8 of 20 reference solutions.
+   *   2. Java before the budget was additive at all — intermittent TLE on correct code.
+   *   3. All five sized from DIRECT interpreter invocation (`docker run python main.py`) instead of
+   *      the judge path. A real test also pays for coreutils `timeout`, a shell, the batch driver,
+   *      and bind-mount reads and writes.
    *
-   * **These figures understate what the runner sees**, and the margins are sized accordingly. The
-   * measurement runs the interpreter directly, while a real test also pays for `timeout`, a shell,
-   * and reads and writes across bind mounts — and bind-mount I/O is expensive on Docker Desktop
-   * specifically. An earlier Python measurement through the full judge path reported 1006-1651 ms
-   * where the direct method reports 77-512 ms; that gap is the harness, not noise. Treat every
-   * budget here as a floor to stay well above, never as a target to tighten toward.
+   * If you are about to re-measure: **use the judge, not the interpreter.** Anything else measures
+   * a thing no student ever experiences.
+   *
+   * ## What the two methods actually showed
+   *
+   * | Runtime | direct max | full-path max | worst observed |
+   * |---|---|---|---|
+   * | python312 | 512 | 929 (1651 via an earlier full-path run) | 1651 |
+   * | jdk21 | 7837 | **38473** | **38473** |
+   * | gcc14 | 605 | 1182 | 1182 |
+   * | node22 | 3636 | 462 | 3636 |
+   * | go123 | 845 | 390 | 845 |
+   *
+   * The direct method did NOT uniformly under-report — node22 and go123 measured *higher* directly.
+   * The real lesson is worse than a constant bias: **the two methods disagree by up to 5x in both
+   * directions, and the disagreement is dominated by where a sample happened to land relative to
+   * host contention rather than by the method.** No single number is stable on this host, so every
+   * budget below is a multiple of the WORST value observed by either method, never a fit to a
+   * median.
+   *
+   * ## The Java outlier is real and is why its budget looks absurd
+   *
+   * One full-path Java sample took **38,473 ms** — eight times the next-highest of 27 samples, on a
+   * program that adds two integers. A second run of 18 samples topped out at 4,959 ms and never came
+   * close. So it is a tail event, not the norm — roughly 4% of samples — and on a night with 40
+   * Java submissions across 3 tests each, a 4% tail lands several times.
+   *
+   * A budget that ignores it fails correct code, which is exactly the mistake made three times
+   * already. So the budget covers it, and the cost is stated plainly: **Java time limits are not
+   * meaningfully enforceable on this host.** That is the same Docker Desktop scheduling problem G8
+   * measures, and `docs/HOSTING.md` §5 is the fix. On a dedicated Linux host this should fall to
+   * roughly 3 s and Java TLE detection becomes real again.
+   *
+   * **PROVISIONAL AND DOCKER-DESKTOP-SIZED. Re-measure before a contest: `docs/HOSTING.md` §6
+   * step 3.**
    */
   readonly startupBudgetMs: number;
   /** Ceiling on the build step. Separate from the run limit: a slow compiler is not a slow algorithm. */
@@ -174,7 +208,7 @@ export const RUNTIMES: Readonly<Record<RuntimeId, Runtime>> = {
     id: "python312",
     image: "python:3.12-slim",
     multiplier: 1,
-    // Measured floor 1006-1651 ms quiet, up to 4327 ms under container churn.
+    // Worst observed 1651 ms (full path). 6000 ms is 3.6x.
     startupBudgetMs: 6_000,
     compileTimeoutMs: 15_000,
     compilePidsLimit: 64,
@@ -187,9 +221,10 @@ export const RUNTIMES: Readonly<Record<RuntimeId, Runtime>> = {
     image: "eclipse-temurin:21-jdk",
     // The JVM is genuinely slower per unit of algorithm, not merely slower to start.
     multiplier: 2,
-    // Measured 423-7837 ms under churn, an 18x spread — by far the worst of the five, and the
-    // reason this budget looks extravagant. The tail exceeded 12 s under the full fixture suite.
-    startupBudgetMs: 20_000,
+    // Worst full-path sample 38,473 ms (see the outlier note on startupBudgetMs). 45,000 ms clears
+    // it with margin. Deliberately generous: failing a correct Java solution is far worse than
+    // letting a slow one pass, and on this host the JVM's spread makes that trade unavoidable.
+    startupBudgetMs: 45_000,
     // javac on a cold JVM is slow, and it is not the student's fault.
     compileTimeoutMs: 60_000,
     compilePidsLimit: 256,
@@ -202,7 +237,7 @@ export const RUNTIMES: Readonly<Record<RuntimeId, Runtime>> = {
     image: "gcc:14",
     // Compiled C and C++ are the fastest things here at run time.
     multiplier: 1,
-    // Measured 18-605 ms under churn. 4000 ms is ~6.6x the worst sample.
+    // Worst observed 1182 ms (full path). 4000 ms is 3.4x.
     startupBudgetMs: 4_000,
     // g++ with optimisation on a template-heavy file is the slowest build of the five.
     compileTimeoutMs: 60_000,
@@ -215,8 +250,9 @@ export const RUNTIMES: Readonly<Record<RuntimeId, Runtime>> = {
     id: "node22",
     image: "node:22-slim",
     multiplier: 1,
-    // Measured 314-3636 ms under churn — the widest spread after the JVM, and 6000 ms left only
-    // 1.65x headroom. That is the same thin margin that failed Python.
+    // Worst observed 3636 ms — from the DIRECT method; the full path measured only 462 ms. Sized
+    // against the larger of the two, because being wrong toward generosity costs a slow solution
+    // passing and being wrong the other way costs a correct one failing.
     startupBudgetMs: 10_000,
     compileTimeoutMs: 15_000,
     compilePidsLimit: 64,
@@ -237,7 +273,7 @@ export const RUNTIMES: Readonly<Record<RuntimeId, Runtime>> = {
     // program, which is the worst possible way for this to break.
     image: "ptcn-go:1.23",
     multiplier: 1,
-    // Measured 74-845 ms under churn for an already-built binary. 4000 ms is ~4.7x the worst.
+    // Worst observed 845 ms (direct; full path 390 ms). 4000 ms is 4.7x.
     startupBudgetMs: 4_000,
     // A warm build is 2.5-11.8 s. The ceiling stays generous because the variance here is host
     // I/O, not the compiler: if the warm cache is ever missed the build takes ~66 s, and a

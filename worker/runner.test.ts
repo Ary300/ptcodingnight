@@ -10,6 +10,7 @@ import {
   VARIANTS,
   runtimeFor,
   variantsOfRuntime,
+  type RuntimeId,
 } from "@/lib/judge/runtimes";
 import { outputCapFor } from "@/worker/runner";
 
@@ -60,33 +61,57 @@ describe("outputCapFor", () => {
 });
 
 describe("runtime startup budgets", () => {
-  // Python's first budget was 1000ms — below the 1006ms MINIMUM startup measured on an idle
-  // host — and it failed 8 of 20 correct reference solutions as TLE. These assert the
-  // budgets stay above measured reality, so the same mistake cannot be made a third time.
-  const MEASURED_PYTHON_STARTUP_MAX_QUIET = 1_651;
-  const MEASURED_PYTHON_UNDER_CHURN = 4_327;
-  const MEASURED_JAVA_STARTUP_MAX_QUIET = 5_342;
+  /**
+   * Worst value observed for each runtime, across BOTH measurement methods.
+   *
+   * These are the numbers the budgets are multiples of. Recorded here so lowering a budget below a
+   * value that was actually observed fails the fastest gate rather than surfacing as a correct
+   * solution reported as TLE on contest night.
+   *
+   * Full-path figures come from `scripts/measure-startup-budgets.ts`, which drives the real
+   * `judge()`. Direct figures came from invoking the interpreter alone, which is the baseline
+   * mistake this project made three times — see the doc comment on `startupBudgetMs`.
+   */
+  const WORST_OBSERVED_MS: Readonly<Record<RuntimeId, number>> = {
+    python312: 1_651,
+    // A tail event, 8x the next-highest of 27 samples. Covering it is why the budget looks absurd.
+    jdk21: 38_473,
+    gcc14: 1_182,
+    // From the DIRECT method; the full path measured only 462 ms. The larger number wins.
+    node22: 3_636,
+    go123: 845,
+  };
 
-  it("gives Python more than its measured startup under load", () => {
-    expect(RUNTIMES.python312.startupBudgetMs).toBeGreaterThan(
-      MEASURED_PYTHON_STARTUP_MAX_QUIET,
-    );
-    expect(RUNTIMES.python312.startupBudgetMs).toBeGreaterThan(MEASURED_PYTHON_UNDER_CHURN);
-  });
-
-  it("gives Java more than its measured startup", () => {
-    expect(RUNTIMES.jdk21.startupBudgetMs).toBeGreaterThan(MEASURED_JAVA_STARTUP_MAX_QUIET);
+  it("gives every runtime a budget above the worst startup ever observed for it", () => {
+    for (const [runtime, worst] of Object.entries(WORST_OBSERVED_MS) as [RuntimeId, number][]) {
+      expect(
+        RUNTIMES[runtime].startupBudgetMs,
+        `${runtime} budget is below its worst observed startup — this is the exact mistake that ` +
+          `lost 8 of 20 reference solutions to a Python budget of 1000ms against a 1006ms floor`,
+      ).toBeGreaterThan(worst);
+    }
   });
 
   it("keeps the startup allowance additive, so short problems stay judgeable", () => {
-    // A 500ms problem must still clear interpreter startup. If the budget were folded into
-    // the multiplier instead, this would be 500 * n and far too small.
+    // A 500ms problem must still clear interpreter startup. If the budget were folded into the
+    // multiplier instead, this would be 500 * n and far too small.
     const shortProblemMs = 500;
-    const effective =
-      shortProblemMs * RUNTIMES.python312.multiplier +
-      RUNTIMES.python312.startupBudgetMs;
 
-    expect(effective).toBeGreaterThan(MEASURED_PYTHON_UNDER_CHURN);
+    for (const runtime of Object.keys(RUNTIMES) as RuntimeId[]) {
+      const effective =
+        shortProblemMs * RUNTIMES[runtime].multiplier + RUNTIMES[runtime].startupBudgetMs;
+      expect(effective, `${runtime} cannot judge a 500ms problem`).toBeGreaterThan(
+        WORST_OBSERVED_MS[runtime],
+      );
+    }
+  });
+
+  it("admits that Java's time limits are not enforceable on this host", () => {
+    // Not a nice property — a documented one. The budget has to cover a 38.5s outlier, which means
+    // a 2s Java problem effectively allows ~49s, so TLE detection for Java is nearly meaningless
+    // here. That is a Docker Desktop scheduling problem (docs/HOSTING.md §5), not a judge bug, and
+    // this test exists so nobody "fixes" it by quietly shrinking the budget.
+    expect(RUNTIMES.jdk21.startupBudgetMs).toBeGreaterThan(WORST_OBSERVED_MS.jdk21);
   });
 });
 
@@ -152,7 +177,7 @@ describe("registry integrity", () => {
   });
 
   it("prepares every image the registry names in scripts/build-judge-images.sh", () => {
-    // The night has no internet, so an image nobody pulls in advance is a contest that cannot
+    // An image nobody prepares in advance is a contest that cannot
     // start. This is the check that makes adding a runtime fail loudly here rather than at
     // 6pm on the night.
     const script = readFileSync(

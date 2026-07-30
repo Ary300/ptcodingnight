@@ -20,6 +20,29 @@ export const ContestEnvSchema = z.object({
   SESSION_SECRET: z.string().min(32).optional(),
   /** Shared passcode for the organizer console. Absent means nobody can hold an admin session. */
   ADMIN_PASSCODE: z.string().min(8).optional(),
+
+  /**
+   * OAuth provider credentials. All optional, and that is the design: a provider with no
+   * credentials configured is simply **off**, and its routes answer 503 rather than failing
+   * mid-flow with something that looks like the student's fault.
+   *
+   * Neither provider is ever the only way in — `User.passwordHash` is NOT NULL, so an
+   * OAuth-only account cannot exist (docs/AUTH.md §3).
+   */
+  GOOGLE_CLIENT_ID: z.string().min(1).optional(),
+  GOOGLE_CLIENT_SECRET: z.string().min(1).optional(),
+  GITHUB_CLIENT_ID: z.string().min(1).optional(),
+  GITHUB_CLIENT_SECRET: z.string().min(1).optional(),
+
+  /**
+   * Public origin, used to build OAuth redirect URIs.
+   *
+   * Must match the redirect URI registered with each provider exactly, including the port —
+   * a mismatch is the single most common OAuth setup failure and the providers' error messages
+   * for it are famously unhelpful.
+   */
+  PUBLIC_ORIGIN: z.string().url().optional(),
+
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
 });
 
@@ -72,4 +95,35 @@ export function resetSessionSecretForTests(): void {
 
 export function adminPasscode(source: NodeJS.ProcessEnv = process.env): string | null {
   return parseContestEnv(source).ADMIN_PASSCODE ?? null;
+}
+
+/**
+ * Resolved OAuth configuration for one provider, or null when it is not configured.
+ *
+ * Null is a first-class answer rather than an error: a contest that never set up GitHub should
+ * still start, and its GitHub route should say "not configured on this server" instead of
+ * throwing something that reads like the student did wrong.
+ */
+export function oauthConfig(
+  provider: "google" | "github",
+  source: NodeJS.ProcessEnv = process.env,
+): { clientId: string; clientSecret: string; redirectUri: string } | null {
+  const env = parseContestEnv(source);
+
+  const clientId = provider === "google" ? env.GOOGLE_CLIENT_ID : env.GITHUB_CLIENT_ID;
+  const clientSecret =
+    provider === "google" ? env.GOOGLE_CLIENT_SECRET : env.GITHUB_CLIENT_SECRET;
+
+  if (clientId === undefined || clientSecret === undefined) return null;
+
+  // Defaulting the origin rather than requiring it: on the contest LAN the app is reached at a
+  // fixed host:port, and forcing PUBLIC_ORIGIN into .env for local development would be one more
+  // thing to get wrong before anything works.
+  const origin = env.PUBLIC_ORIGIN ?? "http://localhost:3000";
+
+  return {
+    clientId,
+    clientSecret,
+    redirectUri: `${origin.replace(/\/+$/, "")}/api/auth/${provider}/callback`,
+  };
 }

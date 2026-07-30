@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import type { JoinRequest } from "@/lib/schemas/api";
 import { AUDIT_ACTIONS, writeAudit } from "@/lib/contest/audit";
 import { assertCanJoin } from "@/lib/contest/gate";
+import { assignSetForOne } from "@/lib/contest/set-assignment";
 import { invalidateScoringInput } from "@/lib/contest/standings";
 
 /**
@@ -23,6 +24,17 @@ export interface JoinResult {
   readonly contestId: string;
   readonly displayName: string;
   readonly divisionId: string | null;
+  /** The Round 1 set this player was assigned, if assignment has already run. */
+  readonly chosenSetId: string | null;
+  readonly chosenSetLabel: string | null;
+  /**
+   * True when this participant is on no team yet.
+   *
+   * Not an error — rosters are an organizer's job and a student can arrive before one exists — but
+   * the UI has to say so, because a participant with no team contributes to no team score and team
+   * size is the divisor in every team score.
+   */
+  readonly needsTeam: boolean;
 }
 
 export async function joinContest(
@@ -41,7 +53,10 @@ export async function joinContest(
     select: {
       id: true,
       state: true,
+      setSelection: true,
+      setAssignmentSeed: true,
       divisions: { select: { id: true } },
+      problemSets: { select: { id: true, label: true } },
     },
   });
 
@@ -76,8 +91,52 @@ export async function joinContest(
       divisionId,
       joinedAt: now,
     },
-    select: { id: true, displayName: true, divisionId: true },
+    select: { id: true, displayName: true, divisionId: true, teamId: true },
   });
+
+  // Assign a set if the contest has already been assigned.
+  //
+  // A LATE JOINER is assigned individually rather than by re-deriving the whole assignment.
+  // Re-deriving would change the roster `assignSets` sees, produce a different answer for
+  // everybody, and move students who are already twenty minutes into a problem. A slightly less
+  // even distribution is a much smaller cost than that.
+  let chosenSetId: string | null = null;
+  if (
+    contest.setSelection === "RANDOM_ASSIGNED" &&
+    contest.setAssignmentSeed !== null &&
+    contest.problemSets.length > 0
+  ) {
+    // Only teammates matter for balance: the property worth preserving is that teammates hold
+    // different sets, because teammates on identical problems can simply share answers.
+    const takenInTeam =
+      participant.teamId === null
+        ? []
+        : (
+            await prisma.participant.findMany({
+              where: {
+                contestId: contest.id,
+                teamId: participant.teamId,
+                id: { not: participant.id },
+                chosenSetId: { not: null },
+              },
+              select: { chosenSetId: true },
+            })
+          ).flatMap((p) => (p.chosenSetId === null ? [] : [p.chosenSetId]));
+
+    chosenSetId = assignSetForOne({
+      seed: contest.setAssignmentSeed,
+      setIds: contest.problemSets.map((set) => set.id),
+      participantId: participant.id,
+      takenInTeam,
+    });
+
+    if (chosenSetId !== null) {
+      await prisma.participant.update({
+        where: { id: participant.id },
+        data: { chosenSetId },
+      });
+    }
+  }
 
   await writeAudit({
     actor: `participant:${participant.id}`,
@@ -87,6 +146,11 @@ export async function joinContest(
       contestId: contest.id,
       displayName: participant.displayName,
       divisionId: participant.divisionId,
+      // The set goes in the audit row for the same reason the seed does: a late joiner's set is NOT
+      // reproducible from the contest seed and the final roster alone, so this row is the only
+      // record of how they got it (PRD §6.2).
+      chosenSetId,
+      lateJoiner: chosenSetId !== null,
     },
   });
 
@@ -98,5 +162,9 @@ export async function joinContest(
     contestId: contest.id,
     displayName: participant.displayName,
     divisionId: participant.divisionId,
+    chosenSetId,
+    chosenSetLabel:
+      contest.problemSets.find((set) => set.id === chosenSetId)?.label ?? null,
+    needsTeam: participant.teamId === null,
   };
 }
