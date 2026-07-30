@@ -108,3 +108,53 @@ Not a defect, but it should not be forgotten. `worker/runner.ts` gives Java a 20
 startup budget because this machine runs an unrelated container stack alongside the judge and
 JVM startup measured 913–6737 ms with a long tail. PRD §14's mitigation — a dedicated judge
 host — would let that drop to roughly 3 s. One constant, with the measurements in the comment.
+
+Superseded in scope by **T6**: the budget now lives in `lib/judge/runtimes.ts` and there are
+five of them, not one.
+
+---
+
+## T6 — Three of the five startup budgets are estimates, not measurements
+
+**Severity: medium.** A budget below real startup fails correct solutions as TLE, which this
+project has already done twice — Python at 1000 ms against a 1006 ms floor (8 of 20 reference
+solutions lost), and Java before the additive budget existed.
+
+`RUNTIMES` in `lib/judge/runtimes.ts` is honest about which is which:
+
+| Runtime | Budget | Basis |
+|---|---|---|
+| `python312` | 6000 ms | **Measured.** 1006–1651 ms quiet, 4327 ms under container churn. |
+| `jdk21` | 20000 ms | **Measured.** 1010–5342 ms, tail past 12 s under the full fixture suite. |
+| `gcc14` | 4000 ms | Estimate. A compiled binary has almost no startup, so this is very likely generous — but "likely" is not "measured". |
+| `node22` | 6000 ms | Estimate, by analogy to Python. Node's startup is in the same class. |
+| `go123` | 4000 ms | Estimate. Same reasoning as `gcc14`. |
+
+All three estimates are *generous* rather than tight, so the failure mode they risk is a slow
+solution passing, not a correct one failing. That is the right direction to be wrong in, and it
+is still worth closing.
+
+The measurement is cheap — the same under-churn method used for Python — but it **must not run
+concurrently with G8 or G13**, because competing container workloads make every timing
+meaningless. That sequencing is the only reason this is still open.
+
+Re-measurement procedure: `docs/HOSTING.md` §6 step 3. It has to happen on the real judge host
+anyway, since every number here is Docker-Desktop-sized.
+
+---
+
+## T7 — Sessions are not in Postgres, and Google sign-in cannot work on the night
+
+**Severity: awaiting a decision, not a defect.** Full audit in `docs/AUTH.md`.
+
+Two things were asked for that the current implementation does not provide:
+
+1. **"Sessions in our own Postgres."** They are not. Auth is a stateless HMAC-SHA256 signed
+   cookie with no server-side session record, so there is no way to revoke one before it
+   expires. `docs/AUTH.md` §4 has the cost of moving them into Postgres.
+2. **Google sign-in.** Absent, and **impossible during the contest by protocol**: OAuth needs a
+   round trip to `accounts.google.com`, and PRD §10 guarantees the room has no internet. It
+   could only ever work as a *pre-night* path — link an account beforehand, fall back to the
+   join code on the night — which is a different feature from "log in with Google".
+
+Nothing has been changed, per the instruction to report the cost before acting.
