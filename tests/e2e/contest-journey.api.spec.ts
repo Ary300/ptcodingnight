@@ -7,6 +7,7 @@ import {
   closeTestDb,
   draftProblem,
   liveProblem,
+  pinParticipantToProblemSet,
   readSolution,
   seedE2EContest,
   type SeededContest,
@@ -82,6 +83,11 @@ test.describe("contest journey (no judge required)", () => {
     expect(joined.displayName).toBe(DISPLAY_NAME);
     competitorId = joined.participantId;
     expect(competitorId).not.toBe("");
+
+    // Sets are randomly assigned, so joining alone gives roughly a 50% chance of drawing the set
+    // that does NOT hold `liveProblem`, and the specs below would then correctly be refused it.
+    // This suite is about the journey; set visibility is covered in team-scoring.api.spec.ts.
+    await pinParticipantToProblemSet(competitorId, liveProblem(seeded).contestProblemId);
   });
 
   test("a wrong join code is refused, and does not say which codes exist", async () => {

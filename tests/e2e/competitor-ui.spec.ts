@@ -128,12 +128,31 @@ test.describe("the competitor journey in a browser", () => {
     }
   });
 
-  test("the projector board renders and labels its data source", async ({ page }) => {
+  test("the projector shows the TEAM board by default", async ({ page }) => {
+    // Teams are what Coding Night ranks (PRD §6.1), so the bare URL must land on the team board.
+    // This spec previously asserted the individual board's heading and division tabs, and passed
+    // right up until teams became the default — a stale assertion that would have let the room see
+    // the wrong board.
     await page.goto("/projector");
+
+    await expect(page.getByRole("heading", { name: /team standings/i })).toBeVisible();
+    // Either the board, or an honest reason there is none. A projector that renders nothing and
+    // says nothing is the one outcome that must not happen.
+    await expect(
+      page
+        .getByRole("table", { name: /team standings/i })
+        .or(page.getByRole("status"))
+        .first(),
+    ).toBeVisible();
+  });
+
+  test("the projector still offers the individual board for the ICPC preset", async ({ page }) => {
+    // ?mode=individual is not dead code: the ICPC preset ranks players against each other and has
+    // no teams to total. If this ever 404s or renders the team board, that preset has no display.
+    await page.goto("/projector?mode=individual");
 
     await expect(page.getByRole("heading", { name: "Park Tudor Coding Night" })).toBeVisible();
     // Live or frozen, the board always states which it is — the room reads this from ten metres.
     await expect(page.getByText(/^(Live|Board frozen)$/)).toBeVisible();
-    await expect(page.getByRole("tablist", { name: /division/i })).toBeVisible();
   });
 });

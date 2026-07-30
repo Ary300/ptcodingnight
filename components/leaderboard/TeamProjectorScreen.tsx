@@ -28,43 +28,38 @@ export interface TeamProjectorScreenProps {
 export function TeamProjectorScreen({ contestId, maxRows = 12 }: TeamProjectorScreenProps) {
   const { standings, source, error } = useTeamStandings(contestId);
 
-  if (contestId === null) {
-    return (
-      <main className="grid min-h-screen place-items-center bg-paper p-8">
-        <p className="text-ink/65" style={{ fontSize: "var(--text-md)" }}>
-          Add <code>?contest=&lt;id&gt;</code> to this URL to pin the board to a contest.
-        </p>
-      </main>
-    );
-  }
+  // The HEADER RENDERS IN EVERY STATE, including "no contest pinned" and "still loading".
+  //
+  // The first version early-returned a bare sentence for those cases, which meant the wall showed
+  // an untitled page whenever anything was wrong — and a screen with no title is indistinguishable
+  // from a broken deployment to everyone in the room. A titled screen saying why it is empty is a
+  // different thing entirely.
+  const message =
+    contestId === null
+      ? "Add ?contest=<id> to this URL to pin the board to a contest."
+      : standings === null
+        ? source === "error"
+          ? (error ?? "Cannot reach the scoreboard.")
+          : "Loading standings…"
+        : null;
 
-  if (standings === null) {
-    return (
-      <main className="grid min-h-screen place-items-center bg-paper p-8">
-        <p role="status" className="text-ink/65" style={{ fontSize: "var(--text-md)" }}>
-          {source === "error" ? (error ?? "Cannot reach the scoreboard.") : "Loading standings…"}
-        </p>
-      </main>
-    );
-  }
-
-  const visible = standings.teams.slice(0, maxRows);
+  const visible = standings === null ? [] : standings.teams.slice(0, maxRows);
 
   return (
     <main className="relative min-h-screen overflow-hidden bg-paper p-8">
       {/* The team board has no reveal sequence, so the crest never reaches its "lit" state here.
           The dramatic unfreeze belongs to the individual board's ProjectorScreen; adding a second
           copy of that machinery for teams would be two implementations of one moment. */}
-      <CrestWatermark frozen={standings.frozen} lit={false} />
+      <CrestWatermark frozen={standings?.frozen ?? false} lit={false} />
 
       <header className="relative flex items-baseline justify-between gap-6">
         <h1 className="font-display font-bold" style={{ fontSize: "var(--text-xl)" }}>
           Team standings
         </h1>
-        <Countdown endsAt={standings.endsAt} />
+        {standings !== null && <Countdown endsAt={standings.endsAt} />}
       </header>
 
-      {standings.frozen && (
+      {standings?.frozen === true && (
         <FrozenPlate
           lifting={false}
           liftMs={0}
@@ -72,11 +67,17 @@ export function TeamProjectorScreen({ contestId, maxRows = 12 }: TeamProjectorSc
         />
       )}
 
-      <div className="relative mt-6">
-        <TeamStandingsBoard teams={visible} variant="projector" />
-      </div>
+      {message !== null ? (
+        <p role="status" className="relative mt-8 text-ink/65" style={{ fontSize: "var(--text-md)" }}>
+          {message}
+        </p>
+      ) : (
+        <div className="relative mt-6">
+          <TeamStandingsBoard teams={visible} variant="projector" />
+        </div>
+      )}
 
-      {standings.teams.length > visible.length && (
+      {standings !== null && standings.teams.length > visible.length && (
         <p className="numeric relative mt-4 text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
           Showing top {visible.length} of {standings.teams.length} teams.
         </p>

@@ -3,6 +3,7 @@ import { expect, test, type APIRequestContext } from "@playwright/test";
 import { ContestApi, waitForVerdict } from "./helpers/api";
 import {
   closeTestDb,
+  pinParticipantToProblemSet,
   liveProblem,
   readSolution,
   seedE2EContest,
@@ -39,11 +40,16 @@ test.describe("judged submission (requires the worker and Docker)", () => {
     competitorContext = await playwright.request.newContext({ baseURL });
     competitor = new ContestApi(competitorContext, seeded.contestId);
 
-    await competitor.joinOrThrow({
+    const joined = await competitor.joinOrThrow({
       joinCode: seeded.joinCode,
       displayName: "E2E Judged Competitor",
       divisionId: seeded.divisionIds.get("intermediate") ?? null,
     });
+
+    // Sets are randomly assigned, so joining alone gives roughly a 50% chance of drawing the set
+    // that does NOT contain the problem these specs submit to. This suite is about judging; set
+    // visibility is covered in team-scoring.api.spec.ts.
+    await pinParticipantToProblemSet(joined.participantId, liveProblem(seeded).contestProblemId);
   });
 
   test.afterAll(async () => {

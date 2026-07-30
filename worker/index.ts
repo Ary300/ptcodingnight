@@ -8,7 +8,8 @@ import { JudgeJobSchema, type JudgeResult } from "@/lib/schemas/judge";
 import { JUDGE_QUEUE_NAME, MAX_JOB_ATTEMPTS, STALLED_JOB_GRACE_MS } from "@/lib/judge/queue";
 import { parseServerEnv } from "@/lib/schemas/env";
 import { isDockerAvailable, sweepJudgeContainers } from "@/worker/docker";
-import { judge } from "@/worker/runner";
+import { RUNTIMES, type RuntimeId } from "@/lib/judge/runtimes";
+import { judge, type ImageOverrides } from "@/worker/runner";
 
 /**
  * The judge worker.
@@ -18,7 +19,7 @@ import { judge } from "@/worker/runner";
  * docs/PRD.md §7 for the rules.
  */
 
-async function processJob(job: Job, images: { python: string; java: string }): Promise<JudgeResult> {
+async function processJob(job: Job, images: ImageOverrides): Promise<JudgeResult> {
   // Parsed, not cast. A malformed job means the enqueuer and this worker disagree about the
   // contract, and guessing at the difference is how a submission gets judged against the
   // wrong problem.
@@ -57,7 +58,20 @@ async function main(): Promise<void> {
   if (swept > 0) console.warn(`swept ${swept} judge container(s) left by a previous run`);
 
   const connection = new IORedis(env.REDIS_URL, { maxRetriesPerRequest: null });
-  const images = { python: env.JUDGE_IMAGE_PYTHON, java: env.JUDGE_IMAGE_JAVA };
+  // Keyed by RuntimeId, which is what `judge()` looks up.
+  //
+  // This was `{ python, java }` — keys that match no RuntimeId, so every override was silently
+  // ignored and the registry's own images were used regardless of what JUDGE_IMAGE_* said. It did
+  // no harm because the values agreed, and it would have been invisible until somebody set
+  // JUDGE_IMAGE_PYTHON on a host and watched it do nothing.
+  //
+  // Only the two stock images have env overrides today; the other three come from the registry.
+  // ptcn-go:1.23 deliberately has none — it is BUILT, not pulled, so pointing it elsewhere would
+  // just as likely find an image with a cold build cache (see docker/go/Dockerfile).
+  const images: ImageOverrides = {
+    python312: env.JUDGE_IMAGE_PYTHON,
+    jdk21: env.JUDGE_IMAGE_JAVA,
+  };
 
   const worker = new Worker(JUDGE_QUEUE_NAME, (job) => processJob(job, images), {
     connection,
@@ -109,7 +123,11 @@ async function main(): Promise<void> {
       event: "judge.started",
       queue: JUDGE_QUEUE_NAME,
       concurrency: env.JUDGE_CONCURRENCY,
-      images,
+      // Every image the judge will actually use, not just the overridden ones — a startup line that
+      // lists two images on a five-runtime judge invites exactly the wrong conclusion.
+      images: Object.fromEntries(
+        (Object.keys(RUNTIMES) as RuntimeId[]).map((id) => [id, images[id] ?? RUNTIMES[id].image]),
+      ),
     }),
   );
 }

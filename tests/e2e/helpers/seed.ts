@@ -158,6 +158,37 @@ export async function resetE2EData(fixture: ContestFixture = loadContestFixture(
   // should check rather than assume.
 }
 
+/**
+ * Pin a participant onto the set that contains a given contest problem.
+ *
+ * For specs that are about something OTHER than set visibility. Set assignment is random, so a
+ * judging spec that simply joins will sometimes draw a set that does not contain the problem it
+ * wants to submit to, and then fails with "that problem is in a set you were not assigned" — which
+ * is the guard working correctly against a test that did not say what it needed.
+ *
+ * Set visibility has its own coverage in `team-scoring.api.spec.ts`. This exists so the other specs
+ * can state their precondition instead of depending on a coin flip.
+ */
+export async function pinParticipantToProblemSet(
+  participantId: string,
+  contestProblemId: string,
+): Promise<void> {
+  const db = testDb();
+
+  const contestProblem = await db.contestProblem.findUnique({
+    where: { id: contestProblemId },
+    select: { setId: true },
+  });
+
+  // A GROUP problem has no set and needs no pinning; leaving chosenSetId alone is correct.
+  if (contestProblem?.setId == null) return;
+
+  await db.participant.update({
+    where: { id: participantId },
+    data: { chosenSetId: contestProblem.setId },
+  });
+}
+
 export interface SeedOptions {
   /** The instant the contest window is built around. Defaults to now. */
   readonly now?: Date;
