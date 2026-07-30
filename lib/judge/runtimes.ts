@@ -239,10 +239,37 @@ export const RUNTIMES: Readonly<Record<RuntimeId, Runtime>> = {
  * solutions, and an unoptimised build makes a correct algorithm look too slow.
  *
  * The `--release` and `-std=` flags are the entire point of the variant level. They are what a
- * Java-8 or C++11 problem means, and a fixture proves each one actually applies (see
- * `fixtures/judge/variants/`) — a flag that is silently ignored would let a student use a
- * language feature the problem forbids, and nothing else would notice.
+ * Java-8 or C++11 problem means, and a fixture proves each one actually applies — a flag that is
+ * silently ignored would let a student use a language feature the problem forbids, and nothing
+ * else would notice.
  */
+
+/**
+ * **`-std=` alone does NOT enforce a C++ standard, and this was a real hole.**
+ *
+ * GCC accepts most newer-standard features under an older `-std=` and merely *warns*, under
+ * `-Wc++17-extensions` and friends. `variant-cpp17-under-cpp11` — C++17 structured bindings and
+ * `if constexpr` compiled with `-std=c++11` — produced a clean **AC**. A student on a C++11
+ * problem could have used C++17 freely, which is precisely the thing the variant level claims to
+ * prevent. G4 caught it on the first run of the pair; nothing else would have.
+ *
+ * These promote exactly those "you used a newer standard" diagnostics to errors. Deliberately
+ * NOT `-pedantic-errors`, which would also reject GNU extensions that contest C++ leans on
+ * heavily — `__int128` above all. Verified: `__int128` still compiles with these flags set.
+ *
+ * Each variant gets the flags for every standard NEWER than its own. When adding C++20, its
+ * entry takes `-Werror=c++23-extensions -Werror=c++26-extensions`, and `CPP_11`/`CPP_17` are
+ * already correct because C++20 is newer than both.
+ *
+ * C needs no equivalent: only one C standard is offered, so there is no older level to enforce
+ * against. GCC has no `-Werror=cNN-extensions` in any case.
+ */
+const NEWER_THAN_CPP11 =
+  "-Werror=c++14-extensions -Werror=c++17-extensions -Werror=c++20-extensions " +
+  "-Werror=c++23-extensions -Werror=c++26-extensions";
+
+const NEWER_THAN_CPP17 =
+  "-Werror=c++20-extensions -Werror=c++23-extensions -Werror=c++26-extensions";
 export const VARIANTS: Readonly<Record<LanguageId, Variant>> = {
   PYTHON_312: {
     id: "PYTHON_312",
@@ -367,7 +394,7 @@ int main(void) {
     runtime: "gcc14",
     label: "C++11",
     sourceFile: "main.cpp",
-    compileCommand: "g++ -std=c++11 -O2 -o /build/prog /work/main.cpp",
+    compileCommand: `g++ -std=c++11 -O2 ${NEWER_THAN_CPP11} -o /build/prog /work/main.cpp`,
     producesArtifacts: true,
     runCommand: "exec /build/prog",
     starter: `#include <bits/stdc++.h>
@@ -386,7 +413,7 @@ int main() {
     runtime: "gcc14",
     label: "C++17",
     sourceFile: "main.cpp",
-    compileCommand: "g++ -std=c++17 -O2 -o /build/prog /work/main.cpp",
+    compileCommand: `g++ -std=c++17 -O2 ${NEWER_THAN_CPP17} -o /build/prog /work/main.cpp`,
     producesArtifacts: true,
     runCommand: "exec /build/prog",
     starter: `#include <bits/stdc++.h>
