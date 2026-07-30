@@ -21,14 +21,37 @@ import { z } from "zod";
  */
 export type EnvSource = Readonly<Partial<Record<string, string>>>;
 
+/**
+ * An optional setting where **an empty string means absent**.
+ *
+ * `.min(1).optional()` is not the same thing, and the difference took the deployment down.
+ * `docker-compose.prod.yml` writes `GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}`, so an unset
+ * variable reaches the process as `""` — which is *present* and *too short*, so validation
+ * failed and the production boot check refused to start:
+ *
+ *   GITHUB_CLIENT_SECRET: Too small: expected string to have >=1 characters
+ *
+ * That is "leave a provider blank to turn it off" — the behaviour this file's own comments
+ * promise, and `.env.production.example` instructs — preventing the site from starting at all.
+ *
+ * Empty means unset everywhere else in the shell and compose world; it means unset here too.
+ */
+function optional<T extends z.ZodType<string, string>>(schema: T) {
+  return z
+    .string()
+    .transform((value) => (value.trim() === "" ? undefined : value))
+    .pipe(z.union([schema, z.undefined()]))
+    .optional();
+}
+
 export const ContestEnvSchema = z.object({
   /**
    * HMAC key for session cookies. 32 characters minimum — a shorter key makes forging a
    * session a brute-force problem rather than an impossible one.
    */
-  SESSION_SECRET: z.string().min(32).optional(),
+  SESSION_SECRET: optional(z.string().min(32)),
   /** Shared passcode for the organizer console. Absent means nobody can hold an admin session. */
-  ADMIN_PASSCODE: z.string().min(8).optional(),
+  ADMIN_PASSCODE: optional(z.string().min(8)),
 
   /**
    * OAuth provider credentials. All optional, and that is the design: a provider with no
@@ -38,10 +61,10 @@ export const ContestEnvSchema = z.object({
    * Neither provider is ever the only way in — `User.passwordHash` is NOT NULL, so an
    * OAuth-only account cannot exist (docs/AUTH.md §3).
    */
-  GOOGLE_CLIENT_ID: z.string().min(1).optional(),
-  GOOGLE_CLIENT_SECRET: z.string().min(1).optional(),
-  GITHUB_CLIENT_ID: z.string().min(1).optional(),
-  GITHUB_CLIENT_SECRET: z.string().min(1).optional(),
+  GOOGLE_CLIENT_ID: optional(z.string().min(1)),
+  GOOGLE_CLIENT_SECRET: optional(z.string().min(1)),
+  GITHUB_CLIENT_ID: optional(z.string().min(1)),
+  GITHUB_CLIENT_SECRET: optional(z.string().min(1)),
 
   /**
    * Public origin, used to build OAuth redirect URIs.
@@ -50,7 +73,7 @@ export const ContestEnvSchema = z.object({
    * a mismatch is the single most common OAuth setup failure and the providers' error messages
    * for it are famously unhelpful.
    */
-  PUBLIC_ORIGIN: z.string().url().optional(),
+  PUBLIC_ORIGIN: optional(z.url()),
 
   /**
    * How many trusted proxies sit in front of the app. See `clientKey` in rate-limit.ts.
@@ -59,7 +82,7 @@ export const ContestEnvSchema = z.object({
    * is attacker-controlled input. The `docker-compose.prod.yml` deployment puts Caddy in front,
    * so that deployment sets this to 1.
    */
-  TRUSTED_PROXY_COUNT: z.string().regex(/^\d+$/).optional(),
+  TRUSTED_PROXY_COUNT: optional(z.string().regex(/^[0-9]+$/)),
 
   /**
    * Whether session cookies carry the `Secure` attribute.

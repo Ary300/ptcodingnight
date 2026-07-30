@@ -47,6 +47,69 @@ describe("COOKIE_SECURE", () => {
   );
 });
 
+describe("an empty variable means unset, not present-and-invalid", () => {
+  /**
+   * This took the deployment down. `docker-compose.prod.yml` writes
+   * `GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}`, so an unset variable arrives as `""` — which
+   * `.min(1).optional()` treats as present and too short:
+   *
+   *   GITHUB_CLIENT_SECRET: Too small: expected string to have >=1 characters
+   *
+   * Production then refused to boot. "Leave a provider blank to turn it off" is the documented
+   * behaviour, so the documented way to disable OAuth was preventing the site from starting.
+   */
+  it.each([
+    "GOOGLE_CLIENT_ID",
+    "GOOGLE_CLIENT_SECRET",
+    "GITHUB_CLIENT_ID",
+    "GITHUB_CLIENT_SECRET",
+    "SESSION_SECRET",
+    "ADMIN_PASSCODE",
+    "PUBLIC_ORIGIN",
+    "TRUSTED_PROXY_COUNT",
+  ])("treats an empty %s as absent rather than invalid", (key) => {
+    expect(() => parseContestEnv({ [key]: "" })).not.toThrow();
+    expect(parseContestEnv({ [key]: "" })[key as "ADMIN_PASSCODE"]).toBeUndefined();
+  });
+
+  it("treats whitespace as absent too, since a copied .env line often carries a space", () => {
+    expect(parseContestEnv({ ADMIN_PASSCODE: "   " }).ADMIN_PASSCODE).toBeUndefined();
+  });
+
+  /** Absent must not become a licence to accept nonsense when a value IS supplied. */
+  it("still rejects a value that is present and wrong", () => {
+    expect(() => parseContestEnv({ SESSION_SECRET: "too-short" })).toThrow();
+    expect(() => parseContestEnv({ ADMIN_PASSCODE: "short" })).toThrow();
+    expect(() => parseContestEnv({ PUBLIC_ORIGIN: "not-a-url" })).toThrow();
+    expect(() => parseContestEnv({ TRUSTED_PROXY_COUNT: "many" })).toThrow();
+  });
+
+  it("keeps a real value", () => {
+    expect(parseContestEnv({ GOOGLE_CLIENT_ID: "abc" }).GOOGLE_CLIENT_ID).toBe("abc");
+    expect(parseContestEnv({ PUBLIC_ORIGIN: "https://x.test" }).PUBLIC_ORIGIN).toBe(
+      "https://x.test",
+    );
+  });
+
+  /**
+   * The end-to-end shape of the failure: a production boot with every OAuth variable blank,
+   * which is exactly what compose produces when the operator does not use OAuth.
+   */
+  it("boots a production deployment that has OAuth turned off by leaving it blank", () => {
+    expect(() =>
+      assertAuthEnvIsDeployable({
+        NODE_ENV: "production",
+        SESSION_SECRET: "x".repeat(32),
+        ADMIN_PASSCODE: "a-real-passcode",
+        GOOGLE_CLIENT_ID: "",
+        GOOGLE_CLIENT_SECRET: "",
+        GITHUB_CLIENT_ID: "",
+        GITHUB_CLIENT_SECRET: "",
+      }),
+    ).not.toThrow();
+  });
+});
+
 describe("production refuses to start with an insecure cookie", () => {
   it("rejects COOKIE_SECURE=false under NODE_ENV=production", () => {
     expect(() =>

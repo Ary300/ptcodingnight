@@ -48,7 +48,10 @@ services:
       web:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:80/health"]
+      # Caddy proxies by HOSTNAME, so a request to localhost matches no site block in the
+      # Caddyfile and 404s no matter what path it asks for. Ask Caddy about ITSELF instead:
+      # the admin API on 2019 answers only on loopback and is the honest "is Caddy running".
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:2019/config/"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -138,6 +141,12 @@ services:
       # correct when nothing is in front of it — every rate limiter would otherwise be
       # defeatable by sending a different value per request (SECURITY.md H4).
       TRUSTED_PROXY_COUNT: "1"
+      # Read in the WEB process, not only the worker: createSubmission calls hostLimits() and
+      # buildJudgeJob bakes the RESOLVED absolute path into the job before it is queued. Left
+      # unset here, web emits /app/data/testcases/... while the worker's data is at
+      # /app/content/problems/... — every submission then fails with IE, and every sample
+      # renders as an empty string because readIfPresent swallows the miss.
+      TEST_DATA_ROOT: /app/content/problems
       # Not set to anything: production refuses to start with COOKIE_SECURE=false, and unset
       # means true. Listed here as a reminder that the default is the safe one.
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
@@ -148,7 +157,7 @@ services:
     # bypass TLS by hitting the IP directly, which is exactly what COOKIE_SECURE protects
     # against and it would hand them the session cookie anyway.
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 30s
       timeout: 10s
       retries: 5
