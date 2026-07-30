@@ -138,18 +138,35 @@ function jobFor(meta: ProblemMeta): JudgeJob {
 }
 
 /**
- * A problem that has left DRAFT without authored content has shipped without ever being
- * verified — the exact thing this gate exists to prevent. Checked only when the database is
- * reachable; when it is not, that is reported rather than silently passed.
+ * A problem that has left DRAFT without being authored has shipped without ever being
+ * verified — the thing PRD §8 forbids.
+ *
+ * The condition is on the CONTENT, not on a filesystem directory. `content/problems/` is the
+ * seed route for problems authored ahead of time; the normal route is an organizer typing a
+ * statement into the admin UI, which lands in the database and never touches the repo. The
+ * first version of this check required a directory and duly flagged the E2E fixture — whose
+ * statement lives in the DB exactly as a hand-authored problem's would. That was the check
+ * being wrong, not the data.
+ *
+ * What actually has to hold for a problem to leave DRAFT: a non-empty statement, and at least
+ * one test case. Checked only when the database is reachable; when it is not, that is reported
+ * rather than silently passed.
  */
-async function checkPublishedHaveContent(slugs: Set<string>): Promise<string[] | null> {
+async function checkPublishedAreAuthored(): Promise<string[] | null> {
   try {
     const { prisma } = await import("@/lib/db");
     const published = await prisma.problem.findMany({
       where: { state: { not: "DRAFT" } },
-      select: { slug: true },
+      select: { slug: true, statementMd: true, _count: { select: { testCases: true } } },
     });
-    return published.map((p) => p.slug).filter((s) => !slugs.has(s));
+
+    return published
+      .filter((p) => p.statementMd.trim().length === 0 || p._count.testCases === 0)
+      .map((p) =>
+        p.statementMd.trim().length === 0
+          ? `${p.slug} (no statement)`
+          : `${p.slug} (no test cases)`,
+      );
   } catch {
     return null;
   }
@@ -201,18 +218,18 @@ async function main(): Promise<void> {
     }
   }
 
-  const orphans = await checkPublishedHaveContent(new Set(problems.map((p) => p.slug)));
+  const orphans = await checkPublishedAreAuthored();
   if (orphans === null) {
     console.log(
-      "\nNOTE: database unreachable — could not confirm that every non-DRAFT problem has " +
-        "authored content. The judge portion of this gate still ran in full.",
+      "\nNOTE: database unreachable — could not confirm that every non-DRAFT problem is " +
+        "authored. The judge portion of this gate still ran in full.",
     );
   } else if (orphans.length > 0) {
     failures += orphans.length;
-    console.log(`\nFAIL  ${orphans.length} problem(s) are published with no authored content:`);
+    console.log(`\nFAIL  ${orphans.length} problem(s) left DRAFT without being authored:`);
     for (const slug of orphans) console.log(`      ${slug}`);
   } else {
-    console.log("\nevery non-DRAFT problem has authored content");
+    console.log("\nevery non-DRAFT problem has a statement and test cases");
   }
 
   const swept = await sweepJudgeContainers();

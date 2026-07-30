@@ -59,6 +59,21 @@ async function outcomeOf(job: Job): Promise<JobOutcome> {
   const state = await job.getState();
 
   if (state === "completed") {
+    // ABSENT is not the same as MALFORMED, and conflating them cost five correct submissions.
+    //
+    // BullMQ flips a job to "completed" and stores its return value in two steps, so there is
+    // a window where the state says completed and `returnvalue` is still null. Treating that
+    // as a contract mismatch reported a judge failure, which `reconcile` persisted as `IE` —
+    // and because the verdict write is guarded on `verdict: null`, the real `AC` that arrived
+    // moments later was refused. G8 hit this window 5 times in 40 submissions while the worker
+    // logged 40 clean ACs.
+    //
+    // Nothing there yet means keep waiting. Only a value that IS present and does not parse
+    // means the worker and the web process genuinely disagree about the contract.
+    if (job.returnvalue === null || job.returnvalue === undefined) {
+      return { status: "pending" };
+    }
+
     const parsed = JudgeResultSchema.safeParse(job.returnvalue);
     if (!parsed.success) {
       // The worker and the web process disagree about the result contract. Guessing at the

@@ -43,11 +43,22 @@ export interface ContainerRunOptions {
   /** Host directory mounted read-only at /work. Holds the submission source. */
   readonly sourceDir: string;
   /**
-   * Optional host directory mounted read-write at /out. Used only by the Java compile step,
-   * which has to put .class files somewhere. Never mounted for a step that runs student
-   * code.
+   * Optional host directory mounted read-write at /out.
+   *
+   * Two callers: the Java compile step, which has to put .class files somewhere, and the
+   * batch driver, which writes each test's captured stdout and exit status there.
+   *
+   * Untrusted code CAN write here, and that is acceptable because of what is *not* here:
+   * expected outputs are never mounted into a container, so a submission cannot discover the
+   * right answer and cannot forge a pass. It can scribble on its own results, and the driver
+   * overwrites each file after the test it belongs to actually runs.
    */
   readonly outputDir?: string;
+  /**
+   * Optional host directory mounted read-only at /in. Carries the test inputs and the batch
+   * driver script. Read-only so a submission cannot rewrite a later test's input.
+   */
+  readonly inputDir?: string;
   readonly stdin?: string;
   readonly limits: ContainerLimits;
   readonly name: string;
@@ -57,6 +68,17 @@ export interface ContainerRunOptions {
    * derived from it.
    */
   readonly outputCapBytes?: number;
+  /** Extra environment for the container. Used to parameterise the batch driver. */
+  readonly env?: Readonly<Record<string, string>>;
+  /**
+   * Host-side backstop for the WHOLE container, before the startup allowance is added.
+   *
+   * Defaults to `limits.wallClockKillMs`, which is one test's limit. A container that runs
+   * every test for a submission needs the sum, plus its compile — sizing this for a single
+   * test killed a three-test TLE fixture partway through the third one, and the retry then
+   * reported the truncated test as a runtime error.
+   */
+  readonly containerKillMs?: number;
 }
 
 export interface ContainerRunResult {
@@ -173,7 +195,8 @@ export async function isDockerAvailable(): Promise<boolean> {
  * with `sweepJudgeContainers` as the backstop if this process dies mid-run.
  */
 export async function runInContainer(options: ContainerRunOptions): Promise<ContainerRunResult> {
-  const { image, argv, sourceDir, outputDir, stdin, limits, name } = options;
+  const { image, argv, sourceDir, outputDir, inputDir, stdin, limits, name } = options;
+  const extraEnv = options.env ?? {};
   const outputCap = options.outputCapBytes ?? OUTPUT_CAP_FLOOR_BYTES;
 
   const args = [
@@ -183,6 +206,7 @@ export async function runInContainer(options: ContainerRunOptions): Promise<Cont
     "--workdir=/work",
     `--volume=${sourceDir}:/work:ro`,
     ...(outputDir === undefined ? [] : [`--volume=${outputDir}:/out:rw`]),
+    ...(inputDir === undefined ? [] : [`--volume=${inputDir}:/in:ro`]),
     // The root filesystem is read-only, so anything that wants a scratch or home directory
     // must be pointed at the tmpfs. Without these, the JVM and pip fail on startup for
     // reasons that look like a broken submission.
@@ -190,6 +214,7 @@ export async function runInContainer(options: ContainerRunOptions): Promise<Cont
     "--env=TMPDIR=/tmp",
     "--env=PYTHONDONTWRITEBYTECODE=1",
     "--env=PYTHONUNBUFFERED=1",
+    ...Object.entries(extraEnv).map(([key, value]) => `--env=${key}=${value}`),
     "--interactive",
     image,
     ...argv,
@@ -223,7 +248,7 @@ export async function runInContainer(options: ContainerRunOptions): Promise<Cont
     const timer = setTimeout(() => {
       timedOut = true;
       killContainer();
-    }, limits.wallClockKillMs + STARTUP_ALLOWANCE_MS);
+    }, (options.containerKillMs ?? limits.wallClockKillMs) + STARTUP_ALLOWANCE_MS);
 
     const capture = (chunk: Buffer, into: "out" | "err") => {
       const text = chunk.toString();

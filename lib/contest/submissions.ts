@@ -223,7 +223,14 @@ async function persistResult(submissionId: string, result: JudgeResult): Promise
   const judgeLogRef = await writeJudgeLog(result);
 
   const updated = await prisma.submission.updateMany({
-    where: { id: submissionId, verdict: null },
+    // A real verdict also overwrites a provisional `IE`, and that is the point.
+    //
+    // `IE` is our failure, never the student's (PRD §7.2), and it is explicitly retryable — so
+    // it must not be terminal in the database either. Guarding only on `verdict: null` meant a
+    // transient `IE` written while a job was still in flight permanently discarded the `AC`
+    // that followed. Every other verdict stays write-once: the guard still refuses to
+    // overwrite AC, WA, TLE, MLE, RE or CE.
+    where: { id: submissionId, OR: [{ verdict: null }, { verdict: "IE" }] },
     data: {
       verdict: result.verdict,
       score: result.score,

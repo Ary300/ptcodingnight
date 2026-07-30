@@ -11,6 +11,7 @@ import {
   type ContainerLimits,
   type ContainerRunResult,
 } from "@/worker/docker";
+import { BATCH_DRIVER, parseMeta, type BatchTestOutcome } from "@/worker/batch-driver";
 
 /**
  * Judges one submission: prepare a source directory, compile if the language needs it, run
@@ -33,17 +34,14 @@ const SCRATCH_ROOT = path.join(process.cwd(), ".judge-tmp");
 interface LanguageSpec {
   readonly image: string;
   readonly sourceFile: string;
-  readonly compile?: {
-    readonly argv: readonly string[];
-    /**
-     * Whether the step emits files the run step must execute. Java writes .class files to
-     * /out; Python's check writes nothing, so the run step keeps reading the source dir.
-     */
-    readonly producesArtifacts: boolean;
-    readonly timeoutMs: number;
-  };
-  /** Run step. Reads from /work. */
-  readonly runArgv: readonly string[];
+  /**
+   * Shell command run once inside the submission's container before any test. Absent for
+   * languages with nothing to build. Writes artifacts to /tmp/build.
+   */
+  readonly compileCommand?: string;
+  readonly compileTimeoutMs: number;
+  /** Shell command run once per test, reading the test input on stdin. */
+  readonly runCommand: string;
 }
 
 function languageSpec(job: JudgeJob, images: JudgeImages): LanguageSpec {
@@ -51,41 +49,32 @@ function languageSpec(job: JudgeJob, images: JudgeImages): LanguageSpec {
     return {
       image: images.python,
       sourceFile: "main.py",
-      compile: {
-        // Python has no build step, but a syntax error is still a compile error, not a
-        // runtime one — reporting `RE` would tell a student their algorithm crashed when
-        // the file never parsed.
-        //
-        // `compile()` rather than `py_compile`: py_compile writes __pycache__ next to the
-        // source, which is a read-only mount. This parses and writes nothing.
-        argv: [
-          "python",
-          "-c",
-          "import sys; compile(open('/work/main.py').read(), 'main.py', 'exec')",
-        ],
-        producesArtifacts: false,
-        timeoutMs: 15_000,
-      },
-      runArgv: ["python", "-I", "/work/main.py"],
+      // Python has no build step, but a syntax error is still a compile error, not a runtime
+      // one — reporting `RE` would tell a student their algorithm crashed when the file never
+      // parsed. `compile()` rather than `py_compile`, which would write __pycache__ next to
+      // the source on a read-only mount.
+      compileCommand:
+        `python -c "import sys; compile(open('/work/main.py').read(), 'main.py', 'exec')"`,
+      compileTimeoutMs: 15_000,
+      runCommand: "exec python -I /work/main.py",
     };
   }
 
   return {
     image: images.java,
     sourceFile: "Main.java",
-    compile: {
-      // -proc:none disables annotation processing. Without it a submission can ship an
-      // annotation processor and execute arbitrary code AT COMPILE TIME, inside the compile
-      // container, before any run-step reasoning applies.
-      argv: ["javac", "-proc:none", "-nowarn", "-d", "/out", "/work/Main.java"],
-      producesArtifacts: true,
-      // javac on a cold JVM is slow, and a slow compile is not the student's fault the way
-      // a slow program is.
-      timeoutMs: 60_000,
-    },
-    // A container memory cap the JVM cannot see leads to it sizing the heap against host
-    // RAM and being OOM-killed on startup. MaxRAMPercentage keeps the heap under the cgroup.
-    runArgv: ["java", "-XX:MaxRAMPercentage=75", "-cp", "/work", "Main"],
+    // -proc:none disables annotation processing. Without it a submission can ship an
+    // annotation processor and execute arbitrary code AT COMPILE TIME.
+    //
+    // Classes go to the tmpfs rather than a host mount: they are read by the JVM, never
+    // exec'd, so `noexec` is no obstacle, and it keeps build output off the host entirely.
+    compileCommand: "javac -proc:none -nowarn -d /tmp/build /work/Main.java",
+    // javac on a cold JVM is slow, and a slow compile is not the student's fault the way a
+    // slow program is.
+    compileTimeoutMs: 60_000,
+    // A container memory cap the JVM cannot see leads to it sizing the heap against host RAM
+    // and being OOM-killed on startup. MaxRAMPercentage keeps the heap under the cgroup.
+    runCommand: "exec java -XX:MaxRAMPercentage=75 -cp /tmp/build Main",
   };
 }
 
@@ -232,18 +221,133 @@ export function outputCapFor(expectedBytes: number): number {
 }
 
 /**
- * Wrap a command in coreutils `timeout` so the wall-clock kill measures the student's
- * program, not Docker.
+ * NOTE: the host no longer wraps commands in `timeout`. The batch driver applies `timeout`
+ * per test INSIDE the container, which is both what PRD §7.1's per-submission container
+ * implies and the only place the program's own clock can be measured — container creation
+ * costs 2.4-15.6 s here and must never be charged to a student.
  *
- * Container creation on this platform costs 2–16 seconds and varies run to run. Enforcing
- * the limit on the host would charge that startup to the submission and fail every correct
- * solution against a 2-second limit. `timeout` is present in both pinned images.
- *
- * `-k 1` follows up with SIGKILL a second later, so a program that traps SIGTERM still dies.
+ * The exit statuses that mean the kill fired are interpreted by `hitWallClock` below.
  */
-function withTimeout(argv: readonly string[], wallClockKillMs: number): string[] {
-  const seconds = Math.max(1, Math.ceil(wallClockKillMs / 1000));
-  return ["timeout", "-k", "1", String(seconds), ...argv];
+
+
+/**
+ * Read one test's outcome from the batch results directory.
+ *
+ * Returns null when the `.meta` file is absent, which means the container never reached this
+ * test — an OOM kill, a fork bomb, or the host backstop. The caller re-runs those individually.
+ */
+async function readBatchOutcome(
+  resultDir: string,
+  ordinal: number,
+  cap: number,
+): Promise<BatchTestOutcome | null> {
+  const metaPath = path.join(resultDir, `${String(ordinal)}.meta`);
+
+  let meta: { exitCode: number; durationMs: number; rawBytes: number } | null = null;
+  try {
+    meta = parseMeta(await readFile(metaPath, "utf8"));
+  } catch {
+    return null;
+  }
+  if (meta === null) return null;
+
+  const read = async (suffix: string): Promise<string> => {
+    try {
+      return await readFile(path.join(resultDir, `${String(ordinal)}.${suffix}`), "utf8");
+    } catch {
+      return "";
+    }
+  };
+
+  const stdout = (await read("out")).slice(0, cap);
+  return {
+    ordinal,
+    exitCode: meta.exitCode,
+    durationMs: meta.durationMs,
+    rawBytes: meta.rawBytes,
+    stdout,
+    stderr: await read("err"),
+  };
+}
+
+/**
+ * Run a single test in its own container — the fallback path when the batch died before
+ * reaching it.
+ *
+ * This is the original per-test implementation, kept precisely because batching cannot handle
+ * a test that kills the container. A submission that OOMs on test 1 would otherwise forfeit
+ * tests 2 and 3, and PRD §6.1 awards partial credit per test case: a speed optimisation must
+ * not cost a student points that isolation would have earned them.
+ */
+async function runSingleTest(options: {
+  spec: LanguageSpec;
+  limits: ContainerLimits;
+  sourceDir: string;
+  inputDir: string;
+  job: JudgeJob;
+  ordinal: number;
+  cap: number;
+  perTestKillMs: number;
+}): Promise<ContainerRunResult | null> {
+  const { spec, limits, sourceDir, inputDir, job, ordinal, cap, perTestKillMs } = options;
+
+  const resultDir = await mkdtemp(path.join(SCRATCH_ROOT, "retry-"));
+  try {
+    await runInContainer({
+      image: spec.image,
+      argv: ["/bin/sh", "/in/driver.sh"],
+      sourceDir,
+      inputDir,
+      outputDir: resultDir,
+      limits,
+      name: containerName(job, `retry-t${String(ordinal)}`),
+      outputCapBytes: 64 * 1024,
+      env: {
+        PTCN_TESTS: String(job.testCases.length),
+        PTCN_ONLY: String(ordinal),
+        PTCN_TIMEOUT: String(Math.max(1, Math.ceil(perTestKillMs / 1000))),
+        PTCN_COMPILE_TIMEOUT: String(Math.max(1, Math.ceil(spec.compileTimeoutMs / 1000))),
+        PTCN_CAP: String(cap),
+      },
+    });
+
+    const outcome = await readBatchOutcome(resultDir, ordinal, cap);
+    if (outcome === null) return null;
+
+    return {
+      stdout: outcome.stdout,
+      stderr: outcome.stderr,
+      exitCode: outcome.exitCode,
+      oomKilled: false,
+      timedOut: false,
+      outputTruncated: outcome.rawBytes > Buffer.byteLength(outcome.stdout, "utf8"),
+      durationMs: outcome.durationMs,
+      wallMs: outcome.durationMs,
+    };
+  } finally {
+    await rm(resultDir, { recursive: true, force: true });
+  }
+}
+
+/** Read the driver's compile status, if the language had a compile step. */
+async function readCompileStatus(
+  resultDir: string,
+): Promise<{ exitCode: number; stderr: string } | null> {
+  try {
+    const raw = await readFile(path.join(resultDir, "compile.meta"), "utf8");
+    const exitCode = Number(raw.trim());
+    if (!Number.isFinite(exitCode)) return null;
+
+    let stderr = "";
+    try {
+      stderr = await readFile(path.join(resultDir, "compile.err"), "utf8");
+    } catch {
+      stderr = "";
+    }
+    return { exitCode, stderr };
+  } catch {
+    return null;
+  }
 }
 
 export async function judge(job: JudgeJob, images: JudgeImages): Promise<JudgeResult> {
@@ -258,58 +362,136 @@ export async function judge(job: JudgeJob, images: JudgeImages): Promise<JudgeRe
   await mkdir(SCRATCH_ROOT, { recursive: true });
   const workspace = await mkdtemp(path.join(SCRATCH_ROOT, "job-"));
   const sourceDir = path.join(workspace, "src");
-  const buildDir = path.join(workspace, "out");
 
   try {
     await mkdir(sourceDir, { recursive: true });
-    await mkdir(buildDir, { recursive: true });
     await writeFile(path.join(sourceDir, spec.sourceFile), job.sourceCode, "utf8");
 
-    // --- compile -----------------------------------------------------------
-    let runDir = sourceDir;
-    if (spec.compile !== undefined) {
-      const compile = await runInContainer({
-        image: spec.image,
-        argv: withTimeout(spec.compile.argv, spec.compile.timeoutMs),
-        sourceDir,
-        outputDir: spec.compile.producesArtifacts ? buildDir : undefined,
-        limits,
-        name: containerName(job, "compile"),
-      });
+    // --- ONE container: compile, then every test -------------------------
+    const inputDir = path.join(workspace, "in");
+    const resultDir = path.join(workspace, "res");
+    await mkdir(inputDir, { recursive: true });
+    await mkdir(resultDir, { recursive: true });
 
-      if (compile.exitCode !== 0) {
-        return aggregate({
-          submissionId: job.submissionId,
-          results: [],
-          testCases: job.testCases,
-          // Returned verbatim to the student. The compiler is describing their own code, so
-          // nothing about the hidden tests leaks (PRD §7.2).
-          compileError: compile.stderr.trim() || "Compilation failed",
-        });
-      }
-      if (spec.compile.producesArtifacts) runDir = buildDir;
-    }
+    const expectedByOrdinal = new Map<number, string>();
+    const inputByOrdinal = new Map<number, string>();
+    let largestCap = OUTPUT_CAP_FLOOR_BYTES;
 
-    // --- run every test ----------------------------------------------------
-    const results: JudgeTestResult[] = [];
-
-    for (const testCase of job.testCases) {
+    for (const [index, testCase] of job.testCases.entries()) {
+      const ordinal = index + 1;
       const [input, expected] = await Promise.all([
         readFile(testCase.inputPath, "utf8"),
         readFile(testCase.expectedOutputPath, "utf8"),
       ]);
+      inputByOrdinal.set(ordinal, input);
+      expectedByOrdinal.set(ordinal, expected);
+      largestCap = Math.max(largestCap, outputCapFor(Buffer.byteLength(expected, "utf8")));
+      await writeFile(path.join(inputDir, `${String(ordinal)}.in`), input, "utf8");
+    }
 
-      const run = await runInContainer({
-        image: spec.image,
-        argv: withTimeout(spec.runArgv, wallClockKillMs),
-        sourceDir: runDir,
-        stdin: input,
-        limits,
-        name: containerName(job, `t${testCase.ordinal}`),
-        // Sized to THIS test's expected answer, so a problem with legitimately large output
-        // is not truncated into a WA. See outputCapFor.
-        outputCapBytes: outputCapFor(Buffer.byteLength(expected, "utf8")),
+    // Commands ship as generated scripts rather than being interpolated into the driver, so
+    // nothing inside the container ever evals a string.
+    await writeFile(path.join(inputDir, "driver.sh"), BATCH_DRIVER, "utf8");
+    await writeFile(path.join(inputDir, "run.sh"), `${spec.runCommand}\n`, "utf8");
+    if (spec.compileCommand !== undefined) {
+      await writeFile(path.join(inputDir, "compile.sh"), `${spec.compileCommand}\n`, "utf8");
+    }
+
+    const batch = await runInContainer({
+      image: spec.image,
+      argv: ["/bin/sh", "/in/driver.sh"],
+      sourceDir,
+      inputDir,
+      outputDir: resultDir,
+      limits: {
+        ...limits,
+        // The driver buffers each answer in the tmpfs before copying it out, and Java's build
+        // output lands there too, so the tmpfs must hold the largest legitimate answer with
+        // room to spare. A flood still hits ENOSPC in RAM that dies with the container rather
+        // than filling the host disk.
+        tmpfsBytes: Math.max(limits.tmpfsBytes, largestCap * 2 + 64 * 1024 * 1024),
+      },
+      name: containerName(job, "run"),
+      // The backstop covers the WHOLE container now: every test plus the compile. Sizing it
+      // for a single test is what killed a three-test TLE fixture partway through test 3.
+      containerKillMs:
+        wallClockKillMs * job.testCases.length + spec.compileTimeoutMs,
+      // The driver itself emits almost nothing; per-test answers go to /out.
+      outputCapBytes: 64 * 1024,
+      env: {
+        PTCN_TESTS: String(job.testCases.length),
+        PTCN_TIMEOUT: String(Math.max(1, Math.ceil(wallClockKillMs / 1000))),
+        PTCN_COMPILE_TIMEOUT: String(Math.max(1, Math.ceil(spec.compileTimeoutMs / 1000))),
+        PTCN_CAP: String(largestCap),
+      },
+    });
+
+    // A non-zero compile status short-circuits everything: no test ran, so there is nothing to
+    // aggregate and no points to award. Compiler stderr goes back verbatim (PRD §7.2) — the
+    // compiler is describing the student's own code, so nothing about the tests leaks.
+    const compileStatus = await readCompileStatus(resultDir);
+    if (compileStatus !== null && compileStatus.exitCode !== 0) {
+      return aggregate({
+        submissionId: job.submissionId,
+        results: [],
+        testCases: job.testCases,
+        compileError: compileStatus.stderr.trim() || "Compilation failed",
       });
+    }
+
+    const results: JudgeTestResult[] = [];
+
+    for (const [index, testCase] of job.testCases.entries()) {
+      const ordinal = index + 1;
+      const expected = expectedByOrdinal.get(ordinal) ?? "";
+      const input = inputByOrdinal.get(ordinal) ?? "";
+
+      const outcome = await readBatchOutcome(resultDir, ordinal, largestCap);
+
+      // No .meta means the container died before reaching this test — an OOM kill, a fork
+      // bomb, or the host backstop. Re-run just the missing tests in their own containers so
+      // partial credit survives: batching is a speed optimisation and must not cost a student
+      // points that per-test isolation would have earned them.
+      const retried =
+        outcome === null
+          ? await runSingleTest({
+              spec,
+              limits,
+              sourceDir,
+              inputDir,
+              job,
+              ordinal,
+              cap: largestCap,
+              perTestKillMs: wallClockKillMs,
+            })
+          : null;
+
+      const run: ContainerRunResult =
+        outcome === null
+          ? // A retry that produced no result at all means the judge could not determine
+            // anything about this test. That is IE territory, not a student-facing failure.
+            (retried ?? {
+              stdout: "",
+              stderr: "judge could not run this test",
+              exitCode: null,
+              oomKilled: batch.oomKilled,
+              timedOut: batch.timedOut,
+              outputTruncated: false,
+              durationMs: 0,
+              wallMs: 0,
+            })
+          : {
+              stdout: outcome.stdout,
+              stderr: outcome.stderr,
+              exitCode: outcome.exitCode,
+              // A container-level OOM kills the whole batch, so it is attributed to the test
+              // that was running when the metas stopped appearing.
+              oomKilled: batch.oomKilled && ordinal === results.length + 1,
+              timedOut: false,
+              outputTruncated: outcome.rawBytes > Buffer.byteLength(outcome.stdout, "utf8"),
+              durationMs: outcome.durationMs,
+              wallMs: outcome.durationMs,
+            };
 
       let verdict: Verdict;
       try {
