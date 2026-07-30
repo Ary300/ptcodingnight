@@ -185,17 +185,13 @@ Missing:
   so this is a scoring input, not an administrative convenience.
 - **Set assignment endpoint** — `assignSets` is pure and tested but nothing calls it, so
   `Participant.chosenSetId` is never populated and no `AuditLog` row is written.
-- **API enforcement of `allowReadingUnassignedSets`** — `canReadSet` exists and is tested, but the
-  problem routes do not call it yet, so today every competitor can read every set.
 - **`StandingsResponse` still has an individual shape** in `lib/schemas/api.ts`.
 
 ---
 
 ## T9 — G7 and G9 are stale, and G5 needs a re-run
 
-- **G5** — its manifest was updated for the new language ids and six new hostile fixtures were
-  added for the C++, Go and Node runtimes. The last recorded run predates that, so the gate must be
-  re-run before it can be called anything.
+- **G5 — resolved. 17/17 PASS**, 13 hostile fixtures across four runtimes.
 - **G7** — every spec assumes individual scoring and a single problem list. They need rewriting for
   teams, and per the instruction they must cover **both** the join-code and the credentialed sign-in
   paths rather than dropping either.

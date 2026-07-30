@@ -18,7 +18,7 @@ The application exists. `app/`, `lib/`, `worker/`, `prisma/`, `fixtures/`, `comp
 |---|---|---|
 | G1 typecheck, G2 lint, G3 unit | PASS | 292 unit tests |
 | G4 judge fixtures | PASS | 57/57 across all five runtimes |
-| G5 sandbox | **FAIL — needs a re-run** | Its manifest was updated for the new language ids; last run predates the fix |
+| G5 sandbox | PASS | 17/17, 13 hostile fixtures across four runtimes |
 | G6 golden scoring | PASS | includes the team formula |
 | G7 E2E, G9 a11y | **stale** | written against individual scoring; need rewriting for teams |
 | G8 load | **FAIL, and it is a hardware answer** | p95 110,767 ms against a 10,000 ms target — 11×. See `docs/HOSTING.md`; the threshold was never lowered |
