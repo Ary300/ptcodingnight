@@ -37,9 +37,11 @@ enum AuthMethod {
   ADMIN_PASSCODE
   /// Organizer signed in with an admin-issued email + password held in User.passwordHash.
   ADMIN_PASSWORD
-  /// Optional convenience, and ONLY ever a second way into an account that already has a
-  /// local credential. Requires internet, so it can never be the path used on the night.
+  /// Optional convenience, and ONLY ever a second way into an account that already has a local
+  /// credential — see User.passwordHash.
   GOOGLE
+  /// Same contract as GOOGLE.
+  GITHUB
 }
 
 enum ContestState {
@@ -99,6 +101,24 @@ enum ProblemState {
 }
 
 /// Mirrors the `type` column of data/problems_seed.csv.
+/// Which round a contest problem belongs to. The rounds score differently: an INDIVIDUAL
+/// problem is solved by one player on their assigned set, a GROUP problem is solved once by the
+/// whole team. Both feed the same per-player pool before the mean (docs/SCORING.md §1).
+enum ProblemRound {
+  INDIVIDUAL
+  GROUP
+}
+
+/// How players are matched to problem sets. Both formats the organizer described are supported.
+enum SetSelection {
+  /// Default. Seeded, balanced random assignment per player. No preview and no choice.
+  RANDOM_ASSIGNED
+  /// Each player picks their own set independently.
+  PLAYER_CHOOSES
+  /// The whole team works a single set.
+  ONE_SET_PER_TEAM
+}
+
 enum ProblemType {
   ALGORITHM
   CODINGBAT
@@ -132,18 +152,26 @@ model User {
 
   /// Scrypt hash of an admin-issued password. **Required, and that is the enforcement.**
   ///
-  /// An account with no local credential would be reachable only through Google, which needs
-  /// internet — and PRD §10 guarantees the contest room has none. Rather than checking that
-  /// invariant in application code where a future code path could forget it, the column is NOT
-  /// NULL: a Google-only account is unrepresentable in this schema.
+  /// No account may be reachable ONLY through an OAuth provider. Internet at the event is now
+  /// guaranteed (PRD §10.1), so this is no longer about the venue — it is about OAuth's own
+  /// failure modes, which have nothing to do with the room: an expired client secret, a changed
+  /// consent screen, a student without a school account, a provider having an afternoon.
   ///
-  /// The Google sign-in path therefore never INSERTs a User. It only ever links to one that
-  /// already exists. See lib/contest/google.ts.
+  /// Rather than checking that invariant in application code where some future code path could
+  /// forget it, the column is NOT NULL. An OAuth-only account is unrepresentable in this schema,
+  /// which is a stronger guarantee than any test.
+  ///
+  /// The consequence, deliberately: the Google and GitHub paths never INSERT a User. They only
+  /// ever LINK to one that already exists. Accounts are admin-issued. See lib/contest/oauth.ts.
   passwordHash String
 
-  /// Google's stable subject claim (`sub`), if this account has been linked. Never an email:
-  /// emails get reassigned, `sub` does not.
+  /// Google's stable subject claim (`sub`), if linked. Never an email: emails get reassigned
+  /// between people, `sub` does not.
   googleSub String? @unique
+
+  /// GitHub's numeric account id, if linked. Same reasoning as googleSub — a GitHub *username*
+  /// is renameable and reusable, the id is not.
+  githubSub String? @unique
 
   participants Participant[]
   sessions     Session[]
@@ -208,21 +236,109 @@ model Contest {
   state           ContestState @default(DRAFT)
   /// Identifies the scoring preset in lib/scoring/ ("coding-night-classic" | "icpc").
   scoringPresetId String       @default("coding-night-classic")
+  /// Admin-issued fallback sign-in path. Kept even though OAuth is available, because OAuth
+  /// fails for reasons unrelated to the venue (PRD §10.1).
   joinCode        String       @unique
-  createdAt       DateTime     @default(now())
-  updatedAt       DateTime     @updatedAt
+
+  // --- scoring config (docs/SCORING.md §4) --------------------------------
+  /// Group problem points join the per-player pool BEFORE the mean. Organizer-confirmed default.
+  /// False adds them to the team total after the mean, making them worth teamSize times as much.
+  groupPointsInsideMean      Boolean      @default(true)
+  /// Side activity points are added flat to the team total. Organizer-confirmed default.
+  /// False sends them through the same divisor as everything else.
+  sideActivitiesFlat         Boolean      @default(true)
+  /// How players are matched to problem sets.
+  setSelection               SetSelection @default(RANDOM_ASSIGNED)
+  /// Whether a player may read a set they were not assigned. **Enforced in the API, not just the
+  /// UI** — a set a competitor can read is a set they can practise on before their own round.
+  allowReadingUnassignedSets Boolean      @default(false)
+
+  /// Seed for problem-set assignment. Stored so any assignment can be RE-DERIVED from the seed
+  /// and the participant list: a disputed assignment has to be explainable rather than argued
+  /// about (PRD §6.2). Null until Round 1 assignment runs.
+  setAssignmentSeed String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   divisions       Division[]
   contestProblems ContestProblem[]
   participants    Participant[]
+  teams           Team[]
+  problemSets     ProblemSet[]
 
   @@index([state])
+}
+
+/// A team. **The unit that gets ranked** (docs/SCORING.md).
+///
+/// Team size is the divisor in every team score, so a wrong roster is a wrong result — not a
+/// cosmetic error. Members are Participants pointing here via teamId; size is therefore always
+/// derived and never stored, because a stored count is a second source of truth that can drift
+/// from the roster it claims to describe.
+model Team {
+  id        String @id @default(cuid())
+  contestId String
+  name      String
+
+  createdAt DateTime @default(now())
+
+  contest        Contest            @relation(fields: [contestId], references: [id], onDelete: Cascade)
+  members        Participant[]
+  sideActivities TeamSideActivity[]
+  standings      Standing[]
+
+  @@unique([contestId, name])
+  @@index([contestId])
+}
+
+/// A parallel problem set for Round 1, labelled "A".."D".
+///
+/// Each set holds one Easy, one Medium and one Hard problem, and sets are calibrated to be of
+/// equal difficulty — which is what makes a random assignment fair (PRD §5.1).
+model ProblemSet {
+  id        String @id @default(cuid())
+  contestId String
+  /// "A" | "B" | "C" | "D".
+  label     String
+
+  contest         Contest          @relation(fields: [contestId], references: [id], onDelete: Cascade)
+  contestProblems ContestProblem[]
+  assignedTo      Participant[]
+
+  @@unique([contestId, label])
+  @@index([contestId])
+}
+
+/// Points awarded to a team for a non-coding activity — metal puzzle, train tracks, Connections.
+///
+/// **The only score input with no submission behind it**, which makes its audit trail the only
+/// record that it happened at all. enteredBy and enteredAt are therefore not optional, and every
+/// write also lands in AuditLog.
+model TeamSideActivity {
+  id     String @id @default(cuid())
+  teamId String
+  /// "Metal puzzle" | "Train tracks" | "Connections" | anything the organizer runs.
+  label  String
+  /// May be negative: an organizer correcting an over-award should not have to delete history.
+  points Int
+
+  /// Actor label of the admin who entered it. Never a display name alone — see actorLabel().
+  enteredBy String
+  enteredAt DateTime @default(now())
+
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@index([teamId])
 }
 
 model Division {
   id        String @id @default(cuid())
   contestId String
-  /// "Intermediate" | "Advanced". Divisions rank independently (PRD §6.1).
+  /// "Intermediate" | "Advanced".
+  ///
+  /// **Optional now.** Teams replaced divisions as the primary ranking axis, and a contest that
+  /// groups by team does not necessarily also split by skill level. A contest may have none.
   name      String
   sortOrder Int    @default(0)
 
@@ -270,8 +386,11 @@ model Problem {
   referenceSolution String?
   /// Notes the HackerRank inspiration for an imported title. Titles and history only.
   originAttribution String?
-  isGroupProblem    Boolean  @default(false)
-  tags              String[] @default([])
+  /// Which round this problem is for. Replaces the boolean isGroupProblem, which could not
+  /// express "individual, on a set" as distinct from "individual, no set".
+  round             ProblemRound @default(INDIVIDUAL)
+  isGroupProblem    Boolean      @default(false)
+  tags              String[]     @default([])
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -317,14 +436,18 @@ model ContestProblem {
   contestId  String
   problemId  String
   divisionId String?
-  /// Human label for the slot, e.g. "Intermediate E1".
+  /// Which Round 1 set this problem belongs to. Null for a GROUP problem, which every team
+  /// works regardless of set.
+  setId      String?
+  /// Human label for the slot, e.g. "A-E1" or "Group 1".
   slotLabel  String
   basePoints Int
   unlockAt   DateTime?
 
-  contest  Contest   @relation(fields: [contestId], references: [id], onDelete: Cascade)
-  problem  Problem   @relation(fields: [problemId], references: [id], onDelete: Restrict)
-  division Division? @relation(fields: [divisionId], references: [id], onDelete: SetNull)
+  contest  Contest     @relation(fields: [contestId], references: [id], onDelete: Cascade)
+  problem  Problem     @relation(fields: [problemId], references: [id], onDelete: Restrict)
+  division Division?   @relation(fields: [divisionId], references: [id], onDelete: SetNull)
+  set      ProblemSet? @relation(fields: [setId], references: [id], onDelete: SetNull)
 
   submissions Submission[]
   hintGrants  HintGrant[]
@@ -332,6 +455,7 @@ model ContestProblem {
   @@unique([contestId, problemId, divisionId])
   @@index([contestId])
   @@index([divisionId])
+  @@index([setId])
 }
 
 // ---------------------------------------------------------------------------
@@ -341,19 +465,34 @@ model ContestProblem {
 model Participant {
   id          String  @id @default(cuid())
   contestId   String
-  /// Null when the participant joined by code with a display name only — the fallback
-  /// path that must work when Google Workspace is unavailable (PRD §4).
+  /// Null when the participant joined by code with a display name only — the admin-issued
+  /// fallback that must work when OAuth does not (PRD §10.1).
   userId      String?
   displayName String
+  /// Optional. Teams replaced divisions as the primary ranking axis (PRD §5).
   divisionId  String?
-  /// Reserved. Team/pair programming is out of scope for v1 (PRD §13); no Team model yet.
-  teamId      String?
+
+  /// The team this participant competes for. **Team size is the divisor in the team score**, so
+  /// a wrong roster is a wrong result rather than a cosmetic error.
+  ///
+  /// Nullable so a participant can exist before rosters are finalised; a participant with no team
+  /// contributes to no team score, and the admin UI flags them.
+  teamId String?
+
+  /// The Round 1 problem set this player was assigned.
+  ///
+  /// Named `chosenSetId` because three formats are supported (Contest.setSelection) and only one
+  /// is an actual choice. Under the default it is ASSIGNED — seeded, balanced, audit-logged — and
+  /// the player never previews the alternatives (PRD §6.2).
+  chosenSetId String?
 
   joinedAt DateTime @default(now())
 
-  contest  Contest   @relation(fields: [contestId], references: [id], onDelete: Cascade)
-  user     User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
-  division Division? @relation(fields: [divisionId], references: [id], onDelete: SetNull)
+  contest   Contest     @relation(fields: [contestId], references: [id], onDelete: Cascade)
+  user      User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+  division  Division?   @relation(fields: [divisionId], references: [id], onDelete: SetNull)
+  team      Team?       @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  chosenSet ProblemSet? @relation(fields: [chosenSetId], references: [id], onDelete: SetNull)
 
   submissions Submission[]
   hintGrants  HintGrant[]
@@ -363,6 +502,8 @@ model Participant {
   @@unique([contestId, displayName])
   @@index([contestId])
   @@index([divisionId])
+  @@index([teamId])
+  @@index([chosenSetId])
 }
 
 // ---------------------------------------------------------------------------
@@ -448,21 +589,46 @@ model HintGrant {
 /// MATERIALIZED CACHE ONLY. Every column here is re-derivable by replaying Submission and
 /// HintGrant through lib/scoring/. Truncating this table must never lose information. Do
 /// not read it in a context that requires correctness over speed.
+/// Materialized standings. **Team-ranked**, with a per-participant breakdown.
+///
+/// One row per team, plus one row per participant carrying that player's own contribution so the
+/// UI can expand a team without recomputing. Both are derived from the submission log by
+/// lib/scoring/ and can be thrown away and rebuilt at any time — nothing here is a source of
+/// truth, which is what makes replay safe.
 model Standing {
-  id             String    @id @default(cuid())
-  participantId  String
-  divisionId     String
-  score          Int
+  id String @id @default(cuid())
+
+  /// Set on a team row, null on a participant breakdown row.
+  teamId        String?
+  /// Set on a participant breakdown row, null on a team row.
+  participantId String?
+  divisionId    String?
+
+  /// **Hundredths of a point**, not points.
+  ///
+  /// The team score is a mean, so fractional scores are normal (543.75 is a real result). Integer
+  /// hundredths keep it exact; a float here would reintroduce the bug where 3 * 0.15 * 250 gave
+  /// 112.49999999999999 and cost a student a point. See docs/SCORING.md §3.
+  scoreHundredths    Int
+  /// Team size at computation time — the divisor that produced scoreHundredths. Stored so a
+  /// past result stays explainable after a roster change.
+  teamSize           Int?
+  /// Side activity points, flat, in whole points. Kept separate so the UI can show the
+  /// arithmetic rather than just the total.
+  sideActivityPoints Int  @default(0)
+
   penalty        Int
   lastAcceptedAt DateTime?
   rank           Int
   /// The scoring input this row was computed from, for staleness detection.
   computedAt     DateTime  @default(now())
 
-  participant Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
-  division    Division    @relation(fields: [divisionId], references: [id], onDelete: Cascade)
+  participant Participant? @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  division    Division?    @relation(fields: [divisionId], references: [id], onDelete: Cascade)
+  team        Team?        @relation(fields: [teamId], references: [id], onDelete: Cascade)
 
-  @@unique([participantId, divisionId])
+  @@unique([teamId, participantId])
+  @@index([rank])
   @@index([divisionId, rank])
 }
 

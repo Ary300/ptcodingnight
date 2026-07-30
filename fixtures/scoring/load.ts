@@ -5,8 +5,12 @@ import type {
   ContestConfig,
   HintGrantRecord,
   ParticipantRecord,
+  ProblemRound,
+  SideActivityRecord,
   Standing,
   SubmissionRecord,
+  TeamRecord,
+  TeamStanding,
 } from "@/lib/types/scoring";
 import type { Verdict } from "@/lib/schemas/judge";
 
@@ -23,8 +27,10 @@ const FIXTURES = path.resolve(__dirname, "..");
 interface RawProblem {
   contestProblemId: string;
   divisionId: string | null;
+  setId?: string | null;
   basePoints: number;
-  isGroupProblem: boolean;
+  round?: string;
+  isGroupProblem?: boolean;
 }
 
 interface RawGolden {
@@ -36,8 +42,18 @@ interface RawGolden {
     freezeAt: string | null;
     divisions: { divisionId: string; name: string; sortOrder: number }[];
     problems: RawProblem[];
+    groupPointsInsideMean?: boolean;
+    sideActivitiesFlat?: boolean;
   };
-  participants: { participantId: string; displayName: string; divisionId: string | null }[];
+  teams?: TeamRecord[];
+  participants: {
+    participantId: string;
+    displayName: string;
+    divisionId: string | null;
+    teamId?: string | null;
+    chosenSetId?: string | null;
+  }[];
+  sideActivities?: SideActivityRecord[];
   submissions: {
     submissionId: string;
     participantId: string;
@@ -61,11 +77,31 @@ export interface GoldenInput {
   hintGrants: HintGrantRecord[];
 }
 
+export interface GoldenTeamInput extends GoldenInput {
+  teams: TeamRecord[];
+  sideActivities: SideActivityRecord[];
+}
+
+/**
+ * `round` is authoritative; `isGroupProblem` is read only so a pre-team fixture still loads.
+ *
+ * The old boolean could not distinguish "individual, on set A" from "individual, on no set",
+ * which is why it was replaced rather than kept alongside.
+ */
+function roundOf(p: RawProblem): ProblemRound {
+  if (p.round === "GROUP" || p.round === "INDIVIDUAL") return p.round;
+  return p.isGroupProblem === true ? "GROUP" : "INDIVIDUAL";
+}
+
 export function loadGoldenContest(): GoldenInput {
   const raw = JSON.parse(
     readFileSync(path.join(FIXTURES, "scoring", "golden-contest.json"), "utf8"),
   ) as RawGolden;
 
+  return loadFrom(raw);
+}
+
+function loadFrom(raw: RawGolden): GoldenInput {
   return {
     config: {
       contestId: raw.config.contestId,
@@ -79,11 +115,18 @@ export function loadGoldenContest(): GoldenInput {
       problems: raw.config.problems.map((p) => ({
         contestProblemId: p.contestProblemId,
         divisionId: p.divisionId,
+        setId: p.setId ?? null,
         basePoints: p.basePoints,
-        isGroupProblem: p.isGroupProblem,
+        round: roundOf(p),
       })),
+      groupPointsInsideMean: raw.config.groupPointsInsideMean ?? true,
+      sideActivitiesFlat: raw.config.sideActivitiesFlat ?? true,
     },
-    participants: raw.participants,
+    participants: raw.participants.map((participant) => ({
+      ...participant,
+      teamId: participant.teamId ?? null,
+      chosenSetId: participant.chosenSetId ?? null,
+    })),
     submissions: raw.submissions.map((s) => ({
       submissionId: s.submissionId,
       participantId: s.participantId,
@@ -140,4 +183,50 @@ export function canonicalize(standings: readonly Standing[]): unknown[] {
 
 export function serialize(standings: readonly Standing[]): string {
   return JSON.stringify(canonicalize(standings), null, 2);
+}
+
+/**
+ * The team golden contest.
+ *
+ * Pins the organizer's real worked example — players at 400, 250, 400, 400, one 125-point group
+ * problem, side activities 20 + 80 + 50 — plus a team of two, so the divisor is actually exercised.
+ */
+export function loadGoldenTeamContest(): GoldenTeamInput {
+  const raw = JSON.parse(
+    readFileSync(path.join(FIXTURES, "scoring", "golden-team-contest.json"), "utf8"),
+  ) as RawGolden;
+
+  const base = loadFrom(raw);
+  return {
+    ...base,
+    teams: raw.teams ?? [],
+    sideActivities: raw.sideActivities ?? [],
+  };
+}
+
+/** Canonical form of team standings, for byte-for-byte replay comparison. */
+export function canonicalizeTeams(standings: readonly TeamStanding[]): unknown[] {
+  return standings.map((t) => ({
+    teamId: t.teamId,
+    name: t.name,
+    teamSize: t.teamSize,
+    scoreHundredths: t.scoreHundredths,
+    score: t.score,
+    playerPoolPoints: t.playerPoolPoints,
+    groupPoints: t.groupPoints,
+    sideActivityPoints: t.sideActivityPoints,
+    penaltyMinutes: t.penaltyMinutes,
+    lastScoreIncreaseAt: t.lastScoreIncreaseAt?.toISOString() ?? null,
+    rank: t.rank,
+    isTied: t.isTied,
+    players: t.players.map((p) => ({
+      participantId: p.participantId,
+      displayName: p.displayName,
+      teamId: p.teamId,
+      chosenSetId: p.chosenSetId,
+      score: p.score,
+      penaltyMinutes: p.penaltyMinutes,
+      lastScoreIncreaseAt: p.lastScoreIncreaseAt?.toISOString() ?? null,
+    })),
+  }));
 }

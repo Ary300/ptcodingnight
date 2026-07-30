@@ -1,0 +1,347 @@
+{
+  "_readme": [
+    "HAND-COMPUTED team standings for G6. Not generated from lib/scoring/ \u2014 a fixture derived",
+    "from the code under test proves nothing.",
+    "",
+    "This fixture exists to pin ONE formula (docs/SCORING.md \u00a71):",
+    "",
+    "  teamScore = (sum of all player points, group problems included) / teamSize",
+    "              + sideActivityPoints",
+    "",
+    "PANTHERS is the organizer's real worked example, taken from an actual scoring sheet:",
+    "players at 400, 250, 400, 400, one 125-point group problem, side activities 20 + 80 + 50.",
+    "",
+    "  individual sum  400 + 250 + 400 + 400 = 1450",
+    "  group                                 =  125",
+    "  team size                             =    4",
+    "  side activities 20 + 80 + 50          =  150",
+    "  teamScore = (1450 + 125) / 4 + 150 = 393.75 + 150 = 543.75",
+    "",
+    "CUBS is a team of TWO, and it is here because the divisor is the whole point. A formula",
+    "that ignored team size would rank a small team as though it were a large one.",
+    "",
+    "  individual 300 + 100 = 400, group 100 partial, size 2, side 0",
+    "  teamScore = (400 + 100) / 2 + 0 = 250",
+    "",
+    "Specific traps each row is here to catch:",
+    "  pan-2   partial credit on a WA still scores 150. Not every scoring point comes from an AC.",
+    "  pan-3   submits G1 as well as pan-1, both scoring 125. A group problem is solved ONCE by",
+    "          the team, so the team gets 125 and not 250. Summing per-member group scores is the",
+    "          obvious wrong implementation.",
+    "  cub-1   partial credit on a GROUP problem: 100 of 125.",
+    "  orphan  has NO team and scores 400. Must contribute to no team total anywhere. A",
+    "          participant with a null teamId is the shape a mid-contest roster edit leaves behind."
+  ],
+  "config": {
+    "contestId": "golden-team",
+    "presetId": "coding-night-classic",
+    "startsAt": "2026-03-06T18:00:00.000Z",
+    "endsAt": "2026-03-06T18:45:00.000Z",
+    "freezeAt": null,
+    "divisions": [],
+    "problems": [
+      {
+        "contestProblemId": "A-E",
+        "divisionId": null,
+        "setId": "A",
+        "basePoints": 100,
+        "round": "INDIVIDUAL"
+      },
+      {
+        "contestProblemId": "A-M",
+        "divisionId": null,
+        "setId": "A",
+        "basePoints": 200,
+        "round": "INDIVIDUAL"
+      },
+      {
+        "contestProblemId": "A-H",
+        "divisionId": null,
+        "setId": "A",
+        "basePoints": 300,
+        "round": "INDIVIDUAL"
+      },
+      {
+        "contestProblemId": "B-E",
+        "divisionId": null,
+        "setId": "B",
+        "basePoints": 100,
+        "round": "INDIVIDUAL"
+      },
+      {
+        "contestProblemId": "B-M",
+        "divisionId": null,
+        "setId": "B",
+        "basePoints": 200,
+        "round": "INDIVIDUAL"
+      },
+      {
+        "contestProblemId": "B-H",
+        "divisionId": null,
+        "setId": "B",
+        "basePoints": 300,
+        "round": "INDIVIDUAL"
+      },
+      {
+        "contestProblemId": "C-E",
+        "divisionId": null,
+        "setId": "C",
+        "basePoints": 100,
+        "round": "INDIVIDUAL"
+      },
+      {
+        "contestProblemId": "C-M",
+        "divisionId": null,
+        "setId": "C",
+        "basePoints": 200,
+        "round": "INDIVIDUAL"
+      },
+      {
+        "contestProblemId": "C-H",
+        "divisionId": null,
+        "setId": "C",
+        "basePoints": 300,
+        "round": "INDIVIDUAL"
+      },
+      {
+        "contestProblemId": "D-E",
+        "divisionId": null,
+        "setId": "D",
+        "basePoints": 100,
+        "round": "INDIVIDUAL"
+      },
+      {
+        "contestProblemId": "D-M",
+        "divisionId": null,
+        "setId": "D",
+        "basePoints": 200,
+        "round": "INDIVIDUAL"
+      },
+      {
+        "contestProblemId": "D-H",
+        "divisionId": null,
+        "setId": "D",
+        "basePoints": 300,
+        "round": "INDIVIDUAL"
+      },
+      {
+        "contestProblemId": "G1",
+        "divisionId": null,
+        "setId": null,
+        "basePoints": 125,
+        "round": "GROUP"
+      }
+    ],
+    "groupPointsInsideMean": true,
+    "sideActivitiesFlat": true
+  },
+  "teams": [
+    {
+      "teamId": "panthers",
+      "name": "Panthers"
+    },
+    {
+      "teamId": "cubs",
+      "name": "Cubs"
+    }
+  ],
+  "participants": [
+    {
+      "participantId": "pan-1",
+      "displayName": "Ada",
+      "divisionId": null,
+      "teamId": "panthers",
+      "chosenSetId": "A"
+    },
+    {
+      "participantId": "pan-2",
+      "displayName": "Blaise",
+      "divisionId": null,
+      "teamId": "panthers",
+      "chosenSetId": "B"
+    },
+    {
+      "participantId": "pan-3",
+      "displayName": "Cleo",
+      "divisionId": null,
+      "teamId": "panthers",
+      "chosenSetId": "C"
+    },
+    {
+      "participantId": "pan-4",
+      "displayName": "Dev",
+      "divisionId": null,
+      "teamId": "panthers",
+      "chosenSetId": "D"
+    },
+    {
+      "participantId": "cub-1",
+      "displayName": "Esi",
+      "divisionId": null,
+      "teamId": "cubs",
+      "chosenSetId": "A"
+    },
+    {
+      "participantId": "cub-2",
+      "displayName": "Fen",
+      "divisionId": null,
+      "teamId": "cubs",
+      "chosenSetId": "B"
+    },
+    {
+      "participantId": "orphan",
+      "displayName": "Unassigned",
+      "divisionId": null,
+      "teamId": null,
+      "chosenSetId": "C"
+    }
+  ],
+  "submissions": [
+    {
+      "submissionId": "s1",
+      "participantId": "pan-1",
+      "contestProblemId": "A-E",
+      "submittedAt": "2026-03-06T18:05:00.000Z",
+      "verdict": "AC",
+      "score": 100
+    },
+    {
+      "submissionId": "s2",
+      "participantId": "pan-1",
+      "contestProblemId": "A-H",
+      "submittedAt": "2026-03-06T18:30:00.000Z",
+      "verdict": "AC",
+      "score": 300
+    },
+    {
+      "submissionId": "s3",
+      "participantId": "pan-2",
+      "contestProblemId": "B-E",
+      "submittedAt": "2026-03-06T18:06:00.000Z",
+      "verdict": "AC",
+      "score": 100
+    },
+    {
+      "submissionId": "s4",
+      "participantId": "pan-2",
+      "contestProblemId": "B-M",
+      "submittedAt": "2026-03-06T18:25:00.000Z",
+      "verdict": "WA",
+      "score": 150
+    },
+    {
+      "submissionId": "s5",
+      "participantId": "pan-3",
+      "contestProblemId": "C-E",
+      "submittedAt": "2026-03-06T18:04:00.000Z",
+      "verdict": "AC",
+      "score": 100
+    },
+    {
+      "submissionId": "s6",
+      "participantId": "pan-3",
+      "contestProblemId": "C-H",
+      "submittedAt": "2026-03-06T18:28:00.000Z",
+      "verdict": "AC",
+      "score": 300
+    },
+    {
+      "submissionId": "s7",
+      "participantId": "pan-4",
+      "contestProblemId": "D-E",
+      "submittedAt": "2026-03-06T18:07:00.000Z",
+      "verdict": "AC",
+      "score": 100
+    },
+    {
+      "submissionId": "s8",
+      "participantId": "pan-4",
+      "contestProblemId": "D-H",
+      "submittedAt": "2026-03-06T18:33:00.000Z",
+      "verdict": "AC",
+      "score": 300
+    },
+    {
+      "submissionId": "s9",
+      "participantId": "pan-1",
+      "contestProblemId": "G1",
+      "submittedAt": "2026-03-06T18:40:00.000Z",
+      "verdict": "AC",
+      "score": 125
+    },
+    {
+      "submissionId": "s10",
+      "participantId": "pan-3",
+      "contestProblemId": "G1",
+      "submittedAt": "2026-03-06T18:41:00.000Z",
+      "verdict": "AC",
+      "score": 125
+    },
+    {
+      "submissionId": "s11",
+      "participantId": "cub-1",
+      "contestProblemId": "A-E",
+      "submittedAt": "2026-03-06T18:08:00.000Z",
+      "verdict": "AC",
+      "score": 100
+    },
+    {
+      "submissionId": "s12",
+      "participantId": "cub-1",
+      "contestProblemId": "A-M",
+      "submittedAt": "2026-03-06T18:20:00.000Z",
+      "verdict": "AC",
+      "score": 200
+    },
+    {
+      "submissionId": "s13",
+      "participantId": "cub-2",
+      "contestProblemId": "B-E",
+      "submittedAt": "2026-03-06T18:09:00.000Z",
+      "verdict": "AC",
+      "score": 100
+    },
+    {
+      "submissionId": "s14",
+      "participantId": "cub-1",
+      "contestProblemId": "G1",
+      "submittedAt": "2026-03-06T18:42:00.000Z",
+      "verdict": "WA",
+      "score": 100
+    },
+    {
+      "submissionId": "s15",
+      "participantId": "orphan",
+      "contestProblemId": "C-E",
+      "submittedAt": "2026-03-06T18:10:00.000Z",
+      "verdict": "AC",
+      "score": 100
+    },
+    {
+      "submissionId": "s16",
+      "participantId": "orphan",
+      "contestProblemId": "C-H",
+      "submittedAt": "2026-03-06T18:35:00.000Z",
+      "verdict": "AC",
+      "score": 300
+    }
+  ],
+  "hintGrants": [],
+  "sideActivities": [
+    {
+      "teamId": "panthers",
+      "label": "Metal puzzle",
+      "points": 20
+    },
+    {
+      "teamId": "panthers",
+      "label": "Train tracks",
+      "points": 80
+    },
+    {
+      "teamId": "panthers",
+      "label": "Connections",
+      "points": 50
+    }
+  ]
+}

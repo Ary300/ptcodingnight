@@ -23,12 +23,63 @@ export const DEFAULT_BASE_POINTS: Readonly<Record<Difficulty, number>> = {
   H: 300,
 } as const;
 
+export type ProblemRound = "INDIVIDUAL" | "GROUP";
+
 export interface ScoringProblem {
   readonly contestProblemId: string;
   readonly divisionId: string | null;
+  /** Which Round 1 set this problem belongs to; null for a GROUP problem. */
+  readonly setId: string | null;
   readonly basePoints: number;
-  /** Hints only apply to group problems (PRD §6.1). */
-  readonly isGroupProblem: boolean;
+  /**
+   * Which round. Replaces the old `isGroupProblem` boolean, which could not distinguish
+   * "individual, on set A" from "individual, on no set".
+   *
+   * Hints only apply to GROUP problems (PRD §6.3).
+   */
+  readonly round: ProblemRound;
+}
+
+/**
+ * Scaling factor for all internal score arithmetic: **hundredths of a point**.
+ *
+ * The team score is a mean, so fractional results are normal — 543.75 is a real answer from a
+ * real scoring sheet. Floats are not acceptable here: this project already shipped a bug where
+ * `3 * 0.15 * 250` evaluated to `112.49999999999999`, truncated to 112 instead of 113, and cost a
+ * student a point. Integer hundredths keep every result exact and every replay identical.
+ *
+ * See docs/SCORING.md §3.
+ */
+export const POINT_SCALE = 100;
+
+/**
+ * Divide, rounding half away from zero.
+ *
+ * The single rounding site in the whole engine, applied once at the mean. "Half away from zero"
+ * because it is what a person doing this by hand does, and rounding in exactly one place is what
+ * keeps replay byte-identical.
+ */
+export function divideRoundHalfAway(numerator: number, denominator: number): number {
+  if (denominator === 0) return 0;
+  const sign = Math.sign(numerator) * Math.sign(denominator);
+  const q = Math.abs(numerator) / Math.abs(denominator);
+  return sign * Math.round(q);
+}
+
+export interface TeamRecord {
+  readonly teamId: string;
+  readonly name: string;
+}
+
+/**
+ * Points an organizer entered for a non-coding activity. The only score input with no submission
+ * behind it (PRD §9.2).
+ */
+export interface SideActivityRecord {
+  readonly teamId: string;
+  readonly label: string;
+  /** Whole points. May be negative — an organizer correcting an over-award. */
+  readonly points: number;
 }
 
 export interface ScoringDivision {
@@ -49,6 +100,21 @@ export interface ContestConfig {
   readonly freezeAt: Date | null;
   readonly divisions: readonly ScoringDivision[];
   readonly problems: readonly ScoringProblem[];
+
+  // --- team scoring config (docs/SCORING.md §4) ---------------------------
+  /**
+   * Group problem points join the per-player pool BEFORE the mean. Organizer-confirmed default.
+   *
+   * `false` adds them to the team total AFTER the mean, which makes a group problem worth
+   * `teamSize` times as much — 125 points to a team of four rather than 31.25.
+   */
+  readonly groupPointsInsideMean: boolean;
+  /**
+   * Side activity points are added flat to the team total. Organizer-confirmed default.
+   *
+   * `false` sends them through the same divisor as everything else.
+   */
+  readonly sideActivitiesFlat: boolean;
 }
 
 /**
@@ -76,6 +142,10 @@ export interface ParticipantRecord {
   readonly participantId: string;
   readonly displayName: string;
   readonly divisionId: string | null;
+  /** Null means this participant contributes to no team score. The admin UI flags them. */
+  readonly teamId: string | null;
+  /** The Round 1 set this player was assigned. */
+  readonly chosenSetId: string | null;
 }
 
 /** Per-problem detail, retained so the UI can explain a score without recomputing it. */
@@ -92,6 +162,67 @@ export interface ProblemStanding {
   readonly firstScoredAt: Date | null;
 }
 
+/**
+ * One player's contribution, in whole points.
+ *
+ * This is a *breakdown* row, not a ranked row: players are not ranked against each other any more,
+ * teams are. It exists so the UI can show how a team's mean was arrived at — a student who can see
+ * the arithmetic does not have to trust it (PRD §9.1).
+ */
+export interface PlayerStanding {
+  readonly participantId: string;
+  readonly displayName: string;
+  readonly divisionId: string | null;
+  readonly teamId: string | null;
+  readonly chosenSetId: string | null;
+  /** This player's own points: individual problems, plus their share of nothing else. */
+  readonly score: number;
+  readonly penaltyMinutes: number;
+  readonly lastScoreIncreaseAt: Date | null;
+  readonly problems: readonly ProblemStanding[];
+}
+
+/**
+ * A ranked team.
+ *
+ * `scoreHundredths` is the authoritative value and the one ranking compares; `score` is the same
+ * number as points for display. Ranking on the scaled integer rather than the decimal is what
+ * makes the order exactly reproducible.
+ */
+export interface TeamStanding {
+  readonly teamId: string;
+  readonly name: string;
+  /** The divisor that produced this score. Stored so a past result stays explainable. */
+  readonly teamSize: number;
+  /** **Hundredths of a point.** The authoritative value. */
+  readonly scoreHundredths: number;
+  /** `scoreHundredths / 100`, for display only. Never compared or summed. */
+  readonly score: number;
+  /** Sum of member points before the division, group problems included when configured so. */
+  readonly playerPoolPoints: number;
+  /** Group-problem points, called out so the UI can show them separately. */
+  readonly groupPoints: number;
+  /** Side activity total, in whole points. */
+  readonly sideActivityPoints: number;
+  readonly penaltyMinutes: number;
+  /** Last submission by ANY member that increased the team total. Third sort key. */
+  readonly lastScoreIncreaseAt: Date | null;
+  readonly rank: number;
+  /**
+   * True when this team shares an identical (score, penalty, lastScoreIncreaseAt) with another.
+   * Genuine ties are displayed as ties, never broken arbitrarily (PRD §6.3).
+   */
+  readonly isTied: boolean;
+  /** Per-player breakdown, so a team row can be expanded without recomputing.  */
+  readonly players: readonly PlayerStanding[];
+}
+
+/**
+ * Legacy per-participant standing.
+ *
+ * Retained because the ICPC preset ranks individuals and because "my score" is still a thing a
+ * student asks. Coding Night Classic ranks teams — see `TeamStanding`.
+ */
 export interface Standing {
   readonly participantId: string;
   readonly displayName: string;
@@ -103,7 +234,7 @@ export interface Standing {
   readonly rank: number;
   /**
    * True when this participant shares an identical (score, penalty, lastScoreIncreaseAt)
-   * with another. Genuine ties are displayed as ties, never broken arbitrarily (PRD §6.1).
+   * with another. Genuine ties are displayed as ties, never broken arbitrarily (PRD §6.3).
    */
   readonly isTied: boolean;
   readonly problems: readonly ProblemStanding[];
@@ -122,8 +253,7 @@ export interface ScoringOptions {
 }
 
 /**
- * The one scoring entry point. No scoring logic exists anywhere else in the codebase —
- * not in a route handler, not in a component, not in SQL.
+ * Per-participant standings. Still used by the ICPC preset and by "my score".
  */
 export type ComputeStandings = (
   config: ContestConfig,
@@ -132,6 +262,23 @@ export type ComputeStandings = (
   hintGrants: readonly HintGrantRecord[],
   options?: ScoringOptions,
 ) => readonly Standing[];
+
+/**
+ * **The scoring entry point for Coding Night.** No scoring logic exists anywhere else in the
+ * codebase — not in a route handler, not in a component, not in SQL.
+ *
+ * Everything it needs arrives as an argument, including the clock, which is what makes standings
+ * replayable (PRD §6.6).
+ */
+export type ComputeTeamStandings = (
+  config: ContestConfig,
+  teams: readonly TeamRecord[],
+  participants: readonly ParticipantRecord[],
+  submissions: readonly SubmissionRecord[],
+  hintGrants: readonly HintGrantRecord[],
+  sideActivities: readonly SideActivityRecord[],
+  options?: ScoringOptions,
+) => readonly TeamStanding[];
 
 /** Tunables for "Coding Night Classic" (PRD §6.1). */
 export const CLASSIC_PRESET = {

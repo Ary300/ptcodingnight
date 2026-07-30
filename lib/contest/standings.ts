@@ -7,8 +7,10 @@ import type {
   HintGrantRecord,
   ParticipantRecord,
   ScoringPresetId,
+  SideActivityRecord,
   Standing,
   SubmissionRecord,
+  TeamRecord,
 } from "@/lib/types/scoring";
 import { isPublicBoardFrozen, type ContestGateInput } from "@/lib/contest/gate";
 import { rankSnapshots } from "@/lib/contest/delta";
@@ -31,9 +33,11 @@ export interface LoadedContest extends ContestGateInput {
 export interface ScoringInput {
   readonly contest: LoadedContest;
   readonly config: ContestConfig;
+  readonly teams: readonly TeamRecord[];
   readonly participants: readonly ParticipantRecord[];
   readonly submissions: readonly SubmissionRecord[];
   readonly hintGrants: readonly HintGrantRecord[];
+  readonly sideActivities: readonly SideActivityRecord[];
   readonly divisionNames: ReadonlyMap<string, string>;
 }
 
@@ -83,22 +87,34 @@ async function queryScoringInput(contestId: string): Promise<ScoringInput> {
       freezeAt: true,
       state: true,
       scoringPresetId: true,
+      groupPointsInsideMean: true,
+      sideActivitiesFlat: true,
       divisions: { select: { id: true, name: true, sortOrder: true } },
       contestProblems: {
         select: {
           id: true,
           divisionId: true,
           basePoints: true,
-          problem: { select: { isGroupProblem: true } },
+          problem: { select: { round: true } },
+          setId: true,
         },
       },
-      participants: { select: { id: true, displayName: true, divisionId: true } },
+      participants: {
+        select: {
+          id: true,
+          displayName: true,
+          divisionId: true,
+          teamId: true,
+          chosenSetId: true,
+        },
+      },
+      teams: { select: { id: true, name: true } },
     },
   });
 
   if (contest === null) throw new NotFoundError("Contest");
 
-  const [submissions, hintGrants] = await Promise.all([
+  const [submissions, hintGrants, sideActivities] = await Promise.all([
     prisma.submission.findMany({
       where: { contestProblem: { contestId }, verdict: { not: null } },
       select: {
@@ -113,6 +129,14 @@ async function queryScoringInput(contestId: string): Promise<ScoringInput> {
     prisma.hintGrant.findMany({
       where: { contestProblem: { contestId } },
       select: { participantId: true, contestProblemId: true, hintIndex: true, grantedAt: true },
+    }),
+    // Admin-entered, no submission behind it. Ordered so replay is byte-identical: two activities
+    // entered in the same millisecond would otherwise be summed in whatever order Postgres felt
+    // like returning, and while addition commutes, the emitted JSON would not.
+    prisma.teamSideActivity.findMany({
+      where: { team: { contestId } },
+      select: { teamId: true, label: true, points: true },
+      orderBy: [{ enteredAt: "asc" }, { id: "asc" }],
     }),
   ]);
 
@@ -131,8 +155,11 @@ async function queryScoringInput(contestId: string): Promise<ScoringInput> {
       contestProblemId: cp.id,
       divisionId: cp.divisionId,
       basePoints: cp.basePoints,
-      isGroupProblem: cp.problem.isGroupProblem,
+      setId: cp.setId,
+      round: cp.problem.round,
     })),
+    groupPointsInsideMean: contest.groupPointsInsideMean,
+    sideActivitiesFlat: contest.sideActivitiesFlat,
   };
 
   return {
@@ -150,7 +177,11 @@ async function queryScoringInput(contestId: string): Promise<ScoringInput> {
       participantId: p.id,
       displayName: p.displayName,
       divisionId: p.divisionId,
+      teamId: p.teamId,
+      chosenSetId: p.chosenSetId,
     })),
+    teams: contest.teams.map((t) => ({ teamId: t.id, name: t.name })),
+    sideActivities,
     submissions: submissions
       .filter((s): s is typeof s & { verdict: NonNullable<typeof s.verdict> } => s.verdict !== null)
       .map((s) => ({

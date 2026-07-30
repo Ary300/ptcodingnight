@@ -24,16 +24,18 @@ function config(over: Partial<ContestConfig> = {}): ContestConfig {
     freezeAt: null,
     divisions: [{ divisionId: "d1", name: "Intermediate", sortOrder: 0 }],
     problems: [
-      { contestProblemId: "p1", divisionId: "d1", basePoints: 100, isGroupProblem: false },
-      { contestProblemId: "p2", divisionId: "d1", basePoints: 200, isGroupProblem: false },
-      { contestProblemId: "g1", divisionId: "d1", basePoints: 300, isGroupProblem: true },
+      { contestProblemId: "p1", divisionId: "d1", basePoints: 100, setId: null, round: "INDIVIDUAL" as const },
+      { contestProblemId: "p2", divisionId: "d1", basePoints: 200, setId: null, round: "INDIVIDUAL" as const },
+      { contestProblemId: "g1", divisionId: "d1", basePoints: 300, setId: null, round: "GROUP" as const },
     ],
+    groupPointsInsideMean: true,
+    sideActivitiesFlat: true,
     ...over,
   };
 }
 
 const players: ParticipantRecord[] = [
-  { participantId: "u1", displayName: "One", divisionId: "d1" },
+  { participantId: "u1", displayName: "One", divisionId: "d1", teamId: null, chosenSetId: null },
 ];
 
 let seq = 0;
@@ -143,7 +145,7 @@ describe("hints", () => {
 
   it("rounds the total once rather than per hint", () => {
     const cfg = config({
-      problems: [{ contestProblemId: "g1", divisionId: "d1", basePoints: 250, isGroupProblem: true }],
+      problems: [{ contestProblemId: "g1", divisionId: "d1", basePoints: 250, setId: null, round: "GROUP" as const }],
     });
     const standing = only(
       [sub({ submittedAt: at(30), contestProblemId: "g1", verdict: "AC", score: 250 })],
@@ -282,8 +284,8 @@ describe("divisions", () => {
       ],
     });
     const people: ParticipantRecord[] = [
-      { participantId: "i1", displayName: "Int One", divisionId: "d1" },
-      { participantId: "a1", displayName: "Adv One", divisionId: "d2" },
+      { participantId: "i1", displayName: "Int One", divisionId: "d1", teamId: null, chosenSetId: null },
+      { participantId: "a1", displayName: "Adv One", divisionId: "d2", teamId: null, chosenSetId: null },
     ];
     const submissions = [
       sub({ participantId: "i1", submittedAt: at(10), verdict: "AC", score: 100 }),
@@ -307,8 +309,8 @@ describe("divisions", () => {
       ],
     });
     const people: ParticipantRecord[] = [
-      { participantId: "a1", displayName: "Adv", divisionId: "d2" },
-      { participantId: "i1", displayName: "Int", divisionId: "d1" },
+      { participantId: "a1", displayName: "Adv", divisionId: "d2", teamId: null, chosenSetId: null },
+      { participantId: "i1", displayName: "Int", divisionId: "d1", teamId: null, chosenSetId: null },
     ];
 
     const standings = computeStandings(cfg, people, [], []);
@@ -318,7 +320,7 @@ describe("divisions", () => {
 
   it("groups participants with no division rather than dropping them", () => {
     const people: ParticipantRecord[] = [
-      { participantId: "u1", displayName: "One", divisionId: null },
+      { participantId: "u1", displayName: "One", divisionId: null, teamId: null, chosenSetId: null },
     ];
 
     const standings = computeStandings(config(), people, [], []);

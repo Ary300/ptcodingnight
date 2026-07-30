@@ -73,7 +73,7 @@ function hintsInWindow(
  * 113 rather than 3 x 37.5 rounded three separate ways. The deduction follows the *grant*,
  * not the problem type: if a HintGrant row exists, the student received help and pays for
  * it. In valid data grants only ever exist on group problems, so this is identical to
- * checking `isGroupProblem` — but it fails safe if hint issuance is ever buggy.
+ * checking the problem's round — but it fails safe if hint issuance is ever buggy.
  */
 function hintDeduction(hintsTaken: number, basePoints: number, percent: number): number {
   if (hintsTaken <= 0) return 0;
