@@ -66,6 +66,12 @@ npm run test:a11y        # axe-core                        (G9)
 npm run test:content     # references through the judge    (G13)
 npm run verify           # runs the gates in order, prints a PASS/FAIL table
 docker compose up -d     # full stack: web, worker, postgres, redis
+
+npx tsx scripts/seed-demo.ts   # a contest you can actually open: 6 published problems,
+                               # 2 teams of DIFFERENT sizes, and submission history
+./scripts/smoke-prod.sh        # against a LIVE deployment; see docs/DEPLOY.md
+
+docker compose -f docker-compose.prod.yml up -d --build   # production stack, + Caddy
 npm run db:seed          # loads data/problems_seed.csv
 
 scripts/build-judge-images.sh --verify   # pull + build every runtime image. REQUIRED before
@@ -186,6 +192,16 @@ imports nothing from either. If scoring needs a fact, it arrives as an argument.
 - **Judge scratch goes in `.judge-tmp/`, never `os.tmpdir()`.** macOS temp lives under
   `/var/folders`, which Docker Desktop does not share; bind-mounting it yields a silently
   empty directory inside the container.
+- **A CONTAINERISED worker must set `JUDGE_SCRATCH_ROOT`, and to a path that exists identically
+  on the host.** The worker asks the *host* daemon to bind-mount its scratch directories, and the
+  host resolves them in its own namespace — so the in-container default `/app/.judge-tmp` names
+  a directory the host does not have, and the judge container receives a silently **empty** mount.
+  Every submission then fails with nothing in any log to say why. `docker-compose.prod.yml` mounts
+  one host directory at the same path inside the worker for exactly this reason.
+- **`TEST_DATA_ROOT` must contain the test data the `TestCase` rows point at**, and a mismatch
+  does not fail at seed time — it fails as verdict `IE` on a student's submission. Paths are
+  relative to that root; the authored data lives in `content/problems/<slug>/tests/`.
+  `scripts/seed-demo.ts` resolves every path before writing it and refuses to finish otherwise.
 - **A reference solution that passes locally is not a judgeable problem.** Local `python3`
   proves the algorithm; only G13 (`npm run test:content`) proves the problem survives the
   real judge. That distinction hid 8 unsolvable problems and 1 that failed every correct
