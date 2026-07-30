@@ -57,11 +57,14 @@ indent/dedent, auto-indent, Ctrl/Cmd+Enter) but has no syntax highlighting. It i
 lazy-loaded into its own chunk, and `CodeEditorProps` is the seam, so no call site moves when
 Monaco lands.
 
-**The part that would break the night:** `@monaco-editor/react` loads its `vs/` assets from
-jsDelivr by default. Dropped in as-is, the editor is dead the moment the room has no
-internet — which is the one condition guaranteed on contest night. Installing it therefore
-means *also* vendoring `vs/` under `public/` and pointing `loader.config({ paths: { vs:
-"/monaco/vs" } })` at it, then proving it works with the network off.
+**Downgraded from high to medium.** `@monaco-editor/react` loads its `vs/` assets from jsDelivr by
+default, and the original objection was that the room had no internet. PRD §10.1 now guarantees
+internet at the event, so a CDN is permitted.
+
+Vendoring `vs/` under `public/` and pointing `loader.config({ paths: { vs: "/monaco/vs" } })` at it
+is still preferable, for a reason that has nothing to do with the venue: it is a runtime dependency
+on the single most important screen in the application. If jsDelivr is slow, the editor is slow, and
+a student cannot type.
 
 Same applies to `katex` fonts and CSS if the Markdown stack (`react-markdown`, `remark-math`,
 `rehype-katex`) is adopted; the hand-written parser currently in place emits React elements
@@ -141,18 +144,74 @@ host. Re-measure there — `docs/HOSTING.md` §6 step 3.
 
 ---
 
-## T7 — Sessions are not in Postgres, and Google sign-in cannot work on the night
+## T7 — Auth is implemented but not reachable over HTTP **(blocker)**
 
-**Severity: awaiting a decision, not a defect.** Full audit in `docs/AUTH.md`.
+**Severity: high.** The library layer is done and unit-tested; the routes are not written.
 
-Two things were asked for that the current implementation does not provide:
+| Piece | State |
+|---|---|
+| `lib/contest/session.ts` + `session-store.ts` — database sessions, revocation | done, tested |
+| `lib/contest/password.ts` — scrypt | done, 12 tests |
+| `lib/contest/oauth.ts` — Google + GitHub flows | done, 19 tests |
+| `lib/contest/accounts.ts` — resolution, the never-create-an-account invariant | done |
+| `app/api/auth/password/route.ts` | **missing** |
+| `app/api/auth/[provider]/route.ts` and `.../callback` | **missing** |
+| Admin session-revocation endpoint | **missing** |
+| Sign-in UI for the three providers | **missing** |
 
-1. **"Sessions in our own Postgres."** They are not. Auth is a stateless HMAC-SHA256 signed
-   cookie with no server-side session record, so there is no way to revoke one before it
-   expires. `docs/AUTH.md` §4 has the cost of moving them into Postgres.
-2. **Google sign-in.** Absent, and **impossible during the contest by protocol**: OAuth needs a
-   round trip to `accounts.google.com`, and PRD §10 guarantees the room has no internet. It
-   could only ever work as a *pre-night* path — link an account beforehand, fall back to the
-   join code on the night — which is a different feature from "log in with Google".
+So today the only working sign-in paths are the join code and the admin passcode — both of which
+were already there. Google, GitHub and email/password cannot be used until the routes land.
 
-Nothing has been changed, per the instruction to report the cost before acting.
+`docs/AUTH.md` §7 records the same list; it is repeated here because this file is the one that is
+supposed to be believed.
+
+---
+
+## T8 — The team rewrite has no routes and no UI
+
+**Severity: high.** The scoring model changed; the surfaces that expose it did not.
+
+Done: schema + migration (applied, backfill verified), `lib/scoring/team.ts`,
+`lib/contest/set-assignment.ts`, fixtures with all variants.
+
+Missing:
+
+- **Team-ranked leaderboard** with an expandable per-player breakdown (PRD §9.3). The current
+  leaderboard ranks individuals.
+- **Projector view** ranking teams rather than players.
+- **Admin side-activity entry screen** (PRD §9.2). `TeamSideActivity` rows can be read by the
+  scoring engine but nothing can write one except SQL.
+- **Team management UI** — create teams, assign participants, see sizes. Team size is the divisor,
+  so this is a scoring input, not an administrative convenience.
+- **Set assignment endpoint** — `assignSets` is pure and tested but nothing calls it, so
+  `Participant.chosenSetId` is never populated and no `AuditLog` row is written.
+- **API enforcement of `allowReadingUnassignedSets`** — `canReadSet` exists and is tested, but the
+  problem routes do not call it yet, so today every competitor can read every set.
+- **`StandingsResponse` still has an individual shape** in `lib/schemas/api.ts`.
+
+---
+
+## T9 — G7 and G9 are stale, and G5 needs a re-run
+
+- **G5** — its manifest was updated for the new language ids and six new hostile fixtures were
+  added for the C++, Go and Node runtimes. The last recorded run predates that, so the gate must be
+  re-run before it can be called anything.
+- **G7** — every spec assumes individual scoring and a single problem list. They need rewriting for
+  teams, and per the instruction they must cover **both** the join-code and the credentialed sign-in
+  paths rather than dropping either.
+- **G9** — a11y specs point at the individual leaderboard, which is being replaced.
+
+---
+
+## T10 — `Problem.isGroupProblem` is still present alongside `round`
+
+**Severity: low, but it is two sources of truth for one fact.**
+
+`round` (`INDIVIDUAL` | `GROUP`) supersedes the `isGroupProblem` boolean, which could not express
+"individual, on set A" as distinct from "individual, on no set". The migration backfilled `round`
+from it and **deliberately left the boolean in place**: dropping a column in the same migration that
+starts reading its replacement leaves no way back if the backfill is wrong.
+
+The backfill has since been verified — 3 GROUP, 125 INDIVIDUAL, 0 mismatches — so the column can be
+dropped. Roughly 20 call sites in `lib/contest/`, `lib/schemas/api.ts`, `lib/seed/merge.ts` and
+`components/` still read the boolean and need moving to `round` first.

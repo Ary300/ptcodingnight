@@ -9,18 +9,27 @@ scoring. Read `docs/PRD.md` before any substantial change; it is the spec of rec
 
 ## Current state (read this first)
 
-**The repo contains no application code yet.** Tracked files are `CLAUDE.md`, `docs/PRD.md`,
-`docs/KICKOFF.md`, `data/problems_seed.csv`, and `.gitignore`. There is no `package.json`,
-no `app/`, no `lib/`, no `prisma/`, no `worker/`, no `fixtures/`.
+The application exists. `app/`, `lib/`, `worker/`, `prisma/`, `fixtures/`, `components/` and
+`scripts/` are all real, and the commands below run.
 
-Everything in **Commands** and **Architecture** below is therefore a *target contract*, not
-a description of what runs today. Phase 1 of `docs/KICKOFF.md` creates the skeleton that
-makes those commands real. Update this section when that lands — do not let this file
-describe a codebase that does not exist.
+**Gate status as last measured on this machine** (macOS, Docker Desktop):
 
-Toolchain verified present on this machine: Node v22.20.0, npm 10.9.3, Docker 29.1.2,
-Docker Compose v2.40.3. **The Docker daemon is not currently running**, which blocks gates
-G4, G5, G8, and G10 (see `docs/DECISIONS.md`).
+| Gate | State | Note |
+|---|---|---|
+| G1 typecheck, G2 lint, G3 unit | PASS | 292 unit tests |
+| G4 judge fixtures | PASS | 57/57 across all five runtimes |
+| G5 sandbox | **FAIL — needs a re-run** | Its manifest was updated for the new language ids; last run predates the fix |
+| G6 golden scoring | PASS | includes the team formula |
+| G7 E2E, G9 a11y | **stale** | written against individual scoring; need rewriting for teams |
+| G8 load | **FAIL, and it is a hardware answer** | p95 110,767 ms against a 10,000 ms target — 11×. See `docs/HOSTING.md`; the threshold was never lowered |
+| G13 problem content | needs a re-run | after the registry rewrite |
+
+**Docker is running and all five runtime images are built**, including `ptcn-go:1.23`, which is
+built locally rather than pulled. Run `scripts/build-judge-images.sh --verify` on any new host.
+
+**The team-scoring rewrite is partly landed.** Schema, migration, scoring engine, set assignment
+and the auth layer are done and tested; the routes, UI and G7 specs are not. `docs/TODO.md` is the
+honest list — read it before assuming a feature is reachable over HTTP.
 
 ## Commands
 
@@ -50,7 +59,8 @@ Single test: `npm test -- --run path/to/file.test.ts`, or `-t "name"` to filter 
 ## Architecture
 
 - `app/` — Next.js App Router. Route handlers are thin: validate, delegate, respond.
-- `lib/scoring/` — **pure functions only.** `computeStandings(config, submissions, hints)`.
+- `lib/scoring/` — **pure functions only.** `computeTeamStandings(...)` is the Coding Night entry
+  point; `computeStandings(...)` scores individual players and feeds it.
   No I/O, no Date.now(), no randomness. All time comes in as arguments.
 - `lib/judge/` — job definition, verdict aggregation, output comparators. `runtimes.ts` is the
   language registry: five runtimes (image + measured budget + compile limits), ten variants
@@ -73,6 +83,22 @@ imports nothing from either. If scoring needs a fact, it arrives as an argument.
   handler, a React component, or a SQL query, stop and put it in `lib/scoring/`.
 - **Standings must be replayable.** Recomputing from the raw submission log twice must
   produce identical output. Never store a running total that cannot be re-derived.
+- **Replayable means byte-identical, not "the numbers came out right".** Anything the engine
+  emits as an array must be sorted by a stable key, because Postgres returns rows in whatever
+  order it likes. Team standings shipped a bug here: ranks and scores were correct, but the
+  per-player breakdown followed input order, so the same contest replayed to different bytes.
+- **Team scores are integer hundredths of a point, never floats.** The team score is a mean, so
+  `543.75` is a normal result. `3 * 0.15 * 250` already evaluated to `112.49999999999999` in
+  this codebase once and cost a student a point. There is exactly one rounding site — the mean,
+  half away from zero. See `docs/SCORING.md` §3.
+- **Team size is the divisor, so a wrong roster is a wrong result.** Not a cosmetic error. Team
+  size is always derived from the roster and never stored as a count, because a stored count is a
+  second source of truth that drifts from the thing it describes.
+- **The spreadsheet's historical answer for the worked example is WRONG and is pinned as such.**
+  `fixtures/expected-team-standings.json` records 512.5 as a named wrong result with a test
+  asserting no config reproduces it. It dropped the group points. Do not "fix" a test to agree
+  with it — a regression that dropped group points again would look like agreement with history,
+  which is the most convincing possible disguise for a scoring bug.
 - **Hidden test data never reaches the client.** Sample tests may show a full diff. Hidden
   tests return pass/fail and timing only, plus at most a 200-character truncated diff.
   Students will diff their way to the test data if you let them.
@@ -81,8 +107,12 @@ imports nothing from either. If scoring needs a fact, it arrives as an argument.
   own-generated test data exist, and the API — not just the UI — rejects `DRAFT` problems in
   live contests.
 - **Verdict `IE` is never shown to a student as a failure.** Requeue once, then alert admin.
-- **The night has no internet.** No CDN-only assets, no runtime third-party API calls on
-  any critical path.
+- **Internet at the event is guaranteed, so OAuth and CDNs are allowed** (PRD §10.1). This
+  REVERSES the old LAN-first rule. Two things survive it, for reasons unrelated to the venue: the
+  judging path still makes no third-party call, and the join-code sign-in stays, because OAuth
+  fails for its own reasons — expired client secret, consent screen, a student with no school
+  account. If you find a comment justifying something by "the room has no internet", it predates
+  this and the justification is stale even where the conclusion holds.
 - **The seed CSV has 136 rows but only 125 distinct titles — do not key `Problem` on title
   alone without a dedup policy.** Nine of the eleven repeats are legitimate: the same
   problem was used in both divisions at different difficulties (`Bill Division` is
