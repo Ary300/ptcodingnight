@@ -19,9 +19,9 @@ Full `npm run verify` run, every gate's real output in the transcript:
 | Gate | State | Note |
 |---|---|---|
 | G0 build, G1 typecheck, G2 lint | PASS | |
-| G3 unit | PASS | 340 tests, 96% statements |
+| G3 unit | PASS | 352 tests, 96% statements |
 | G4 judge fixtures | PASS | 57/57 across all five runtimes |
-| G5 sandbox | PASS | 18/18, and `docker ps -a` back at baseline |
+| G5 sandbox | PASS | 19/19, and `docker ps -a` back at baseline |
 | G6 golden scoring | PASS | includes the team formula and its variants |
 | G7 E2E | PASS | 89/89 against the **real API**, both browser profiles |
 | G8 load | **PASS on a quiet host, and that is the caveat** | p95 **7,363 ms** against 10,000 ms at host load 4.25, reproducible. The same code measured 110,767 ms at load ~8 and 283,436 ms at load 32 — a 38× spread. **A green G8 means the machine was quiet.** T3, `docs/HOSTING.md` §3 |
@@ -36,6 +36,13 @@ G7 and G9 through Playwright, but G8 talks to the API directly. Without it the g
 
 **Docker is running and all five runtime images are built**, including `ptcn-go:1.23`, which is
 built locally rather than pulled. Run `scripts/build-judge-images.sh --verify` on any new host.
+
+**The production stack has been brought up and judged a real submission.** `docker-compose.prod.yml`
+plus `Caddyfile`, `.env.production.example` and `docs/DEPLOY.md` deploy to `ptcodingnight.com`.
+Five separate blockers were found by running it rather than reading it — an empty OAuth variable
+refusing the boot, a Docker CLI too old to speak to the daemon, a healthcheck on a path that does
+not exist, `TEST_DATA_ROOT` missing from the web service, and a web image with none of the files
+the seed commands need. All fixed; the reasoning is in the commit and in `docs/DEPLOY.md` §13.
 
 **The team-scoring rewrite is landed and reachable over HTTP.** Schema, migration, scoring engine,
 set assignment, the auth layer, the routes (`app/api/contests/[id]/team-standings`,
