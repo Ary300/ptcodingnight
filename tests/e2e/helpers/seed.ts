@@ -96,6 +96,11 @@ export interface SeededContest {
   readonly divisionIds: ReadonlyMap<string, string>;
   readonly problems: ReadonlyMap<string, SeededProblem>;
   readonly rivalIds: ReadonlyMap<string, string>;
+  /** Fixture key to database id. */
+  readonly teamIds: ReadonlyMap<string, string>;
+  readonly problemSetIds: ReadonlyMap<string, string>;
+  /** Set id to its label, so a spec can assert on "A" rather than on a cuid. */
+  readonly problemSetLabels: ReadonlyMap<string, string>;
 }
 
 /** The one PUBLISHED problem every judged spec submits to. */
@@ -146,6 +151,11 @@ export async function resetE2EData(fixture: ContestFixture = loadContestFixture(
 
   await db.contest.deleteMany({ where: { joinCode: fixture.contest.joinCode } });
   await db.problem.deleteMany({ where: { slug: { in: slugs } } });
+
+  // Team, ProblemSet, TeamSideActivity and Session all cascade from Contest, so the delete above
+  // takes them. Named here rather than left implicit: the ContestProblem sweep exists precisely
+  // because a cascade that "obviously" covers something did not, and the next person to add a table
+  // should check rather than assume.
 }
 
 export interface SeedOptions {
@@ -180,9 +190,36 @@ export async function seedE2EContest(options: SeedOptions = {}): Promise<SeededC
           sortOrder: division.sortOrder,
         })),
       },
+      teams: { create: fixture.teams.map((team) => ({ name: team.name })) },
+      problemSets: { create: fixture.problemSets.map((set) => ({ label: set.label })) },
+      // A seed, so the fixture's participants count as already-assigned and the late-joiner path is
+      // reachable from a spec. The value is fixed rather than random: an E2E fixture that assigns
+      // differently run to run cannot assert on who has which set.
+      setAssignmentSeed: fixture.problemSets.length > 0 ? "e2e-fixed-seed" : null,
     },
-    select: { id: true, divisions: { select: { id: true, name: true } } },
+    select: {
+      id: true,
+      divisions: { select: { id: true, name: true } },
+      teams: { select: { id: true, name: true } },
+      problemSets: { select: { id: true, label: true } },
+    },
   });
+
+  const teamIds = new Map<string, string>();
+  for (const team of fixture.teams) {
+    const row = contest.teams.find((candidate) => candidate.name === team.name);
+    if (row === undefined) throw new Error(`team ${team.name} was not created`);
+    teamIds.set(team.key, row.id);
+  }
+
+  const problemSetIds = new Map<string, string>();
+  const problemSetLabels = new Map<string, string>();
+  for (const set of fixture.problemSets) {
+    const row = contest.problemSets.find((candidate) => candidate.label === set.label);
+    if (row === undefined) throw new Error(`problem set ${set.label} was not created`);
+    problemSetIds.set(set.key, row.id);
+    problemSetLabels.set(row.id, row.label);
+  }
 
   const divisionIds = new Map<string, string>();
   for (const division of fixture.divisions) {
@@ -212,6 +249,7 @@ export async function seedE2EContest(options: SeedOptions = {}): Promise<SeededC
         timeLimitMs: problem.timeLimitMs,
         memoryLimitMb: problem.memoryLimitMb,
         allowedLanguages: problem.allowedLanguages,
+        round: problem.round,
         testCases: {
           create: problem.testCases.map((testCase) => ({
             ordinal: testCase.ordinal,
@@ -225,11 +263,17 @@ export async function seedE2EContest(options: SeedOptions = {}): Promise<SeededC
       select: { id: true },
     });
 
+    const setId = problem.setKey === null ? null : problemSetIds.get(problem.setKey) ?? null;
+    if (problem.setKey !== null && setId === null) {
+      throw new Error(`problem ${problem.slug} names an unknown set ${problem.setKey}`);
+    }
+
     const contestProblem = await db.contestProblem.create({
       data: {
         contestId: contest.id,
         problemId: created.id,
         divisionId,
+        setId,
         slotLabel: problem.slotLabel,
         basePoints: problem.basePoints,
       },
@@ -254,11 +298,23 @@ export async function seedE2EContest(options: SeedOptions = {}): Promise<SeededC
       throw new Error(`rival ${rival.displayName} names an unknown division ${rival.divisionKey}`);
     }
 
+    const teamId = rival.teamKey === null ? null : teamIds.get(rival.teamKey) ?? null;
+    if (rival.teamKey !== null && teamId === null) {
+      throw new Error(`rival ${rival.displayName} names an unknown team ${rival.teamKey}`);
+    }
+
+    const chosenSetId = rival.setKey === null ? null : problemSetIds.get(rival.setKey) ?? null;
+    if (rival.setKey !== null && chosenSetId === null) {
+      throw new Error(`rival ${rival.displayName} names an unknown set ${rival.setKey}`);
+    }
+
     const participant = await db.participant.create({
       data: {
         contestId: contest.id,
         displayName: rival.displayName,
         divisionId,
+        teamId,
+        chosenSetId,
         joinedAt: startsAt,
       },
       select: { id: true },
@@ -288,6 +344,22 @@ export async function seedE2EContest(options: SeedOptions = {}): Promise<SeededC
     }
   }
 
+  for (const activity of fixture.sideActivities) {
+    const teamId = teamIds.get(activity.teamKey);
+    if (teamId === undefined) {
+      throw new Error(`side activity names an unknown team ${activity.teamKey}`);
+    }
+    await db.teamSideActivity.create({
+      data: {
+        teamId,
+        label: activity.label,
+        points: activity.points,
+        enteredBy: "admin:e2e-fixture",
+        enteredAt: startsAt,
+      },
+    });
+  }
+
   for (const extra of options.extraParticipants ?? []) {
     const divisionId = divisionIds.get(extra.divisionKey);
     if (divisionId === undefined) {
@@ -314,5 +386,8 @@ export async function seedE2EContest(options: SeedOptions = {}): Promise<SeededC
     divisionIds,
     problems,
     rivalIds,
+    teamIds,
+    problemSetIds,
+    problemSetLabels,
   };
 }

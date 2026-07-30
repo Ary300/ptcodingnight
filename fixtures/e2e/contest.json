@@ -61,7 +61,9 @@
           "points": 33
         }
       ],
-      "sampleCount": 2
+      "sampleCount": 2,
+      "setKey": "setA",
+      "round": "INDIVIDUAL"
     },
     {
       "slug": "e2e-draft-locked",
@@ -89,7 +91,101 @@
           "isSample": true,
           "points": 10
         }
-      ]
+      ],
+      "setKey": null,
+      "round": "INDIVIDUAL"
+    },
+    {
+      "slug": "e2e-other-set",
+      "title": "E2E Other Set",
+      "divisionKey": "intermediate",
+      "slotLabel": "B-E1",
+      "difficulty": "E",
+      "basePoints": 100,
+      "state": "PUBLISHED",
+      "type": "ALGORITHM",
+      "timeLimitMs": 2000,
+      "memoryLimitMb": 256,
+      "allowedLanguages": [
+        "PYTHON",
+        "JAVA"
+      ],
+      "statementMd": "The scoreboard operator needs one more number before the round can start: the total of the two counts called out from the back of the room.\n\nRead two integers and print their sum.",
+      "inputSpec": "One line with two integers $a$ and $b$, separated by a space.",
+      "outputSpec": "One line: the value of $a + b$.",
+      "constraints": "$-10^9 \\le a, b \\le 10^9$",
+      "testCases": [
+        {
+          "ordinal": 1,
+          "dir": "panther-sum",
+          "stem": "01",
+          "isSample": true,
+          "points": 34
+        },
+        {
+          "ordinal": 2,
+          "dir": "panther-sum",
+          "stem": "02",
+          "isSample": true,
+          "points": 33
+        },
+        {
+          "ordinal": 3,
+          "dir": "panther-sum",
+          "stem": "03",
+          "isSample": false,
+          "points": 33
+        }
+      ],
+      "sampleCount": 2,
+      "setKey": "setB",
+      "round": "INDIVIDUAL"
+    },
+    {
+      "slug": "e2e-group-problem",
+      "title": "E2E Group Problem",
+      "divisionKey": "intermediate",
+      "slotLabel": "Group 1",
+      "difficulty": "E",
+      "basePoints": 100,
+      "state": "PUBLISHED",
+      "type": "ALGORITHM",
+      "timeLimitMs": 2000,
+      "memoryLimitMb": 256,
+      "allowedLanguages": [
+        "PYTHON",
+        "JAVA"
+      ],
+      "statementMd": "The scoreboard operator needs one more number before the round can start: the total of the two counts called out from the back of the room.\n\nRead two integers and print their sum.",
+      "inputSpec": "One line with two integers $a$ and $b$, separated by a space.",
+      "outputSpec": "One line: the value of $a + b$.",
+      "constraints": "$-10^9 \\le a, b \\le 10^9$",
+      "testCases": [
+        {
+          "ordinal": 1,
+          "dir": "panther-sum",
+          "stem": "01",
+          "isSample": true,
+          "points": 34
+        },
+        {
+          "ordinal": 2,
+          "dir": "panther-sum",
+          "stem": "02",
+          "isSample": true,
+          "points": 33
+        },
+        {
+          "ordinal": 3,
+          "dir": "panther-sum",
+          "stem": "03",
+          "isSample": false,
+          "points": 33
+        }
+      ],
+      "sampleCount": 2,
+      "setKey": null,
+      "round": "GROUP"
     }
   ],
   "rivals": [
@@ -103,7 +199,9 @@
           "verdict": "AC",
           "score": 100
         }
-      ]
+      ],
+      "teamKey": "panthers",
+      "setKey": "setA"
     },
     {
       "displayName": "E2E Grace",
@@ -121,7 +219,9 @@
           "verdict": "AC",
           "score": 100
         }
-      ]
+      ],
+      "teamKey": "panthers",
+      "setKey": "setB"
     },
     {
       "displayName": "E2E Hopper",
@@ -133,7 +233,55 @@
           "verdict": "AC",
           "score": 100
         }
+      ],
+      "teamKey": "cubs",
+      "setKey": "setA"
+    },
+    {
+      "displayName": "E2E Nomad",
+      "divisionKey": "intermediate",
+      "teamKey": null,
+      "setKey": "setA",
+      "submissions": [
+        {
+          "problemSlug": "e2e-panther-sum",
+          "minutesIn": 5,
+          "verdict": "AC",
+          "score": 100
+        }
       ]
+    }
+  ],
+  "teams": [
+    {
+      "key": "panthers",
+      "name": "E2E Panthers"
+    },
+    {
+      "key": "cubs",
+      "name": "E2E Cubs"
+    }
+  ],
+  "problemSets": [
+    {
+      "key": "setA",
+      "label": "A"
+    },
+    {
+      "key": "setB",
+      "label": "B"
+    }
+  ],
+  "sideActivities": [
+    {
+      "teamKey": "panthers",
+      "label": "Metal puzzle",
+      "points": 20
+    },
+    {
+      "teamKey": "panthers",
+      "label": "Train tracks",
+      "points": 30
     }
   ]
 }

@@ -9,11 +9,13 @@ import {
   RunSamplesResponseSchema,
   StandingsResponseSchema,
   SubmissionViewSchema,
+  TeamStandingsResponseSchema,
   type JoinRequest,
   type ProblemDetail,
   type ProblemSummary,
   type StandingsResponse,
   type SubmissionView,
+  type TeamStandingsResponse,
   type SubmitRequest,
 } from "@/lib/schemas/api";
 
@@ -107,6 +109,27 @@ export async function readEnvelope(
   };
 }
 
+/**
+ * Status plus the SUCCESS payload, unvalidated.
+ *
+ * For specs that assert on a response shape no schema in `lib/schemas/api.ts` describes — an
+ * ad-hoc admin payload, say. `readEnvelope` deliberately exposes only the failure shape, and
+ * widening it would blur the line between "assert this was rejected" and "assert what it returned".
+ *
+ * `data` is `unknown`: the caller narrows. Anything that has a schema should go through `unwrap`.
+ */
+export async function readOk(
+  response: APIResponse,
+): Promise<{ status: number; data: unknown }> {
+  const body: unknown = await response.json().catch(() => null);
+
+  if (typeof body === "object" && body !== null && "data" in body) {
+    return { status: response.status(), data: (body as { data: unknown }).data };
+  }
+
+  return { status: response.status(), data: body };
+}
+
 export class ContestApi {
   constructor(
     private readonly request: APIRequestContext,
@@ -173,7 +196,65 @@ export class ContestApi {
     return unwrap(await this.standingsRaw(), StandingsResponseSchema);
   }
 
+  // --- team board ----------------------------------------------------------
+
+  teamStandingsRaw(): Promise<APIResponse> {
+    return this.request.get(`/api/contests/${this.contestId}/team-standings`);
+  }
+
+  async teamStandings(): Promise<TeamStandingsResponse> {
+    return unwrap(await this.teamStandingsRaw(), TeamStandingsResponseSchema);
+  }
+
+  // --- auth ----------------------------------------------------------------
+
+  passwordLoginRaw(email: string, password: string): Promise<APIResponse> {
+    return this.request.post("/api/auth/password", { data: { email, password } });
+  }
+
+  sessionRaw(): Promise<APIResponse> {
+    return this.request.get("/api/auth/session");
+  }
+
+  signOutRaw(): Promise<APIResponse> {
+    return this.request.delete("/api/auth/session");
+  }
+
+  oauthStartRaw(provider: "google" | "github"): Promise<APIResponse> {
+    // `maxRedirects: 0` so the redirect itself is the assertion. Following it would send the test
+    // to accounts.google.com, which is both slow and not our code.
+    return this.request.get(`/api/auth/${provider}`, { maxRedirects: 0 });
+  }
+
   // --- admin ---------------------------------------------------------------
+
+  liveSessionsRaw(): Promise<APIResponse> {
+    return this.request.get("/api/admin/sessions");
+  }
+
+  revokeSessionRaw(body: {
+    sessionId?: string;
+    participantId?: string;
+    reason: string;
+  }): Promise<APIResponse> {
+    return this.request.post("/api/admin/sessions", { data: body });
+  }
+
+  assignSetsRaw(body: { reassign?: boolean; seed?: string } = {}): Promise<APIResponse> {
+    return this.request.post(`/api/admin/contests/${this.contestId}/assign-sets`, { data: body });
+  }
+
+  reDeriveAssignmentRaw(): Promise<APIResponse> {
+    return this.request.get(`/api/admin/contests/${this.contestId}/assign-sets`);
+  }
+
+  sideActivitiesRaw(teamId: string): Promise<APIResponse> {
+    return this.request.get(`/api/admin/teams/${teamId}/side-activities`);
+  }
+
+  addSideActivityRaw(teamId: string, body: { label: string; points: number }): Promise<APIResponse> {
+    return this.request.post(`/api/admin/teams/${teamId}/side-activities`, { data: body });
+  }
 
   adminLoginRaw(passcode: string): Promise<APIResponse> {
     return this.request.post("/api/admin/session", { data: { passcode } });

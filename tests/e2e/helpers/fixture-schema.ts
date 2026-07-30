@@ -9,6 +9,7 @@ import { z } from "zod";
 
 export const DifficultySchema = z.enum(["E", "M", "H"]);
 export const LanguageSchema = z.enum(["PYTHON_312", "JAVA_21"]);
+export const ProblemRoundSchema = z.enum(["INDIVIDUAL", "GROUP"]);
 export const ProblemStateSchema = z.enum(["DRAFT", "PUBLISHED", "RETIRED"]);
 export const ProblemTypeSchema = z.enum(["ALGORITHM", "CODINGBAT", "GROUP"]);
 export const VerdictSchema = z.enum(["AC", "WA", "TLE", "MLE", "RE", "CE", "IE"]);
@@ -27,6 +28,9 @@ const ProblemFixtureSchema = z.object({
   slug: z.string().min(1),
   title: z.string().min(1),
   divisionKey: z.string().min(1),
+  /** Which Round 1 set. Null (or absent) for a GROUP problem, which belongs to no set. */
+  setKey: z.string().min(1).nullable().default(null),
+  round: ProblemRoundSchema.default("INDIVIDUAL"),
   slotLabel: z.string().min(1),
   difficulty: DifficultySchema,
   basePoints: z.number().int().positive(),
@@ -53,6 +57,10 @@ const RivalSubmissionSchema = z.object({
 const RivalSchema = z.object({
   displayName: z.string().min(1),
   divisionKey: z.string().min(1),
+  /** Which team this player competes for. Null exercises the no-team path deliberately. */
+  teamKey: z.string().min(1).nullable().default(null),
+  /** Which set they were assigned. Null means "not assigned yet". */
+  setKey: z.string().min(1).nullable().default(null),
   submissions: z.array(RivalSubmissionSchema),
 });
 
@@ -67,8 +75,29 @@ export const ContestFixtureSchema = z.object({
   divisions: z
     .array(z.object({ key: z.string().min(1), name: z.string().min(1), sortOrder: z.number().int() }))
     .min(1),
+  /**
+   * Teams. **The unit that gets ranked**, and the divisor in every team score, so a fixture with
+   * the wrong roster produces the wrong expected numbers rather than a cosmetic difference.
+   */
+  teams: z
+    .array(z.object({ key: z.string().min(1), name: z.string().min(1) }))
+    .default([]),
+  /** Round 1 parallel sets, labelled "A".."D". */
+  problemSets: z
+    .array(z.object({ key: z.string().min(1), label: z.string().min(1) }))
+    .default([]),
   problems: z.array(ProblemFixtureSchema).min(1),
   rivals: z.array(RivalSchema),
+  /** Admin-entered non-coding points. Added flat to the team total (docs/SCORING.md §1). */
+  sideActivities: z
+    .array(
+      z.object({
+        teamKey: z.string().min(1),
+        label: z.string().min(1),
+        points: z.number().int(),
+      }),
+    )
+    .default([]),
 });
 
 export type ContestFixture = z.infer<typeof ContestFixtureSchema>;
