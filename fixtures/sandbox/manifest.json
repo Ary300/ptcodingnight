@@ -110,6 +110,13 @@
       "sourceFile": "main.js",
       "expectedVerdict": "RE",
       "why": "Same rootfs guarantee, reached through Node's fs."
+    },
+    {
+      "id": "disk-fill-out",
+      "language": "PYTHON_312",
+      "sourceFile": "main.py",
+      "expectedVerdict": "RE",
+      "why": "T4. /out is the one mount that is genuinely WRITABLE — the driver returns results through it, and the submission runs as the same uid. The four write-outside-tmp cases all probe read-only paths, so they proved the rootfs and never touched this. --ulimit fsize bounds one file; the host-side directory watchdog bounds their sum, because RLIMIT_FSIZE does not."
     }
   ]
 }

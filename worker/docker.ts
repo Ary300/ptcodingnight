@@ -1,4 +1,6 @@
 import { spawn } from "node:child_process";
+import { readdir, stat } from "node:fs/promises";
+import path from "node:path";
 
 /**
  * The container boundary. Untrusted student code runs on the other side of this file and
@@ -34,6 +36,24 @@ export interface ContainerLimits {
   readonly tmpfsBytes: number;
   /** Hard kill, always 3x the problem time limit. */
   readonly wallClockKillMs: number;
+  /**
+   * `RLIMIT_FSIZE` — the largest SINGLE file the submission may create, in bytes.
+   *
+   * `--memory`, `--pids-limit`, `--cpus` and the tmpfs cap all bound a submission; none of them
+   * bounds a write to a bind-mounted host directory. `/out` is mounted read-write so the driver
+   * can return results, and the program runs as the same uid, so
+   * `open('/out/x','w').write('A' * 10**10)` consumed host disk (T4). On a shared cloud box that
+   * takes down the web app, the database and the queue as well as the judge.
+   *
+   * Sized from the tmpfs, deliberately: a program could never write a file larger than the tmpfs
+   * would hold anyway, so a cap at that size cannot fail anything that used to succeed. Sizing it
+   * from the *expected output* instead would be tighter and wrong — `cut-the-sticks` legitimately
+   * writes 1.29 MB, and a cap set below a legitimate write reports `WA` on correct code, which is
+   * a mistake this project has already shipped once.
+   *
+   * Bounds one file, not the total. `outputDirBudgetBytes` is the other half.
+   */
+  readonly fsizeBytes: number;
 }
 
 export interface ContainerRunOptions {
@@ -93,6 +113,32 @@ export interface ContainerRunOptions {
    * reported the truncated test as a runtime error.
    */
   readonly containerKillMs?: number;
+  /**
+   * Total bytes the submission may leave in the writable `/out` mount before the container is
+   * killed. Omitted means unbounded, which is only correct where nothing untrusted runs.
+   *
+   * `--ulimit fsize` bounds one file; this bounds their sum. Without it,
+   * `for i in range(100000): open(f'/out/{i}','w').write('A' * fsize)` still fills the disk, just
+   * in more steps — and on a shared cloud box a full disk stops Postgres accepting writes, which
+   * takes the contest down rather than one submission.
+   */
+  readonly outputDirBudgetBytes?: number;
+  /**
+   * How many files the submission may leave in the writable mount before it is killed.
+   *
+   * This is not a second opinion on `outputDirBudgetBytes` — it is what makes that check
+   * *possible*. The byte total has to be measured by statting the directory's contents, and under
+   * a write storm of thousands of files each poll takes longer than the poll interval. Measured:
+   * against a fixture writing 1 MB files as fast as it could, **exactly one poll in 5.7 seconds
+   * resolved**, by which point 8 GB was on disk. The watchdog was not wrong, it was starved.
+   *
+   * A `readdir` with no `stat` is cheap and cannot be starved that way, so the count is checked
+   * first and the byte total is only computed for a directory small enough to stat quickly.
+   *
+   * The legitimate contents are known exactly — the driver writes `<n>.out`, `<n>.err` and
+   * `<n>.meta` per test plus four fixed files — so this bound is generous rather than a guess.
+   */
+  readonly outputDirMaxFiles?: number;
 }
 
 export interface ContainerRunResult {
@@ -114,6 +160,13 @@ export interface ContainerRunResult {
   readonly durationMs: number;
   /** Wall time of the whole `docker run`, including startup. Diagnostics only. */
   readonly wallMs: number;
+  /**
+   * The submission wrote more into `/out` than `outputDirBudgetBytes` allowed and was killed.
+   *
+   * Reported rather than swallowed: it is the difference between "this program has a bug" and
+   * "this program tried to fill the judge host", and an organizer wants to know which.
+   */
+  readonly diskExceeded: boolean;
 }
 
 /**
@@ -121,6 +174,19 @@ export interface ContainerRunResult {
  * image start. The real time limit is enforced by `timeout` inside the container.
  */
 export const STARTUP_ALLOWANCE_MS = 90_000;
+
+/**
+ * How often the disk watchdog looks at the writable mount.
+ *
+ * This interval IS the exposure. Detection and the kill landing are not instant, so a submission
+ * writing at full disk speed keeps writing for roughly one interval plus the kill latency —
+ * measured at ~240 MB per container at 250 ms, and ~100 MB at this value. With four judge
+ * workers that is the difference between 1 GB and 400 MB of transient host disk.
+ *
+ * Cheap enough to run this often only because the count check comes first: one `readdir` is
+ * ~2 ms on four thousand entries, against a `stat` per file that is not.
+ */
+const WATCHDOG_POLL_MS = 100;
 
 /**
  * The isolation flags, in one place so they can be audited at a glance.
@@ -139,6 +205,9 @@ export const STARTUP_ALLOWANCE_MS = 90_000;
  *                         by swapping. This is what turns a 10 GB allocation into an OOM
  *                         kill we can report as MLE.
  * - `--cpus`              bounded CPU share, so an infinite loop cannot starve the host.
+ * - `--ulimit fsize`      no single file may exceed the tmpfs size. The only writable path
+ *                         that is NOT a tmpfs is the `/out` bind mount, and without this a
+ *                         submission could write host disk until the box died (T4).
  */
 function isolationArgs(limits: ContainerLimits): string[] {
   const memory = `${limits.memoryLimitMb}m`;
@@ -153,6 +222,9 @@ function isolationArgs(limits: ContainerLimits): string[] {
     `--memory=${memory}`,
     `--memory-swap=${memory}`,
     `--cpus=${limits.cpus}`,
+    // Soft and hard set to the same value. Leaving the hard limit higher would let the program
+    // raise its own soft limit back up, which makes the flag decorative.
+    `--ulimit=fsize=${limits.fsizeBytes}:${limits.fsizeBytes}`,
   ];
 }
 
@@ -245,6 +317,7 @@ export async function runInContainer(options: ContainerRunOptions): Promise<Cont
     code: number | null;
     timedOut: boolean;
     truncated: boolean;
+    diskExceeded: boolean;
   }>((resolve) => {
     const child = spawn("docker", args, { stdio: ["pipe", "pipe", "pipe"] });
 
@@ -252,6 +325,7 @@ export async function runInContainer(options: ContainerRunOptions): Promise<Cont
     let stderr = "";
     let truncated = false;
     let timedOut = false;
+    let diskExceeded = false;
     let settled = false;
 
     const killContainer = () => {
@@ -266,6 +340,33 @@ export async function runInContainer(options: ContainerRunOptions): Promise<Cont
       timedOut = true;
       killContainer();
     }, (options.containerKillMs ?? limits.wallClockKillMs) + STARTUP_ALLOWANCE_MS);
+
+    /**
+     * The disk watchdog on the writable bind mount.
+     *
+     * `--ulimit fsize` stops one enormous file; nothing in the kernel stops many ordinary ones,
+     * and this mount is host disk rather than a tmpfs. Polled from the host because the only
+     * alternative is asking the container about itself, which a hostile submission can lie about.
+     *
+     * Whichever writable host directory this container has: the run container gets `/out`, the
+     * build container gets `/build`. Watching only the first would leave the compile step as an
+     * unbounded write path.
+     */
+    const watchedDir = outputDir ?? writableBuildDir;
+    const watchdog =
+      watchedDir === undefined || options.outputDirBudgetBytes === undefined
+        ? null
+        : setInterval(() => {
+            void exceedsWritableBudget(watchedDir, {
+              maxBytes: options.outputDirBudgetBytes ?? Number.POSITIVE_INFINITY,
+              maxFiles: options.outputDirMaxFiles ?? Number.POSITIVE_INFINITY,
+            }).then((exceeded) => {
+              if (exceeded && !diskExceeded) {
+                diskExceeded = true;
+                killContainer();
+              }
+            });
+          }, WATCHDOG_POLL_MS);
 
     const capture = (chunk: Buffer, into: "out" | "err") => {
       const text = chunk.toString();
@@ -294,7 +395,8 @@ export async function runInContainer(options: ContainerRunOptions): Promise<Cont
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      resolve({ stdout, stderr, code, timedOut, truncated });
+      if (watchdog !== null) clearInterval(watchdog);
+      resolve({ stdout, stderr, code, timedOut, truncated, diskExceeded });
     };
 
     child.on("close", settle);
@@ -337,5 +439,51 @@ export async function runInContainer(options: ContainerRunOptions): Promise<Cont
     outputTruncated: result.truncated,
     durationMs,
     wallMs,
+    diskExceeded: result.diskExceeded,
   };
+}
+
+/**
+ * Whether a submission has written more into the writable mount than it is allowed to.
+ *
+ * **Count first, bytes second, and that order is the whole design.** The obvious implementation —
+ * sum `stat().size` over the directory — is correct and useless: against a program creating
+ * thousands of files as fast as it can, each poll's `stat` storm takes longer than the poll
+ * interval, so the polls pile up unresolved. Measured against the `disk-fill-out` fixture,
+ * exactly one poll in 5.7 seconds ever resolved, and 8 GB reached the host disk before it did.
+ * The check was not wrong; it was starved by the thing it was watching.
+ *
+ * `readdir` without `stat` is one directory read regardless of how hostile the contents are. Once
+ * the count is known to be small, statting those few files is trivially cheap. So the expensive
+ * measurement only ever runs on a directory that is already known to be well behaved.
+ *
+ * One level deep, deliberately. Recursing would put the poll's cost back under the submission's
+ * control — a million empty nested directories would make the watchdog the denial of service.
+ *
+ * Errors resolve to `false`. The directory is removed under this function's feet at the end of a
+ * run, and a watchdog that crashed the judge on an expected `ENOENT` would be a worse bug than
+ * the one it exists to prevent.
+ */
+async function exceedsWritableBudget(
+  dir: string,
+  limits: { readonly maxBytes: number; readonly maxFiles: number },
+): Promise<boolean> {
+  try {
+    const entries = await readdir(dir);
+    if (entries.length > limits.maxFiles) return true;
+
+    let total = 0;
+    for (const entry of entries) {
+      try {
+        const info = await stat(path.join(dir, entry));
+        if (info.isFile()) total += info.size;
+      } catch {
+        // Raced with the driver rewriting it. Skipping is right: the next poll sees it.
+      }
+      if (total > limits.maxBytes) return true;
+    }
+    return false;
+  } catch {
+    return false;
+  }
 }

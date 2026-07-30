@@ -17,7 +17,7 @@ and a couple are reachable but wrong on this hardware.
 | T1 | Hints have no content — a student can pay for nothing | **blocker for hints** |
 | T2 | Java time limits are unenforceable on a slow host — a *scoring* error, not a speed one | **high** |
 | T3 | Verdict latency misses G8 by 11–28× | high, hardware |
-| T4 | A submission can fill the judge host's disk | medium |
+| T4 | ~~A submission can fill the judge host's disk~~ **fixed** | resolved |
 | T5 | ~~Re-joining re-rolls the problem set, leaking other sets~~ **fixed**; one residual stated | low |
 | T6 | Monaco is specified but not installed | medium |
 | T7 | Team management and awards UI are missing | medium |
@@ -101,24 +101,51 @@ procedure, and the host recommendation.
 
 ---
 
-## T4 — A submission can fill the judge host's disk through `/out`
+## T4 — A submission can fill the judge host's disk through `/out` — **fixed**
 
-**Severity: medium.** From the 2026-07-30 security review, accepted there as A2 with reasoning.
+**Was: medium**, accepted as A2 in the 2026-07-30 security review. Raised and fixed because the
+deployment is now a shared 2 vCPU / 4 GB droplet: a full disk there stops Postgres accepting
+writes, so this stopped being "denial of service against the judge" and became "denial of service
+against the contest".
 
-`--memory`, `--pids-limit`, `--cpus` and the tmpfs cap all bound a submission. None of them bounds
-writes to a bind-mounted host directory, so `open('/out/x','w').write('A' * 10**10)` consumes host
-disk. `PTCN_CAP` bounds only what the driver copies out; the program reaches `/out` directly.
+`--memory`, `--pids-limit`, `--cpus` and the tmpfs cap all bound a submission; none of them bounded
+a write to a bind-mounted host directory, and the program runs as the same uid as the driver.
 
-Denial of service against ourselves — not a disclosure, not a score change — and loud when it
-happens.
+**Fixed with two bounds, because one is not enough:**
 
-**Fix:** `--ulimit fsize=` in `isolationArgs`, sized from `largestCap`. Needs its own G5 fixture:
-`fixtures/sandbox/cases/write-outside-tmp` probes `/work`, `/etc`, `/`, `/usr/local` and **never
-`/out`**, so the gate does not currently cover the mount surface that actually exists. Size the cap
-carefully — `cut-the-sticks` legitimately writes 1.29 MB, and a cap set wrong reports `WA` on correct
-code, which this project has already shipped once.
+| Bound | Stops | Enforced by |
+|---|---|---|
+| `--ulimit fsize` = the container's tmpfs size | one enormous file | the kernel |
+| A host-side watchdog on the writable mount — file count, then byte total | many ordinary files | `docker kill` |
 
-**Do this before any contest where the judge host also holds something you care about.**
+`RLIMIT_FSIZE` bounds a file, not their sum, so `for i in range(100000): open(f'/out/{i}','w')`
+walks straight past it. Hence the watchdog.
+
+**Three things this took that were not obvious, all found by running it rather than reasoning
+about it:**
+
+1. **The naive watchdog — sum `stat().size` over the directory — does not work.** Against a
+   program creating files as fast as it can, each poll's `stat` storm outlasts the poll interval:
+   measured, **exactly one poll in 5.7 seconds ever resolved**. The count is now checked first with
+   a bare `readdir` (~2 ms on 4 000 entries), and bytes are only summed for a directory already
+   known to be small.
+2. **The retry path had no bound at all, and the disk-fill path leads directly into it.** Filling
+   `/out` gets the batch container killed, which means no `.meta`, which is exactly the condition
+   that triggers `runSingleTest`. Measured: the batch was correctly contained to 268 MB and the
+   retry then wrote **8.6 GB**. A fix on one path was worth nothing.
+3. **`fsize` is a sixth axis on which compile limits differ from run limits.** Inherited from the
+   run container it would cap `javac` and `go build` at a size chosen for a student's program, and
+   the student sees CE on code that compiles fine — the exact failure the other five axes have
+   each caused here before.
+
+**Residual:** the kill is not instantaneous, so a submission writing at full speed lands roughly
+one poll interval plus kill latency of data — ~100 MB per container at the current 100 ms, ~400 MB
+with four workers. Bounded and transient; the directory is removed when the job ends.
+
+Coverage: `fixtures/sandbox/cases/disk-fill-out`, which probes **`/out`** — the one writable mount,
+which no previous fixture touched. The four `write-outside-tmp` cases all probe read-only paths, so
+they proved the rootfs and left this surface uncovered. G5 18/18, and G4 57/57 plus G13 20/20 to
+show the caps do not fail legitimate output (`cut-the-sticks` writes 1.29 MB).
 
 ---
 

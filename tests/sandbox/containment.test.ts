@@ -122,6 +122,15 @@ describe("G5 hostile submission containment", () => {
     const scenarios = new Set(manifest.cases.map((c) => scenarioOf(c.id)));
 
     expect([...scenarios].sort()).toEqual([
+      /**
+       * `/out` is the only mount that is genuinely WRITABLE, and it had no fixture at all.
+       *
+       * The four `write-outside-tmp` cases probe `/work`, `/etc`, `/` and `/usr/local` — every one
+       * of them read-only. They proved the read-only rootfs and never touched the surface a
+       * submission can actually write to, which is how a submission could fill the judge host's
+       * disk through a passing G5 (T4).
+       */
+      "disk-fill-out",
       "fork-bomb",
       "infinite-loop",
       "memory-bomb-10gb",

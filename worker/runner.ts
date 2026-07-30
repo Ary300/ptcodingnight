@@ -65,6 +65,16 @@ function verdictFor(
   compare: () => boolean,
 ): Verdict {
   if (run.oomKilled) return "MLE";
+  /**
+   * Checked before the wall clock, because the watchdog kills the container and the kill then
+   * looks exactly like a timeout. Reporting `TLE` for a submission that tried to fill the judge
+   * host would hide the only interesting thing about it.
+   *
+   * `RE` rather than a new verdict: the program did something the runtime refused to let it
+   * finish, which is what `RE` means here, and a verdict a student has never seen on a scoreboard
+   * is a support question during a contest. The organizer gets the detail from the worker log.
+   */
+  if (run.diskExceeded) return "RE";
   if (run.timedOut || hitWallClock(run.exitCode, run.durationMs, wallClockKillMs)) return "TLE";
   if (run.outputTruncated) return "WA";
   if (/OutOfMemoryError|MemoryError/.test(run.stderr)) return "MLE";
@@ -80,7 +90,38 @@ function containerLimits(job: JudgeJob): ContainerLimits {
     pidsLimit: job.limits.pidsLimit,
     tmpfsBytes: job.limits.tmpfsBytes,
     wallClockKillMs: job.limits.wallClockKillMs,
+    fsizeBytes: job.limits.tmpfsBytes,
   };
+}
+
+/**
+ * Total bytes a submission may leave in the writable `/out` mount (T4).
+ *
+ * Derived from the cap the driver is already allowed to write per test, not chosen: the driver
+ * writes one `.out` of at most `largestCap` and one small `.meta` per test, so the legitimate
+ * total is bounded by `largestCap × tests`. Doubling that and adding a fixed floor leaves room
+ * for the `.meta` files and for a compiler's artifacts without leaving room for a disk-fill.
+ *
+ * Sizing this from a guess rather than from the driver's own cap is how a legitimate large
+ * answer gets killed and reported as `WA` — the same mistake `outputCapFor` exists to avoid, and
+ * one this project has already shipped once.
+ */
+export function outputDirBudget(largestCap: number, testCount: number): number {
+  return largestCap * Math.max(1, testCount) * 2 + 64 * 1024 * 1024;
+}
+
+/**
+ * How many files the batch driver legitimately leaves in `/out`.
+ *
+ * Known exactly rather than guessed: `<n>.out`, `<n>.err` and `<n>.meta` per test, plus
+ * `compile.out`, `compile.err`, `compile.meta` and `complete`. The slack is for a runtime that
+ * drops something of its own beside them.
+ *
+ * This is the cheap half of the disk watchdog — see `exceedsWritableBudget`. A byte total cannot
+ * be measured fast enough to catch a program creating thousands of files, but a file count can.
+ */
+export function outputDirFileLimit(testCount: number): number {
+  return Math.max(1, testCount) * 3 + 16;
 }
 
 /** Container names must be unique and traceable back to a submission. */
@@ -366,10 +407,24 @@ async function runSingleTest(options: {
       // The artifacts still exist on the host from the build container, so a retry does not
       // rebuild — which is the whole reason the build was hoisted out of the run container.
       readonlyDir: variant.producesArtifacts ? buildDir : undefined,
-      limits,
+      // fsize tracks whatever tmpfs this retry was given, exactly as the batch container does.
+      limits: { ...limits, fsizeBytes: limits.tmpfsBytes },
       name: containerName(job, `retry-t${String(ordinal)}`),
       containerKillMs: perTestKillMs + runtime.compileTimeoutMs,
       outputCapBytes: 64 * 1024,
+      /**
+       * The retry needs the disk bounds as much as the batch does — arguably more.
+       *
+       * Leaving them off here was not a small omission. A submission that fills `/out` gets its
+       * batch container killed, which means no `.meta`, which is precisely the condition that
+       * *triggers* this retry. So the disk-fill path led directly into the one container with no
+       * disk bound: measured, the batch was correctly contained to 268 MB and the retry then
+       * wrote **8.6 GB** to the host.
+       *
+       * One test's worth of budget, because that is what a retry runs.
+       */
+      outputDirBudgetBytes: outputDirBudget(cap, 1),
+      outputDirMaxFiles: outputDirFileLimit(1),
       env: {
         PTCN_TESTS: String(job.testCases.length),
         PTCN_ONLY: String(ordinal),
@@ -393,6 +448,9 @@ async function runSingleTest(options: {
       outputTruncated: outcome.rawBytes > Buffer.byteLength(outcome.stdout, "utf8"),
       durationMs: outcome.durationMs,
       wallMs: outcome.durationMs,
+      // A retry that produced a readable `.meta` did not blow the disk budget — the watchdog
+      // kills the container before the driver can finish writing one.
+      diskExceeded: false,
     };
   } finally {
     await rm(resultDir, { recursive: true, force: true });
@@ -476,10 +534,23 @@ export async function judge(job: JudgeJob, images?: ImageOverrides): Promise<Jud
           pidsLimit: runtime.compilePidsLimit,
           tmpfsBytes: runtime.compileTmpfsBytes,
           cpus: runtime.compileCpus,
+          // fsize is the SIXTH axis on which compile limits differ from run limits, and it has to
+          // be set here for the same reason as the other five (CLAUDE.md): inheriting the run
+          // container's value would cap `javac` or `go build` at a size chosen for a student's
+          // program, and the student sees CE on code that compiles perfectly well.
+          fsizeBytes: runtime.compileTmpfsBytes,
         },
         name: containerName(job, "build"),
         containerKillMs: runtime.compileTimeoutMs,
         outputCapBytes: 256 * 1024,
+        // `/build` is writable host disk too, and it is the compile container's `/out`. Bounded
+        // generously — a compiler legitimately writes far more than a program does, and a cap
+        // that fires on a real build is a CE on correct code.
+        outputDirBudgetBytes: runtime.compileTmpfsBytes * 4 + 256 * 1024 * 1024,
+        // Compilers legitimately emit many files — one .class per class, one object per unit —
+        // so this is far looser than the run container's and is a runaway backstop rather than a
+        // tight bound.
+        outputDirMaxFiles: 4096,
       });
 
       if (compile.exitCode !== 0) {
@@ -557,13 +628,21 @@ export async function judge(job: JudgeJob, images?: ImageOverrides): Promise<Jud
       // Compiled artifacts arrive read-only: the program must not be able to rewrite the
       // binary it is running from between tests.
       readonlyDir: variant.producesArtifacts ? buildDir : undefined,
-      limits: {
-        ...runLimits,
-        tmpfsBytes: Math.max(runLimits.tmpfsBytes, largestCap * 2 + 64 * 1024 * 1024),
-      },
+      limits: (() => {
+        const tmpfsBytes = Math.max(
+          runLimits.tmpfsBytes,
+          largestCap * 2 + 64 * 1024 * 1024,
+        );
+        // fsize tracks the tmpfs rather than the base limit: the tmpfs was already widened for a
+        // large expected output, and a per-file cap below it would fail a legitimate answer that
+        // the tmpfs was explicitly sized to hold.
+        return { ...runLimits, tmpfsBytes, fsizeBytes: tmpfsBytes };
+      })(),
       name: containerName(job, "run"),
       containerKillMs: wallClockKillMs * job.testCases.length + runtime.compileTimeoutMs,
       outputCapBytes: 64 * 1024,
+      outputDirBudgetBytes: outputDirBudget(largestCap, job.testCases.length),
+      outputDirMaxFiles: outputDirFileLimit(job.testCases.length),
       env: {
         PTCN_TESTS: String(job.testCases.length),
         PTCN_TIMEOUT: String(Math.max(1, Math.ceil(wallClockKillMs / 1000))),
@@ -644,12 +723,17 @@ export async function judge(job: JudgeJob, images?: ImageOverrides): Promise<Jud
               outputTruncated: false,
               durationMs: 0,
               wallMs: 0,
+              // A missing `.meta` after the watchdog fired is that submission filling the disk,
+              // not the judge failing. Carrying the flag through is what keeps it out of `IE` —
+              // and `IE` is never shown to a student as a failure (CLAUDE.md).
+              diskExceeded: batch.diskExceeded,
             })
           : {
               stdout: outcome.stdout,
               stderr: outcome.stderr,
               exitCode: outcome.exitCode,
               oomKilled: batch.oomKilled && ordinal === results.length + 1,
+              diskExceeded: batch.diskExceeded,
               // When the self-reported timing is not credible, every test in the batch is treated
               // as having hit the wall clock. That is the safe direction: a genuinely fast
               // submission whose batch was mis-measured gets re-examined by a human, while a

@@ -144,7 +144,33 @@ protection was that limiter — could be brute-forced without limit.
 
 These were reported and are **not** being fixed. Each is a decision.
 
-### A2 — A submission can fill the judge host's disk through `/out` (medium, accepted)
+### A2 — A submission can fill the judge host's disk through `/out` (medium, **no longer accepted — fixed**)
+
+**Superseded.** This was accepted as "a denial of service against ourselves, and loud". That
+reasoning held for a dedicated judge host. The deployment is now a shared 2 vCPU / 4 GB droplet
+running Postgres, Redis, the web app and the judge together, where a full disk stops Postgres
+accepting writes — so it is a denial of service against the contest, and it is silent until
+everything fails at once.
+
+**Fixed** with `--ulimit fsize` (bounds one file, kernel-enforced) plus a host-side watchdog on the
+writable mount (bounds their sum). Both were needed: `RLIMIT_FSIZE` says nothing about how many
+files there are.
+
+Worth recording, because reasoning would not have found any of them:
+
+- The obvious watchdog is starved by the thing it watches. Summing `stat().size` over a directory
+  under a write storm resolved **once in 5.7 seconds**. It now counts entries first.
+- **The retry path had no bound, and the attack leads into it.** Filling `/out` kills the batch
+  container, which produces no `.meta`, which is what triggers the single-test retry. Measured: the
+  batch contained to 268 MB, the retry then wrote 8.6 GB.
+- `fsize` is a sixth axis on which compile limits must differ from run limits.
+
+Coverage: `fixtures/sandbox/cases/disk-fill-out`. G5 18/18, G4 57/57, G13 20/20. See `docs/TODO.md`
+T4.
+
+The original acceptance follows, kept because what changed is the deployment rather than the code:
+
+
 
 `--memory`, `--pids-limit`, `--cpus` and the tmpfs size cap all apply to a submission; none of them
 bounds writes to a bind-mounted host directory, so `open('/out/x','w').write('A' * 10**10)` consumes
