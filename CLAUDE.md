@@ -21,16 +21,24 @@ The application exists. `app/`, `lib/`, `worker/`, `prisma/`, `fixtures/`, `comp
 | G5 sandbox | PASS | 17/17, 13 hostile fixtures across four runtimes |
 | G6 golden scoring | PASS | includes the team formula and its variants |
 | G7 E2E | PASS | 77/77, rewritten for teams; covers both sign-in paths |
-| G9 a11y | **stale** | points at the individual leaderboard, which teams displaced |
+| G9 a11y | PASS | extended to the team screens in `8401d01` — projector team board, `/team`, admin side-activity entry. Two real defects fixed there. The one surface it does **not** cover is `/admin/awards`, which still renders the individual board (T7) |
 | G8 load | **FAIL, and it is a hardware answer** | p95 283,436 ms against 10,000 ms — 28× at host load 32, 11× at load ~8. Correctness is fine: 40/40 AC, zero IE, zero dropped. See `docs/HOSTING.md` §3; the threshold was never lowered |
 | G13 problem content | PASS | 20/20 references, 297 test cases, 0 containers leaked |
 
 **Docker is running and all five runtime images are built**, including `ptcn-go:1.23`, which is
 built locally rather than pulled. Run `scripts/build-judge-images.sh --verify` on any new host.
 
-**The team-scoring rewrite is partly landed.** Schema, migration, scoring engine, set assignment
-and the auth layer are done and tested; the routes, UI and G7 specs are not. `docs/TODO.md` is the
-honest list — read it before assuming a feature is reachable over HTTP.
+**The team-scoring rewrite is landed and reachable over HTTP.** Schema, migration, scoring engine,
+set assignment, the auth layer, the routes (`app/api/contests/[id]/team-standings`,
+`app/api/admin/teams/[id]/side-activities`), the UI (`TeamStandingsBoard`, `TeamProjectorScreen`,
+`MyTeamView`, `/team`) and the G7 specs are all done and tested.
+
+**Two team surfaces are still missing, and one of them is a scoring input** — see T7. There is no
+team-management screen, so a roster can only be edited with SQL; team size is the divisor in every
+team score, which makes that a correctness gap rather than an administrative one. `/admin/awards`
+still renders the per-division individual board.
+
+`docs/TODO.md` is the honest list — read it before assuming a feature is reachable over HTTP.
 
 ## Commands
 
