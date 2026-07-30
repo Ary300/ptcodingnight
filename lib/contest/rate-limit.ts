@@ -25,6 +25,19 @@ export const RUN_SAMPLES_RULE: RateLimitRule = { limit: 20, windowMs: 60_000 };
 /** Failed admin logins. Slow down a passcode guess without locking an organizer out. */
 export const ADMIN_LOGIN_RULE: RateLimitRule = { limit: 10, windowMs: 300_000 };
 
+/**
+ * Email-and-password sign-in, in its OWN bucket — deliberately not sharing the passcode's.
+ *
+ * Sharing them looks tidy and is wrong. The passcode is the operational fallback that has to work on
+ * the night, so an organizer who mistypes their password ten times must not thereby lose access to
+ * it. One bucket inverts the entire point of having a fallback.
+ *
+ * Keyed by client rather than by email. Keying by email would let anyone lock a NAMED organizer out
+ * by hammering their address — an account-lockout denial of service against the person most needed
+ * during a contest. Keyed by client, an attacker can only exhaust their own budget.
+ */
+export const PASSWORD_LOGIN_RULE: RateLimitRule = { limit: 10, windowMs: 300_000 };
+
 /** Join attempts per client. A join code is short; this is what stops it being guessed. */
 export const JOIN_RULE: RateLimitRule = { limit: 15, windowMs: 300_000 };
 
@@ -71,6 +84,7 @@ export class RateLimiter {
 export const submitLimiter = new RateLimiter(SUBMIT_RULE);
 export const runSamplesLimiter = new RateLimiter(RUN_SAMPLES_RULE);
 export const adminLoginLimiter = new RateLimiter(ADMIN_LOGIN_RULE);
+export const passwordLoginLimiter = new RateLimiter(PASSWORD_LOGIN_RULE);
 export const joinLimiter = new RateLimiter(JOIN_RULE);
 
 /**

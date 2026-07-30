@@ -152,6 +152,12 @@ imports nothing from either. If scoring needs a fact, it arrives as an argument.
   never OOM-killed, so MLE detection silently stops working; size them for the problem and
   `javac` or `go build` fails and the student sees CE on code that compiles fine. Each of those
   five axes is a bug this project actually shipped.
+- **A language-id rename has FOUR homes, and three of them are data.** Renaming the `Language`
+  enum was missed in `fixtures/judge/manifest.json`, `fixtures/sandbox/manifest.json`,
+  `fixtures/e2e/contest.json`, and all 20 `content/problems/*/problem.json` — each discovered
+  separately, by a different gate, hours apart. A stale id does not fail to typecheck: it parses as
+  a string and fails at the registry lookup, which surfaces as every fixture in that suite failing
+  at once for no visible reason. If you touch `LanguageId`, grep the JSON.
 - **A slug must never carry a runtime version.** `Problem.slug` is a URL and a database key.
   Deriving it from the registry's `LanguageId` gives `sum67-python-312`, and bumping to Python
   3.13 then renames every warmup, orphaning its rows and every bookmarked link. See

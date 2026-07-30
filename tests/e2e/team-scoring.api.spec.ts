@@ -139,15 +139,22 @@ test.describe("problem sets are enforced by the API", () => {
   let ada: ContestApi;
 
   test.beforeAll(async ({ playwright }) => {
-    // Join as a fresh competitor. They land with no team and, since the fixture contest already has
-    // an assignment seed, they are assigned a set on the way in.
+    // Join as a fresh competitor, WITH a division.
+    //
+    // Joining with `divisionId: null` puts every fixture problem out of scope, because they all
+    // carry a division and `inScope` refuses a divisioned problem to a player with none. The first
+    // version of this spec did that and read as "the set filter hides everything" when the division
+    // filter was doing the hiding — two filters, one empty list, and no way to tell them apart.
     const context = await playwright.request.newContext();
     ada = new ContestApi(context, seeded.contestId);
+
+    const divisionId = seeded.divisionIds.get("intermediate") ?? null;
+    expect(divisionId, "fixture has no intermediate division").not.toBeNull();
 
     await ada.joinOrThrow({
       joinCode: seeded.joinCode,
       displayName: `E2E SetProbe ${Date.now()}`,
-      divisionId: null,
+      divisionId,
     });
   });
 
@@ -158,7 +165,7 @@ test.describe("problem sets are enforced by the API", () => {
     const joined = await api.joinOrThrow({
       joinCode: seeded.joinCode,
       displayName: `E2E Told ${Date.now()}`,
-      divisionId: null,
+      divisionId: seeded.divisionIds.get("intermediate") ?? null,
     });
 
     // Assigned, not chosen. The student is informed; there is no picker, because sets are never
