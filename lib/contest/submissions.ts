@@ -10,6 +10,7 @@ import type { JudgeResult, Language } from "@/lib/schemas/judge";
 import { AUDIT_ACTIONS, writeAudit } from "@/lib/contest/audit";
 import { assertCanSubmit, assertProblemIsLive, assertUnlocked } from "@/lib/contest/gate";
 import { hostLimits } from "@/lib/contest/host";
+import { canReadSet } from "@/lib/contest/set-assignment";
 import { buildJudgeJob, type TestCaseInput } from "@/lib/contest/judge-job";
 import { readCompileError, writeJudgeLog } from "@/lib/contest/judge-log";
 import { enqueueJudgeJob, jobOutcome, runJobAndWait } from "@/lib/contest/queue";
@@ -65,7 +66,16 @@ async function resolveTarget(
       contestId: true,
       divisionId: true,
       unlockAt: true,
-      contest: { select: { state: true, startsAt: true, endsAt: true, freezeAt: true } },
+      setId: true,
+      contest: {
+        select: {
+          state: true,
+          startsAt: true,
+          endsAt: true,
+          freezeAt: true,
+          allowReadingUnassignedSets: true,
+        },
+      },
       problem: {
         select: {
           slug: true,
@@ -97,12 +107,25 @@ async function resolveTarget(
 
   const participant = await prisma.participant.findFirst({
     where: { id: viewer.participantId, contestId: contestProblem.contestId },
-    select: { divisionId: true },
+    select: { divisionId: true, chosenSetId: true },
   });
   if (participant === null) throw new ForbiddenError("Join the contest first");
 
   if (contestProblem.divisionId !== null && contestProblem.divisionId !== participant.divisionId) {
     throw new ForbiddenError("That problem belongs to another division");
+  }
+
+  // The set gate on the path that awards points. Reading someone else's set is a fairness problem;
+  // SCORING on it is a correctness one, so the check belongs here as well as on the read path — and
+  // this is the guard both submit and run-samples share.
+  if (
+    !canReadSet({
+      problemSetId: contestProblem.setId,
+      participantSetId: participant.chosenSetId,
+      allowReadingUnassignedSets: contestProblem.contest.allowReadingUnassignedSets,
+    })
+  ) {
+    throw new ForbiddenError("That problem is in a set you were not assigned");
   }
 
   assertCanSubmit(contestProblem.contest, now);

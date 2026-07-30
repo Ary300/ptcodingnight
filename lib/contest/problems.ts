@@ -19,6 +19,7 @@ import {
 import { hostLimits } from "@/lib/contest/host";
 import { resolveTestDataPath } from "@/lib/contest/judge-job";
 import { problemStandingsFor } from "@/lib/contest/standings";
+import { canReadSet } from "@/lib/contest/set-assignment";
 import { isAdmin, requireCompetitorOf, type Viewer } from "@/lib/contest/viewer";
 
 /**
@@ -34,19 +35,28 @@ interface ViewerScope {
   readonly admin: boolean;
   readonly participantId: string | null;
   readonly divisionId: string | null;
+  /** The Round 1 set this competitor was assigned. Null for an admin, or before assignment. */
+  readonly chosenSetId: string | null;
 }
 
 async function scopeFor(contestId: string, viewer: Viewer): Promise<ViewerScope> {
-  if (isAdmin(viewer)) return { admin: true, participantId: null, divisionId: null };
+  if (isAdmin(viewer)) {
+    return { admin: true, participantId: null, divisionId: null, chosenSetId: null };
+  }
 
   const competitor = requireCompetitorOf(viewer, contestId);
   const participant = await prisma.participant.findFirst({
     where: { id: competitor.participantId, contestId },
-    select: { id: true, divisionId: true },
+    select: { id: true, divisionId: true, chosenSetId: true },
   });
   if (participant === null) throw new ForbiddenError("Join the contest first");
 
-  return { admin: false, participantId: participant.id, divisionId: participant.divisionId };
+  return {
+    admin: false,
+    participantId: participant.id,
+    divisionId: participant.divisionId,
+    chosenSetId: participant.chosenSetId,
+  };
 }
 
 /** A problem slotted into another division is not this competitor's to see. */
@@ -54,6 +64,28 @@ function inScope(problemDivisionId: string | null, scope: ViewerScope): boolean 
   if (scope.admin) return true;
   if (problemDivisionId === null) return true;
   return problemDivisionId === scope.divisionId;
+}
+
+/**
+ * A problem in a set this competitor was not assigned is not theirs to see.
+ *
+ * **This is the API-side enforcement of `allowReadingUnassignedSets`** (PRD §6.2). Hiding the other
+ * sets in the UI is not enough: the route is callable directly, and a set a competitor can read is a
+ * set they can practise on before their own round starts.
+ *
+ * A GROUP problem has no set and is readable by everyone — that is what makes it a group problem.
+ */
+function setInScope(
+  problemSetId: string | null,
+  scope: ViewerScope,
+  allowReadingUnassignedSets: boolean,
+): boolean {
+  if (scope.admin) return true;
+  return canReadSet({
+    problemSetId,
+    participantSetId: scope.chosenSetId,
+    allowReadingUnassignedSets,
+  });
 }
 
 /** What the next hint on a problem costs — a price quote, using the one shared constant. */
@@ -68,7 +100,7 @@ export async function listProblems(
 ): Promise<ProblemSummary[]> {
   const contest = await prisma.contest.findUnique({
     where: { id: contestId },
-    select: { id: true, state: true },
+    select: { id: true, state: true, allowReadingUnassignedSets: true },
   });
   if (contest === null) throw new NotFoundError("Contest");
 
@@ -80,18 +112,22 @@ export async function listProblems(
     select: {
       id: true,
       divisionId: true,
+      setId: true,
       slotLabel: true,
       basePoints: true,
       unlockAt: true,
       problem: {
-        select: { slug: true, title: true, difficulty: true, state: true, isGroupProblem: true },
+        select: { slug: true, title: true, difficulty: true, state: true, round: true },
       },
     },
     orderBy: { slotLabel: "asc" },
   });
 
   const visible = contestProblems.filter(
-    (cp) => inScope(cp.divisionId, scope) && (scope.admin || isProblemLive(cp.problem.state)),
+    (cp) =>
+      inScope(cp.divisionId, scope) &&
+      setInScope(cp.setId, scope, contest.allowReadingUnassignedSets) &&
+      (scope.admin || isProblemLive(cp.problem.state)),
   );
 
   const [scores, solvedIds] = await Promise.all([
@@ -109,7 +145,7 @@ export async function listProblems(
       slotLabel: cp.slotLabel,
       difficulty: cp.problem.difficulty,
       basePoints: cp.basePoints,
-      isGroupProblem: cp.problem.isGroupProblem,
+      isGroupProblem: cp.problem.round === "GROUP",
       bestScore: scores.get(cp.id)?.score ?? null,
       solved: solvedIds.has(cp.id),
       unlocked: scope.admin || isUnlocked(cp.unlockAt, now),
@@ -141,7 +177,7 @@ export async function getProblemDetail(
 ): Promise<ProblemDetail> {
   const contest = await prisma.contest.findUnique({
     where: { id: contestId },
-    select: { id: true, state: true },
+    select: { id: true, state: true, allowReadingUnassignedSets: true },
   });
   if (contest === null) throw new NotFoundError("Contest");
 
@@ -153,6 +189,7 @@ export async function getProblemDetail(
     select: {
       id: true,
       divisionId: true,
+      setId: true,
       slotLabel: true,
       basePoints: true,
       unlockAt: true,
@@ -167,7 +204,7 @@ export async function getProblemDetail(
           constraints: true,
           difficulty: true,
           state: true,
-          isGroupProblem: true,
+          round: true,
           timeLimitMs: true,
           memoryLimitMb: true,
           allowedLanguages: true,
@@ -179,6 +216,11 @@ export async function getProblemDetail(
   if (contestProblem === null) throw new NotFoundError("Problem");
   if (!inScope(contestProblem.divisionId, scope)) {
     throw new ForbiddenError("That problem belongs to another division");
+  }
+  // The set gate. This route is the one that returns a full statement, so it is the one that
+  // actually leaks a problem if the check is missing.
+  if (!setInScope(contestProblem.setId, scope, contest.allowReadingUnassignedSets)) {
+    throw new ForbiddenError("That problem is in a set you were not assigned");
   }
 
   if (!scope.admin) {
@@ -203,7 +245,7 @@ export async function getProblemDetail(
     slotLabel: contestProblem.slotLabel,
     difficulty: contestProblem.problem.difficulty,
     basePoints: contestProblem.basePoints,
-    isGroupProblem: contestProblem.problem.isGroupProblem,
+    isGroupProblem: contestProblem.problem.round === "GROUP",
     bestScore: scores.get(contestProblem.id)?.score ?? null,
     solved: solvedIds.has(contestProblem.id),
     unlocked: scope.admin || isUnlocked(contestProblem.unlockAt, now),
