@@ -220,8 +220,17 @@ async function feedInputs(options: {
   readonly resultDir: string;
   readonly inputByOrdinal: ReadonlyMap<number, string>;
   readonly count: number;
+  /**
+   * Set by the caller the instant the container exits.
+   *
+   * **Without this the feeder deadlocks the judge.** A container that dies at test 1 — an MLE
+   * fixture, a fork bomb, the host backstop — never writes `2.meta`, so the feeder waits for a
+   * file that is never coming while the runner waits for the feeder. The first version used only
+   * a 30-minute ceiling and turned a 21-minute G4 into an hour with no output.
+   */
+  readonly stopped: { value: boolean };
 }): Promise<void> {
-  const { inputDir, resultDir, inputByOrdinal, count } = options;
+  const { inputDir, resultDir, inputByOrdinal, count, stopped } = options;
 
   // Short enough that it costs a test a few milliseconds, long enough not to spin a core. Container
   // creation on this host is seconds, so this is noise by comparison.
@@ -235,7 +244,7 @@ async function feedInputs(options: {
   for (let ordinal = 1; ordinal <= count; ordinal += 1) {
     const metaPath = path.join(resultDir, `${String(ordinal)}.meta`);
 
-    while (Date.now() - startedAt < MAX_WAIT_MS) {
+    while (!stopped.value && Date.now() - startedAt < MAX_WAIT_MS) {
       try {
         await readFile(metaPath, "utf8");
         break;
@@ -243,6 +252,10 @@ async function feedInputs(options: {
         await new Promise((resolve) => setTimeout(resolve, POLL_MS));
       }
     }
+
+    // The container is gone. Nothing will consume another input, and the remaining tests are
+    // re-run individually by the missing-`.meta` path.
+    if (stopped.value) return;
 
     // This test is finished with its input.
     await rm(path.join(inputDir, `${String(ordinal)}.in`), { force: true }).catch(() => undefined);
@@ -526,11 +539,13 @@ export async function judge(job: JudgeJob, images?: ImageOverrides): Promise<Jud
 
     // Runs alongside the container, handing over one input at a time. Started before the
     // container so the feeder is already watching when the first test finishes.
+    const feedStopped = { value: false };
     const feeder = feedInputs({
       inputDir,
       resultDir,
       inputByOrdinal,
       count: job.testCases.length,
+      stopped: feedStopped,
     });
 
     const batch = await runInContainer({
@@ -561,9 +576,9 @@ export async function judge(job: JudgeJob, images?: ImageOverrides): Promise<Jud
       },
     });
 
-    // The container is gone, so the feeder has nothing left to wait for. Settled rather than left
-    // floating so it cannot write into `inputDir` while the retry path is placing an input there,
-    // and so a bug in it surfaces here rather than as an unhandled rejection later.
+    // Tell the feeder to stop BEFORE awaiting it. The container has exited, so any `.meta` it was
+    // waiting on will never appear — awaiting first would block for the full ceiling.
+    feedStopped.value = true;
     await feeder.catch(() => undefined);
 
     // A parse-only check that failed is still a CE.

@@ -43,6 +43,14 @@ export const ContestEnvSchema = z.object({
    */
   PUBLIC_ORIGIN: z.string().url().optional(),
 
+  /**
+   * How many trusted proxies sit in front of the app. See `clientKey` in rate-limit.ts.
+   *
+   * Zero — the default and the shipped deployment — means `x-forwarded-for` is ignored entirely,
+   * because without a proxy it is attacker-controlled input.
+   */
+  TRUSTED_PROXY_COUNT: z.string().regex(/^\d+$/).optional(),
+
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
 });
 

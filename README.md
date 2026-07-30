@@ -65,7 +65,10 @@ docs/         PRD (the spec), SCORING, HOSTING, AUTH, DESIGN, DECISIONS, TODO.
 git clone <this repo> && cd "Park Tudor CS Club"
 npm install
 
-cp .env.example .env          # then open .env and set SESSION_SECRET and ADMIN_PASSCODE
+cp .env.example .env          # then open .env and set the secrets it lists — at minimum
+                              # ADMIN_PASSCODE, POSTGRES_PASSWORD and REDIS_PASSWORD.
+                              # docker compose REFUSES TO START without them, on purpose:
+                              # the placeholders used to be live credentials.
 docker compose up -d postgres redis
 npx prisma migrate deploy     # create the tables
 npm run db:seed               # load the problem list from data/problems_seed.csv
