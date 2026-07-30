@@ -1,7 +1,13 @@
 import { NotFoundError } from "@/lib/errors";
 import { prisma } from "@/lib/db";
 import { computeStandings } from "@/lib/scoring";
-import { StandingsResponseSchema, type StandingsResponse } from "@/lib/schemas/api";
+import { computeTeamStandings } from "@/lib/scoring/team";
+import {
+  StandingsResponseSchema,
+  TeamStandingsResponseSchema,
+  type StandingsResponse,
+  type TeamStandingsResponse,
+} from "@/lib/schemas/api";
 import type {
   ContestConfig,
   HintGrantRecord,
@@ -39,6 +45,8 @@ export interface ScoringInput {
   readonly hintGrants: readonly HintGrantRecord[];
   readonly sideActivities: readonly SideActivityRecord[];
   readonly divisionNames: ReadonlyMap<string, string>;
+  /** Set id to label ("A".."D"). Presentation only — the scoring engine never sees a set's name. */
+  readonly problemSetLabels: readonly (readonly [string, string])[];
 }
 
 /** The unlabelled group: participants an organizer has not put in a division yet. */
@@ -109,6 +117,7 @@ async function queryScoringInput(contestId: string): Promise<ScoringInput> {
         },
       },
       teams: { select: { id: true, name: true } },
+      problemSets: { select: { id: true, label: true } },
     },
   });
 
@@ -199,6 +208,7 @@ async function queryScoringInput(contestId: string): Promise<ScoringInput> {
       grantedAt: h.grantedAt,
     })),
     divisionNames: new Map(contest.divisions.map((d) => [d.id, d.name])),
+    problemSetLabels: contest.problemSets.map((set) => [set.id, set.label] as const),
   };
 }
 
@@ -327,4 +337,68 @@ export async function problemStandingsFor(
     });
   }
   return byProblem;
+}
+
+
+/**
+ * Team standings — **the board Coding Night actually ranks by** (PRD §9.3).
+ *
+ * Public, like the individual board, because the projector has no login. That constrains what may
+ * appear: rank, team name, score, the arithmetic behind it, and each member's own points. A
+ * spectator seeing a player's point total is fine; a spectator seeing their source code is not, and
+ * nothing here reaches for it.
+ *
+ * The freeze works the same way and for the same reason — by asking about an earlier INSTANT rather
+ * than by filtering the answer afterwards, so the frozen board is a real board from a real moment
+ * and the unfreeze is the same function called again (D16).
+ */
+export async function getTeamStandings(
+  contestId: string,
+  viewer: Viewer,
+  now: Date,
+): Promise<TeamStandingsResponse> {
+  const admin = isAdmin(viewer);
+  const input = await loadScoringInput(contestId, now);
+  const upTo = cutoffFor(input.contest, now, admin);
+
+  const teams = computeTeamStandings(
+    input.config,
+    input.teams,
+    input.participants,
+    input.submissions,
+    input.hintGrants,
+    input.sideActivities,
+    { upTo },
+  );
+
+  // Set labels are a presentation concern, so they are looked up here rather than threaded through
+  // the scoring engine — which must not know that a set has a name.
+  const setLabel = new Map(input.problemSetLabels);
+
+  return TeamStandingsResponseSchema.parse({
+    contestId,
+    frozen: !admin && isPublicBoardFrozen(input.contest, now),
+    asOf: (upTo ?? now).toISOString(),
+    endsAt: input.contest.endsAt.toISOString(),
+    teams: teams.map((team) => ({
+      teamId: team.teamId,
+      name: team.name,
+      rank: team.rank,
+      isTied: team.isTied,
+      score: team.score,
+      scoreHundredths: team.scoreHundredths,
+      teamSize: team.teamSize,
+      playerPoolPoints: team.playerPoolPoints,
+      groupPoints: team.groupPoints,
+      sideActivityPoints: team.sideActivityPoints,
+      penaltyMinutes: team.penaltyMinutes,
+      players: team.players.map((player) => ({
+        participantId: player.participantId,
+        displayName: player.displayName,
+        score: player.score,
+        penaltyMinutes: player.penaltyMinutes,
+        chosenSetLabel: player.chosenSetId === null ? null : setLabel.get(player.chosenSetId) ?? null,
+      })),
+    })),
+  });
 }

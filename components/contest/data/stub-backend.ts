@@ -371,6 +371,11 @@ export const stubContestApi: ContestApi = {
       contestId: "stub-contest",
       displayName: request.displayName,
       divisionId: request.divisionId ?? "div-intermediate",
+      chosenSetId: "stub-set-a",
+      chosenSetLabel: "A",
+      // The stub deliberately reports a team, so the "you have no team" path is exercised by
+      // pointing at the real backend rather than being the default everyone sees.
+      needsTeam: false,
     };
   },
 

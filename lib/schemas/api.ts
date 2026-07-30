@@ -144,6 +144,22 @@ export const JoinResponseSchema = z.object({
   contestId: z.string(),
   displayName: z.string(),
   divisionId: z.string().nullable(),
+  /**
+   * The Round 1 set this player was assigned, if assignment has already run.
+   *
+   * Null before assignment. The student is TOLD their set here rather than choosing one — sets are
+   * randomly assigned and never previewed (PRD §6.2).
+   */
+  chosenSetId: z.string().nullable(),
+  chosenSetLabel: z.string().nullable(),
+  /**
+   * True when this participant is on no team yet.
+   *
+   * The UI must surface it. A participant with no team contributes to no team score, and since team
+   * size is the divisor in every team score, silently joining without one produces a student who
+   * appears to be competing and is not.
+   */
+  needsTeam: z.boolean(),
 });
 
 // ---------------------------------------------------------------------------
@@ -270,6 +286,61 @@ export const StandingsResponseSchema = z.object({
   ),
 });
 export type StandingsResponse = z.infer<typeof StandingsResponseSchema>;
+
+/**
+ * One player's line inside a team, for the expandable breakdown.
+ *
+ * Not a ranked row — players are not ranked against each other any more, teams are. This exists so
+ * a student can see how their team's mean was arrived at (PRD §9.1). Someone who can check the
+ * arithmetic does not have to trust it, which is the entire point of replacing the spreadsheet.
+ */
+export const TeamPlayerRowSchema = z.object({
+  participantId: z.string(),
+  displayName: z.string(),
+  /** This player's own points: individual problems only. Group points are a team fact. */
+  score: z.number(),
+  penaltyMinutes: z.number().int().nonnegative(),
+  /** Which Round 1 set they were assigned. Null before assignment. */
+  chosenSetLabel: z.string().nullable(),
+});
+export type TeamPlayerRow = z.infer<typeof TeamPlayerRowSchema>;
+
+export const TeamStandingRowSchema = z.object({
+  teamId: z.string(),
+  name: z.string(),
+  rank: z.number().int().positive(),
+  /** True when level with another team on every ranking key. Displayed as a tie, never broken. */
+  isTied: z.boolean(),
+
+  /**
+   * The team score, in points, as a decimal. `543.75` is a normal value.
+   *
+   * Derived from `scoreHundredths`, which is what the engine compares and ranks. Never sum or
+   * compare this field — see docs/SCORING.md §3.
+   */
+  score: z.number(),
+  scoreHundredths: z.number().int(),
+
+  /** The divisor. Sent so the UI can show the arithmetic rather than only the total. */
+  teamSize: z.number().int().nonnegative(),
+  playerPoolPoints: z.number().int(),
+  groupPoints: z.number().int(),
+  sideActivityPoints: z.number().int(),
+  penaltyMinutes: z.number().int().nonnegative(),
+
+  players: z.array(TeamPlayerRowSchema),
+});
+export type TeamStandingRow = z.infer<typeof TeamStandingRowSchema>;
+
+export const TeamStandingsResponseSchema = z.object({
+  contestId: z.string(),
+  frozen: z.boolean(),
+  asOf: z.string(),
+  endsAt: z.string(),
+  /** Ranked best first. One entry per team; players nest inside. */
+  teams: z.array(TeamStandingRowSchema),
+});
+export type TeamStandingsResponse = z.infer<typeof TeamStandingsResponseSchema>;
 
 // ---------------------------------------------------------------------------
 // Hints
