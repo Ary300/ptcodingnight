@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { aggregate } from "@/lib/judge/aggregate";
@@ -462,6 +462,24 @@ async function runSingleTest(options: {
       diskExceeded: false,
     };
   } finally {
+    /**
+     * Remove THIS retry's input as well as its results.
+     *
+     * `feedInputs` enforces the H3 invariant — at most one test input exists in `/in` at any
+     * instant — but it is stopped before the retry loop begins, and each retry writes its own
+     * input and never took it away. So a submission that kills its batch container early (memory
+     * bomb, fork bomb, filling `/out`) has every remaining test retried in order, and `/in`
+     * ACCUMULATES: by retry k the container mounts inputs 1..k, all readable by the student's
+     * program, which runs as the same uid as the driver.
+     *
+     * No client-visible leak follows today, because samples occupy the lowest ordinals and the
+     * snippet channel is only open for samples. That is an unstated property of how problems
+     * happen to be authored, not a control — a single problem with a sample at a high ordinal
+     * turns it into a hidden-input disclosure.
+     */
+    await rm(path.join(inputDir, `${String(ordinal)}.in`), { force: true }).catch(
+      () => undefined,
+    );
     await rm(resultDir, { recursive: true, force: true });
   }
 }
@@ -502,6 +520,22 @@ export async function judge(job: JudgeJob, images?: ImageOverrides): Promise<Jud
 
   await mkdir(SCRATCH_ROOT, { recursive: true });
   const workspace = await mkdtemp(path.join(SCRATCH_ROOT, "job-"));
+
+  /**
+   * Make the workspace traversable and the RESULT directory writable by the container's uid.
+   *
+   * `mkdtemp` creates 0700 owned by the worker process. The judge container runs as
+   * `--user=65534:65534`, so on Linux it cannot traverse that parent — the driver cannot write
+   * `<n>.meta`, every test falls to the retry path, the retry fails identically, and **every
+   * submission reports IE**. It is invisible on macOS only because Docker Desktop's file-sharing
+   * layer rewrites ownership (SECURITY.md A6).
+   *
+   * Narrow on purpose. `0o711` on the workspace grants traverse and NOT read, so the container
+   * cannot list its siblings; only the results directory below is made writable. The field fix
+   * somebody reaches for at 6pm — `chmod 777`, or dropping `--user` — would widen the source and
+   * build mounts too and make both the timing-forgery and disk-fill classes strictly worse.
+   */
+  await chmod(workspace, 0o711);
   const sourceDir = path.join(workspace, "src");
   const buildDir = path.join(workspace, "build");
   const inputDir = path.join(workspace, "in");
@@ -512,6 +546,15 @@ export async function judge(job: JudgeJob, images?: ImageOverrides): Promise<Jud
     await mkdir(buildDir, { recursive: true });
     await mkdir(inputDir, { recursive: true });
     await mkdir(resultDir, { recursive: true });
+    /**
+     * The ONLY directory the container is given write access to.
+     *
+     * `/out` is mounted read-write so the batch driver can return results, and the driver runs as
+     * uid 65534. `sourceDir`, `inputDir` and `buildDir` stay at their default mode and are mounted
+     * read-only — widening those is what makes the timing-forgery (H2) and disk-fill (T4) classes
+     * worse, so the permission is granted here and nowhere else.
+     */
+    await chmod(resultDir, 0o777);
     await writeFile(path.join(sourceDir, variant.sourceFile), job.sourceCode, "utf8");
 
     // --- build, in its OWN container when it emits artifacts --------------

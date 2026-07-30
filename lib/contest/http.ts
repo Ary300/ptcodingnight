@@ -80,10 +80,38 @@ export async function handleRaw(fn: () => Promise<Response>): Promise<Response> 
  * Parse a JSON body against a schema. Parse, never cast — this is the outer edge of the trust
  * boundary and the request came from a browser we do not control.
  */
+/**
+ * The largest request body any route accepts, in bytes.
+ *
+ * Sized off the biggest legitimate one — a submission's `sourceCode`, capped at 200 000
+ * characters by `SubmitRequestSchema` — with room for the JSON envelope and multi-byte
+ * characters. Anything an order of magnitude past that is not a student's program.
+ */
+const MAX_BODY_BYTES = 1024 * 1024;
+
 export async function readJson<S extends z.ZodType>(
   request: Request,
   schema: S,
 ): Promise<z.infer<S>> {
+  /**
+   * Refuse an oversized body before buffering it.
+   *
+   * `request.json()` reads the whole body into memory first, and an App Router route handler has
+   * no size limit of its own. `/api/join` and `/api/auth/password` are unauthenticated, so a
+   * 500 MB POST from anyone on the internet is 500 MB inside a 768 MB container.
+   *
+   * The cap is generous against the largest legitimate body: a submission carries `sourceCode`,
+   * which `SubmitRequestSchema` already caps at 200 000 characters.
+   *
+   * `content-length` is client-supplied and a chunked request omits it, so this is a cheap first
+   * gate rather than the whole control — Caddy's `request_body max_size` is the one that cannot
+   * be lied to. Both, because the app must not depend on a proxy being in front of it.
+   */
+  const declared = Number.parseInt(request.headers.get("content-length") ?? "", 10);
+  if (Number.isFinite(declared) && declared > MAX_BODY_BYTES) {
+    throw new ValidationError("Request body is too large");
+  }
+
   let body: unknown;
   try {
     body = await request.json();

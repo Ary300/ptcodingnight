@@ -34,6 +34,14 @@
 ptcodingnight.com, www.ptcodingnight.com {
 	encode zstd gzip
 
+	# The body cap a client cannot lie about. `readJson` checks `content-length` too, but that
+	# header is client-supplied and a chunked request omits it entirely — only the proxy counts
+	# bytes as they arrive. /api/join and /api/auth/password are unauthenticated, so without this
+	# anyone on the internet can make a 768 MB container buffer whatever they like.
+	request_body {
+		max_size 1MB
+	}
+
 	header {
 		# HSTS. Two years, subdomains included.
 		#
@@ -53,6 +61,19 @@ ptcodingnight.com, www.ptcodingnight.com {
 		# No camera, microphone or location anywhere in this app. Stating it means a future
 		# dependency cannot quietly start asking a room full of students for permissions.
 		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+
+		# Content-Security-Policy, in REPORT-ONLY to begin with.
+		#
+		# The markdown renderer is genuinely safe today — `components/contest/markdown/parse.ts`
+		# allowlists https/mailto/relative URLs and there is no `dangerouslySetInnerHTML` anywhere —
+		# so this is not closing a live hole. It is the control that bounds the blast radius of the
+		# NEXT change to that renderer, on a page where author-supplied problem statements are shown
+		# to every student and the admin console can override a verdict.
+		#
+		# Report-only rather than enforcing, deliberately: Next injects inline bootstrap script, and
+		# a CSP that blanks the site is worse than no CSP. Watch the browser console for violations,
+		# then rename this header to `Content-Security-Policy` to enforce it.
+		Content-Security-Policy-Report-Only "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'"
 
 		# Server fingerprint. Not a control on its own; there is no reason to volunteer it.
 		-Server

@@ -49,6 +49,148 @@ findings because npm attributes it to every ESLint package in the chain
 
 ---
 
+## Security review — internet-facing deployment
+
+Full review of the surface exposed by putting this on a public domain. Threat model widened: the
+attackers are no longer only motivated students on a classroom LAN but unauthenticated strangers,
+and the judge now shares a 2 vCPU / 4 GB box with Postgres, Redis and the web app.
+
+Re-verified from the earlier review: **C1, H2, H3 and H4 all hold**, and **A4 and A7 hold**.
+**A2 and A3 were both moved to "fixed"; A3's fix is sound, A2's was incomplete** — see M1 below.
+
+Everything found is FIXED. Recorded here for the reasoning rather than because anything is open.
+
+### H1 — Unauthenticated scrypt amplification could take the site down with a curl loop *(fixed)*
+
+`POST /api/auth/password` runs a full scrypt — 32 MB, 50–100 ms — on **every request, including
+for an address that does not exist**, because the dummy-hash path deliberately burns one to close
+a timing oracle. The only guard was `CredentialBackoff`, which *delays and never refuses*: 500
+concurrent requests all sleep in parallel and then all pile onto the libuv threadpool. No
+credential, no join code, and no rate limiter stood in the way.
+
+On a 768 MB container that is the join page, the problem pages and the projector board gone.
+
+**Fixed** with `ConcurrencyLimiter`: four verifications at once (Node's default threadpool, which
+is what actually runs scrypt), sixty-four queued, and a refusal beyond that. The backoff now runs
+*inside* the bound, so the sleeping requests are bounded too. A transient overload refusal is not
+the per-account lockout the delay design rejects — it clears in milliseconds and it protects the
+organizer's own sign-in by keeping the process alive.
+
+### H2 — No rate limiter was keyed to a client, and successful joins were unlimited *(fixed)*
+
+`clientKey` was correct code that **nothing called** — `grep` found the definition and four
+comments. So `TRUSTED_PROXY_COUNT=1` changed nothing, and the comment in `docker-compose.prod.yml`
+claiming it did was false in both directions.
+
+The consequence was not the dead code but the shape it left: a **successful** join was unlimited,
+and each new participant carries its own submission and run-samples budget. A script with a valid
+code and a fresh cookie jar per request creates hundreds of participants, each driving judge
+containers on the box that also runs the database.
+
+**Fixed:** `joinLimiter` is now consumed on the success path of both join routes, keyed by
+`clientKey`. **Sized at 60 per five minutes rather than 15, because a classroom NATs to one
+address** — the failure mode of a tight per-IP limit is that most of the room cannot join two
+minutes before the round, which is worse than the abuse it prevents. This bounds the rate; the
+join claim bounds the per-browser total.
+
+Also fixed alongside: `readJson` buffered any body before Zod saw it, and no route handler had a
+size limit. A 500 MB POST to the unauthenticated `/api/join` was 500 MB inside a 768 MB container.
+Now capped at 1 MB in the app *and* by `request_body max_size` in Caddy — the app must not depend
+on a proxy being in front of it, and `content-length` is client-supplied.
+
+### H3 — The demo join code was committed to the repository *(fixed)*
+
+`scripts/seed-demo.ts` hardcoded `PANTHERS`, and `docs/DEPLOY.md` §8.4 tells the operator to run
+that script **on the production box**, creating a `RUNNING` contest with no divisions and no sets.
+Anyone who had read this repository — or guessed the school mascot — could join the public
+deployment, take a session, read every problem statement, and drive the judge queue.
+
+**Fixed:** generated per seed, `SEED_JOIN_CODE` to pin it, printed with an instruction to write it
+down.
+
+### M1 — A2's disk-fill fix was bypassed by one `mkdir` *(fixed)*
+
+`exceedsWritableBudget` read `/out` one level deep and summed **`isFile()` entries only**, so a
+single subdirectory is **one entry contributing zero bytes** — under the file-count limit and
+under the byte budget, no matter how much is written beneath it. Both halves of the T4 fix were
+defeated at once; `--ulimit fsize` only ever capped an individual file.
+
+**Fixed** by refusing outright when any directory appears: the batch driver writes a flat set of
+files and never creates one, so a directory there is hostile by definition. Recursing instead
+would put the poll's cost back under the submission's control, which is the starvation the
+watchdog was already rewritten once to avoid.
+
+Covered by `fixtures/sandbox/cases/disk-fill-subdir`, **as its own case**. Appended to
+`disk-fill-out` it was unreachable — the container is already dead from the earlier attacks — so
+it passed with the fix reverted. Verified the other way: with the fix reverted the fixture reports
+`ESCAPED: wrote 8589934592 bytes below a subdirectory in /out`; with it, contained.
+
+### M2 — A6 was unfixed and had become a production outage *(fixed)*
+
+`mkdtemp` creates 0700 owned by the worker's uid; the judge container runs `--user=65534`. On
+Linux it cannot traverse that parent, so the driver cannot write `<n>.meta`, every test falls to
+the retry, the retry fails identically, and **every submission on the droplet reports IE**. Silent
+on macOS only because Docker Desktop rewrites ownership.
+
+**Fixed narrowly:** `0o711` on the workspace (traverse, not read, so a container cannot list its
+siblings) and `0o777` on the result directory only. The field fix somebody reaches for at 6pm —
+`chmod 777` everywhere, or dropping `--user` — would widen the source and build mounts and make
+both the timing-forgery and disk-fill classes strictly worse.
+
+### M3 — The H3 invariant did not hold on the retry path *(fixed)*
+
+`feedInputs` keeps at most one test input in `/in` at any instant, and it is stopped before the
+retry loop begins. Each retry wrote its own input and never removed it, so a submission that kills
+its batch container early has `/in` **accumulate**: by retry *k* the container mounts inputs 1…*k*,
+all readable by the student's program.
+
+No client-visible leak followed, but only because samples occupy the lowest ordinals and the
+snippet channel is open for samples alone — an unstated property of how problems happen to be
+authored, not a control. One problem with a sample at a high ordinal would have made it a live
+hidden-input disclosure. **Fixed:** the retry removes its own input.
+
+### M4 — The documented separation of the two credential backoffs did not exist *(fixed)*
+
+Three separate comments — this file's H4, `rate-limit.ts`, and the password route — asserted the
+organizer passcode and email/password sign-in used deliberately different buckets. Both called the
+same singleton. Impact was bounded, but the stated invariant was false and the next person to
+reason from those comments would have reasoned wrongly. **Fixed:** `passwordBackoff` is its own
+instance.
+
+### M5 — Unauthenticated SSE with no connection cap *(fixed)*
+
+The stream requires no viewer, by design — the projector has no login. Each connection ticks every
+two seconds for up to thirty minutes, recomputes standings per tick, and retains a serialized
+board for diffing. Nothing capped how many, and the `Caddyfile` tells the proxy to hold that path
+open for 24 hours. **Fixed:** 250 concurrent streams per process, refused beyond that; a refused
+stream degrades to the polling fallback the client already has.
+
+### M6 — `scripts/load-test.ts` printed the Redis password *(fixed)*
+
+`console.log(env.REDIS_URL)` — and in production that URL embeds `REDIS_PASSWORD`. CLAUDE.md
+requires `npm run verify` output in the transcript **verbatim**, so this routed a secret straight
+into a pasted log, for the queue where a hand-pushed job is arbitrary file read (C1). Now prints
+the host only.
+
+### M7 — No Content-Security-Policy *(added, report-only)*
+
+No live XSS to chain — the markdown renderer allowlists URL schemes and there is no
+`dangerouslySetInnerHTML` anywhere — so this bounds the blast radius of the next renderer change
+rather than closing a hole. Added as `Content-Security-Policy-Report-Only` deliberately: Next
+injects inline bootstrap script, and a CSP that blanks the site is worse than no CSP. Promote it
+after watching for violations.
+
+### Checked and found sound
+
+Authorization on all seven `app/api/admin/**` handlers including the GETs; `canReadSubmission`
+before `reconcile`; three independent gates on hidden test data; `DRAFT` enforced on read *and*
+submit; no stack, SQL or filesystem path in any client response; the join-claim HMAC; `clientKey`'s
+right-hand-end logic; all eleven isolation flags with compile limits differing on all six axes;
+`spawn` with an argv array and a sanitised container name; the markdown renderer; Zod at every
+boundary; `.env` never committed; host-header injection closed by Caddy's hostname matching.
+
+---
+
 ## Security review — 2026-07-30
 
 Full-tree review after the team-scoring, auth, and language-registry work. Threat model: student

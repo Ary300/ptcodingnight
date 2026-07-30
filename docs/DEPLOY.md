@@ -369,8 +369,20 @@ empty on first load:
 docker compose -f docker-compose.prod.yml exec web npx tsx scripts/seed-demo.ts
 ```
 
-It prints the join code and the team totals it created. **Write the join code down** — you need
-it for §8.5 and students need it on the board.
+**It prints a randomly generated join code. Write it down** — you need it for §8.5 and students
+need it on the board.
+
+The code is generated per seed rather than fixed, because it is the credential that admits anyone
+to a `RUNNING` contest: a value committed to the repository would let anyone who has read the repo
+— or guessed the school mascot — join the public deployment, take a session, read every problem
+statement and drive the judge queue.
+
+To pin it (a rehearsal you want to repeat, say), set it explicitly instead:
+
+```bash
+docker compose -f docker-compose.prod.yml exec -e SEED_JOIN_CODE=YOURCODE web \
+  npx tsx scripts/seed-demo.ts
+```
 
 ### 8.5 Prove it works
 

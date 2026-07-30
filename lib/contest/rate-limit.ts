@@ -38,8 +38,24 @@ export const ADMIN_LOGIN_RULE: RateLimitRule = { limit: 10, windowMs: 300_000 };
  */
 export const PASSWORD_LOGIN_RULE: RateLimitRule = { limit: 10, windowMs: 300_000 };
 
-/** Join attempts per client. A join code is short; this is what stops it being guessed. */
-export const JOIN_RULE: RateLimitRule = { limit: 15, windowMs: 300_000 };
+/**
+ * SUCCESSFUL joins per client. Sized for a NAT, not for a person.
+ *
+ * A successful join was unlimited, and that is the amplifier for everything downstream: each new
+ * participant is a fresh submission budget, a fresh run-samples budget, a row on the public board
+ * and an audit row. A script with a valid code and a fresh cookie jar per request creates
+ * hundreds, and on a 2 vCPU box shared with Postgres the judge queue never drains again.
+ *
+ * **Sixty, not fifteen, and the reason is a school network.** A classroom NATs to one public
+ * address, so every student in the room shares this bucket — the failure mode of a tight limit is
+ * that most of the room cannot join two minutes before the round, which is worse than the abuse
+ * it prevents. Forty students joining once each fits inside sixty with room for retries; a script
+ * gets sixty instead of unlimited, a twentyfold reduction.
+ *
+ * This bounds the RATE, not the total. The per-browser control is the join claim
+ * (`lib/contest/join-claim.ts`), which is what stops one student accumulating participants.
+ */
+export const JOIN_RULE: RateLimitRule = { limit: 60, windowMs: 300_000 };
 
 interface Window {
   count: number;
@@ -194,8 +210,90 @@ export class CredentialBackoff {
   }
 }
 
-/** Shared by the organizer passcode and email/password sign-in: both guess a privileged secret. */
+/**
+ * The organizer passcode's backoff.
+ *
+ * **Its own instance.** This was one shared object while three separate comments — including this
+ * file's, the password route's, and SECURITY.md H4 — asserted the two were deliberately kept
+ * apart. They were not. Sharing it means an attacker hammering `/api/auth/password` adds up to
+ * five seconds to every organizer passcode attempt, mid-contest, which is a smaller version of
+ * exactly the lockout the delay design exists to avoid.
+ */
 export const credentialBackoff = new CredentialBackoff();
+
+/** Email/password sign-in's backoff. Separate from the passcode's, as documented. */
+export const passwordBackoff = new CredentialBackoff();
+
+/**
+ * A bound on how many expensive operations run AT ONCE, with a bounded queue.
+ *
+ * `CredentialBackoff` delays; it does not refuse, and a delay is not a resource bound. Password
+ * verification is a deliberate 32 MB, ~50–100 ms scrypt that runs even for an address that does
+ * not exist (the dummy-hash path that closes the timing oracle). So an unauthenticated flood
+ *
+ *   while :; do curl -X POST .../api/auth/password -d '{"email":"a@b.co","password":"x"}' & done
+ *
+ * has every request sleep in PARALLEL and then pile onto the libuv threadpool. On a 2 vCPU box
+ * with a 768 MB container that is the join page, the problem pages and the projector board gone —
+ * no credential and no join code required.
+ *
+ * A refusal here is not the lockout the backoff design rejects. That objection is about a
+ * PER-ACCOUNT budget an attacker can exhaust on the organizer's behalf; this is transient
+ * overload shedding that clears in milliseconds, and it protects the organizer's own sign-in by
+ * keeping the process alive.
+ */
+export class ConcurrencyLimiter {
+  private active = 0;
+  private queued = 0;
+
+  constructor(
+    private readonly maxActive: number,
+    private readonly maxQueued: number,
+  ) {}
+
+  /**
+   * Run `work` inside the bound, or throw `RATE_LIMITED` if the queue is already full.
+   *
+   * The queue exists so a burst of legitimate sign-ins waits rather than fails; the cap on it is
+   * what stops the queue itself becoming the memory leak.
+   */
+  async run<T>(work: () => Promise<T>, message: string): Promise<T> {
+    if (this.queued >= this.maxQueued) {
+      throw new DomainError("RATE_LIMITED", message);
+    }
+
+    this.queued += 1;
+    try {
+      while (this.active >= this.maxActive) {
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      this.active += 1;
+    } finally {
+      this.queued -= 1;
+    }
+
+    try {
+      return await work();
+    } finally {
+      this.active -= 1;
+    }
+  }
+
+  /** Test seam. */
+  reset(): void {
+    this.active = 0;
+    this.queued = 0;
+  }
+}
+
+/**
+ * Four concurrent, sixty-four waiting.
+ *
+ * Four matches Node's default libuv threadpool, which is what actually executes scrypt — more
+ * concurrency buys nothing and costs 32 MB each. Sixty-four waiting is far more than a school
+ * contest signs in at once and is bounded, so the queue cannot itself exhaust the box.
+ */
+export const passwordWork = new ConcurrencyLimiter(4, 64);
 
 /**
  * Wrong join codes only.

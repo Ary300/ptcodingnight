@@ -1,3 +1,4 @@
+import { DomainError } from "@/lib/errors";
 import { prisma } from "@/lib/db";
 import { SSE_EVENTS, VerdictEventSchema } from "@/lib/schemas/api";
 import { isPublicBoardFrozen } from "@/lib/contest/gate";
@@ -26,6 +27,30 @@ const MAX_LIFETIME_MS = 30 * 60 * 1000;
 
 /** Newest submissions considered per tick. Nobody has more than a handful in flight. */
 const WATCHED_SUBMISSIONS = 25;
+
+/**
+ * How many streams this process will hold at once.
+ *
+ * The stream is UNAUTHENTICATED by design — the projector has no login, and requiring one is the
+ * fastest way to have nothing on the wall when the room fills up. That makes it the cheapest
+ * endpoint on the site to open a lot of: each connection ticks every 2 s for up to 30 minutes,
+ * recomputes standings per tick, and retains a full serialized board for diffing. Nothing capped
+ * the number of them, and the Caddyfile deliberately tells the proxy to hold this path open for
+ * 24 hours, so nothing upstream would cut them either.
+ *
+ * 250 is far above a real contest — forty students, a projector, and a few organizers — and far
+ * below what it takes to exhaust a 768 MB container. A refused stream degrades to the polling
+ * fallback the client already has for a dropped connection, so the failure mode is a slower
+ * board rather than no board.
+ */
+const MAX_CONCURRENT_STREAMS = 250;
+
+let openStreams = 0;
+
+/** Test seam, and a way for an operator to see the number that matters. */
+export function openStreamCount(): number {
+  return openStreams;
+}
 
 export function sseFrame(event: string, data: unknown): string {
   return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
@@ -70,6 +95,13 @@ export function openContestStream(
   viewer: Viewer,
   signal: AbortSignal,
 ): ReadableStream<Uint8Array> {
+  if (openStreams >= MAX_CONCURRENT_STREAMS) {
+    throw new DomainError(
+      "RATE_LIMITED",
+      "Too many live connections right now. The board will keep updating; try again shortly.",
+    );
+  }
+
   const encoder = new TextEncoder();
   const startedMs = Date.now();
 
@@ -78,6 +110,19 @@ export function openContestStream(
   /** submissionId -> the verdict/score we last told this client about. */
   const announced = new Map<string, string>();
   let closed = false;
+
+  /**
+   * Counted here rather than in `start`, because `start` may not run for a connection the client
+   * abandons mid-handshake — and a counter that only ever increments is a slower version of the
+   * leak it was added to prevent. `release` is idempotent for the same reason.
+   */
+  openStreams += 1;
+  let released = false;
+  const release = (): void => {
+    if (released) return;
+    released = true;
+    openStreams -= 1;
+  };
 
   return new ReadableStream<Uint8Array>({
     async start(controller) {
@@ -89,6 +134,7 @@ export function openContestStream(
       const finish = (): void => {
         if (closed) return;
         closed = true;
+        release();
         controller.close();
       };
 
@@ -147,6 +193,7 @@ export function openContestStream(
 
     cancel() {
       closed = true;
+      release();
     },
   });
 }

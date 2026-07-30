@@ -469,13 +469,29 @@ async function exceedsWritableBudget(
   limits: { readonly maxBytes: number; readonly maxFiles: number },
 ): Promise<boolean> {
   try {
-    const entries = await readdir(dir);
+    const entries = await readdir(dir, { withFileTypes: true });
     if (entries.length > limits.maxFiles) return true;
 
     let total = 0;
     for (const entry of entries) {
+      /**
+       * A directory here is hostile by definition, and treating it as 0 bytes defeated both
+       * halves of this check at once.
+       *
+       * The count is per top-level ENTRY and the size sum only added `isFile()` entries, so
+       * `os.mkdir('/out/d')` followed by writing inside it presents ONE entry contributing ZERO
+       * bytes — under both limits, forever. `--ulimit fsize` still caps each individual file,
+       * but nothing capped how many there were.
+       *
+       * Refusing rather than recursing is deliberate: recursing would put the poll's cost back
+       * under the submission's control, which is the starvation this check was rewritten to
+       * avoid. The batch driver never creates a subdirectory in its output, so there is no
+       * legitimate case to preserve.
+       */
+      if (entry.isDirectory()) return true;
+
       try {
-        const info = await stat(path.join(dir, entry));
+        const info = await stat(path.join(dir, entry.name));
         if (info.isFile()) total += info.size;
       } catch {
         // Raced with the driver rewriting it. Skipping is right: the next poll sees it.

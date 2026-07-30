@@ -287,7 +287,15 @@ async function main(): Promise<void> {
 
   console.log(`G8 load — ${TARGET_CONCURRENT_SUBMISSIONS} concurrent submissions`);
   console.log(`  web server        : ${BASE_URL}`);
-  console.log(`  queue             : ${env.REDIS_URL}`);
+  /**
+   * Host only, never the URL.
+   *
+   * In production `REDIS_URL` is `redis://:${REDIS_PASSWORD}@redis:6379`, and CLAUDE.md requires
+   * `npm run verify` output to go into the transcript **verbatim** — so printing the URL routed
+   * the Redis password straight into a pasted log. Redis holds the judge queue, and a hand-pushed
+   * job on that queue is arbitrary file read on the judge host (SECURITY.md C1).
+   */
+  console.log(`  queue             : ${new URL(env.REDIS_URL).host}`);
   console.log(`  p95 budget        : ${P95_LATENCY_BUDGET_MS} ms`);
   console.log(`  poll interval     : ${POLL_MS} ms (adds up to this much error, upward)`);
 

@@ -35,6 +35,7 @@
 
 import "dotenv/config";
 
+import { randomBytes } from "node:crypto";
 import { readFileSync, readdirSync, existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -48,8 +49,19 @@ import { parseServerEnv } from "@/lib/schemas/env";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const CONTENT = path.join(ROOT, "content", "problems");
 
-/** The demo contest's identity. Re-running replaces exactly this and nothing else. */
-const JOIN_CODE = "PANTHERS";
+/**
+ * The demo contest's identity. Re-running replaces exactly this and nothing else.
+ *
+ * **The join code is generated, not committed.** It was the literal `"PANTHERS"`, and
+ * `docs/DEPLOY.md` §8.4 tells the operator to run this script on the production box — so the
+ * credential admitting anyone to a `RUNNING` contest was published in the repository. Anyone who
+ * had read it, or who guessed the school mascot, could join `https://ptcodingnight.com`, take a
+ * session, read every problem statement, and drive the judge queue on a 2 vCPU box.
+ *
+ * `SEED_JOIN_CODE` overrides it for a repeatable local demo. The generated value is printed at
+ * the end, and DEPLOY.md tells the operator to write it down.
+ */
+const JOIN_CODE = process.env.SEED_JOIN_CODE ?? randomBytes(4).toString("hex").toUpperCase();
 const CONTEST_NAME = "Park Tudor Coding Night — Demo";
 
 /**
@@ -383,6 +395,9 @@ async function main(): Promise<void> {
     console.log("");
     console.log(`Contest:    ${CONTEST_NAME}`);
     console.log(`Join code:  ${JOIN_CODE}`);
+    console.log("");
+    console.log("WRITE THE JOIN CODE DOWN. It is generated per seed and is the credential that");
+    console.log("admits anyone to this contest — set SEED_JOIN_CODE to pin it instead.");
     console.log(`Problems:   ${String(contestProblems.length)}`);
     console.log(`Teams:      Panthers (3 players), Cubs (2 players)`);
     console.log(`Submissions: ${String(history.length)}`);

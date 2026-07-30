@@ -17,7 +17,7 @@ import {
   mintJoinClaim,
   readJoinClaim,
 } from "@/lib/contest/join-claim";
-import { joinFailureLimiter } from "@/lib/contest/rate-limit";
+import { clientKey, joinFailureLimiter, joinLimiter } from "@/lib/contest/rate-limit";
 import {
   SESSION_COOKIE,
   parseCookieHeader,
@@ -43,11 +43,26 @@ export async function POST(
     const now = new Date();
     const { id } = await readParams(context.params, ContestIdParamsSchema);
 
-    // NOT rate limited on the way in. Forty students joining in the two minutes before a round is
-    // the normal case, and a shared bucket would refuse most of them — `clientKey` no longer trusts
-    // a spoofable header, so there is no per-student bucket to use.
-    //
-    // Only a WRONG CODE is penalised, below. That is the behaviour worth limiting: guessing.
+    /**
+     * SUCCESSFUL joins are rate limited, and they were not.
+     *
+     * The old comment here said a shared bucket would refuse a room full of students, which was
+     * true while `clientKey` was unused and every caller landed in one bucket. Behind Caddy with
+     * `TRUSTED_PROXY_COUNT=1` it returns the real client address, so this is per-network — and
+     * `JOIN_RULE` is sized for a classroom NAT rather than for a person.
+     *
+     * Without it a script with a valid code and a fresh cookie jar per request creates unlimited
+     * participants, each carrying its own submission and run-samples budget. That is the amplifier
+     * that turns one leaked join code into a saturated judge queue.
+     *
+     * Consumed BEFORE the write, so a refusal costs nothing. A WRONG code is penalised separately
+     * below, on a bucket that only guessing touches.
+     */
+    joinLimiter.consumeOrThrow(
+      clientKey(request),
+      now,
+      "Too many joins from this network just now. Wait a moment and try again.",
+    );
 
     const input = await readJson(request, JoinRequestSchema);
 

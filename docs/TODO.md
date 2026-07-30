@@ -22,7 +22,7 @@ and a couple are reachable but wrong on this hardware.
 | T6 | Monaco is specified but not installed | medium |
 | T7 | Team management and awards UI are missing | medium |
 | T8 | `/admin` has no server-side gate — future risk, not present | low |
-| T9 | Mount permissions untested on Linux — will bite on the host migration | low |
+| T9 | ~~Mount permissions untested on Linux~~ **fixed** — it would have made every submission IE | resolved |
 | T10 | `isGroupProblem` still shadows `round` | low |
 | T11 | Contract gaps in `lib/schemas/api.ts` | low |
 
@@ -278,7 +278,27 @@ inherits no protection at all. If you are about to write one, add the gate first
 
 ---
 
-## T9 — `/out` and `/build` mount permissions are untested on Linux
+## T9 — `/out` and `/build` mount permissions on Linux — **fixed**
+
+**Was: low, and it would have taken the whole deployment down.** `mkdtemp` creates the job
+workspace 0700 owned by the worker's uid; the judge container runs `--user=65534`. On Linux it
+cannot traverse that parent, so the driver cannot write `<n>.meta`, every test falls to the retry,
+the retry fails identically, and **every submission reports IE**. Invisible on macOS because
+Docker Desktop's file-sharing layer rewrites ownership.
+
+**Fixed narrowly:** `0o711` on the workspace — traverse but not read, so a container cannot list
+its siblings — and `0o777` on the result directory only. The obvious field fix, `chmod 777` or
+dropping `--user`, would widen the source and build mounts too and make both the timing-forgery
+and disk-fill classes strictly worse.
+
+The second half of T9 — a composed worker handing container-local paths to the host daemon — is
+also fixed: `JUDGE_SCRATCH_ROOT`, with `docker-compose.prod.yml` mounting one host directory at
+the identical path inside the worker. Verified by judging a submission inside the composed
+production stack.
+
+---
+
+## T9 (original text, kept for the reasoning) — untested on Linux
 
 **Severity: low, and it will bite on the host migration.** Security review A6.
 

@@ -56,3 +56,4 @@ except Exception as e:
     print("many-file write stopped after", total, "bytes:", type(e).__name__, file=sys.stderr)
 
 raise SystemExit("the judge host's disk is not reachable from a submission")
+

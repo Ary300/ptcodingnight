@@ -131,6 +131,7 @@ describe("G5 hostile submission containment", () => {
        * disk through a passing G5 (T4).
        */
       "disk-fill-out",
+      "disk-fill-subdir",
       "fork-bomb",
       "infinite-loop",
       "memory-bomb-10gb",
