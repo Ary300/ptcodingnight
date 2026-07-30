@@ -12,7 +12,7 @@ import {
   variantsOfRuntime,
   type RuntimeId,
 } from "@/lib/judge/runtimes";
-import { outputCapFor } from "@/worker/runner";
+import { outputCapFor, selfReportedTimingIsCredible } from "@/worker/runner";
 
 /**
  * Unit-level pin for the two judge bugs that made correct solutions fail.
@@ -109,7 +109,9 @@ describe("runtime startup budgets", () => {
   it("admits that Java's time limits are not enforceable on this host", () => {
     // Not a nice property — a documented one. The budget has to cover a 38.5s outlier, which means
     // a 2s Java problem effectively allows ~49s, so TLE detection for Java is nearly meaningless
-    // here. That is a Docker Desktop scheduling problem (docs/HOSTING.md §5), not a judge bug, and
+    // here. That is a Docker Desktop scheduling problem (docs/HOSTING.md §5), not a judge bug — and
+    // §5 explains why it is a CORRECTNESS problem: the same bad algorithm passes in Java and fails
+    // in Python. This test exists so nobody 'fixes' it by quietly shrinking the budget, and
     // this test exists so nobody "fixes" it by quietly shrinking the budget.
     expect(RUNTIMES.jdk21.startupBudgetMs).toBeGreaterThan(WORST_OBSERVED_MS.jdk21);
   });
@@ -199,5 +201,71 @@ describe("registry integrity", () => {
     for (const runtime of ["jdk21", "gcc14", "go123"] as const) {
       expect(RUNTIMES[runtime].compileMemoryLimitMb).toBeGreaterThan(256);
     }
+  });
+});
+
+
+describe("selfReportedTimingIsCredible", () => {
+  /**
+   * The security fix for a real, reachable exploit: `/out` is writable by the submission, so a slow
+   * solution can rewrite its own `.meta` to claim it finished in 5 ms and collect an AC. The host
+   * cross-checks against the Docker daemon's clock, which nothing inside the container can reach.
+   */
+  const BUDGET = 6_000;
+
+  it("believes an honest fast batch", () => {
+    expect(
+      selfReportedTimingIsCredible({
+        claimedTotalMs: 400,
+        containerMs: 5_000,
+        startupBudgetMs: BUDGET,
+      }),
+    ).toBe(true);
+  });
+
+  it("believes an honest slow batch, where the claim accounts for the container's time", () => {
+    // 90 s of tests inside a 100 s container. Nothing unexplained.
+    expect(
+      selfReportedTimingIsCredible({
+        claimedTotalMs: 90_000,
+        containerMs: 100_000,
+        startupBudgetMs: BUDGET,
+      }),
+    ).toBe(true);
+  });
+
+  it("refuses a claim of 5ms from a container that lived for two minutes", () => {
+    // The attack: three tests each really taking ~40 s, all reported as ~2 ms.
+    expect(
+      selfReportedTimingIsCredible({
+        claimedTotalMs: 6,
+        containerMs: 120_000,
+        startupBudgetMs: BUDGET,
+      }),
+    ).toBe(false);
+  });
+
+  it("never fires on a container short enough to hide nothing", () => {
+    // Startup alone can be most of a short container. A correct submission must never be caught
+    // here — a false positive fails a student who did nothing wrong.
+    expect(
+      selfReportedTimingIsCredible({
+        claimedTotalMs: 0,
+        containerMs: BUDGET * 2 + 10_000,
+        startupBudgetMs: BUDGET,
+      }),
+    ).toBe(true);
+  });
+
+  it("gives the JVM's enormous startup the benefit of the doubt", () => {
+    // jdk21's budget is 45 s because one real sample took 38 s. A Java batch claiming almost no
+    // test time inside a 100 s container is entirely plausible.
+    expect(
+      selfReportedTimingIsCredible({
+        claimedTotalMs: 50,
+        containerMs: 100_000,
+        startupBudgetMs: 45_000,
+      }),
+    ).toBe(true);
   });
 });

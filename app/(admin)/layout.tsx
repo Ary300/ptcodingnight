@@ -41,7 +41,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               aria-hidden="true"
             />
             <span style={{ fontFamily: "var(--font-display)", fontSize: "var(--text-md)" }}>
-              Coding Night <span className="opacity-60">organiser</span>
+              {/* text-ink/60, NOT opacity-60. A wrapper's opacity multiplies with any alpha on the
+                  children, so it composites far below what the number suggests — and the floor for
+                  ink on paper is 57% (docs/DESIGN.md §7). Caught by G9's team-screens spec. */}
+              Coding Night <span className="text-ink/60">organiser</span>
             </span>
           </Link>
           <AdminNav />

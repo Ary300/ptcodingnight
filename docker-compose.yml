@@ -13,10 +13,15 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: ptcn
-      POSTGRES_PASSWORD: ptcn_dev_password
+      # From .env, never committed. The literal that used to sit here was a real credential on a
+      # published port, so anyone on the classroom LAN could read it out of the repo and connect.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
       POSTGRES_DB: ptcn
     ports:
-      - "5432:5432"
+      # LOOPBACK ONLY. web and worker reach Postgres over the compose network by service
+      # name, so nothing legitimate needs this published to the LAN — and a student on the
+      # classroom wifi with psql is the most direct path to editing their own score.
+      - "127.0.0.1:5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -28,9 +33,13 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
-    command: ["redis-server", "--appendonly", "yes"]
+    # Redis had no password at all, on a published port, holding the judge queue. A hand-built
+    # job pushed onto that queue is arbitrary work on the judge host.
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}"]
     ports:
-      - "6379:6379"
+      # LOOPBACK ONLY, same reasoning as Postgres. Redis additionally had NO password, and the
+      # judge queue lives in it: anyone who could reach it could push a hand-built job.
+      - "127.0.0.1:6379:6379"
     volumes:
       - redisdata:/data
     healthcheck:
@@ -51,8 +60,9 @@ services:
       redis:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql://ptcn:ptcn_dev_password@postgres:5432/ptcn?schema=public
-      REDIS_URL: redis://redis:6379
+      DATABASE_URL: postgresql://ptcn:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/ptcn?schema=public
+      REDIS_URL: redis://:${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}@redis:6379
+      ADMIN_PASSCODE: ${ADMIN_PASSCODE:?set ADMIN_PASSCODE in .env}
     ports:
       - "3000:3000"
 
@@ -68,8 +78,8 @@ services:
       redis:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql://ptcn:ptcn_dev_password@postgres:5432/ptcn?schema=public
-      REDIS_URL: redis://redis:6379
+      DATABASE_URL: postgresql://ptcn:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/ptcn?schema=public
+      REDIS_URL: redis://:${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}@redis:6379
       TEST_DATA_ROOT: /app/data/testcases
     volumes:
       # The worker spawns per-submission judge containers on the host daemon. It does NOT
@@ -87,7 +97,7 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      PGPASSWORD: ptcn_dev_password
+      PGPASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
     volumes:
       - ./backups:/backups
     entrypoint: >

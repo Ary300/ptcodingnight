@@ -104,10 +104,11 @@ export interface Runtime {
    * A budget that ignores it fails correct code, which is exactly the mistake made three times
    * already. So the budget covers it, and the cost is stated plainly: **Java time limits are not
    * meaningfully enforceable on this host.** That is the same Docker Desktop scheduling problem G8
-   * measures, and `docs/HOSTING.md` §5 is the fix. On a dedicated Linux host this should fall to
+   * measures, and `docs/HOSTING.md` §6 is the fix. §5 is why this is a CORRECTNESS problem and not
+   * merely a slow one. On a dedicated Linux host this should fall to
    * roughly 3 s and Java TLE detection becomes real again.
    *
-   * **PROVISIONAL AND DOCKER-DESKTOP-SIZED. Re-measure before a contest: `docs/HOSTING.md` §6
+   * **PROVISIONAL AND DOCKER-DESKTOP-SIZED. Re-measure before a contest: `docs/HOSTING.md` §7
    * step 3.**
    */
   readonly startupBudgetMs: number;

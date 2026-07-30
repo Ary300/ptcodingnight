@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
+
 import { expect, type Page } from "@playwright/test";
 
 /**
@@ -8,14 +11,34 @@ import { expect, type Page } from "@playwright/test";
  * join flow breaks one file.
  */
 
-export const JOIN_CODE = "E2E-PANTHER";
-export const DISPLAY_NAME = "A11y Student";
+/**
+ * Read from the fixture rather than duplicated, because it already drifted once: this file said
+ * `E2E-PANTHER` while `fixtures/e2e/contest.json` said `E2E-PANTHERS`, so every a11y spec behind the
+ * join step silently reached an unjoined page and audited the wrong DOM.
+ */
+export const JOIN_CODE: string = (
+  JSON.parse(
+    readFileSync(path.resolve(__dirname, "..", "..", "..", "fixtures", "e2e", "contest.json"), "utf8"),
+  ) as { contest: { joinCode: string } }
+).contest.joinCode;
+/**
+ * Unique per call, because `Participant` is unique on `(contestId, displayName)`.
+ *
+ * A fixed name worked for exactly one test per seeded contest; the second join hit a CONFLICT and
+ * the helper then waited forever for a navigation that was never going to happen. Which reads as a
+ * mysterious page.goto timeout rather than as "that name is taken".
+ */
+let joinCounter = 0;
+export function nextDisplayName(): string {
+  joinCounter += 1;
+  return `A11y Student ${Date.now()}-${joinCounter}`;
+}
 
 export async function joinContest(page: Page): Promise<void> {
   await page.goto("/join");
   await page.getByLabel("Join code").fill(JOIN_CODE);
   await page.locator("form").getByRole("button", { name: "Next", exact: true }).click();
-  await page.getByLabel("Display name").fill(DISPLAY_NAME);
+  await page.getByLabel("Display name").fill(nextDisplayName());
   await page.getByRole("button", { name: "Join the contest" }).click();
   await page.waitForURL("**/contest");
 }

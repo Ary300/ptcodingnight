@@ -10,17 +10,28 @@
  * ## Why a submission cannot cheat this
  *
  * `/in` is read-only, so a submission cannot rewrite a later test's input, the driver, or the
- * compile and run scripts. `/out` is writable and a submission *can* scribble there — which
- * buys it nothing, because **expected outputs are never mounted into the container**.
- * Comparison happens on the host against files the container never sees, so there is no right
- * answer to forge. Each `.meta` is written only after the test it describes has exited, so a
- * pre-written fake status is overwritten by the real one.
+ * compile and run scripts. Expected outputs are never mounted at all: comparison happens on the
+ * host against files the container never sees, so there is no right answer to forge.
+ *
+ * **Two things this comment used to get wrong, both now fixed:**
+ *
+ * 1. It said scribbling on `/out` "buys it nothing". It bought the timings. `.meta` carries the
+ *    exit code and duration the host trusts, a submission runs as the same uid as this driver, and
+ *    a detached background loop outlives the program that spawned it — so a slow solution could
+ *    rewrite its own `.meta` and be read as fast. The host now cross-checks the total against the
+ *    Docker daemon's own clock (`selfReportedTimingIsCredible`), which nothing inside the container
+ *    can reach.
+ * 2. Inputs used to be written all at once, so a submission could read a HIDDEN test's input and
+ *    echo it back through a SAMPLE test's diff snippet, 199 bytes per submission. Inputs now arrive
+ *    one at a time and are deleted after use.
  *
  * The commands are shipped as generated scripts rather than interpolated into the driver,
  * so nothing here ever `eval`s a string.
  *
- * Timing in `.meta` is advisory. TLE is enforced by `timeout` inside the loop, which a
- * submission cannot escape, and the host keeps a wall-clock backstop on the whole container.
+ * Timing in `.meta` is ADVISORY and is treated that way. TLE is enforced by `timeout` inside the
+ * loop, which a submission cannot escape; the host keeps a wall-clock backstop on the whole
+ * container; and the host discards the self-reported timings entirely if they do not add up
+ * against the daemon's clock.
  *
  * ## Why stdout lands in the tmpfs first
  *
@@ -30,7 +41,8 @@
  * count so the host can tell truncation from a genuinely short answer.
  */
 export const BATCH_DRIVER = `#!/bin/sh
-# Environment: PTCN_TESTS, PTCN_TIMEOUT (s per test), PTCN_COMPILE_TIMEOUT (s), PTCN_CAP (bytes).
+# Environment: PTCN_TESTS, PTCN_TIMEOUT (s per test), PTCN_COMPILE_TIMEOUT (s), PTCN_CAP (bytes),
+#              PTCN_FEED_TIMEOUT (polls of 50ms to wait for an input to appear).
 # Optional: PTCN_ONLY=<n> to run exactly one test (the retry path).
 # /in/compile.sh is optional; /in/run.sh is required.
 set -u
@@ -62,6 +74,18 @@ fi
 
 i="$first"
 while [ "$i" -le "$last" ]; do
+  # Wait for the host to place this test's input. Inputs arrive ONE AT A TIME and are removed once
+  # their test finishes, so a submission cannot read ahead to a hidden test's input and echo it back
+  # through a sample's diff snippet. See feedInputs in worker/runner.ts.
+  #
+  # Bounded so a feeder that died cannot hang the container until the host backstop fires: after the
+  # wait, the loop proceeds and the test fails on a missing file, which the host re-runs individually.
+  waited=0
+  while [ ! -f "/in/$i.in" ] && [ "$waited" -lt "$PTCN_FEED_TIMEOUT" ]; do
+    sleep 0.05
+    waited=$(( waited + 1 ))
+  done
+
   start=$(date +%s%N)
   timeout -k 1 "$PTCN_TIMEOUT" sh /in/run.sh < "/in/$i.in" > /tmp/ptcn-raw 2> /tmp/ptcn-err
   code=$?

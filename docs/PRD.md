@@ -308,7 +308,7 @@ useless to them.
 run-samples path**, not only in the picker. The picker is a hint; anyone can POST anything.
 
 Startup budgets are currently **provisional and Docker-Desktop-sized** — see `docs/HOSTING.md`
-§6 step 3 for re-measurement on the real judge host.
+§7 step 3 for re-measurement on the real judge host, and §5 for the Java time-limit finding.
 
 ### 7.4 Non-negotiables
 

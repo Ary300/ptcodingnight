@@ -10,7 +10,7 @@ import { AUDIT_ACTIONS, writeAudit } from "@/lib/contest/audit";
 import { standingsToCsv, exportFilename } from "@/lib/contest/csv";
 import { rankSnapshots } from "@/lib/contest/delta";
 import { adminPasscode } from "@/lib/contest/env";
-import { adminLoginLimiter } from "@/lib/contest/rate-limit";
+import { credentialBackoff } from "@/lib/contest/rate-limit";
 import { getStandings, invalidateScoringInput } from "@/lib/contest/standings";
 import { getSubmissionView } from "@/lib/contest/submissions";
 import type { AdminViewer, Viewer } from "@/lib/contest/viewer";
@@ -35,8 +35,12 @@ export type AdminLogin = z.infer<typeof AdminLoginSchema>;
  * with no passcode configured has no admin login at all — the failure is "no organizer can sign
  * in", which somebody notices, rather than "anyone can", which nobody does.
  */
-export function authenticateAdmin(input: AdminLogin, clientId: string, now: Date): void {
-  adminLoginLimiter.consumeOrThrow(clientId, now, "Too many attempts. Wait a few minutes.");
+export async function authenticateAdmin(input: AdminLogin): Promise<void> {
+  // Delay rather than refuse. A counter keyed on a spoofable header protected nothing; a counter
+  // keyed on one shared bucket would let a student lock the organizer console for five minutes by
+  // burning the attempts on purpose, mid-contest. Backoff makes guessing infeasible and never
+  // shuts a real organizer out. See CredentialBackoff.
+  await credentialBackoff.throttle();
 
   const expected = adminPasscode();
   if (expected === null) {
@@ -46,7 +50,13 @@ export function authenticateAdmin(input: AdminLogin, clientId: string, now: Date
   const a = Buffer.from(input.passcode, "utf8");
   const b = Buffer.from(expected, "utf8");
   const matches = a.length === b.length && timingSafeEqual(a, b);
-  if (!matches) throw new DomainError("UNAUTHORIZED", "That passcode is not right");
+
+  if (!matches) {
+    credentialBackoff.recordFailure();
+    throw new DomainError("UNAUTHORIZED", "That passcode is not right");
+  }
+
+  credentialBackoff.recordSuccess();
 }
 
 export interface FreezeResult {

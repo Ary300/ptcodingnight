@@ -10,7 +10,7 @@ import {
   readParams,
 } from "@/lib/contest/http";
 import { joinContest } from "@/lib/contest/join";
-import { clientKey, joinLimiter } from "@/lib/contest/rate-limit";
+import { joinFailureLimiter } from "@/lib/contest/rate-limit";
 import {
   SESSION_COOKIE,
   sessionCookieOptions,
@@ -35,14 +35,26 @@ export async function POST(
     const now = new Date();
     const { id } = await readParams(context.params, ContestIdParamsSchema);
 
-    joinLimiter.consumeOrThrow(
-      clientKey(request),
-      now,
-      "Too many join attempts. Wait a few minutes.",
-    );
+    // NOT rate limited on the way in. Forty students joining in the two minutes before a round is
+    // the normal case, and a shared bucket would refuse most of them — `clientKey` no longer trusts
+    // a spoofable header, so there is no per-student bucket to use.
+    //
+    // Only a WRONG CODE is penalised, below. That is the behaviour worth limiting: guessing.
 
     const input = await readJson(request, JoinRequestSchema);
-    const joined = await joinContest(input, id, now);
+    let joined;
+    try {
+      joined = await joinContest(input, id, now);
+    } catch (error: unknown) {
+      // A bad code is the only thing worth throttling. Consuming AFTER the failure means a room
+      // full of legitimate joins never touches this budget.
+      joinFailureLimiter.consumeOrThrow(
+        "join-failures",
+        now,
+        "Too many wrong join codes. Wait a few minutes.",
+      );
+      throw error;
+    }
 
     const session = await issueSession(
       {

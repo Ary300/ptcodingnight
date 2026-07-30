@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { JOIN_CODE, DISPLAY_NAME } from "./helpers/journey";
+import { JOIN_CODE, nextDisplayName } from "./helpers/journey";
 
 /**
  * G9 — the submit flow completes keyboard-only.
@@ -75,7 +75,7 @@ test.describe("keyboard-only", () => {
 
     await expect(page.getByLabel("Display name")).toBeVisible();
     await tabUntil(page, "the display name field", (snapshot) => snapshot.tag === "input");
-    await page.keyboard.type(DISPLAY_NAME);
+    await page.keyboard.type(nextDisplayName());
     await page.keyboard.press("Enter");
 
     await page.waitForURL("**/contest");
@@ -199,7 +199,7 @@ test.describe("keyboard-only", () => {
     await page.goto("/join");
     await page.getByLabel("Join code").fill(JOIN_CODE);
     await page.locator("form").getByRole("button", { name: "Next", exact: true }).click();
-    await page.getByLabel("Display name").fill(DISPLAY_NAME);
+    await page.getByLabel("Display name").fill(nextDisplayName());
     await page.getByRole("button", { name: "Join the contest" }).click();
     await page.waitForURL("**/contest");
 

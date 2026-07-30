@@ -40,7 +40,7 @@ costs two: one to build, one to run. Inside them:
 | Step | Cost on the build machine |
 |---|---|
 | Container creation | **2,400 – 15,600 ms** at host load ~8; **7,300 – 16,000 ms** at load 32 — measured, and the floor moves with host load |
-| Compile / syntax check | Python ~300 ms · Java ~3,000 ms (cold `javac`) · C++ ~2,000 ms · Go 2,500 – 11,800 ms *(warm cache; 65,800 ms cold — see §6 step 2)* |
+| Compile / syntax check | Python ~300 ms · Java ~3,000 ms (cold `javac`) · C++ ~2,000 ms · Go 2,500 – 11,800 ms *(warm cache; 65,800 ms cold — see §7 step 2)* |
 | Each test case | Python 62 – 154 ms · Java 480 – 667 ms · C/C++ 10 – 250 ms · Go 27 – 204 ms |
 | **Total, 3-test Python problem** | **~7,000 – 9,000 ms**, of which ~90% is container creation |
 | **Total, 3-test compiled problem** | **~14,000 – 36,000 ms** — two containers, since a compiled language builds in its own |
@@ -165,7 +165,94 @@ says to avoid. That inflates the tail but does not explain the floor.
 
 ---
 
-## 5. Recommendation
+## 5. Java time limits do not work on this host, and that is a correctness problem
+
+This one is different from everything else in this document. **The rest of these numbers are about
+speed. This one is about getting a verdict wrong.**
+
+### The finding
+
+`jdk21`'s startup budget is **45,000 ms**. It has to be. Measured through the real judge under
+container churn, one sample of a Java program that adds two integers took **38,473 ms** — eight
+times the next-highest of 27 samples. A second run of 18 samples topped out at 4,959 ms and never
+came close, so it is a tail event at roughly 4% of samples, not the norm.
+
+4% is not rare enough to ignore. A night with 40 Java submissions across three tests each is ~120
+Java executions, so a 4% tail lands **several times per contest**.
+
+A budget that does not cover it fails a correct solution as `TLE`. This project has already made
+that exact mistake twice, and it cost 8 of 20 reference solutions the first time.
+
+### What the budget does to a time limit
+
+The effective limit is `problemLimit × multiplier + startupBudget`. For Java, `multiplier` is 2:
+
+```
+a 2-second Java problem:   2,000 × 2 + 45,000  =  49,000 ms
+a 5-second Java problem:   5,000 × 2 + 45,000  =  55,000 ms
+```
+
+**A 2-second problem allows 49 seconds, and a 5-second problem allows 55.** The startup budget
+swamps the problem's own limit by more than 20×, so the two are nearly indistinguishable. An
+intentionally quadratic Java solution that should be `TLE` will comfortably pass.
+
+### Why this is correctness and not performance
+
+A slow judge annoys people. **A judge that cannot enforce a time limit scores the contest wrong**,
+and it does so silently and asymmetrically:
+
+- A Java student submitting an algorithm that should fail on time gets `AC` and keeps the points.
+- A Python student on the same problem gets a real 2-second limit (budget 6,000 ms, multiplier 1 —
+  an effective 8,000 ms, which is 4× the limit rather than 24×) and their bad algorithm is caught.
+
+So the same wrong idea is accepted in one language and rejected in another, and nothing on the
+leaderboard shows why. That is worse than being slow — it is a scoring error the platform exists to
+eliminate, arriving through the back door.
+
+**It is not fixable in software here.** Lowering the budget fails correct solutions, which is worse.
+The budget is right for this host; the host is wrong.
+
+### Scope, honestly stated
+
+- **Affects:** every Java language level, since all four share the `jdk21` runtime and its budget.
+- **Does not affect:** Python (8,000 ms effective on a 2 s problem), C/C++ (6,000 ms), Go (6,000 ms),
+  JavaScript (12,000 ms). Those budgets are 3–6× the problem limit, which is loose but still
+  discriminating.
+- **Does not affect correctness of `AC`/`WA`.** Output comparison is unchanged. This is only about
+  `TLE` no longer being reachable for Java.
+
+### What fixes it
+
+The same host change §6 recommends, for the same underlying reason — but this section exists because
+the *justification* is different, and stronger. Buying a faster host for latency is a judgement call.
+Buying one so that Java time limits work is a correctness requirement.
+
+On a dedicated Linux box with native Docker, JVM startup inside an already-created container should
+sit near **1–3 seconds**, not 38. That supports a budget around **8,000–10,000 ms**, giving:
+
+```
+a 2-second Java problem:   2,000 × 2 + 8,000  =  12,000 ms   (6× the limit, discriminating)
+```
+
+Re-measure it there with `scripts/build-judge-images.sh --verify` and then
+`npx tsx scripts/measure-startup-budgets.ts`, and lower `jdk21.startupBudgetMs` to about 3× the
+worst full-path sample. `worker/runner.test.ts` pins the worst observed values, so lowering the
+budget below something actually measured fails G3 immediately rather than on the night.
+
+### If the contest must run on this host anyway
+
+Three options, in order of preference:
+
+1. **Set Java problems' `timeLimitMs` generously and do not rely on `TLE` to separate solutions.**
+   Choose problems where a wrong algorithm gives a wrong *answer*, not merely a slow one.
+2. **Restrict Java problems to ones with small inputs**, so the intended and unintended solutions
+   differ by more than the noise floor.
+3. **Tell the students.** If `TLE` is not enforceable for Java on the night, saying so is fairer than
+   letting them discover the asymmetry themselves.
+
+---
+
+## 6. Recommendation
 
 **A dedicated Linux machine with native Docker, 8 cores, 16 GB RAM, SSD.** Not a Mac, and not
 a VM on a Mac.
@@ -206,7 +293,7 @@ measurement. **Verify it with §6 before relying on it.**
 
 ---
 
-## 6. Re-measure on the candidate host — about ten minutes
+## 7. Re-measure on the candidate host — about ten minutes
 
 Do this on the actual machine before committing to it. Steps 1–3 take a few minutes and answer
 the question on their own; step 4 is the real gate.
@@ -303,7 +390,7 @@ them corrupts G8's p95, which is the only thing G8 measures. `scripts/verify.sh`
 
 ---
 
-## 7. If no better host is available
+## 8. If no better host is available
 
 The night can still run. G8 failing means the judge is slow under a simultaneous burst, not
 that it is wrong — G4 (27 verdict fixtures), G5 (7 hostile submissions contained) and G13 (20

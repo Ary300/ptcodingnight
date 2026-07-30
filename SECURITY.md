@@ -46,3 +46,178 @@ findings because npm attributes it to every ESLint package in the chain
 
 **Revisit when:** ESLint drops `minimatch@3`, or a `1.1.17` backport ships. Re-run
 `npm audit` at every dependency bump; this entry is only valid while the chain above holds.
+
+---
+
+## Security review — 2026-07-30
+
+Full-tree review after the team-scoring, auth, and language-registry work. Threat model: student
+submissions are untrusted code executed in Docker; students are motivated to read hidden test data,
+read another set's problems, read another student's submissions, inflate a score, or take over an
+organizer account.
+
+**Four findings at CRITICAL or HIGH. All four are fixed** — none is accepted. The fixes are below so
+that the reasoning survives, not because anything is outstanding.
+
+### C1 — Postgres and Redis were published to the LAN, with a committed password *(fixed)*
+
+`docker-compose.yml` published `5432:5432` and `6379:6379` on all interfaces. The Postgres password
+was a literal in the committed file, and Redis had **no password at all**.
+
+Any student on the classroom wifi could connect with a credential read out of the repo: edit
+`Submission.score`, read every competitor's source, read `User.passwordHash`, or insert an `ADMIN`
+`Session` row with a token of their choosing. Redis was worse — the judge queue lives there, and
+`resolveTestDataPath` accepts absolute paths, so a hand-pushed job could read an arbitrary file off
+the judge host and return it in the job result.
+
+This defeated every authorization control in `app/api/**` at once.
+
+**Fixed:** both services bind to `127.0.0.1` only — `web` and `worker` reach them over the compose
+network by service name, so nothing legitimate used the published port. `POSTGRES_PASSWORD` and a
+new `REDIS_PASSWORD` come from `.env` and are required (`${VAR:?...}`), and Redis runs with
+`--requirepass`. `ADMIN_PASSCODE` is now passed to the `web` service too, which it never was — so a
+composed deployment previously had no organizer sign-in at all.
+
+### H2 — A submission could forge its own timing and turn a TLE into an AC *(fixed)*
+
+`/out` is bind-mounted read-write so the driver can return results, and the student's program runs
+as the same uid as the driver in the same container. `.meta` carries the exit code and duration the
+host trusts.
+
+A slow-but-correct solution could finish inside the in-container `timeout` (3× the limit) while
+exceeding the problem's limit, fork a detached loop rewriting every `.meta` with `0 5 0`, and be
+read by the host as "exit 0, 5 ms" — scoring **AC** on its real output. `--pids-limit` permits the
+fork, and `timeout` waits only on its direct child, so the orphan outlives the program.
+
+The batch driver's own comment asserted that scribbling on `/out` "buys it nothing, because expected
+outputs are never mounted". True of the answers, false of the timings.
+
+**Fixed:** `selfReportedTimingIsCredible` cross-checks the claimed total against `batch.durationMs`,
+which comes from the Docker daemon's `State.StartedAt`/`FinishedAt` — outside the container and
+unreachable from inside it. When the claim cannot account for the container's lifetime, the batch's
+self-reported timings are discarded and every test in it is treated as having hit the wall clock.
+The threshold is deliberately lax (orders of magnitude, not percentages) because a false positive
+fails a student who did nothing wrong.
+
+### H3 — Hidden test *inputs* were readable and exfiltratable 199 bytes at a time *(fixed)*
+
+Every test's input was written into the bind-mounted `/in` before the container started. `/in` is
+read-only but it is *readable*, and the program runs as the same uid as the driver.
+
+Expected outputs are never mounted, and hidden tests correctly produce no diff snippet — both
+verified. The leak was indirect: for a **sample** test the snippet legitimately contains the
+student's own stdout or stderr, and the student chooses those bytes. So
+`sys.stderr.write(open('/in/7.in').read()[k:k+199])` on a sample returns 199 bytes of hidden test
+7's input in a field the API is supposed to show them. Repeat, shift `k`, reconstruct the hidden
+inputs, compute the answers offline, hardcode.
+
+**Fixed:** inputs are now fed **one at a time**. Only test 1's input exists when the container
+starts; `feedInputs` watches for each `<n>.meta` — which the driver writes only after test *n* has
+exited — then deletes that input and places the next. At any instant `/in` holds at most one test
+input: the one currently being fed to the program on stdin, which it is entitled to see. There is
+nothing to read ahead to and nothing to go back for. The driver waits for its input with a bounded
+poll, so a dead feeder degrades to the existing missing-`.meta` retry path rather than hanging.
+
+### H4 — Every rate limiter was bypassable with a spoofed header *(fixed)*
+
+`clientKey` read `x-forwarded-for` unconditionally, justified in a comment by "behind the LAN's
+single reverse proxy". **There is no reverse proxy** — compose publishes `web` directly and there is
+no middleware. So the header was attacker-controlled input, and a different value per request meant
+a fresh bucket per request. The organizer passcode — a human-chosen shared secret whose only
+protection was that limiter — could be brute-forced without limit.
+
+**Fixed, in three parts, because a single fix would have broken the contest:**
+
+1. `clientKey` honours `x-forwarded-for` only when `TRUSTED_PROXY_COUNT` says a proxy exists, and
+   then reads from the right-hand end of the chain rather than the client-controlled left.
+2. Credential paths (organizer passcode, email/password) moved from a counter to
+   **`CredentialBackoff`** — a growing delay rather than a refusal. A hard shared limit would have
+   let a student burn the organizer's ten attempts on purpose and lock the console mid-contest;
+   delay makes guessing infeasible while never shutting a real organizer out.
+3. Joining is no longer rate limited on the way in — forty students joining in two minutes is the
+   normal case, and a shared bucket would have refused most of them. Only a **wrong** join code
+   consumes a budget, which is the behaviour actually worth limiting.
+
+---
+
+## Accepted findings from the same review
+
+These were reported and are **not** being fixed. Each is a decision.
+
+### A2 — A submission can fill the judge host's disk through `/out` (medium, accepted)
+
+`--memory`, `--pids-limit`, `--cpus` and the tmpfs size cap all apply to a submission; none of them
+bounds writes to a bind-mounted host directory, so `open('/out/x','w').write('A' * 10**10)` consumes
+host disk. The `PTCN_CAP` truncation bounds only what the *driver* copies out; the program reaches
+`/out` directly.
+
+**Why accepted for now:** it is a denial of service against ourselves, not a disclosure or a score
+change, and it is loud — the judge host runs out of disk and an organizer notices immediately. The
+clean fix is `--ulimit fsize=` in the isolation flags, which is a one-line change but needs its own
+G5 fixture and a re-run to prove it does not break a legitimate large answer (`cut-the-sticks`
+writes 1.29 MB, and a cap sized wrong reports WA on correct code — a mistake this project has
+already made once).
+
+**Tracked in `docs/TODO.md`.** Fix before a contest where the judge host also holds anything else.
+
+### A3 — Re-joining re-rolls the problem-set assignment (medium, accepted with a caveat)
+
+`joinContest` creates a new `Participant` per call, and a fresh participant has no team, so
+`assignSetForOne` effectively draws a fresh random set. A student can join as "x1", note their set,
+read it, then join as "x2" and get a different one — reading the whole room's Round 1 in a handful
+of joins.
+
+**Why accepted for now:** the fix is a roster policy question rather than a code question — should a
+join be bound to a session, an account, or an organizer-issued allowlist? — and answering it wrong
+locks out a student whose browser lost a cookie, on the night, which is worse than the leak. The
+`JOIN_FAILURE_RULE` limiter does not help here because these joins *succeed*.
+
+**Operational mitigation until it is fixed:** every join is audit-logged with its assigned set, and
+duplicate participants are visible in the admin roster. An organizer watching the participant list
+will see "x1, x2, x3" from one student.
+
+**Tracked in `docs/TODO.md`.**
+
+### A4 — `lib/contest/set-assignment.ts` was invisible to diff review (medium, fixed)
+
+The file contained a literal NUL byte in a sentinel string, so git classified it as binary and
+`git diff` reported only `Bin 0 -> 7714 bytes`. **A diff-based review would not have seen a single
+line of the file that decides which problems a competitor may read.** Not a runtime vulnerability —
+no cuid can contain NUL — but a hole in the review process itself.
+
+**Fixed:** the sentinel is now an ordinary string.
+
+### A5 — No server-side gate on the `/admin` route group (low, accepted)
+
+`app/(admin)/layout.tsx` renders without checking for an admin viewer and there is no middleware.
+Impact today is nil: every page under it renders from stub data, and the real data comes from
+`app/api/admin/**`, all of which call `requireAdmin`.
+
+**Why accepted:** adding a layout-level check now would be a second authorization mechanism to keep
+in sync with the one that actually enforces anything. **The risk is future, not present** — the
+first admin page that becomes a server component with a Prisma read inherits no protection.
+
+**Tracked in `docs/TODO.md`** with that trigger stated explicitly.
+
+### A6 — `/out` and `/build` mount permissions are untested on Linux (low, accepted)
+
+Scratch directories are created with `mkdtemp`/`mkdir` and never `chmod`ed, while the container runs
+as `--user=65534`. On this macOS host the file-sharing layer makes the writes succeed. On the
+dedicated Linux host `docs/HOSTING.md` recommends, uid 65534 may not be able to write into a
+directory owned by the worker user, and **every submission would fail**.
+
+**Why accepted:** it is a portability bug, not a vulnerability, and it fails loudly and immediately
+rather than silently. It is called out here because the obvious field fix — `chmod 777`, or dropping
+`--user` — makes A2 and H2 strictly worse. Fix it with a targeted `chmod` on the result directory
+only.
+
+**Tracked in `docs/TODO.md`, flagged for the host migration.**
+
+### A7 — Auth E2E coverage disappears silently without `ADMIN_PASSCODE` (low, accepted)
+
+Session-revocation and admin-authorization specs `test.skip` when the env var is unset, so a green
+G7 does not prove they ran.
+
+**Why accepted:** the alternative is a suite that cannot run at all on a fresh clone, which is worse
+for the student maintainer this project is written for. `scripts/verify.sh` prints the precondition,
+and `npm run verify` on a configured machine does run them.

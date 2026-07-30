@@ -2,7 +2,6 @@ import type { NextResponse } from "next/server";
 
 import { AdminLoginSchema, authenticateAdmin } from "@/lib/contest/admin";
 import { NO_STORE, handle, jsonOk, readJson } from "@/lib/contest/http";
-import { clientKey } from "@/lib/contest/rate-limit";
 import {
   SESSION_COOKIE,
   clearedSessionCookieOptions,
@@ -28,7 +27,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     const now = new Date();
     const input = await readJson(request, AdminLoginSchema);
 
-    authenticateAdmin(input, clientKey(request), now);
+    await authenticateAdmin(input);
 
     // ADMIN_PASSCODE: the night's fallback, and the path that must work with no internet.
     const session = await issueSession(

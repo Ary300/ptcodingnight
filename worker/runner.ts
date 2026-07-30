@@ -143,6 +143,119 @@ function hitWallClock(exitCode: number | null, durationMs: number, wallClockKill
  * because the student has no way to tell it from their own bug. It survived G4 at 24/24
  * because every fixture used a problem whose output is a single line.
  */
+/**
+ * Whether the batch's SELF-REPORTED per-test timings can be believed.
+ *
+ * ## The attack this closes
+ *
+ * `/out` is bind-mounted read-write so the driver can hand results back, and the student's program
+ * runs as the same uid as the driver in the same container. So a submission can write its own
+ * `/out/N.meta`, and the file the host reads carries the exit code, the duration, and the raw byte
+ * count that `verdictFor` trusts.
+ *
+ * A slow-but-correct solution could therefore:
+ *
+ *   1. finish inside the in-container `timeout` (3x the limit) but over the problem's own limit,
+ *   2. fork a detached loop writing `0 5 0` over every `.meta` — `--pids-limit` allows it, and
+ *      `timeout` only waits on its direct child, so the orphan outlives the program,
+ *   3. be read by the host as "exit 0, 5 ms" and score **AC** on the real stdout.
+ *
+ * The batch driver's own comment claimed forging `/out` "buys it nothing, because expected outputs
+ * are never mounted". That is true of the answers and false of the timings.
+ *
+ * ## Why a comparison against the container clock works
+ *
+ * `batch.durationMs` comes from the Docker daemon's `State.StartedAt`/`FinishedAt` — outside the
+ * container, unreachable from inside it. The tests genuinely ran, so their real total is bounded
+ * above by the container's lifetime. A forged total is far BELOW it.
+ *
+ * The allowance has to be generous, because the container legitimately spends time the tests do not
+ * account for: image start, the compile step, the shell, and the driver's own copies. Startup alone
+ * measured up to 38 s for the JVM on this host. So this only fires when the claim is implausibly
+ * small — orders of magnitude, not percentages — and a correct submission is never caught by it.
+ */
+export function selfReportedTimingIsCredible(input: {
+  readonly claimedTotalMs: number;
+  readonly containerMs: number;
+  readonly startupBudgetMs: number;
+}): boolean {
+  const { claimedTotalMs, containerMs, startupBudgetMs } = input;
+
+  // Everything the container spends that is not the tests themselves: image start, compile, shell,
+  // the driver's copies. Doubling the startup budget and adding a flat floor keeps a fast, honest
+  // submission comfortably inside the allowance.
+  const unaccountedAllowanceMs = startupBudgetMs * 2 + 10_000;
+
+  // The container was quick enough that nothing could have been hidden in it.
+  if (containerMs <= unaccountedAllowanceMs) return true;
+
+  const unexplainedMs = containerMs - unaccountedAllowanceMs - claimedTotalMs;
+
+  // Believe it unless a large amount of container time is unaccounted for. This is deliberately
+  // lax: a false positive fails a correct student, which is worse than letting a marginal case
+  // through, and the honest reading of a big gap is "the tests really did take that long".
+  return unexplainedMs <= unaccountedAllowanceMs;
+}
+
+/**
+ * Hands the container one test input at a time, and removes each once its test has finished.
+ *
+ * Runs concurrently with the container. The handshake is the driver's own `<n>.meta`, which it
+ * writes only after test n has exited — so seeing it means test n is done and its input can go,
+ * and test n+1's can appear.
+ *
+ * At any instant the container's `/in` holds **at most one** test input: the one currently being
+ * fed to the program on stdin, which it is entitled to see. Earlier inputs are gone and later ones
+ * have not arrived, so there is nothing to read ahead to and nothing to go back for.
+ *
+ * `/in` is mounted read-only INSIDE the container; the host still owns the directory and can write
+ * to it freely. The container cannot interfere with the feed.
+ *
+ * The feeder never rejects. If it dies the driver simply waits for an input that never comes and is
+ * killed by the container backstop, and those tests are re-run individually — the existing missing
+ * `.meta` path. A crashed feeder must not also crash the judge.
+ */
+async function feedInputs(options: {
+  readonly inputDir: string;
+  readonly resultDir: string;
+  readonly inputByOrdinal: ReadonlyMap<number, string>;
+  readonly count: number;
+}): Promise<void> {
+  const { inputDir, resultDir, inputByOrdinal, count } = options;
+
+  // Short enough that it costs a test a few milliseconds, long enough not to spin a core. Container
+  // creation on this host is seconds, so this is noise by comparison.
+  const POLL_MS = 25;
+  // A bound, not a deadline: the container's own backstop is the real limit. This only stops the
+  // feeder looping forever if the container has already gone.
+  const MAX_WAIT_MS = 30 * 60 * 1000;
+
+  const startedAt = Date.now();
+
+  for (let ordinal = 1; ordinal <= count; ordinal += 1) {
+    const metaPath = path.join(resultDir, `${String(ordinal)}.meta`);
+
+    while (Date.now() - startedAt < MAX_WAIT_MS) {
+      try {
+        await readFile(metaPath, "utf8");
+        break;
+      } catch {
+        await new Promise((resolve) => setTimeout(resolve, POLL_MS));
+      }
+    }
+
+    // This test is finished with its input.
+    await rm(path.join(inputDir, `${String(ordinal)}.in`), { force: true }).catch(() => undefined);
+
+    const next = inputByOrdinal.get(ordinal + 1);
+    if (next !== undefined) {
+      await writeFile(path.join(inputDir, `${String(ordinal + 1)}.in`), next, "utf8").catch(
+        () => undefined,
+      );
+    }
+  }
+}
+
 export function outputCapFor(expectedBytes: number): number {
   return Math.max(OUTPUT_CAP_FLOOR_BYTES, expectedBytes * 2 + 64 * 1024);
 }
@@ -218,12 +331,19 @@ async function runSingleTest(options: {
   ordinal: number;
   cap: number;
   perTestKillMs: number;
+  /** This test's input. Inputs are fed one at a time and removed after use, so a retry re-places it. */
+  inputText: string;
 }): Promise<ContainerRunResult | null> {
   const { image, runtime, variant, limits, sourceDir, inputDir, buildDir, job, ordinal, cap,
     perTestKillMs } = options;
 
   const resultDir = await mkdtemp(path.join(SCRATCH_ROOT, "retry-"));
   try {
+    // The feeder is not running for a retry, so this test's input has to be placed directly — and
+    // only this one. The sequential feed removed it when its original attempt finished.
+    const retryInput = options.inputText;
+    await writeFile(path.join(inputDir, `${String(ordinal)}.in`), retryInput, "utf8");
+
     await runInContainer({
       image,
       argv: ["/bin/sh", "/in/driver.sh"],
@@ -243,6 +363,8 @@ async function runSingleTest(options: {
         PTCN_TIMEOUT: String(Math.max(1, Math.ceil(perTestKillMs / 1000))),
         PTCN_COMPILE_TIMEOUT: String(Math.max(1, Math.ceil(runtime.compileTimeoutMs / 1000))),
         PTCN_CAP: String(cap),
+        // The input is already on disk for a retry, so the driver never waits. One poll is enough.
+        PTCN_FEED_TIMEOUT: "1",
       },
     });
 
@@ -374,7 +496,21 @@ export async function judge(job: JudgeJob, images?: ImageOverrides): Promise<Jud
       inputByOrdinal.set(ordinal, input);
       expectedByOrdinal.set(ordinal, expected);
       largestCap = Math.max(largestCap, outputCapFor(Buffer.byteLength(expected, "utf8")));
-      await writeFile(path.join(inputDir, `${String(ordinal)}.in`), input, "utf8");
+    }
+
+    // ONLY THE FIRST test's input is on disk when the container starts. The rest are fed one at a
+    // time by `feedInputs` below, and each is deleted once its test has finished.
+    //
+    // Writing them all up front let a submission read every HIDDEN test's input — `/in` is
+    // read-only but it is readable, and the program runs as the same uid as the driver. From
+    // there, `print(open('/in/7.in').read()[k:k+199], file=sys.stderr)` on a SAMPLE test returns
+    // 199 bytes at a time in that sample's diff snippet, which is legitimately shown to the
+    // student. A few dozen submissions reconstruct the hidden inputs, and from there the answers
+    // can be computed offline and hardcoded. PRD §7.2 says hidden test data never reaches the
+    // client; this was a way for it to.
+    const firstInput = inputByOrdinal.get(1);
+    if (firstInput !== undefined) {
+      await writeFile(path.join(inputDir, "1.in"), firstInput, "utf8");
     }
 
     await writeFile(path.join(inputDir, "driver.sh"), BATCH_DRIVER, "utf8");
@@ -387,6 +523,15 @@ export async function judge(job: JudgeJob, images?: ImageOverrides): Promise<Jud
     } else if (variant.producesArtifacts) {
       await rm(path.join(inputDir, "compile.sh"), { force: true });
     }
+
+    // Runs alongside the container, handing over one input at a time. Started before the
+    // container so the feeder is already watching when the first test finishes.
+    const feeder = feedInputs({
+      inputDir,
+      resultDir,
+      inputByOrdinal,
+      count: job.testCases.length,
+    });
 
     const batch = await runInContainer({
       image,
@@ -409,8 +554,17 @@ export async function judge(job: JudgeJob, images?: ImageOverrides): Promise<Jud
         PTCN_TIMEOUT: String(Math.max(1, Math.ceil(wallClockKillMs / 1000))),
         PTCN_COMPILE_TIMEOUT: String(Math.max(1, Math.ceil(runtime.compileTimeoutMs / 1000))),
         PTCN_CAP: String(largestCap),
+        // 50ms polls. Sized against the whole container backstop rather than one test, because a
+        // test waits for its input only after the PREVIOUS test has finished, and that one may
+        // legitimately have run for the full wall-clock kill.
+        PTCN_FEED_TIMEOUT: String(Math.max(20, Math.ceil((wallClockKillMs * 3) / 50))),
       },
     });
+
+    // The container is gone, so the feeder has nothing left to wait for. Settled rather than left
+    // floating so it cannot write into `inputDir` while the retry path is placing an input there,
+    // and so a bug in it surfaces here rather than as an unhandled rejection later.
+    await feeder.catch(() => undefined);
 
     // A parse-only check that failed is still a CE.
     const compileStatus = await readCompileStatus(resultDir);
@@ -424,6 +578,20 @@ export async function judge(job: JudgeJob, images?: ImageOverrides): Promise<Jud
     }
 
     const results: JudgeTestResult[] = [];
+
+    // Read every self-reported duration first, so the batch can be cross-checked against a clock
+    // the submission cannot touch. See `selfReportedTimingIsCredible`.
+    const claimedTotalMs = (
+      await Promise.all(
+        job.testCases.map((_, index) => readBatchOutcome(resultDir, index + 1, largestCap)),
+      )
+    ).reduce((sum, outcome) => sum + (outcome?.durationMs ?? 0), 0);
+
+    const timingCredible = selfReportedTimingIsCredible({
+      claimedTotalMs,
+      containerMs: batch.durationMs,
+      startupBudgetMs: runtime.startupBudgetMs,
+    });
 
     for (const [index, testCase] of job.testCases.entries()) {
       const ordinal = index + 1;
@@ -446,6 +614,7 @@ export async function judge(job: JudgeJob, images?: ImageOverrides): Promise<Jud
               ordinal,
               cap: largestCap,
               perTestKillMs: wallClockKillMs,
+              inputText: input,
             })
           : null;
 
@@ -466,10 +635,14 @@ export async function judge(job: JudgeJob, images?: ImageOverrides): Promise<Jud
               stderr: outcome.stderr,
               exitCode: outcome.exitCode,
               oomKilled: batch.oomKilled && ordinal === results.length + 1,
-              timedOut: false,
+              // When the self-reported timing is not credible, every test in the batch is treated
+              // as having hit the wall clock. That is the safe direction: a genuinely fast
+              // submission whose batch was mis-measured gets re-examined by a human, while a
+              // submission that forged its timing does not get the AC it was fishing for.
+              timedOut: !timingCredible,
               outputTruncated: outcome.rawBytes > Buffer.byteLength(outcome.stdout, "utf8"),
-              durationMs: outcome.durationMs,
-              wallMs: outcome.durationMs,
+              durationMs: timingCredible ? outcome.durationMs : batch.durationMs,
+              wallMs: timingCredible ? outcome.durationMs : batch.durationMs,
             };
 
       let verdict: Verdict;

@@ -2,16 +2,16 @@ import type { NextResponse } from "next/server";
 
 import { EmailLoginSchema, authenticateWithPassword } from "@/lib/contest/accounts";
 import { NO_STORE, handle, jsonOk, readJson } from "@/lib/contest/http";
-import { clientKey, passwordLoginLimiter } from "@/lib/contest/rate-limit";
+import { credentialBackoff } from "@/lib/contest/rate-limit";
 import { SESSION_COOKIE, sessionCookieOptions } from "@/lib/contest/session";
 import { issueSession } from "@/lib/contest/session-store";
 
 /**
  * `POST /api/auth/password` — sign in with an admin-issued email and password.
  *
- * Rate limited per client. Without a limiter the constant-time comparison and the
- * indistinguishable error messages in `authenticateWithPassword` only slow an attacker down;
- * they do not stop one walking a password list.
+ * Guarded by CredentialBackoff. Without it, the constant-time comparison and the indistinguishable
+ * error messages in `authenticateWithPassword` only slow an attacker down; they do not stop one
+ * walking a password list.
  *
  * The limiter is its OWN bucket, deliberately NOT shared with the organizer passcode. Sharing them
  * looks tidy and is wrong: the passcode is the operational fallback that has to work on the night, so
@@ -30,14 +30,21 @@ export async function POST(request: Request): Promise<NextResponse> {
   return handle(async () => {
     const now = new Date();
 
-    passwordLoginLimiter.consumeOrThrow(
-      clientKey(request),
-      now,
-      "Too many sign-in attempts. Wait a few minutes.",
-    );
+    // Backoff rather than a counter, for the same reason the organizer passcode uses it: the only
+    // client identity available here is attacker-supplied, and a shared hard limit would let a
+    // student lock an organizer out mid-contest. Delay slows guessing without shutting anyone out.
+    await credentialBackoff.throttle();
 
     const input = await readJson(request, EmailLoginSchema);
-    const user = await authenticateWithPassword(input);
+
+    let user;
+    try {
+      user = await authenticateWithPassword(input);
+    } catch (error: unknown) {
+      credentialBackoff.recordFailure();
+      throw error;
+    }
+    credentialBackoff.recordSuccess();
 
     const session = await issueSession(
       {
