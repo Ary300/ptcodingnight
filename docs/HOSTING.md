@@ -105,9 +105,35 @@ not — the first three gaps were bugs and were fixed; the last one is the machi
 | BullMQ `returnvalue` race fixed | **110,767 ms** | **40/40** | **1** | 2.6× total, host load ~8 |
 | Re-run, team scoring + DB sessions, dev server | 220,903 ms | 40/40 | **0** | host load ~30 |
 | Re-run, production build | **283,436 ms** | **40/40** | **0** | host load **32** |
-| Target | **10,000 ms** | 40/40 | 0 | **28× away at load 32** |
+| Re-run on a QUIET machine | **7,363 ms** | **40/40** | **0** | host load **4.25** — **PASSES** |
+| Same, immediately again | **7,476 ms** | **40/40** | **0** | host load 4.25, reproducible |
+| Target | **10,000 ms** | 40/40 | 0 | met at load ~4, missed by 28× at load 32 |
 
-### The last two rows are the same code on a busier machine
+### G8 is a measurement of the HOST, not of the code
+
+The last four rows are the same code. p95 moves from 7,363 ms to 283,436 ms — a factor of 38 —
+purely on how busy the machine is:
+
+| Host load | p95 | Verdict |
+|---|---|---|
+| 4.25 | 7,363 / 7,476 ms | **PASS** |
+| ~8 | 110,767 ms | FAIL, 11× |
+| 32 | 283,436 ms | FAIL, 28× |
+
+Two things follow, and both matter more than the pass:
+
+1. **A single green G8 does not mean the contest will be fast.** It means the machine was quiet
+   when the gate ran. Run it again with something else compiling and it fails. Judge on the
+   machine that will run the contest, in the state it will be in.
+2. **The recommendation in §6 is unchanged.** Passing at load 4 with 2.6 s of headroom is not
+   margin — it is one busy neighbour away from failing, and a contest night is not a quiet
+   machine. Native Docker on a dedicated host removes the variable rather than winning against
+   it.
+
+Correctness never varied across any of these rows: 40/40 accepted, 40/40 `AC`, zero dropped.
+Only the waiting changed.
+
+### The 110,767 → 283,436 rows are the same code on a busier machine
 
 They are not a regression, and the difference is worth being precise about because it would be easy
 to blame the wrong thing.

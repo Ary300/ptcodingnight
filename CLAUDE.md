@@ -14,16 +14,25 @@ The application exists. `app/`, `lib/`, `worker/`, `prisma/`, `fixtures/`, `comp
 
 **Gate status as last measured on this machine** (macOS, Docker Desktop):
 
+Full `npm run verify` run, every gate's real output in the transcript:
+
 | Gate | State | Note |
 |---|---|---|
-| G1 typecheck, G2 lint, G3 unit | PASS | 292 unit tests |
+| G0 build, G1 typecheck, G2 lint | PASS | |
+| G3 unit | PASS | 340 tests, 96% statements |
 | G4 judge fixtures | PASS | 57/57 across all five runtimes |
-| G5 sandbox | PASS | 17/17, 13 hostile fixtures across four runtimes |
+| G5 sandbox | PASS | 18/18, and `docker ps -a` back at baseline |
 | G6 golden scoring | PASS | includes the team formula and its variants |
-| G7 E2E | PASS | 77/77, rewritten for teams; covers both sign-in paths |
-| G9 a11y | PASS | extended to the team screens in `8401d01` — projector team board, `/team`, admin side-activity entry. Two real defects fixed there. The one surface it does **not** cover is `/admin/awards`, which still renders the individual board (T7) |
-| G8 load | **FAIL, and it is a hardware answer** | p95 283,436 ms against 10,000 ms — 28× at host load 32, 11× at load ~8. Correctness is fine: 40/40 AC, zero IE, zero dropped. See `docs/HOSTING.md` §3; the threshold was never lowered |
+| G7 E2E | PASS | 89/89 against the **real API**, both browser profiles |
+| G8 load | **PASS on a quiet host, and that is the caveat** | p95 **7,363 ms** against 10,000 ms at host load 4.25, reproducible. The same code measured 110,767 ms at load ~8 and 283,436 ms at load 32 — a 38× spread. **A green G8 means the machine was quiet.** T3, `docs/HOSTING.md` §3 |
+| G9 a11y | PASS | 32/32. `/admin/awards` is the one surface it does not cover, because that screen still renders the individual board (T7) |
 | G13 problem content | PASS | 20/20 references, 297 test cases, 0 containers leaked |
+| G10 cold start, G11 security | NOT RUN | neither is scriptable from inside the clone |
+| G12 clean tree | PASS | |
+
+**G8 needs a web server on :3000 and `npm run verify` does not start one** — it starts one for
+G7 and G9 through Playwright, but G8 talks to the API directly. Without it the gate fails with
+"no web server", which is a precondition failure wearing a gate failure's clothes.
 
 **Docker is running and all five runtime images are built**, including `ptcn-go:1.23`, which is
 built locally rather than pulled. Run `scripts/build-judge-images.sh --verify` on any new host.

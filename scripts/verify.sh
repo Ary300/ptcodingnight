@@ -24,7 +24,7 @@ requires() {
   case "$1" in
     G4|G5) printf 'needs the Docker daemon' ;;
     G7)    printf 'needs Postgres + Redis; the api-judged project also needs the worker and Docker' ;;
-    G8)    printf 'needs Postgres + Redis + a running judge worker + Docker' ;;
+    G8)    printf 'needs Postgres + Redis + a judge worker + Docker + a WEB SERVER on :3000 (it does not start one)' ;;
     G9)    printf 'needs a dev server on port 3100' ;;
     G13)   printf 'needs the Docker daemon' ;;
     *)     printf '' ;;
@@ -110,6 +110,18 @@ if pgrep -f "worker/index.ts" >/dev/null 2>&1; then
   printf '  judge worker     running\n'
 else
   printf '  \033[1;33mjudge worker     not running\033[0m — `npm run worker`; G8 and the api-judged E2E project need it\n'
+fi
+
+# G8 talks to the API directly and does NOT start a server of its own.
+#
+# G7 and G9 each start one through Playwright's `webServer`, which is exactly why this is easy to
+# miss: two of the three gates that need a web server bring their own. Without one, G8 fails with
+# "no web server at http://localhost:3000" — a precondition failure wearing a gate failure's
+# clothes, and one that reads as "the judge is broken" in the summary table.
+if nc -z localhost 3000 >/dev/null 2>&1; then
+  printf '  web server       reachable on localhost:3000\n'
+else
+  printf '  \033[1;33mweb server       not running\033[0m on localhost:3000 — `npm run dev`; G8 needs it and does NOT start one\n'
 fi
 
 # --- Gates -----------------------------------------------------------------

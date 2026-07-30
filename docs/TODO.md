@@ -16,7 +16,7 @@ and a couple are reachable but wrong on this hardware.
 |---|---|---|
 | T1 | Hints have no content — a student can pay for nothing | **blocker for hints** |
 | T2 | Java time limits are unenforceable on a slow host — a *scoring* error, not a speed one | **high** |
-| T3 | Verdict latency misses G8 by 11–28× | high, hardware |
+| T3 | Verdict latency tracks host load — G8 passes at load 4, fails 28× at load 32 | medium, hardware |
 | T4 | ~~A submission can fill the judge host's disk~~ **fixed** | resolved |
 | T5 | ~~Re-joining re-rolls the problem set, leaking other sets~~ **fixed**; one residual stated | low |
 | T6 | Monaco is specified but not installed | medium |
@@ -86,18 +86,30 @@ contest must run on this one anyway — is `docs/HOSTING.md` §5.
 
 ---
 
-## T3 — Verdict latency misses the G8 target by 11–28×
+## T3 — Verdict latency depends on how busy the host is, and G8 passes only on a quiet one
 
-**Severity: high, but it is a hardware answer and the threshold was never lowered.**
+**Severity: medium, downgraded from high.** The threshold was never lowered; the machine got
+quieter.
 
-Measured p95: **110,767 ms** at host load ~8, **283,436 ms** at load 32, against a 10,000 ms target.
+Same code, four measurements, against a 10,000 ms target:
 
-**Correctness is not affected** — the most recent runs are 40/40 accepted, 40/40 `AC`, zero `IE`,
-zero dropped jobs. Students get the right verdict; they wait for it.
+| Host load | p95 | |
+|---|---|---|
+| **4.25** | **7,363 ms** / 7,476 ms | **PASS**, reproducible back to back |
+| ~8 | 110,767 ms | FAIL, 11× |
+| 32 | 283,436 ms | FAIL, 28× |
 
-Container creation alone is 2.4–16 s depending on load, so it exceeds the entire 1.0 s per-container
-budget before any code runs. `docs/HOSTING.md` has the arithmetic, the ten-minute re-measurement
-procedure, and the host recommendation.
+**A green G8 here means the machine was quiet, not that the platform is fast.** The spread is 38×
+on identical code, because container creation dominates and degrades with load — 2.4–16 s against
+a 1.0 s per-container budget.
+
+**Correctness never varied**: 40/40 accepted, 40/40 `AC`, zero `IE`, zero dropped, on every run
+including the slowest. Students get the right verdict; on a busy host they wait for it.
+
+**Still open**, because 2.6 s of headroom at load 4 is not margin for a contest night, and because
+the deployment target is a 2 vCPU droplet shared with Postgres, Redis and the web app. The fix is
+the host, not the code — `docs/HOSTING.md` §6 for the recommendation and §7 for the ten-minute
+re-measurement to run on whatever machine the contest actually uses.
 
 ---
 
