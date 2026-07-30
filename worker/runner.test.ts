@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest";
 
 import { OUTPUT_CAP_FLOOR_BYTES } from "@/worker/docker";
-import { RUNTIME_BUDGETS, outputCapFor } from "@/worker/runner";
+import {
+  LANGUAGE_IDS,
+  RUNTIMES,
+  VARIANTS,
+  runtimeFor,
+  variantsOfRuntime,
+} from "@/lib/judge/runtimes";
+import { outputCapFor } from "@/worker/runner";
 
 /**
  * Unit-level pin for the two judge bugs that made correct solutions fail.
@@ -49,7 +56,7 @@ describe("outputCapFor", () => {
   });
 });
 
-describe("RUNTIME_BUDGETS", () => {
+describe("runtime startup budgets", () => {
   // Python's first budget was 1000ms — below the 1006ms MINIMUM startup measured on an idle
   // host — and it failed 8 of 20 correct reference solutions as TLE. These assert the
   // budgets stay above measured reality, so the same mistake cannot be made a third time.
@@ -58,14 +65,14 @@ describe("RUNTIME_BUDGETS", () => {
   const MEASURED_JAVA_STARTUP_MAX_QUIET = 5_342;
 
   it("gives Python more than its measured startup under load", () => {
-    expect(RUNTIME_BUDGETS.PYTHON.startupBudgetMs).toBeGreaterThan(
+    expect(RUNTIMES.python312.startupBudgetMs).toBeGreaterThan(
       MEASURED_PYTHON_STARTUP_MAX_QUIET,
     );
-    expect(RUNTIME_BUDGETS.PYTHON.startupBudgetMs).toBeGreaterThan(MEASURED_PYTHON_UNDER_CHURN);
+    expect(RUNTIMES.python312.startupBudgetMs).toBeGreaterThan(MEASURED_PYTHON_UNDER_CHURN);
   });
 
   it("gives Java more than its measured startup", () => {
-    expect(RUNTIME_BUDGETS.JAVA.startupBudgetMs).toBeGreaterThan(MEASURED_JAVA_STARTUP_MAX_QUIET);
+    expect(RUNTIMES.jdk21.startupBudgetMs).toBeGreaterThan(MEASURED_JAVA_STARTUP_MAX_QUIET);
   });
 
   it("keeps the startup allowance additive, so short problems stay judgeable", () => {
@@ -73,9 +80,68 @@ describe("RUNTIME_BUDGETS", () => {
     // the multiplier instead, this would be 500 * n and far too small.
     const shortProblemMs = 500;
     const effective =
-      shortProblemMs * RUNTIME_BUDGETS.PYTHON.multiplier +
-      RUNTIME_BUDGETS.PYTHON.startupBudgetMs;
+      shortProblemMs * RUNTIMES.python312.multiplier +
+      RUNTIMES.python312.startupBudgetMs;
 
     expect(effective).toBeGreaterThan(MEASURED_PYTHON_UNDER_CHURN);
+  });
+});
+
+describe("registry integrity", () => {
+  it("every variant points at a runtime that exists", () => {
+    for (const id of LANGUAGE_IDS) {
+      expect(RUNTIMES[VARIANTS[id].runtime], `${id} names an unknown runtime`).toBeDefined();
+    }
+  });
+
+  it("offers ten dropdown picks across five runtimes", () => {
+    expect(LANGUAGE_IDS).toHaveLength(10);
+    expect(new Set(LANGUAGE_IDS.map((id) => VARIANTS[id].runtime)).size).toBe(5);
+  });
+
+  it("shares one budget across the variants of a runtime", () => {
+    // The point of the two-level split: Java's four levels are the same JVM, so measuring or
+    // tuning them separately would be measuring the same thing four times and inviting drift.
+    for (const runtime of ["jdk21", "gcc14"] as const) {
+      const ids = variantsOfRuntime(runtime);
+      expect(ids.length).toBeGreaterThan(1);
+      const budgets = new Set(ids.map((id) => runtimeFor(id).startupBudgetMs));
+      expect(budgets.size, `${runtime} variants disagree about their budget`).toBe(1);
+    }
+  });
+
+  it("gives every variant a source file, a run command, and a starter", () => {
+    for (const id of LANGUAGE_IDS) {
+      const v = VARIANTS[id];
+      expect(v.sourceFile, id).toBeTruthy();
+      expect(v.runCommand, id).toBeTruthy();
+      expect(v.starter.trim().length, id).toBeGreaterThan(0);
+    }
+  });
+
+  it("writes artifacts to /build exactly when it says it produces them", () => {
+    for (const id of LANGUAGE_IDS) {
+      const v = VARIANTS[id];
+      if (v.producesArtifacts) {
+        expect(v.compileCommand, `${id} produces artifacts but has no compile command`).toContain(
+          "/build",
+        );
+        expect(v.runCommand, `${id} produces artifacts but does not run from /build`).toContain(
+          "/build",
+        );
+      } else {
+        expect(v.runCommand, `${id} claims no artifacts but runs from /build`).not.toContain(
+          "/build",
+        );
+      }
+    }
+  });
+
+  it("gives a compiled runtime more build memory than a problem's run limit", () => {
+    // A cgroup has one cap, which is why compiled languages build in their own container.
+    // If these were equal there would be no reason for the split and MLE would be unreliable.
+    for (const runtime of ["jdk21", "gcc14", "go123"] as const) {
+      expect(RUNTIMES[runtime].compileMemoryLimitMb).toBeGreaterThan(256);
+    }
   });
 });

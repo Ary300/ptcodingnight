@@ -68,7 +68,7 @@ describe("seed merge against the real CSV", () => {
   it("keeps both sum67 warmups, one per language", () => {
     const sum67 = merged.filter((p) => p.title === "sum67");
     expect(sum67).toHaveLength(2);
-    expect(sum67.map((p) => p.language).sort()).toEqual(["JAVA", "PYTHON"]);
+    expect(sum67.map((p) => p.language).sort()).toEqual(["JAVA_21", "PYTHON_312"]);
   });
 
   it("merges Bill Division across two divisions into one problem", () => {

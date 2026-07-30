@@ -159,7 +159,7 @@ export interface ReferenceCaseOutcome {
 
 export interface ReferenceRunReport {
   readonly startedAt: string;
-  readonly language: "PYTHON" | "JAVA";
+  readonly language: "PYTHON_312" | "JAVA_21";
   readonly cases: readonly ReferenceCaseOutcome[];
   /** Compiler stderr when the reference itself failed to build. */
   readonly compileError: string | null;
@@ -203,7 +203,7 @@ export interface AdminSubmissionRow {
   readonly divisionName: string;
   readonly slotLabel: string;
   readonly problemTitle: string;
-  readonly language: "PYTHON" | "JAVA";
+  readonly language: "PYTHON_312" | "JAVA_21";
   readonly submittedAt: string;
   /** null while queued or judging. */
   readonly verdict: "AC" | "WA" | "TLE" | "MLE" | "RE" | "CE" | "IE" | null;

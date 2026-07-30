@@ -33,7 +33,7 @@ interface Manifest {
   problem: { timeLimitMs: number };
   cases: {
     id: string;
-    language: "PYTHON" | "JAVA";
+    language: "PYTHON_312" | "JAVA_21";
     sourceFile: string;
     expectedVerdict: Verdict;
     why: string;

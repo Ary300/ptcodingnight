@@ -43,9 +43,23 @@ enum Difficulty {
   H
 }
 
+/// A language a student may pick. One entry per VARIANT in lib/judge/runtimes.ts, not per
+/// runtime: Java's four levels share one JDK 21 image and C++11/C++17/C17 share one GCC image,
+/// but each is a separate choice with different compile flags and so a separate value here.
+///
+/// Adding C++20 or Rust means a value here, a migration, and a line in VARIANTS — never a
+/// change to worker/runner.ts.
 enum Language {
-  PYTHON
-  JAVA
+  PYTHON_312
+  JAVA_8
+  JAVA_11
+  JAVA_17
+  JAVA_21
+  C_17
+  CPP_11
+  CPP_17
+  JAVASCRIPT_NODE22
+  GO_123
 }
 
 /// PRD §7.2. `IE` is never shown to a student as a failure — requeue once, then alert
@@ -174,7 +188,7 @@ model Problem {
 
   timeLimitMs      Int        @default(2000)
   memoryLimitMb    Int        @default(256)
-  allowedLanguages Language[] @default([PYTHON, JAVA])
+  allowedLanguages Language[] @default([PYTHON_312, JAVA_21])
 
   /// Used by the authoring flow to generate expected outputs. Must pass its own tests
   /// before the problem may leave DRAFT (PRD §9.2).

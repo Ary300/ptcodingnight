@@ -30,7 +30,7 @@ interface Manifest {
   problem: { timeLimitMs: number; testCount: number; pointsPerTest: number };
   cases: {
     id: string;
-    language: "PYTHON" | "JAVA";
+    language: "PYTHON_312" | "JAVA_21";
     sourceFile: string;
     expectedVerdict: Verdict;
     /** Optional per-case override; MLE cases need room to actually allocate. */
@@ -84,7 +84,7 @@ function jobFor(entry: Manifest["cases"][number]): JudgeJob {
       timeLimitMs,
       // Java needs headroom before the JVM even reaches main; the MLE fixtures still blow
       // through this by allocating unboundedly.
-      memoryLimitMb: entry.memoryLimitMb ?? (entry.language === "JAVA" ? 512 : 256),
+      memoryLimitMb: entry.memoryLimitMb ?? (entry.language === "JAVA_21" ? 512 : 256),
       wallClockKillMs: timeLimitMs * 3,
       pidsLimit: 64,
       tmpfsBytes: 16 * 1024 * 1024,
@@ -114,7 +114,7 @@ describe("G4 judge fixtures", () => {
     expect([...covered].sort()).toEqual(["AC", "CE", "MLE", "RE", "TLE", "WA"]);
 
     const languages = new Set(manifest.cases.map((c) => c.language));
-    expect([...languages].sort()).toEqual(["JAVA", "PYTHON"]);
+    expect([...languages].sort()).toEqual(["JAVA_21", "PYTHON_312"]);
   });
 
   for (const entry of manifest.cases) {

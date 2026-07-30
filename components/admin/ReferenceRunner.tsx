@@ -29,7 +29,7 @@ import {
 
 export interface ReferenceRunnerProps {
   cases: readonly TestCaseDraft[];
-  language: "PYTHON" | "JAVA";
+  language: "PYTHON_312" | "JAVA_21";
   /** Provided by the page. Talks to the judge; never executes anything in the browser. */
   run: (cases: readonly TestCaseDraft[]) => Promise<ReferenceRunReport>;
   onResult?: (report: ReferenceRunReport) => void;

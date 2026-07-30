@@ -74,7 +74,7 @@ const PROBLEMS: readonly StubProblem[] = [
     constraints: "$1 \\le n \\le 10^{9}$",
     timeLimitMs: 2000,
     memoryLimitMb: 256,
-    allowedLanguages: ["PYTHON", "JAVA"],
+    allowedLanguages: ["PYTHON_312", "JAVA_21"],
     samples: [
       { ordinal: 0, input: "5", expectedOutput: "2" },
       { ordinal: 1, input: "100", expectedOutput: "10" },
@@ -113,7 +113,7 @@ const PROBLEMS: readonly StubProblem[] = [
     constraints: "$1 \\le n \\le 2 \\times 10^{5}$, $1 \\le t_i \\le 10^{4}$, $1 \\le H \\le 10^{9}$",
     timeLimitMs: 3000,
     memoryLimitMb: 256,
-    allowedLanguages: ["PYTHON", "JAVA"],
+    allowedLanguages: ["PYTHON_312", "JAVA_21"],
     samples: [
       { ordinal: 0, input: "4 10\n3 3 4 6", expectedOutput: "YES" },
       { ordinal: 1, input: "3 5\n4 4 4", expectedOutput: "NO" },
@@ -154,7 +154,7 @@ const PROBLEMS: readonly StubProblem[] = [
     constraints: "$1 \\le n \\le 10^{5}$, $0 \\le s_i < e_i \\le 10^{9}$",
     timeLimitMs: 3000,
     memoryLimitMb: 256,
-    allowedLanguages: ["PYTHON", "JAVA"],
+    allowedLanguages: ["PYTHON_312", "JAVA_21"],
     samples: [{ ordinal: 0, input: "3\n0 50\n45 90\n60 120", expectedOutput: "2" }],
     hintsTaken: 0,
     hintCost: 40,
@@ -185,7 +185,7 @@ const PROBLEMS: readonly StubProblem[] = [
     constraints: "$1 \\le m \\le 10^{18}$",
     timeLimitMs: 2000,
     memoryLimitMb: 256,
-    allowedLanguages: ["PYTHON", "JAVA"],
+    allowedLanguages: ["PYTHON_312", "JAVA_21"],
     samples: [
       { ordinal: 0, input: "3", expectedOutput: "3" },
       { ordinal: 1, input: "6", expectedOutput: "13" },

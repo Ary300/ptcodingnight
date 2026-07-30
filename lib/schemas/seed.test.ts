@@ -21,10 +21,10 @@ const row = (over: Partial<SeedRow> = {}): SeedRow => ({
 describe("warmupLanguage", () => {
   it("reads the language from a CodingBat row's notes", () => {
     expect(warmupLanguage(row({ type: "codingbat", notes: "Python; 2 solved = 1 hint" }))).toBe(
-      "PYTHON",
+      "PYTHON_312",
     );
     expect(warmupLanguage(row({ type: "codingbat", notes: "Java; 2 solved = 1 hint" }))).toBe(
-      "JAVA",
+      "JAVA_21",
     );
   });
 

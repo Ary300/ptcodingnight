@@ -8,7 +8,7 @@ import { z } from "zod";
  */
 
 export const DifficultySchema = z.enum(["E", "M", "H"]);
-export const LanguageSchema = z.enum(["PYTHON", "JAVA"]);
+export const LanguageSchema = z.enum(["PYTHON_312", "JAVA_21"]);
 export const ProblemStateSchema = z.enum(["DRAFT", "PUBLISHED", "RETIRED"]);
 export const ProblemTypeSchema = z.enum(["ALGORITHM", "CODINGBAT", "GROUP"]);
 export const VerdictSchema = z.enum(["AC", "WA", "TLE", "MLE", "RE", "CE", "IE"]);

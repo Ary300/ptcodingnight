@@ -31,7 +31,7 @@ function testCase(overrides: Partial<TestCaseInput> = {}): TestCaseInput {
 function input(overrides: Partial<BuildJudgeJobInput> = {}): BuildJudgeJobInput {
   return {
     submissionId: "sub-1",
-    language: "PYTHON",
+    language: "PYTHON_312",
     sourceCode: "print(1)",
     problem: { timeLimitMs: 2000, memoryLimitMb: 256 },
     testCases: [testCase(), testCase({ id: "tc-2", ordinal: 2, isSample: true })],

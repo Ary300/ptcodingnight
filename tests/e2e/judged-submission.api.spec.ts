@@ -59,7 +59,7 @@ test.describe("judged submission (requires the worker and Docker)", () => {
 
     const result = await competitor.runSamples({
       contestProblemId: live.contestProblemId,
-      language: "PYTHON",
+      language: "PYTHON_312",
       sourceCode: readSolution("accepted.py"),
     });
 
@@ -81,7 +81,7 @@ test.describe("judged submission (requires the worker and Docker)", () => {
 
     const created = await competitor.submit({
       contestProblemId: live.contestProblemId,
-      language: "PYTHON",
+      language: "PYTHON_312",
       sourceCode: readSolution("wrong-answer.py"),
     });
     const judged = await waitForVerdict(competitor, created.submissionId, VERDICT_BUDGET_MS);
@@ -114,7 +114,7 @@ test.describe("judged submission (requires the worker and Docker)", () => {
 
     const created = await competitor.submit({
       contestProblemId: live.contestProblemId,
-      language: "PYTHON",
+      language: "PYTHON_312",
       sourceCode: readSolution("accepted.py"),
     });
     const judged = await waitForVerdict(competitor, created.submissionId, VERDICT_BUDGET_MS);

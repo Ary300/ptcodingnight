@@ -41,11 +41,11 @@ export type SeedRow = z.infer<typeof SeedRowSchema>;
  * Language of a CodingBat warmup, read from the notes column ("Python; ..." / "Java; ...").
  * Warmups exist per language, so this participates in the dedup key.
  */
-export function warmupLanguage(row: SeedRow): "PYTHON" | "JAVA" | null {
+export function warmupLanguage(row: SeedRow): "PYTHON_312" | "JAVA_21" | null {
   if (row.type !== "codingbat") return null;
   const notes = row.notes ?? "";
-  if (notes.includes("Python")) return "PYTHON";
-  if (notes.includes("Java")) return "JAVA";
+  if (notes.includes("Python")) return "PYTHON_312";
+  if (notes.includes("Java")) return "JAVA_21";
   return null;
 }
 

@@ -155,7 +155,7 @@ export function ProblemEditor({
           />
         </label>
 
-        <ReferenceRunner cases={cases} language="PYTHON" run={runReference} onResult={setReport} />
+        <ReferenceRunner cases={cases} language="PYTHON_312" run={runReference} onResult={setReport} />
       </Panel>
 
       <Panel title="Leaving DRAFT" description="The API enforces the same rule. This is here so the refusal is never a surprise.">

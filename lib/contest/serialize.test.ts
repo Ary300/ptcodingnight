@@ -24,7 +24,7 @@ function submissionRow(overrides: Partial<SubmissionRow> = {}): SubmissionRow {
   return {
     id: "sub-1",
     contestProblemId: "cp-1",
-    language: "PYTHON",
+    language: "PYTHON_312",
     submittedAt: new Date("2026-07-29T19:00:00.000Z"),
     verdict: "WA",
     score: 40,

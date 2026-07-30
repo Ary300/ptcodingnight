@@ -11,7 +11,26 @@ import { z } from "zod";
  * Spec: docs/PRD.md §7.
  */
 
-export const LanguageSchema = z.enum(["PYTHON", "JAVA"]);
+/**
+ * One value per VARIANT in lib/judge/runtimes.ts, matching the Prisma `Language` enum.
+ *
+ * Kept as a literal list rather than derived from the registry because this is the WIRE
+ * contract: a value arriving over HTTP or off the queue must be validated against a fixed set,
+ * and generating that set from the same module the runner reads would mean a typo in the
+ * registry silently becomes a valid wire value.
+ */
+export const LanguageSchema = z.enum([
+  "PYTHON_312",
+  "JAVA_8",
+  "JAVA_11",
+  "JAVA_17",
+  "JAVA_21",
+  "C_17",
+  "CPP_11",
+  "CPP_17",
+  "JAVASCRIPT_NODE22",
+  "GO_123",
+]);
 export type Language = z.infer<typeof LanguageSchema>;
 
 export const VerdictSchema = z.enum(["AC", "WA", "TLE", "MLE", "RE", "CE", "IE"]);

@@ -84,7 +84,7 @@ test.describe("live stream", () => {
 
     const created = await competitor.submit({
       contestProblemId: live.contestProblemId,
-      language: "PYTHON",
+      language: "PYTHON_312",
       sourceCode: readSolution("accepted.py"),
     });
     expect(created.verdict).toBeNull();

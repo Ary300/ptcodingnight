@@ -59,6 +59,20 @@ export interface ContainerRunOptions {
    * driver script. Read-only so a submission cannot rewrite a later test's input.
    */
   readonly inputDir?: string;
+  /**
+   * Optional host directory mounted READ-ONLY at /build. Carries compiled artifacts from the
+   * build container into the run container.
+   *
+   * Read-only on purpose: a submission must not be able to rewrite the binary it is executing
+   * between test cases.
+   */
+  readonly readonlyDir?: string;
+  /**
+   * Optional host directory mounted READ-WRITE at /build. Only the build container gets this;
+   * the run container receives the same directory via `readonlyDir` so a submission cannot
+   * rewrite the binary it is executing.
+   */
+  readonly writableBuildDir?: string;
   readonly stdin?: string;
   readonly limits: ContainerLimits;
   readonly name: string;
@@ -195,7 +209,8 @@ export async function isDockerAvailable(): Promise<boolean> {
  * with `sweepJudgeContainers` as the backstop if this process dies mid-run.
  */
 export async function runInContainer(options: ContainerRunOptions): Promise<ContainerRunResult> {
-  const { image, argv, sourceDir, outputDir, inputDir, stdin, limits, name } = options;
+  const { image, argv, sourceDir, outputDir, inputDir, readonlyDir, writableBuildDir, stdin,
+    limits, name } = options;
   const extraEnv = options.env ?? {};
   const outputCap = options.outputCapBytes ?? OUTPUT_CAP_FLOOR_BYTES;
 
@@ -207,6 +222,8 @@ export async function runInContainer(options: ContainerRunOptions): Promise<Cont
     `--volume=${sourceDir}:/work:ro`,
     ...(outputDir === undefined ? [] : [`--volume=${outputDir}:/out:rw`]),
     ...(inputDir === undefined ? [] : [`--volume=${inputDir}:/in:ro`]),
+    ...(readonlyDir === undefined ? [] : [`--volume=${readonlyDir}:/build:ro`]),
+    ...(writableBuildDir === undefined ? [] : [`--volume=${writableBuildDir}:/build:rw`]),
     // The root filesystem is read-only, so anything that wants a scratch or home directory
     // must be pointed at the tmpfs. Without these, the JVM and pip fail on startup for
     // reasons that look like a broken submission.

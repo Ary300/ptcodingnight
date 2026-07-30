@@ -49,7 +49,7 @@ export function ProblemWorkspace({ slug }: ProblemWorkspaceProps) {
   // render where the picker shows a language the problem does not allow.
   const [chosenLanguage, setChosenLanguage] = useState<Language | null>(null);
   const activeLanguage: Language =
-    chosenLanguage ?? problem.data?.allowedLanguages[0] ?? "PYTHON";
+    chosenLanguage ?? problem.data?.allowedLanguages[0] ?? "PYTHON_312";
   const [source, setSource] = useDraft(slug, activeLanguage, LANGUAGE_TEMPLATE[activeLanguage]);
 
   const [lastAction, setLastAction] = useState<"samples" | "judged" | null>(null);

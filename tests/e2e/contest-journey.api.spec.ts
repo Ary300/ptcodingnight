@@ -107,7 +107,7 @@ test.describe("contest journey (no judge required)", () => {
     expect(detail.samples.length).toBe(2);
     expect(detail.samples[0]?.input.trim()).toBe("2 3");
     expect(detail.samples[0]?.expectedOutput.trim()).toBe("5");
-    expect(detail.allowedLanguages).toContain("PYTHON");
+    expect(detail.allowedLanguages).toContain("PYTHON_312");
   });
 
   test("the DRAFT problem is refused by the API, not merely hidden by the UI", async () => {
@@ -130,7 +130,7 @@ test.describe("contest journey (no judge required)", () => {
         await readEnvelope(
           await anon.submitRaw({
             contestProblemId: liveProblem(seeded).contestProblemId,
-            language: "PYTHON",
+            language: "PYTHON_312",
             sourceCode: readSolution("accepted.py"),
           }),
         )
@@ -185,7 +185,7 @@ test.describe("contest journey (no judge required)", () => {
     //    accepted; only the public board stopped.
     const created = await competitor.submit({
       contestProblemId: live.contestProblemId,
-      language: "PYTHON",
+      language: "PYTHON_312",
       sourceCode: readSolution("accepted.py"),
     });
     expect(created.verdict).toBeNull();

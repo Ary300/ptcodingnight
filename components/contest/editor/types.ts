@@ -1,3 +1,5 @@
+import { LANGUAGE_IDS, VARIANTS } from "@/lib/judge/runtimes";
+
 import type { Language } from "@/lib/schemas/judge";
 
 /**
@@ -15,24 +17,17 @@ export interface CodeEditorProps {
   label: string;
 }
 
-export const LANGUAGE_LABEL: Readonly<Record<Language, string>> = {
-  PYTHON: "Python 3",
-  JAVA: "Java",
-};
+/**
+ * Both derived from the registry rather than restated here.
+ *
+ * A hardcoded map would mean adding a language is two edits and one of them is easy to forget —
+ * and a missing entry here is a `Record` type error at best, an empty editor at worst.
+ */
+export const LANGUAGE_LABEL: Readonly<Record<Language, string>> = Object.fromEntries(
+  LANGUAGE_IDS.map((id) => [id, VARIANTS[id].label]),
+) as Readonly<Record<Language, string>>;
 
 /** Starter files, so the first thing a student sees is not an empty box. */
-export const LANGUAGE_TEMPLATE: Readonly<Record<Language, string>> = {
-  PYTHON: ["import sys", "", "def main():", "    data = sys.stdin.read().split()", "    # your code here", "", "main()", ""].join("\n"),
-  JAVA: [
-    "import java.util.*;",
-    "import java.io.*;",
-    "",
-    "public class Main {",
-    "    public static void main(String[] args) throws IOException {",
-    "        BufferedReader in = new BufferedReader(new InputStreamReader(System.in));",
-    "        // your code here",
-    "    }",
-    "}",
-    "",
-  ].join("\n"),
-};
+export const LANGUAGE_TEMPLATE: Readonly<Record<Language, string>> = Object.fromEntries(
+  LANGUAGE_IDS.map((id) => [id, VARIANTS[id].starter]),
+) as Readonly<Record<Language, string>>;

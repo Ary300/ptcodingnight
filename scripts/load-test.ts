@@ -194,7 +194,7 @@ async function submitAndWait(
     const response = await fetch(`${BASE_URL}/api/submissions`, {
       method: "POST",
       headers: { "content-type": "application/json", cookie },
-      body: JSON.stringify({ contestProblemId, language: "PYTHON", sourceCode }),
+      body: JSON.stringify({ contestProblemId, language: "PYTHON_312", sourceCode }),
     });
     enqueueMs = Date.now() - startedAt;
 

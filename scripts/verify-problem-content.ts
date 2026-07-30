@@ -121,7 +121,7 @@ function jobFor(meta: ProblemMeta): JudgeJob {
 
   return {
     submissionId: `g13-${meta.slug}`,
-    language: "PYTHON",
+    language: "PYTHON_312",
     sourceCode: readFileSync(path.join(dir, "reference.py"), "utf8"),
     limits: {
       timeLimitMs: meta.timeLimitMs,

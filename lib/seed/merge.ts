@@ -50,7 +50,7 @@ export interface MergedProblem {
   title: string;
   type: ProblemTypeValue;
   pastStatus: PastStatusValue;
-  language: "PYTHON" | "JAVA" | null;
+  language: "PYTHON_312" | "JAVA_21" | null;
   difficulty: "E" | "M" | "H" | null;
   isGroupProblem: boolean;
   /** Every CSV row that folded into this problem, kept for traceability. */

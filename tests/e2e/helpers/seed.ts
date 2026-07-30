@@ -275,7 +275,7 @@ export async function seedE2EContest(options: SeedOptions = {}): Promise<SeededC
         data: {
           participantId: participant.id,
           contestProblemId: target.contestProblemId,
-          language: "PYTHON",
+          language: "PYTHON_312",
           sourceCode: readSolution(
             submission.verdict === "AC" ? "accepted.py" : "wrong-answer.py",
           ),
