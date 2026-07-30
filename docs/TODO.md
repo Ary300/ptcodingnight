@@ -172,7 +172,8 @@ supposed to be believed.
 **Severity: high.** The scoring model changed; the surfaces that expose it did not.
 
 Done: schema + migration (applied, backfill verified), `lib/scoring/team.ts`,
-`lib/contest/set-assignment.ts`, fixtures with all variants.
+`lib/contest/set-assignment.ts` + `assign-sets.ts` with its two admin routes, API enforcement of
+`allowReadingUnassignedSets`, fixtures with all variants.
 
 Missing:
 
@@ -183,8 +184,6 @@ Missing:
   scoring engine but nothing can write one except SQL.
 - **Team management UI** — create teams, assign participants, see sizes. Team size is the divisor,
   so this is a scoring input, not an administrative convenience.
-- **Set assignment endpoint** — `assignSets` is pure and tested but nothing calls it, so
-  `Participant.chosenSetId` is never populated and no `AuditLog` row is written.
 - **`StandingsResponse` still has an individual shape** in `lib/schemas/api.ts`.
 
 ---
