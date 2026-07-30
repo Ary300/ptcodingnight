@@ -1,0 +1,85 @@
+# Caddy config for ptcodingnight.com.
+#
+# Caddy is the only thing on this box the internet talks to. It terminates TLS, redirects
+# HTTP to HTTPS, sets the security headers, and proxies everything to the `web` service over
+# the compose network.
+#
+# ## Certificates
+#
+# Automatic. Caddy obtains and renews a Let's Encrypt certificate on its own, using the
+# HTTP-01 challenge on port 80 — which is why port 80 stays open in docker-compose.prod.yml
+# even though every request on it is redirected. Closing 80 does not break anything for 60
+# days, and then quietly breaks everything.
+#
+# The email below is the ACME account contact: expiry warnings go there. Set it to a real
+# address that someone reads.
+
+{
+	# The `:default` is not decoration. Caddy substitutes `{$VAR}` at PARSE time, so an unset
+	# variable leaves the bare directive `email` with no argument and Caddy refuses to start:
+	#
+	#   Error: parsing caddyfile tokens for 'email': wrong argument count
+	#
+	# On a deploy that is a proxy that never comes up, i.e. the whole site down, because someone
+	# left one line of .env blank. A default keeps it starting and still gets certificates.
+	email {$ACME_EMAIL:coding-night@ptcodingnight.com}
+
+	# Uncomment for a dry run against Let's Encrypt's STAGING service. The certificate it
+	# issues is untrusted — browsers will warn — but the rate limits are far looser, which
+	# matters because production allows only 5 duplicate certificates per week and a
+	# misconfigured deploy loop will burn through them in an afternoon.
+	# acme_ca https://acme-staging-v02.api.letsencrypt.org/directory
+}
+
+ptcodingnight.com, www.ptcodingnight.com {
+	encode zstd gzip
+
+	header {
+		# HSTS. Two years, subdomains included.
+		#
+		# Deliberately WITHOUT `preload`. Preloading is baked into browsers and is slow and
+		# painful to undo, which is the wrong trade for a school club's domain that might
+		# later want a plain-HTTP subdomain for something. The header alone gives the
+		# protection that matters here.
+		Strict-Transport-Security "max-age=63072000; includeSubDomains"
+
+		# The app never renders in a frame, and the projector is a full page. Clickjacking a
+		# contest is a stretch, but the admin console has destructive controls — freeze,
+		# override a verdict — and those are exactly what a framed UI redresses.
+		X-Frame-Options "DENY"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+
+		# No camera, microphone or location anywhere in this app. Stating it means a future
+		# dependency cannot quietly start asking a room full of students for permissions.
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+
+		# Server fingerprint. Not a control on its own; there is no reason to volunteer it.
+		-Server
+	}
+
+	# Server-Sent Events: the live verdict and standings stream.
+	#
+	# Buffering a stream defeats it — the whole point is that a verdict reaches the student
+	# the moment the judge rules, and a proxy that holds bytes until the response completes
+	# turns a live board into a board that updates when the contest ends. The long timeout is
+	# for the same reason: this connection is SUPPOSED to stay open for hours.
+	@sse path /api/contests/*/stream
+	handle @sse {
+		reverse_proxy web:3000 {
+			flush_interval -1
+			transport http {
+				response_header_timeout 24h
+			}
+		}
+	}
+
+	handle {
+		reverse_proxy web:3000
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}

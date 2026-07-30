@@ -35,6 +35,21 @@ export const ServerEnvSchema = z.object({
   ADMIN_PASSCODE: z.string().min(8, "ADMIN_PASSCODE must be at least 8 characters").optional(),
 
   TEST_DATA_ROOT: z.string().min(1).default("./data/testcases"),
+  /**
+   * Where the judge stages a submission's source, inputs and results.
+   *
+   * **This path must mean the same thing to the worker and to the Docker daemon**, and when the
+   * worker runs inside a container those are different namespaces. The worker asks the HOST
+   * daemon to bind-mount these directories into each judge container, and the host resolves the
+   * path in its own namespace — so a container-local default like `/app/.judge-tmp` resolves on
+   * the host to a directory that does not exist, the judge container receives a silently EMPTY
+   * mount, and every submission fails with nothing in the log to explain it.
+   *
+   * Configurable for exactly that reason: `docker-compose.prod.yml` mounts one host directory at
+   * the identical path inside the worker and points this at it. The default is right for a worker
+   * running directly on the host, which is how G4, G5 and G13 run.
+   */
+  JUDGE_SCRATCH_ROOT: z.string().min(1).optional(),
   JUDGE_CONCURRENCY: numeric("JUDGE_CONCURRENCY", "4"),
 
   JUDGE_IMAGE_PYTHON: z.string().min(1).default("python:3.12-slim"),

@@ -1,265 +1,161 @@
 # Park Tudor Coding Night
 
-The contest platform for Coding Night. It hosts the problems, judges submissions automatically in a
-sandbox, and scores the night — replacing HackerRank plus the spreadsheet that used to reconcile it.
+A contest platform for Park Tudor's Coding Night. It replaces HackerRank plus a manually
+maintained scoring spreadsheet with something that judges submissions in a sandbox, scores teams
+by a formula anyone can check, and puts a live board on the projector.
 
-**Written for someone who has never seen this repo.** If you are that person and something below
-does not work, that is a bug in this file; say so.
-
----
-
-## 1. What it actually is
-
-A [Next.js](https://nextjs.org) web app, a Postgres database, a Redis queue, and a **judge worker**
-that runs student code inside throwaway Docker containers.
-
-The thing that makes it different from a generic judge is the scoring. **Coding Night is a team
-contest**, and it scores like this:
-
-```
-team score = (sum of every member's points, group problems included) / team size
-             + side activity points
-```
-
-HackerRank cannot do that — it ranks individuals on identical problem sets, while Coding Night puts
-players on *different* sets and then averages each team. That single mismatch is why the spreadsheet
-existed, and it is what this platform replaces. The full rules, including a worked example, are in
-[`docs/SCORING.md`](docs/SCORING.md).
-
-### How a night runs
-
-| Round | What happens |
-|---|---|
-| **Round 1** (45 min) | Each player is **randomly assigned** one of the parallel problem sets A–D. Every set holds one Easy, one Medium and one Hard problem, and the sets are calibrated to be equally hard. A player cannot read the sets they were not assigned. |
-| **Round 2** | Two harder **group** problems. The team solves them together; one submission counts for everyone. |
-| **Side activities** | Metal puzzle, train tracks, Connections. Not code — an organizer types the points in. |
-
-### Where things live
-
-```
-app/          Next.js routes. Pages and the HTTP API. Route handlers are thin.
-lib/scoring/  The scoring engine. Pure functions, no database, no clock. THE only place points
-              are computed.
-lib/judge/    runtimes.ts — the language registry. Adding a language is a line here.
-lib/contest/  Everything else the API needs: auth, sessions, problems, standings.
-worker/       The judge. Spawns one container per submission and reaps it.
-prisma/       Database schema and migrations.
-content/      The problems: statements, reference solutions, test data.
-fixtures/     Test fixtures, including the golden scoring contest.
-docs/         PRD (the spec), SCORING, HOSTING, AUTH, DESIGN, DECISIONS, TODO.
-```
+Live at **<https://ptcodingnight.com>**.
 
 ---
 
-## 2. Running it locally
+## What it does
 
-### What you need first
+- **Students** join with a code off the board, read a problem, run the samples for free, and
+  submit. A verdict comes back on a live stream. Their own submission history is theirs to read.
+- **Organizers** run the contest: start, freeze, unfreeze, override a verdict with a recorded
+  reason, enter side-activity points, and export the results as CSV.
+- **The room** watches a projector board that ranks teams and says, in words, whether it is live
+  or frozen.
 
-- **Node 22 or newer** — `node --version`
-- **Docker Desktop, running** — `docker ps` must print a table rather than an error. The judge
-  cannot work without it.
+Every submission runs in its own throwaway Docker container with no network, a read-only root
+filesystem, a non-root user, no capabilities, and caps on memory, processes, CPU, file size and
+disk. Five language runtimes: Python, Java, C++, JavaScript and Go.
 
-### Five commands
+---
+
+## Scoring, in one paragraph
+
+A team's score is **every member's points, group problems included, divided by the number of
+people on the team, plus flat side-activity points.** The divisor is the roster, derived rather
+than stored, because a stored count drifts from the thing it describes — and **a wrong roster is
+a wrong result rather than a cosmetic error.**
+
+Team scores are integer hundredths of a point and never floats. `3 * 0.15 * 250` evaluated to
+`112.49999999999999` in this codebase once and cost a student a point. There is exactly one
+rounding site: the mean, half away from zero. See `docs/SCORING.md`.
+
+Standings are **replayable**: recomputing from the raw submission log twice produces
+byte-identical output. That is a stronger claim than "the numbers came out right", and it is what
+lets a disputed result be shown rather than argued about.
+
+---
+
+## Getting it running locally
+
+You need Node 22, Docker, and about ten minutes.
 
 ```bash
-git clone <this repo> && cd "Park Tudor CS Club"
+git clone <this repo>
+cd "Park Tudor CS Club"
 npm install
 
-cp .env.example .env          # then open .env and set the secrets it lists — at minimum
-                              # ADMIN_PASSCODE, POSTGRES_PASSWORD and REDIS_PASSWORD.
-                              # docker compose REFUSES TO START without them, on purpose:
-                              # the placeholders used to be live credentials.
-docker compose up -d postgres redis
-npx prisma migrate deploy     # create the tables
-npm run db:seed               # load the problem list from data/problems_seed.csv
+cp .env.example .env          # works as-is for local development
+
+docker compose up -d          # Postgres and Redis
+npx prisma migrate deploy
+npm run db:seed               # the problem bank: 125 problems, all DRAFT
+
+./scripts/build-judge-images.sh --verify   # pulls four images and BUILDS ptcn-go:1.23
+npx tsx scripts/seed-demo.ts               # a contest you can actually open
+
+npm run dev                   # http://localhost:3000
+npm run worker                # in a second terminal — nothing is judged without it
 ```
 
-Then build the judge's container images. **This is not optional and it is not just `docker pull`:**
+The seed script prints a join code. Open `/join`, use it, and you are in.
+
+> `build-judge-images.sh` is not optional and is not a wrapper around `docker pull`.
+> `ptcn-go:1.23` is built locally and exists on no registry: since Go 1.20 the standard library
+> is not shipped pre-compiled, so a stock `golang` image rebuilds it on every submission — 65.8 s
+> against 2.5–11.8 s warm — which blows the compile timeout and reports **CE on correct code**.
+
+---
+
+## Deploying
+
+`docs/DEPLOY.md`, start to finish, written for someone who has never deployed anything: server
+hardening, Docker, TLS, the OAuth redirect URIs, and a smoke test against the live domain.
 
 ```bash
-scripts/build-judge-images.sh --verify
-```
-
-Go needs an image we build ourselves. Since Go 1.20 the standard library is not shipped
-pre-compiled, so a fresh container would rebuild it on *every submission* — 66 seconds instead of
-3, and it fails by reporting "compile error" on correct code. `--verify` proves the pre-warmed cache
-is actually being used. Expect it to take a few minutes the first time.
-
-Now start the two processes, in two terminals:
-
-```bash
-npm run dev       # the web app, at http://localhost:3000
-npm run worker    # the judge
-```
-
-Open <http://localhost:3000>. The join code comes from whatever contest you seeded.
-
-### Is it working?
-
-```bash
-npm run verify
-```
-
-That runs every gate and prints a PASS/FAIL table. It takes roughly 20–30 minutes because the judge
-gates start real containers. If you only want a quick check:
-
-```bash
-npx tsc --noEmit && npm run lint && npm test -- --run
+docker compose -f docker-compose.prod.yml up -d --build
 ```
 
 ---
 
-## 3. Running a contest night
+## The gates
 
-### A week before
+The project is gated rather than reviewed. **A gate is PASS only on real, pasted output** — "it
+should pass" is FAIL, and there is deliberately no way to mark one passed by hand.
 
-1. **Pick the judge machine and test it there.** This matters more than anything else in this
-   section. Read [`docs/HOSTING.md`](docs/HOSTING.md) — it has a ten-minute procedure for checking a
-   candidate machine, and it explains why the laptop this was built on is not good enough.
-   **In particular, read §5: on a slow host Java time limits stop working, which is a scoring
-   problem rather than a speed one.**
-2. **Build the images on that machine**: `scripts/build-judge-images.sh --verify`.
-3. **Author the problems** you plan to use (§4 below), and run `npm run test:content` until every
-   reference solution passes through the real judge.
+```bash
+npm run verify        # runs them in order and prints a PASS/FAIL table
+```
 
-### On the day
+| Gate | Command | What it proves |
+|---|---|---|
+| G0 build | `npm run build` | it compiles for production |
+| G1 typecheck | `npx tsc --noEmit` | strict TypeScript, no `any` |
+| G2 lint | `npm run lint` | zero warnings |
+| G3 unit | `npm test -- --run` | 340 tests, 80%+ coverage |
+| G4 judge | `npm run test:judge` | 57 verdict fixtures across five runtimes |
+| G5 sandbox | `npm run test:sandbox` | 18 hostile submissions contained, no leaked containers |
+| G6 scoring | `npm run test:scoring:golden` | a replayed contest matches byte-for-byte |
+| G7 E2E | `npx playwright test` | 89 specs through the real HTTP API |
+| G8 load | `npm run test:load` | 40-submission burst latency |
+| G9 a11y | `npm run test:a11y` | 32 specs, zero critical or serious axe violations |
+| G13 content | `npm run test:content` | every reference solution through the real judge |
 
-1. **Start everything**: `docker compose up -d`, then confirm `npm run verify` at least gets through
-   G0–G6.
-2. **Create the contest** in the admin UI at `/admin`: name, start and end times, freeze time, join
-   code, and the scoring flags.
-3. **Create the teams** and put every participant on one.
-   **Check the team sizes.** Team size is the divisor in the team score, so a wrong roster produces
-   a wrong result rather than a cosmetic error. The admin UI flags a team of one.
-4. **Create the problem sets** A–D and slot three problems into each.
-5. **Assign the sets** — `POST /api/admin/contests/{id}/assign-sets`. This is seeded and recorded, so
-   if a student disputes their set you can re-derive the assignment in front of them with
-   `GET` on the same URL. Do not re-run it after the round starts without meaning to; it will move
-   students off problems they have already begun, and it refuses unless you ask explicitly.
-6. **Put the board on the projector**: `http://<host>:3000/projector?contest=<contest-id>`. No login.
-7. **Run the contest.** Students join at `/join` with the code on the board.
-8. **Enter side-activity points** at `/admin/side-activities?contest=<contest-id>` as they happen.
-9. **Freeze the board** before the end so the final standings are a reveal.
-10. **Unfreeze** for the awards, and export the results from the admin awards screen.
+**G8 does not pass on modest hardware, and the threshold has never been lowered.** Correctness is
+unaffected — 40/40 accepted, zero internal errors — but verdicts take longer than the 10 s target
+by a factor that depends entirely on the host. `docs/HOSTING.md` has the arithmetic and
+`docs/TODO.md` T3 has the honest summary.
 
-### If something goes wrong
+---
 
-| Symptom | Look at |
+## Layout
+
+```
+app/          Next.js App Router. Route handlers are thin: validate, delegate, respond.
+lib/scoring/  Pure functions. No I/O, no clock, no randomness — time arrives as an argument.
+lib/judge/    Language registry, verdict aggregation, output comparators.
+worker/       The judge. One throwaway container per submission, and it reaps them.
+prisma/       Schema and migrations.
+content/      Authored problem statements, reference solutions and test data.
+fixtures/     Judge fixtures, hostile submissions, golden standings.
+docs/         PRD, scoring, auth, hosting, deployment, decisions, and the honest TODO.
+```
+
+The one-way dependency that matters: `app/` and `worker/` may import `lib/`; `lib/scoring/`
+imports from neither. If scoring needs a fact, it arrives as an argument.
+
+---
+
+## Documentation
+
+| File | What is in it |
 |---|---|
-| Submissions stay "queued" forever | Is `npm run worker` running? Is Docker running? |
-| Everything is `IE` | The worker log. `IE` means the judge broke, not the student. |
-| A student says "that problem is in a set you were not assigned" | Correct — unless set assignment never ran. Check `GET /api/admin/contests/{id}/assign-sets`. |
-| A student cannot sign in | Use the join code. It has no dependency on Google or GitHub, which is why it exists. |
-| Someone's session needs cutting off | `POST /api/admin/sessions` with a `participantId` and a reason. Takes effect on their next request. |
-| Correct Java solutions time out | `docs/HOSTING.md` §5. Raise the problem's time limit as a stopgap. |
+| `docs/PRD.md` | The spec of record |
+| `docs/SCORING.md` | The team formula, the rounding rule, and the worked example |
+| `docs/AUTH.md` | Sessions, the four sign-in paths, and every cookie attribute |
+| `docs/HOSTING.md` | What one submission costs, and what machine to run it on |
+| `docs/DEPLOY.md` | Getting it onto a server |
+| `docs/DECISIONS.md` | Decisions and why, including the ones that turned out wrong |
+| `docs/TODO.md` | **The honest list.** Read it before assuming a feature works |
+| `SECURITY.md` | Accepted findings, each with its reasoning |
+| `CLAUDE.md` | Rules that are easy to get wrong in this codebase |
+
+**`docs/TODO.md` is not a backlog, it is a disclosure.** Several things there are built and tested
+but not reachable, and a couple are reachable but wrong on particular hardware.
 
 ---
 
-## 4. Adding a problem
+## Original problems only
 
-Problems live in `content/problems/<slug>/`:
+Problem statements, editorials and test data are **never** copied from HackerRank or anywhere
+else. The seed file imports titles and contest history only; every problem stays `DRAFT` until an
+original statement and own-generated test data exist, and the API — not merely the UI — refuses a
+`DRAFT` problem in a live contest.
 
-```
-content/problems/solve-me-first/
-├── problem.json     metadata: title, difficulty, limits, allowed languages
-├── statement.md     the statement, in Markdown
-├── reference.py     a correct solution
-├── generator.py     makes the test inputs
-└── tests/           the generated .in / .out files
-```
-
-**Write the statement yourself.** Never paste one from HackerRank or anywhere else. The seed file
-imports *titles and history only*, so we can see what has been used before; the statements and test
-data are ours. A problem stays in `DRAFT` — and the API refuses it in a live contest, not just the
-UI — until it has an original statement and its own test data.
-
-Steps:
-
-1. `mkdir content/problems/my-problem` and write `problem.json`, `statement.md`, `reference.py`.
-2. Write `generator.py` so the test data can be regenerated rather than being a mystery blob.
-3. Generate the tests, then verify:
-
-   ```bash
-   npm run test:content
-   ```
-
-   This runs **every** reference solution through the **real judge**, in a real container. It is the
-   only thing that proves a problem is actually solvable — running `python3 reference.py` on your
-   own machine proves the algorithm and nothing else. That distinction previously hid 8 unsolvable
-   problems and 1 that failed every correct submission.
-4. Publish the problem in the admin UI, and slot it into a contest and a set.
-
----
-
-## 5. Backups and restore
-
-`docker compose up -d` starts a `backup` service that runs `pg_dump` **every hour** into
-`./backups/`, named `ptcn-YYYYMMDD-HHMMSS.dump`.
-
-### Check the backups exist before the night
-
-```bash
-ls -lh backups/
-```
-
-An empty directory means the service is not running. Fix that before the contest, not after.
-
-### Restore
-
-```bash
-# 1. Stop everything that writes to the database.
-docker compose stop web worker
-
-# 2. Restore. --clean drops the existing objects first; without it you get
-#    "already exists" errors and a half-restored database, which is worse than either state.
-docker compose exec -T postgres \
-  pg_restore -U ptcn -d ptcn --clean --if-exists < backups/ptcn-20260315-190000.dump
-
-# 3. Start back up.
-docker compose start web worker
-```
-
-### Restoring mid-contest
-
-Two things to know:
-
-- **Standings are not backed up and do not need to be.** They are recomputed from the submission
-  log every time, so restoring the submissions restores the scores exactly. Nothing that cannot be
-  re-derived is stored.
-- **Everyone will be signed out** for any session created after the dump was taken, because sessions
-  are rows in Postgres. Students rejoin with the same join code and the same display name and get
-  their submissions back. Tell the room before you restore, not during.
-
-### Practise it once
-
-Restore a dump into a scratch database before the night. A backup nobody has ever restored is a
-hypothesis, not a backup.
-
----
-
-## 6. Where to read next
-
-| File | What it answers |
-|---|---|
-| [`docs/PRD.md`](docs/PRD.md) | What this is supposed to do. The spec of record — read it before any substantial change. |
-| [`docs/SCORING.md`](docs/SCORING.md) | Exactly how a team score is computed, with the arithmetic written out. |
-| [`docs/HOSTING.md`](docs/HOSTING.md) | Which machine to run the judge on, and why. Includes the Java time-limit problem. |
-| [`docs/AUTH.md`](docs/AUTH.md) | Who can sign in and how. Four paths. |
-| [`docs/DESIGN.md`](docs/DESIGN.md) | Colours, type, contrast floors. |
-| [`docs/DECISIONS.md`](docs/DECISIONS.md) | Why things are the way they are. |
-| [`docs/TODO.md`](docs/TODO.md) | **What is still broken or missing.** Honest, and worth reading before you trust a feature. |
-| [`SECURITY.md`](SECURITY.md) | Security review findings and the ones knowingly accepted. |
-| [`CLAUDE.md`](CLAUDE.md) | The rules that are easy to get wrong in this codebase. |
-
----
-
-## 7. Known limitations
-
-Read `docs/TODO.md` for the current list. The two that would affect a contest today:
-
-- **Verdict latency does not meet the target on a shared machine.** Gate G8 wants a p95 under 10
-  seconds and this laptop measures 110–283 seconds depending on how busy it is. Judging is correct —
-  every submission gets the right verdict — but students wait. `docs/HOSTING.md` is the fix.
-- **Java time limits are not enforceable on a slow host.** A 2-second Java problem effectively allows
-  49 seconds, so a too-slow Java solution passes when the same idea in Python would not. This is a
-  scoring problem, not a speed one. `docs/HOSTING.md` §5.
+A reference solution that passes locally is not a judgeable problem. Only G13 proves a problem
+survives the real judge, and that distinction once hid eight unsolvable problems and one that
+failed every correct submission.

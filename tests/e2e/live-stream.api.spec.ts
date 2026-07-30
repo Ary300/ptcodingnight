@@ -3,7 +3,14 @@ import { expect, test, type APIRequestContext } from "@playwright/test";
 import { SSE_EVENTS, StandingsResponseSchema, VerdictEventSchema } from "@/lib/schemas/api";
 
 import { ContestApi, cookieHeader } from "./helpers/api";
-import { closeTestDb, liveProblem, readSolution, seedE2EContest, type SeededContest } from "./helpers/seed";
+import {
+  closeTestDb,
+  liveProblem,
+  pinParticipantToProblemSet,
+  readSolution,
+  seedE2EContest,
+  type SeededContest,
+} from "./helpers/seed";
 import { collectSse } from "./helpers/sse";
 
 /**
@@ -42,11 +49,18 @@ test.describe("live stream", () => {
     competitor = new ContestApi(competitorContext, seeded.contestId);
     admin = new ContestApi(adminContext, seeded.contestId);
 
-    await competitor.joinOrThrow({
+    const joined = await competitor.joinOrThrow({
       joinCode: seeded.joinCode,
       displayName: "E2E Stream Competitor",
       divisionId: seeded.divisionIds.get("intermediate") ?? null,
     });
+
+    // Set assignment is RANDOM, so a spec that submits without stating which set it needs is a
+    // coin flip: it passed for months and then failed with "that problem is in a set you were
+    // not assigned", which reads as a broken stream rather than an unstated precondition. This
+    // spec is about the STREAM; set visibility is team-scoring.api.spec.ts.
+    await pinParticipantToProblemSet(joined.participantId, liveProblem(seeded).contestProblemId);
+
     await admin.adminLogin(ADMIN_PASSCODE);
   });
 

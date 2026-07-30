@@ -1,0 +1,241 @@
+# Production stack for ptcodingnight.com.
+#
+#   docker compose -f docker-compose.prod.yml up -d
+#
+# Read docs/DEPLOY.md before running this. It is written for someone who has never deployed
+# anything, and it covers the parts that are not in this file: the non-root user, SSH, the
+# firewall, DNS, and the OAuth redirect URIs.
+#
+# ## How this differs from docker-compose.yml
+#
+# `docker-compose.yml` is the development stack: it publishes the web port directly and binds
+# Postgres and Redis to loopback so a developer can reach them with psql. This file is for a
+# public host, so:
+#
+#   - **Nothing is published except Caddy's 80 and 443.** Postgres and Redis have no `ports`
+#     entry at all, not even a loopback one — on a cloud box, loopback is reachable by anything
+#     that gets a shell, and there is no developer who needs psql from outside a container.
+#   - **Caddy terminates TLS** and is the only thing the internet talks to.
+#   - **Every service has a memory limit**, because this fits on 2 vCPU / 4 GB and an unbounded
+#     Postgres cache plus a judging burst is how the box OOMs mid-contest.
+#   - **Healthchecks on everything**, so `docker compose ps` answers "is it up" honestly rather
+#     than reporting a container that is running and broken as healthy.
+
+name: ptcn
+
+services:
+  caddy:
+    image: caddy:2.8-alpine
+    restart: unless-stopped
+    # The only ports on the box. 80 is not a redirect convenience — Let's Encrypt's HTTP-01
+    # challenge needs it, and closing it means certificates stop renewing 60 days later, which
+    # is a failure that arrives long after whoever closed it has forgotten.
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      # Read by the Caddyfile's `email` directive. Caddy substitutes it at PARSE time, so this
+      # must reach the container as an environment variable rather than only living in .env.
+      ACME_EMAIL: ${ACME_EMAIL:-}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Certificates and the ACME account key. Losing this volume is not fatal — Caddy
+      # re-issues — but it does spend a rate-limit slot, and Let's Encrypt's limit is 5
+      # duplicate certificates per week. Keep it.
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      web:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:80/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ptcn
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ptcn
+    # NO `ports`. Deliberately absent rather than bound to loopback: web and worker reach this
+    # over the compose network by service name, and on a public box "127.0.0.1 only" still means
+    # "anything that gets a shell", which is a larger set than it sounds.
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ptcn -d ptcn"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          # Postgres will use everything you give it for cache. On a 4 GB box shared with a
+          # judging burst, that is the difference between a slow query and an OOM kill.
+          memory: 768M
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --requirepass
+      - ${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}
+      # A bounded queue that refuses writes beats an unbounded one that takes the box down.
+      # `noeviction` is the right policy for a JOB QUEUE: evicting a key here would silently
+      # drop a student's submission, which is worse than refusing to accept a new one.
+      - --maxmemory
+      - 192mb
+      - --maxmemory-policy
+      - noeviction
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      # Authenticated: `redis-cli ping` without the password answers NOAUTH, which is a
+      # perfectly healthy Redis reporting itself unhealthy.
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: web
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://ptcn:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/ptcn?schema=public
+      REDIS_URL: redis://:${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}@redis:6379
+      SESSION_SECRET: ${SESSION_SECRET:?set SESSION_SECRET in .env}
+      ADMIN_PASSCODE: ${ADMIN_PASSCODE:?set ADMIN_PASSCODE in .env}
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:?set PUBLIC_ORIGIN in .env}
+      # Caddy is the one proxy in front. Without this the app IGNORES x-forwarded-for, which is
+      # correct when nothing is in front of it — every rate limiter would otherwise be
+      # defeatable by sending a different value per request (SECURITY.md H4).
+      TRUSTED_PROXY_COUNT: "1"
+      # Not set to anything: production refuses to start with COOKIE_SECURE=false, and unset
+      # means true. Listed here as a reminder that the default is the safe one.
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
+    # NO `ports`. Caddy reaches it over the compose network; publishing 3000 would let anyone
+    # bypass TLS by hitting the IP directly, which is exactly what COOKIE_SECURE protects
+    # against and it would hand them the session cookie anyway.
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+    deploy:
+      resources:
+        limits:
+          memory: 768M
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: worker
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://ptcn:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/ptcn?schema=public
+      REDIS_URL: redis://:${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}@redis:6379
+      # The authored test data, read by the WORKER PROCESS itself rather than bind-mounted into a
+      # judge container — so unlike JUDGE_SCRATCH_ROOT this one is a container-local path and does
+      # not need to match anything on the host.
+      TEST_DATA_ROOT: /app/content/problems
+      # THE PATH MUST BE IDENTICAL ON THE HOST AND IN THIS CONTAINER. See the mount below.
+      JUDGE_SCRATCH_ROOT: ${JUDGE_HOST_ROOT:?set JUDGE_HOST_ROOT in .env}/scratch
+      # Two, not four. Each judge container is capped at JUDGE_MEMORY_LIMIT, and on 2 vCPU /
+      # 4 GB the services already hold ~1.9 GB. Raise it after a contest-night resize — see
+      # docs/DEPLOY.md §9.
+      JUDGE_CONCURRENCY: ${JUDGE_CONCURRENCY:-2}
+    volumes:
+      # Effective root on the host. PRD §14 says the judge belongs on a machine with nothing
+      # else on it, and this deployment knowingly breaks that to fit one droplet — recorded in
+      # docs/DEPLOY.md §10 rather than left for someone to discover.
+      - /var/run/docker.sock:/var/run/docker.sock
+      # THE SAME PATH ON BOTH SIDES, and that is the entire point.
+      #
+      # The worker asks the HOST daemon to bind-mount its scratch directories into each judge
+      # container. The host resolves those paths in ITS namespace, so a container-local path
+      # like /app/.judge-tmp/job-x resolves to a directory that does not exist on the host —
+      # and the judge container gets a silently EMPTY mount. Every submission then fails for
+      # no visible reason. Identical paths are what make the two namespaces agree.
+      - ${JUDGE_HOST_ROOT:?set JUDGE_HOST_ROOT in .env}:${JUDGE_HOST_ROOT:?set JUDGE_HOST_ROOT in .env}
+    healthcheck:
+      # The worker holds no port, so "is the process alive" is the honest question to ask.
+      test: ["CMD-SHELL", "pgrep -f worker/index.ts > /dev/null"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          # The worker never runs untrusted code itself; it spawns siblings. This bounds the
+          # SUPERVISOR only — each judge container's own cap is JUDGE_MEMORY_LIMIT and is not
+          # counted here, because those are siblings on the host rather than children of this.
+          memory: 384M
+
+  # Nightly database backup. Restore procedure is in docs/DEPLOY.md §11.
+  backup:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - ./backups:/backups
+    entrypoint: >
+      sh -c 'while true; do
+        pg_dump -h postgres -U ptcn -d ptcn -F c
+          -f /backups/ptcn-$$(date +%%Y%%m%%d-%%H%%M%%S).dump || true;
+        find /backups -name "ptcn-*.dump" -mtime +7 -delete || true;
+        sleep 3600;
+      done'
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+
+volumes:
+  pgdata:
+  redisdata:
+  caddy_data:
+  caddy_config:

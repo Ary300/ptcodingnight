@@ -51,4 +51,8 @@ COPY --from=build /app/prisma.config.ts ./prisma.config.ts
 COPY --from=build /app/tsconfig.json ./tsconfig.json
 COPY --from=build /app/lib ./lib
 COPY --from=build /app/worker ./worker
+# The authored test data. Baked into the image rather than bind-mounted: it is versioned with
+# the code that judges against it, and a container that cannot find its test cases reports IE
+# on a student's submission rather than failing at deploy time.
+COPY --from=build /app/content ./content
 CMD ["npm", "run", "worker"]

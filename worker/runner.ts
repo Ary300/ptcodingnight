@@ -29,8 +29,17 @@ import { BATCH_DRIVER, parseMeta, type BatchTestOutcome } from "@/worker/batch-d
  * default — bind-mounting it silently yields an empty directory inside the container and
  * every submission fails with "file not found". The project directory is under /Users,
  * which is shared out of the box.
+ *
+ * `JUDGE_SCRATCH_ROOT` overrides it, and a containerised worker MUST set it.
+ *
+ * These directories are bind-mounted into each judge container by the HOST daemon, which
+ * resolves the path in the host's namespace. A worker running inside a container therefore
+ * hands over a path that means something different — or nothing — on the other side, and the
+ * judge container gets an empty mount with no error anywhere. `docker-compose.prod.yml` mounts
+ * one host directory at the identical path inside the worker so the two namespaces agree.
  */
-const SCRATCH_ROOT = path.join(process.cwd(), ".judge-tmp");
+const SCRATCH_ROOT =
+  process.env.JUDGE_SCRATCH_ROOT ?? path.join(process.cwd(), ".judge-tmp");
 
 /**
  * Kept as an optional override so a caller can pin different images (a test host with
