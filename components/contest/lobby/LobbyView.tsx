@@ -34,14 +34,15 @@ export function LobbyView() {
           You are not in the contest yet
         </h1>
         <p className="mt-2 text-ink/75" style={{ fontSize: "var(--text-sm)" }}>
-          Enter the join code from the board at the front of the room.
+          Sign in with your school Google or GitHub account. The first sign-in creates your
+          account, and an organizer puts you on a team.
         </p>
         <Link
-          href="/join"
+          href="/sign-in"
           className="mt-4 inline-block rounded bg-panther px-4 py-2 font-semibold text-paper hover:bg-panther-deep"
           style={{ fontSize: "var(--text-sm)" }}
         >
-          Join the contest
+          Sign in to compete
         </Link>
       </div>
     );

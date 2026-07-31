@@ -140,13 +140,19 @@ test.describe("the competitor journey in a browser", () => {
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
   });
 
-  test("an un-joined visitor is offered the join screen rather than bounced to it", async ({
-    page,
-  }) => {
+  test("a signed-out visitor is offered SIGN-IN rather than bounced to it", async ({ page }) => {
     await page.goto("/contest");
 
     await expect(page.getByRole("heading", { name: "You are not in the contest yet" })).toBeVisible();
-    await expect(page.getByRole("link", { name: "Join the contest" })).toBeVisible();
+
+    // Sign-in, not a join code. Codes are gone from every student-facing surface: team membership
+    // is decided only in the organizer's roster, and a student's route in is Google or GitHub.
+    await expect(page.getByRole("link", { name: "Sign in to compete" })).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: /join.*code|contest code/i }),
+      "no student-facing surface may offer a join code",
+    ).toHaveCount(0);
+
     expect(new URL(page.url()).pathname, "no redirect race on the sessionStorage read").toBe(
       "/contest",
     );

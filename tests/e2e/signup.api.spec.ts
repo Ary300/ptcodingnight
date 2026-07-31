@@ -1,6 +1,7 @@
 import { expect, test, type APIRequestContext } from "@playwright/test";
 
 import { linkedUserFor } from "@/lib/contest/accounts";
+import { viewerFromSession } from "@/lib/contest/viewer";
 import { hashPassword } from "@/lib/contest/password";
 import { ensureEnrolled } from "@/lib/contest/enrolment";
 import { AdminRosterSchema, TeamStandingsResponseSchema } from "@/lib/schemas/api";
@@ -255,5 +256,58 @@ test.describe("the organizer assigns them, and the mean follows", () => {
       players.some((row: { participantId: string }) => row.participantId === enrolment?.participantId),
       "the assigned student must appear in their team's player breakdown",
     ).toBe(true);
+  });
+});
+
+
+/**
+ * The session a signed-up student receives must authorize them AS A COMPETITOR.
+ *
+ * `viewerFromSession` returns ANONYMOUS for a COMPETITOR session whose participantId or contestId
+ * is null. A session minted from the OAuth identity alone has neither, so the student signs in
+ * successfully and is then authorized as nobody: the problem list refuses them and every
+ * submission is rejected, with nothing anywhere naming the cause.
+ *
+ * That shipped. This is the assertion that would have caught it, and it deliberately checks the
+ * VIEWER rather than the session row — the row having the right columns is not the property that
+ * matters, being resolvable to a competitor is.
+ */
+test.describe("the session a new signup receives", () => {
+  test("resolves to a COMPETITOR viewer, not to anonymous", async () => {
+    const suffix = `signup-session-${String(Date.now())}`;
+    const user = await linkedUserFor(googleIdentity(suffix, `${suffix}@parktudor.org`));
+    const enrolment = await ensureEnrolled(user.userId, user.displayName);
+    expect(enrolment, "a competitor must be enrolled before the session is minted").not.toBeNull();
+
+    // Exactly what app/api/auth/[provider]/callback/route.ts writes.
+    const viewer = viewerFromSession({
+      id: "probe-session",
+      role: "COMPETITOR",
+      method: "GOOGLE",
+      userId: user.userId,
+      displayName: user.displayName,
+      participantId: enrolment?.participantId ?? null,
+      contestId: enrolment?.contestId ?? null,
+    });
+
+    expect(
+      viewer.kind,
+      "a signed-up student authorized as anonymous can read nothing and submit nothing",
+    ).toBe("competitor");
+  });
+
+  test("a session WITHOUT the participant is anonymous — the bug, pinned", async () => {
+    // Guards the regression directly: if someone drops participantId from the callback again,
+    // the test above still needs this one to explain why it matters.
+    const viewer = viewerFromSession({
+      id: "probe-session",
+      role: "COMPETITOR",
+      method: "GOOGLE",
+      userId: "probe-user",
+      displayName: "No Participant",
+      participantId: null,
+      contestId: null,
+    });
+    expect(viewer.kind).toBe("anonymous");
   });
 });

@@ -16,9 +16,11 @@ import Link from "next/link";
 
 const DESTINATIONS = [
   {
-    href: "/join",
-    title: "Join the contest",
-    body: "You need the code on the board at the front of the room. No account, no password.",
+    href: "/sign-in",
+    title: "Sign in to compete",
+    body:
+      "Google or GitHub. The first sign-in creates your account, and an organizer puts you on a " +
+      "team — there is no code to type.",
     primary: true,
   },
   {
@@ -28,9 +30,9 @@ const DESTINATIONS = [
     primary: false,
   },
   {
-    href: "/sign-in",
-    title: "Organizer sign-in",
-    body: "Run the contest: start, freeze, override a verdict, enter side points, export results.",
+    href: "/admin",
+    title: "Organizers",
+    body: "Run the contest: rosters, start, freeze, override a verdict, side points, export.",
     primary: false,
   },
 ] as const;

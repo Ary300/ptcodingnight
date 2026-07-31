@@ -109,21 +109,35 @@ export async function GET(
     // Competitors only: an organizer is not a contestant, and enrolling them would put them in a
     // team's divisor. Best-effort, because failing to enrol must not fail the sign-in — the
     // account exists either way and an organizer can add them by hand.
+    let enrolment: Awaited<ReturnType<typeof ensureEnrolled>> = null;
     if (user.role === "COMPETITOR") {
       try {
-        await ensureEnrolled(user.userId, user.displayName);
+        enrolment = await ensureEnrolled(user.userId, user.displayName);
       } catch {
         // Deliberately swallowed, and the only swallowed catch here. A sign-in that worked must
         // not be reported as broken because a contest row was momentarily unavailable.
       }
     }
 
+    /*
+      The session carries the PARTICIPANT, not just the user, and that is load-bearing.
+
+      `viewerFromSession` returns ANONYMOUS for a COMPETITOR session whose participantId or
+      contestId is null — so a session minted with only `userId` signs the student in and then
+      authorizes them as nobody. They land on /contest, the problem list refuses them, and every
+      submission is rejected: signup works and competing does not, with no error naming the cause.
+
+      That is exactly what shipped when this route first learned to create accounts, and it is why
+      enrolment happens BEFORE the session is issued rather than after.
+    */
     const session = await issueSession(
       {
         role: user.role,
         method: provider === "google" ? "GOOGLE" : "GITHUB",
         displayName: user.displayName,
         userId: user.userId,
+        participantId: enrolment?.participantId ?? null,
+        contestId: enrolment?.contestId ?? null,
       },
       now,
     );

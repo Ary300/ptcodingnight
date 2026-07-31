@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useState } from "react";
 
 import { Button } from "@/components/ui";
@@ -171,13 +170,8 @@ export function SignInForm({ initialError = null }: SignInFormProps) {
       </form>
 
       <p className="mt-6 text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
-        Provider not working?{" "}
-        <Link href="/join" className="text-panther underline underline-offset-2">
-          Join with a contest code
-        </Link>{" "}
-        &mdash; kept as a fallback for the night, because OAuth fails for reasons that have nothing
-        to do with the room: an expired client secret, a changed consent screen, a provider having
-        an afternoon.
+        Students do not need a code. Signing in creates your account, and an organizer puts you on
+        a team.
       </p>
     </div>
   );
