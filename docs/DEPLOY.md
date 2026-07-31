@@ -685,8 +685,15 @@ git status --short
 
 **Empty output — nothing to think about, go to §14.2.**
 
-Otherwise, decide per file. `.env.production` will never appear here (it is gitignored, and it
-survives every update — do not recreate it). Anything else that appears is a patch you applied by
+Otherwise, decide per file. **`.env` will never appear here** (it is gitignored, and it survives
+every update — do not recreate it).
+
+**The file on the box is called `.env`, not `.env.production`.** §6 creates it with
+`cp .env.production.example .env`, and `docker-compose.prod.yml` reads plain `.env` — compose only
+ever auto-loads that name. `.env.production.example` is the TEMPLATE and the only file with
+"production" in its name. This is worth stating because both spellings appear in this document's
+history, and `grep ADMIN_PASSCODE .env.production` fails with "No such file or directory" on a
+perfectly healthy deployment. Anything else that appears is a patch you applied by
 hand, and the question is whether the repo has since fixed it properly. For the six bugs patched
 on the droplet during the first deploy — hardcoded CPU counts, the Go verify fixture, swallowed
 stderr, and the three `docs/DEPLOY.md` errors — the answer is yes, all six are fixed upstream, so
@@ -758,7 +765,9 @@ git log --oneline -1                                   # the commit you expected
 docker compose -f docker-compose.prod.yml ps
 
 # Then, and only then:
-export SMOKE_ADMIN_PASSCODE='<the console passcode>'   # or section 3b fails, correctly
+# From the box's own env file — note `.env`, not `.env.production`.
+export SMOKE_ADMIN_PASSCODE="$(grep -E '^ADMIN_PASSCODE=' .env | cut -d= -f2- | tr -d '"')"
+echo "${SMOKE_ADMIN_PASSCODE:0:3}..."                  # non-empty, or section 3b fails correctly
 ./scripts/smoke-prod.sh
 ```
 
@@ -793,7 +802,7 @@ docker compose -f docker-compose.prod.yml logs --tail=100 web
 ```
 
 `FATAL: refusing to start` is the boot check and it names the variable — §13. A new release that
-requires a variable your `.env.production` does not have will fail exactly this way, which is the
+requires a variable your `.env` does not have will fail exactly this way, which is the
 intended behaviour: it refuses rather than serving a half-configured site.
 
 Rolling back is the same procedure aimed at the previous commit:
