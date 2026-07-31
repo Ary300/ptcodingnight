@@ -1,4 +1,6 @@
 import { AwardsLoader } from "@/components/admin/AwardsLoader";
+import { ContestPicker } from "@/components/admin/ContestPicker";
+import { contestNameFor } from "@/lib/contest/contests";
 
 /**
  * `/admin/awards?contest=<id>` — final results.
@@ -10,6 +12,11 @@ import { AwardsLoader } from "@/components/admin/AwardsLoader";
  *
  * Contest pinned by query string, like every other admin screen: there is no implicit "current
  * contest", because that is hidden state that breaks the moment somebody opens last year's board.
+ * With no contest in the URL it renders the picker rather than asking for an id by hand.
+ *
+ * The contest's NAME is read here and handed down, because it is what the CSV and XLSX exports are
+ * named after. It used to be passed the contest id, so the file an organizer handed out at the end
+ * of the night was called after a cuid.
  */
 export default async function AwardsPage({
   searchParams,
@@ -19,23 +26,28 @@ export default async function AwardsPage({
   const params = await searchParams;
   const contest = params.contest;
   const contestId = typeof contest === "string" && contest.length > 0 ? contest : null;
+  const contestName = contestId === null ? null : await contestNameFor(contestId);
 
   return (
     <div className="flex flex-col gap-6">
       <header>
-        <h1 style={{ fontFamily: "var(--font-display)", fontSize: "var(--text-xl)" }}>Awards</h1>
-        <p className="mt-1 max-w-[70ch] opacity-75" style={{ fontSize: "var(--text-sm)" }}>
+        <h1 className="font-display font-bold" style={{ fontSize: "var(--text-xl)" }}>
+          Awards{contestName === null ? "" : ` — ${contestName}`}
+        </h1>
+        <p className="mt-1 max-w-[70ch] text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
           A team score is a mean, so every row shows the numbers it was computed from. Ties are
           shown as ties and never broken arbitrarily.
         </p>
       </header>
 
       {contestId === null ? (
+        <ContestPicker basePath="/admin/awards" purpose="the awards board" />
+      ) : contestName === null ? (
         <p role="status" className="text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
-          Add <code>?contest=&lt;id&gt;</code> to this URL to see a contest&rsquo;s results.
+          There is no contest with that id.
         </p>
       ) : (
-        <AwardsLoader contestId={contestId} />
+        <AwardsLoader contestId={contestId} contestName={contestName} />
       )}
     </div>
   );

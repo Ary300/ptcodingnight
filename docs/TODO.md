@@ -313,9 +313,9 @@ important screen in the application. If jsDelivr is slow, a student cannot type.
 
 ---
 
-## T7 — Team management and awards UI are missing
+## T7 — Awards UI is stale — **team management is done**
 
-**Severity: medium.** The APIs exist and are tested; two screens do not.
+**Severity: low, down from medium.**
 
 | Screen | State |
 |---|---|
@@ -323,26 +323,37 @@ important screen in the application. If jsDelivr is slow, a student cannot type.
 | Projector team board | done |
 | My team (`/team`) | done |
 | Admin side-activity entry | done |
-| **Team management** — create teams, assign participants, see sizes | **missing** |
+| **Team management** — create teams, assign participants, see sizes | **done** |
 | **Awards screen** — still renders the per-division individual board | **stale** |
 
-Team management is the consequential one. **Team size is the divisor in every team score**, so a
-roster is a scoring input rather than an administrative convenience — and it can currently only be
-edited with SQL. `MyTeamView` and the team board both flag a team of one, which is the usual symptom,
-but nothing lets an organizer fix it.
+Team management shipped as `RosterManager` on `/admin/teams`, and then failed for a second reason
+worth recording: the screen existed and was *unreachable*. It reads its contest from `?contest=`,
+and with no route to enumerate contests it told the organizer to add an id by hand — an id only
+`psql` gives you. `GET /api/admin/contests` and `ContestPicker` closed that. **A screen nobody can
+navigate to is not a shipped screen**, and a roster is a scoring input: team size is the divisor.
+
+`/admin/side-activities` had the same wall, and was additionally in no nav at all.
+
+Awards remains stale.
 
 ---
 
-## T8 — No server-side gate on the `/admin` route group
+## T8 — No server-side gate on the `/admin` route group — **fixed**
 
-**Severity: low today, and a trap tomorrow.** Security review A5.
+**Was: low today, and a trap tomorrow.** Security review A5.
 
-`app/(admin)/layout.tsx` renders without checking for an admin viewer, and there is no middleware.
-Impact right now is nil: every page under it renders from `components/admin/stub-data`, and the real
-data comes from `app/api/admin/**`, all of which call `requireAdmin`.
+`app/(admin)/layout.tsx` now resolves the viewer through `viewerFromCookies()` and redirects a
+non-admin to `/sign-in`. `viewerFromCookies` is `viewerFromRequest`'s server-component twin: same
+`loadSession`, different door, so a revoked session is refused on the next RENDER exactly as it is
+on the next API call.
 
-**The trigger to watch for:** the first admin page that becomes a server component with a Prisma read
-inherits no protection at all. If you are about to write one, add the gate first.
+**The trigger it was waiting for arrived, and from an unexpected direction.** The prediction was
+"the first admin page that becomes a server component with a Prisma read". What actually happened
+is that the live console became a real client of `/api/admin/**`, which made the ungated screens
+visibly wrong rather than merely empty: an anonymous visitor got the whole organizer console with
+one refused panel in the middle of it, which reads as a door that is nearly open. No data ever
+leaked — every route called `requireAdmin` throughout — but "nothing leaks" was never the whole
+claim.
 
 ---
 
@@ -410,6 +421,7 @@ scoring engine and the problem routes already read `round`; the remaining reader
 | No problem title/slot on `SubmissionView` | History makes a second `listProblems()` call and joins client-side. |
 | No contest-metadata shape (name, `startsAt`, state) | The lobby fetches *standings* just to read the clock off `endsAt`. |
 | `SSE_EVENTS.contestState` declared with no payload schema | Event name exists, shape does not. |
+| ~~No admin submission-feed or judge-health shape~~ | **Closed.** `AdminConsoleViewSchema` covers both, and `components/admin/contract.ts` re-exports them rather than proposing its own. The hand-written version had drifted: `language` listed two of the ten variants the judge runs, and rows carried an `attempt` counter and an `overriddenReason` that nothing in this system records. |
 | No `testCaseCount` on `ProblemDetail` | The verdict panel cannot say "3 of 12" while judging. |
 
 ---

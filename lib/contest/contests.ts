@@ -47,3 +47,18 @@ export async function listContestsForAdmin(): Promise<AdminContestList> {
     })),
   };
 }
+
+/**
+ * A contest's name, for a screen that has its id and needs to say which contest it is showing.
+ *
+ * Returns null rather than throwing on a missing contest: the caller is a page rendering a
+ * contest id out of a URL somebody may have edited, and a 500 is the wrong answer to "that
+ * contest does not exist".
+ */
+export async function contestNameFor(contestId: string): Promise<string | null> {
+  const contest = await prisma.contest.findUnique({
+    where: { id: contestId },
+    select: { name: true },
+  });
+  return contest?.name ?? null;
+}

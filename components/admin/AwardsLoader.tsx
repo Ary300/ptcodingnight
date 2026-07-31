@@ -11,10 +11,12 @@ import { TeamAwardsBoard } from "@/components/admin/TeamAwardsBoard";
  * be a second thing to keep in step with the scoring engine's contract.
  */
 export interface AwardsLoaderProps {
-  contestId: string;
+  readonly contestId: string;
+  /** The contest's NAME, which is what the CSV and XLSX exports are named after. */
+  readonly contestName: string;
 }
 
-export function AwardsLoader({ contestId }: AwardsLoaderProps) {
+export function AwardsLoader({ contestId, contestName }: AwardsLoaderProps) {
   const { standings, error } = useTeamStandings(contestId);
 
   if (standings === null) {
@@ -25,5 +27,5 @@ export function AwardsLoader({ contestId }: AwardsLoaderProps) {
     );
   }
 
-  return <TeamAwardsBoard standings={standings} contestName={contestId} />;
+  return <TeamAwardsBoard standings={standings} contestName={contestName} />;
 }

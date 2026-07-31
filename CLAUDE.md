@@ -49,10 +49,22 @@ set assignment, the auth layer, the routes (`app/api/contests/[id]/team-standing
 `app/api/admin/teams/[id]/side-activities`), the UI (`TeamStandingsBoard`, `TeamProjectorScreen`,
 `MyTeamView`, `/team`) and the G7 specs are all done and tested.
 
-**Two team surfaces are still missing, and one of them is a scoring input** — see T7. There is no
-team-management screen, so a roster can only be edited with SQL; team size is the divisor in every
-team score, which makes that a correctness gap rather than an administrative one. `/admin/awards`
-still renders the per-division individual board.
+**The organizer console is real, and the join code is gone.** Both were found by using the site
+rather than reading it, and both had the same shape — a screen that responded to every action and
+performed none of them:
+
+- The **live console** took a fixture feed as a prop, and freeze, rejudge and override each
+  appended a line to an on-screen log and called nothing. Freezing the board in front of a room
+  would have shown a frozen banner while the projector kept updating. It now reads
+  `GET /api/admin/contests/{id}/console` and posts to the routes that perform each action.
+- **`/admin/teams` and `/admin/side-activities` were unreachable by clicking.** Both read their
+  contest from `?contest=`, and nothing enumerated contests, so the screens told the organizer to
+  add an id by hand. `GET /api/admin/contests` plus `ContestPicker` fixed it. T7's team-management
+  gap is closed; `/admin/awards` still renders the per-division individual board.
+- **Join by code is fully removed** — the flat `POST /api/join` outlived the contest-scoped route,
+  along with the claim cookie and the client's `join()` method. Students sign in with a provider
+  and an organizer puts them on a team.
+- **`/admin/**` is gated in the layout** (T8), not only in its routes.
 
 `docs/TODO.md` is the honest list — read it before assuming a feature is reachable over HTTP.
 
@@ -243,6 +255,27 @@ imports nothing from either. If scoring needs a fact, it arrives as an argument.
   clean because everything before it has finished.
 - **A verdict is not a gate.** `npm run verify` output goes in the transcript verbatim. See
   **Definition of done**.
+- **A route under `/api` that a BROWSER navigates to must never answer with a JSON envelope.**
+  `/api/auth/{provider}` and its callback are hrefs on buttons, not fetches. Both ran through
+  `handle()` and painted `{"ok":false,"error":{"code":"FORBIDDEN",…}}` across the whole window on
+  any failure — nothing to click, and no way for a student to tell "this server has no Google set
+  up" from "you are not allowed". Every exit is a 302 to `/sign-in?error=`; the distinction lives
+  in the wording, not the status code. Redirects are RELATIVE, so the response can never rewrite
+  the origin's scheme.
+- **A screen nobody can navigate to is not a shipped screen.** `/admin/teams` was built, tested,
+  in the nav, and reachable only by pasting a contest id from `psql`. `/admin/side-activities` was
+  worse: no nav entry at all, and it is where side-activity points are entered — so a team score
+  was short by exactly those points with nothing to say why.
+- **A UI type that describes a server response IS the server's type.** `components/admin/contract.ts`
+  hand-wrote `AdminSubmissionRow` and it drifted exactly as you would expect: `language` listed two
+  of the ten variants the judge runs, and rows rendered an `attempt` counter and an
+  `overriddenReason` that no part of this system has ever recorded. Re-export from
+  `lib/schemas/api.ts` instead.
+- **`enqueueJudgeJob` uses the submission id as the job id, so a re-add is silently DROPPED.**
+  That idempotency is deliberate — a double-submitted form must produce one job. It also means any
+  rejudge has to `removeJob` first, clear the verdict (`reconcile` only writes to a submission that
+  is still unjudged), and invalidate the standings. Miss the first and the button appears to work
+  while nothing runs; miss the second and the job runs and its result is thrown away.
 
 ## Conventions
 

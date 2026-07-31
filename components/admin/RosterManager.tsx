@@ -136,8 +136,8 @@ export function RosterManager({ contestId }: RosterManagerProps) {
         }
         description={
           <>
-            These participants contribute to <strong>no</strong> team score. Team sign-up is{" "}
-            {roster.formationOpen ? "still open" : "closed"}.
+            These participants contribute to <strong>no</strong> team score, and their points are
+            in nobody&rsquo;s pool. This list is the first thing to empty on the night.
           </>
         }
       >
@@ -264,8 +264,14 @@ export function RosterManager({ contestId }: RosterManagerProps) {
                   <span className="font-semibold" style={{ fontSize: "var(--text-sm)" }}>
                     {team.name}
                   </span>
+                  {/*
+                    The team's join code used to sit here. Nothing can be done with it — students
+                    sign in with a provider and an organizer builds the roster — so it was a string
+                    that looked actionable and was not, on the screen where a wrong action changes
+                    two team scores. The size is what matters here: it IS the divisor.
+                  */}
                   <span className="numeric text-ink/65" style={{ fontSize: "var(--text-xs)" }}>
-                    code {team.joinCode} · {team.memberCount}/{team.maxTeamSize}
+                    {team.memberCount}/{team.maxTeamSize} · divisor {team.memberCount}
                   </span>
                 </div>
 
