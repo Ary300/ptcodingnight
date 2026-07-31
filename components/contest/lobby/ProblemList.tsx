@@ -125,7 +125,9 @@ export function ProblemList({ problems }: ProblemListProps) {
   }
 
   return (
-    <ul className="space-y-2">
+    // Named, so a test — and a screen reader — can address the problem list rather than
+    // whichever list happens to be first on a page that also carries standings.
+    <ul aria-label="Problems" className="space-y-2">
       {problems.map((problem) => (
         <ProblemCard key={problem.contestProblemId} problem={problem} />
       ))}

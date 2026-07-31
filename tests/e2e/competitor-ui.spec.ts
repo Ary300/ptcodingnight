@@ -198,3 +198,78 @@ test.describe("the competitor journey in a browser", () => {
     await expect(page.getByText(/^(Live|Board frozen)$/)).toBeVisible();
   });
 });
+
+/**
+ * The two pieces of chrome taken from HackerRank that are interactive rather than decorative:
+ * the challenge-list filter rail and the account menu.
+ *
+ * Both are the kind of thing that looks finished in a screenshot and is broken in use — a filter
+ * that renders but does not filter, a menu that opens but whose items are invisible. The second
+ * of those actually happened here: the panel is a paper surface inside a header that sets
+ * `text-paper`, so every item without its own colour was white on white. It looked like an empty
+ * menu, and only "Sign out" showed because it specifies `text-panther`.
+ */
+test.describe("the problem filters actually filter", () => {
+  test("Solved and Unsolved narrow the list, and the count says by how much", async ({ page }) => {
+    await join(page);
+
+    // Scoped to the named list: the page also carries a standings card full of list items, and
+    // `getByRole("listitem")` unscoped would count those too.
+    const rows = page.getByRole("list", { name: "Problems" }).getByRole("listitem");
+    // Awaited before counting. `count()` does not auto-wait, so counting straight after the
+    // navigation raced the lobby's fetch and reported zero problems every time.
+    await expect(rows.first()).toBeVisible();
+    const total = await rows.count();
+    expect(total, "the fixture should publish at least one problem").toBeGreaterThan(0);
+
+    // Nothing is ticked to begin with. A filter that arrives pre-applied is the reason people
+    // think a list is broken.
+    await expect(page.getByRole("checkbox", { name: "Solved", exact: true })).not.toBeChecked();
+    await expect(page.getByText(`${String(total)} problems`)).toBeVisible();
+
+    await page.getByRole("checkbox", { name: "Unsolved" }).check();
+    await expect(rows).toHaveCount(total);
+    await expect(page.getByText(`Showing ${String(total)} of ${String(total)}`)).toBeVisible();
+
+    // Nothing is solved in a fresh join, so this must empty the list AND say why.
+    await page.getByRole("checkbox", { name: "Unsolved" }).uncheck();
+    await page.getByRole("checkbox", { name: "Solved", exact: true }).check();
+    await expect(rows).toHaveCount(0);
+    await expect(page.getByText(/No problems match those filters/)).toBeVisible();
+    await expect(page.getByText(`Showing 0 of ${String(total)}`)).toBeVisible();
+
+    // Unticking restores it. A filter you cannot get out of is worse than no filter.
+    await page.getByRole("checkbox", { name: "Solved", exact: true }).uncheck();
+    await expect(rows).toHaveCount(total);
+  });
+});
+
+test.describe("the account menu", () => {
+  test("opens, its items are VISIBLE, and Escape closes it", async ({ page }) => {
+    await join(page);
+
+    const trigger = page.getByRole("button", { name: /▾|competitor|menu/i }).or(
+      page.locator('header button[aria-haspopup="menu"]'),
+    );
+    await trigger.first().click();
+
+    const menu = page.getByRole("menu", { name: "Account" });
+    await expect(menu).toBeVisible();
+
+    // toBeVisible() is the assertion that would have caught white-on-white: an element with no
+    // colour contrast is still "visible" to Playwright, so the items are checked for a real
+    // computed colour as well.
+    for (const label of ["Problems", "My team", "My submissions", "Live standings"]) {
+      await expect(menu.getByRole("menuitem", { name: label })).toBeVisible();
+    }
+    const colour = await menu
+      .getByRole("menuitem", { name: "My team" })
+      .evaluate((node) => window.getComputedStyle(node).color);
+    expect(colour, "a menu item must not inherit the dark bar's paper text").not.toBe(
+      "rgb(251, 249, 248)",
+    );
+
+    await page.keyboard.press("Escape");
+    await expect(menu).toBeHidden();
+  });
+});

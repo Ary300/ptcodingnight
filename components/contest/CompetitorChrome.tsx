@@ -3,9 +3,10 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useCallback, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 
 import { Countdown } from "./Countdown";
+import { UserMenu } from "./UserMenu";
 import type { StandingsResponse } from "@/lib/schemas/api";
 import { contestApi, isStubBackend } from "./data/backend";
 import { clearParticipant, useParticipant } from "./data/participant";
@@ -65,6 +66,38 @@ export function CompetitorChrome({ children }: { children: ReactNode }) {
     [joined],
   );
   const standings = useResource(loadStandings);
+
+  /*
+    The viewer's team, for the menu's highlighted slot.
+
+    Fetched ONCE rather than polled. It is chrome, not a live score: a team changes when an
+    organizer moves somebody, which is rare and already forces a reload of the screens that
+    matter. Polling it on every competitor page would add a request per student per interval for
+    a line of text, and the judge queue is the thing that must not be starved on the night.
+  */
+  const [team, setTeam] = useState<{ name: string } | null>(null);
+  useEffect(() => {
+    if (!joined) return undefined;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const response = await fetch("/api/auth/session", { cache: "no-store" });
+        if (!response.ok || cancelled) return;
+        const body: unknown = await response.json();
+        const name =
+          typeof body === "object" && body !== null && "data" in body
+            ? (body as { data: { teamName?: unknown } }).data.teamName
+            : null;
+        if (typeof name === "string" && name.length > 0) setTeam({ name });
+      } catch {
+        // The menu simply shows no team. A failed chrome fetch must never surface as an error on
+        // a page whose content loaded fine.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [joined]);
 
   const leave = useCallback(() => {
     clearParticipant();
@@ -138,29 +171,26 @@ export function CompetitorChrome({ children }: { children: ReactNode }) {
             student-supplied and allowed up to 40 characters, so this is the normal case rather
             than an edge one.
           */}
-          <div className="ml-auto flex min-w-0 items-center gap-4">
+          {/*
+            `flex-wrap` on this block, not just `min-w-0` on its children.
+
+            It holds the countdown pill and the account menu. At 360px those are about 200px and
+            190px, and a non-wrapping row of them overflows a 360px viewport however small its
+            items are willing to become — measured, the page went 436px wide and every competitor
+            screen scrolled sideways. Letting the two stack is the fix; shrinking the name only
+            moved the number.
+          */}
+          <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-x-4 gap-y-2">
             {standings.status === "ready" && standings.data !== null && (
               <Countdown endsAt={standings.data.endsAt} />
             )}
 
             {participant.status === "joined" && (
-              <div className="flex min-w-0 items-center gap-2">
-                <span
-                  className="min-w-0 truncate text-paper/75"
-                  title={participant.participant.displayName}
-                  style={{ fontSize: "var(--text-xs)" }}
-                >
-                  {participant.participant.displayName}
-                </span>
-                <button
-                  type="button"
-                  onClick={leave}
-                  className="shrink-0 text-paper/75 underline underline-offset-2 hover:text-paper"
-                  style={{ fontSize: "var(--text-xs)" }}
-                >
-                  Leave
-                </button>
-              </div>
+              <UserMenu
+                displayName={participant.participant.displayName}
+                teamName={team?.name ?? null}
+                onSignOut={leave}
+              />
             )}
           </div>
         </div>

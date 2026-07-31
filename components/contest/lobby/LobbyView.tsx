@@ -6,7 +6,7 @@ import { useCallback } from "react";
 import { contestApi } from "../data/backend";
 import { useParticipant } from "../data/participant";
 import { useResource } from "../data/useResource";
-import { ProblemList } from "./ProblemList";
+import { ProblemBrowser } from "./ProblemBrowser";
 import { StandingsCard } from "./StandingsCard";
 
 /**
@@ -78,7 +78,7 @@ export function LobbyView() {
               </button>
             </div>
           )}
-          {problems.status === "ready" && <ProblemList problems={problems.data} />}
+          {problems.status === "ready" && <ProblemBrowser problems={problems.data} />}
         </div>
       </section>
 

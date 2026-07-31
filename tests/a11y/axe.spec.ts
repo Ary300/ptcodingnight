@@ -55,6 +55,22 @@ test.describe("axe-core: zero critical or serious", () => {
   test("competitor lobby", async ({ page }) => {
     await openLobby(page);
     await auditPage(page, "/contest");
+
+    // The filter rail is a set of checkbox groups, which is exactly the shape a missing
+    // `legend`/label pair hides in — and an unlabelled checkbox is unusable rather than merely
+    // untidy.
+    await page.getByRole("checkbox", { name: "Unsolved" }).check();
+    await auditPage(page, "/contest (filtered)");
+  });
+
+  test("competitor lobby with the account menu open", async ({ page }) => {
+    // An open dropdown is a different DOM and a classic place for a trap: a menu with no
+    // accessible name, items that are not reachable, or — as happened here — items rendered in
+    // the dark bar's paper text on a paper panel, invisible but perfectly "present".
+    await openLobby(page);
+    await page.locator('header button[aria-haspopup="menu"]').click();
+    await expect(page.getByRole("menu", { name: "Account" })).toBeVisible();
+    await auditPage(page, "/contest (account menu open)");
   });
 
   test("problem workspace", async ({ page }) => {
