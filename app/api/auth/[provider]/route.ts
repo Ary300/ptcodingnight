@@ -9,7 +9,12 @@ import {
   authorizeUrlFor,
   hashOAuthState,
   newOAuthState,
+  type OAuthProvider,
 } from "@/lib/contest/oauth";
+import {
+  signInErrorLocation,
+  type SignInErrorCode,
+} from "@/lib/contest/sign-in-errors";
 
 /**
  * `GET /api/auth/{google|github}` — begin an OAuth sign-in.
@@ -34,6 +39,13 @@ import {
  * The distinction the old 503 was drawing — "this server has no GitHub set up" is an operator
  * problem, not a failed sign-in — is worth keeping, so it is kept in the WORDING rather than in
  * the status code. The student is told it is not their fault and pointed at the other button.
+ *
+ * ## What travels in `?error=` is a CODE, not the sentence
+ *
+ * It used to be the sentence. `/sign-in` rendered whatever arrived, so anyone could hand a student
+ * a link whose "error" was a paragraph of their own choosing, styled as ours and served from our
+ * domain. See `lib/contest/sign-in-errors.ts`: the page can now only render copy that lives in
+ * that file, which also makes it structurally impossible for an exception message to reach it.
  */
 
 export const runtime = "nodejs";
@@ -44,10 +56,10 @@ const ProviderParamsSchema = z.object({
 });
 
 /** Back to the page that owns sign-in, carrying the reason. Relative: never re-writes the origin. */
-function toSignIn(error: string): NextResponse {
+function toSignIn(code: SignInErrorCode, provider?: OAuthProvider): NextResponse {
   return new NextResponse(null, {
     status: 302,
-    headers: { location: `/sign-in?error=${encodeURIComponent(error)}` },
+    headers: { location: signInErrorLocation(code, provider) },
   });
 }
 
@@ -57,18 +69,14 @@ export async function GET(
 ): Promise<NextResponse> {
   const parsed = ProviderParamsSchema.safeParse(await context.params);
   if (!parsed.success) {
-    return toSignIn("That sign-in provider is not one this server offers.");
+    return toSignIn("provider_unknown");
   }
   const { provider } = parsed.data;
-  const label = provider === "google" ? "Google" : "GitHub";
 
   try {
     const config = oauthConfig(provider);
     if (config === null) {
-      return toSignIn(
-        `${label} sign-in is not set up on this server — that is our configuration, not your ` +
-          `account. Try the other provider, or ask an organizer.`,
-      );
+      return toSignIn("provider_unconfigured", provider);
     }
 
     const state = newOAuthState();
@@ -99,6 +107,6 @@ export async function GET(
       provider,
       message: caught instanceof Error ? caught.message : String(caught),
     });
-    return toSignIn(`${label} sign-in could not be started. An organizer can sign you in instead.`);
+    return toSignIn("start_failed", provider);
   }
 }

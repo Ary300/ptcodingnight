@@ -129,18 +129,30 @@ export async function placeInDivisionAndSet(page: Page): Promise<void> {
   await page.reload();
 }
 
+/**
+ * The rows of the problem list, and nothing else.
+ *
+ * Scoped to the list's accessible name because the lobby now opens with a breadcrumb: the first
+ * `li` link on the page is the crumb back to `/contest`, so an unscoped `.first()` looked like it
+ * was clicking a problem and was navigating in a circle. The audits behind it would have run
+ * against the lobby while reporting the problem page.
+ */
+function problemRowLinks(page: Page) {
+  return page.getByRole("list", { name: "Problems" }).getByRole("listitem").getByRole("link");
+}
+
 /** The lobby, joined, with the problem list loaded. */
 export async function openLobby(page: Page): Promise<void> {
   await joinContest(page);
   await placeInDivisionAndSet(page);
   await expect(page.getByRole("heading", { name: "Problems", level: 1 })).toBeVisible();
-  await expect(page.getByRole("listitem").getByRole("link").first()).toBeVisible();
+  await expect(problemRowLinks(page).first()).toBeVisible();
 }
 
 /** The first problem's workspace, with the editor mounted. */
 export async function openProblem(page: Page): Promise<void> {
   await openLobby(page);
-  await page.getByRole("listitem").getByRole("link").first().click();
+  await problemRowLinks(page).first().click();
   await page.waitForURL(/\/contest\/[^/]+$/);
   await expect(page.getByRole("textbox", { name: /^Solution for / })).toBeVisible();
 }

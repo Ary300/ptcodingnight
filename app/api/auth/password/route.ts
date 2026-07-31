@@ -1,6 +1,8 @@
 import type { NextResponse } from "next/server";
 
 import { EmailLoginSchema, authenticateWithPassword } from "@/lib/contest/accounts";
+import { ensureEnrolled, type Enrolment } from "@/lib/contest/enrolment";
+import { DomainError } from "@/lib/errors";
 import { NO_STORE, handle, jsonOk, readJson } from "@/lib/contest/http";
 import { passwordBackoff, passwordWork } from "@/lib/contest/rate-limit";
 import { SESSION_COOKIE, sessionCookieOptions } from "@/lib/contest/session";
@@ -27,6 +29,23 @@ import { issueSession } from "@/lib/contest/session-store";
  * Keyed by client, not by email — keying by email would let anyone lock out a named organizer by
  * hammering their address, which is an account-lockout denial of service aimed at the person most
  * needed during a contest.
+ *
+ * ## Why a COMPETITOR is enrolled here too
+ *
+ * This route is not organizer-only, however much its doc comment implied it. An organizer can set a
+ * password for a student whose provider is not working, and `SignInForm` routes the response by
+ * ROLE precisely because a competitor can arrive through it.
+ *
+ * That path was broken, and silently. It minted a session with `userId` and nothing else, and
+ * `viewerFromSession` returns ANONYMOUS for a COMPETITOR session whose participantId or contestId
+ * is null. Measured against the running dev server: `POST /api/auth/password` answered
+ * `200 {"role":"COMPETITOR"}`, set a session cookie, and `GET /api/auth/session` with that very
+ * cookie answered `{"signedIn":false}`. The student is sent to /contest by a successful sign-in
+ * and every screen there treats them as a stranger.
+ *
+ * The OAuth callback learned this lesson once already and this route was left behind. Enrolment
+ * runs BEFORE the session is issued, for the same reason it does there: a session that cannot
+ * compete must not be minted at all.
  */
 
 export const runtime = "nodejs";
@@ -57,12 +76,35 @@ export async function POST(request: Request): Promise<NextResponse> {
       }
     }, "Too many sign-in attempts are in flight. Try again in a moment.");
 
+    // Organizers are not contestants: enrolling one would put them in a team's divisor.
+    let enrolment: Enrolment | null = null;
+    if (user.role === "COMPETITOR") {
+      enrolment = await ensureEnrolled(user.userId, user.displayName);
+      if (enrolment === null) {
+        // No DRAFT, SCHEDULED or RUNNING contest exists. Refusing with a sentence that names the
+        // real cause beats issuing a session that authorizes as nobody — the state the production
+        // box was in when the demo contest expired and the site "looked dead".
+        throw new DomainError(
+          "CONTEST_NOT_RUNNING",
+          "Your account is ready, but there is no contest open right now. An organizer needs to " +
+            "open tonight's contest, then sign in again.",
+        );
+      }
+    }
+
     const session = await issueSession(
       {
         role: user.role,
+        // `ADMIN_PASSWORD` is a misnomer for a COMPETITOR signing in this way, and it stays one:
+        // the value is a Postgres enum, so renaming it is a migration plus every historical
+        // `Session.method` row, to fix a label an organizer reads on the live-sessions list. The
+        // `role` beside it already says which kind of person this is. Noted so the next reader does
+        // not conclude a competitor session was minted by the wrong route.
         method: "ADMIN_PASSWORD",
         displayName: user.displayName,
         userId: user.userId,
+        participantId: enrolment?.participantId ?? null,
+        contestId: enrolment?.contestId ?? null,
       },
       now,
     );

@@ -10,14 +10,21 @@ import { z } from "zod";
  *
  * ## The invariant that matters
  *
- * **Neither provider can create an account.** `User.passwordHash` is NOT NULL in the schema, so an
- * OAuth-only account is unrepresentable; these paths look up an existing user by provider subject
- * or verified email and refuse if there is none.
+ * This said "**neither provider can create an account** — `User.passwordHash` is NOT NULL, so an
+ * OAuth-only account is unrepresentable". Every clause of that is now wrong: `passwordHash` is
+ * nullable, a first sign-in creates the account, and there is no join code left to fall back to.
+ * A comment describing a refusal that no longer exists is worse than no comment, because the next
+ * reader goes looking for the check.
  *
- * Internet at the event is now guaranteed (PRD §10.1), so this is not about the venue. It is about
- * OAuth's own failure modes, which have nothing to do with the room: an expired client secret, a
- * changed consent screen, a student without a school account, a provider having an afternoon. A
- * contest that cannot start because Google is unavailable is a contest that cannot start.
+ * What is true, and is enforced twice, is narrower: **signing in can create a COMPETITOR and can
+ * never produce an ADMIN.** `selfSignUpFromOAuth` writes the role as a literal, and a CHECK
+ * constraint refuses an ADMIN with no password regardless of which code path asks.
+ *
+ * Internet at the event is guaranteed (PRD §10.1), so the organizer passcode fallback is not about
+ * the venue. It is about OAuth's own failure modes, which have nothing to do with the room: an
+ * expired client secret, a changed consent screen, a student without a school account, a provider
+ * having an afternoon. A contest that cannot start because Google is unavailable is a contest that
+ * cannot start.
  *
  * ## CSRF
  *

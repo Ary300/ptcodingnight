@@ -1,6 +1,10 @@
 import { expect, test } from "@playwright/test";
 
+import { linkedUserFor } from "@/lib/contest/accounts";
+import { ensureEnrolled } from "@/lib/contest/enrolment";
+import type { OAuthIdentity } from "@/lib/contest/oauth";
 import { hashPassword } from "@/lib/contest/password";
+import { signInErrorMessage } from "@/lib/contest/sign-in-errors";
 
 import { ContestApi, readEnvelope, readOk } from "./helpers/api";
 import { requiredEnv } from "./helpers/env";
@@ -192,8 +196,16 @@ test.describe("OAuth start", () => {
 
     // Not configured on this host is a legitimate outcome, and is still a redirect — this URL is
     // the href of a button and a browser is doing the navigating. See the spec below.
+    //
+    // The reason travels as a CODE now, not as the sentence. The sentence lives in
+    // `lib/contest/sign-in-errors.ts`; resolving it here rather than asserting on the URL is what
+    // keeps this test honest about what a student actually reads.
     expect(location).toContain("/sign-in?error=");
-    expect(decodeURIComponent(location).toLowerCase()).toContain("not set up on this server");
+    const params = new URLSearchParams(location.split("?")[1]);
+    expect(params.get("error")).toBe("provider_unconfigured");
+    expect(signInErrorMessage(params.get("error"), params.get("provider"))).toContain(
+      "not set up on this server",
+    );
   });
 
   test("a provider failure lands on a PAGE, never on a JSON envelope", async ({ playwright }) => {
@@ -244,6 +256,85 @@ test.describe("OAuth start", () => {
       expect(location, "an unknown provider sent the browser off-site").toMatch(/^\/sign-in/);
     }
     expect(await response.text()).not.toContain("ptcn_oauth_state");
+  });
+});
+
+/**
+ * The CALLBACK, over real HTTP, for every failure that does not need a provider.
+ *
+ * The start route was fixed to redirect rather than to answer with an envelope, and the callback
+ * was left running through `handle()`. Measured on this server before the fix:
+ *
+ *     GET /api/auth/facebook/callback?code=x&state=y
+ *     404 {"success":false,"data":null,"error":{"code":"NOT_FOUND","message":"Not found"}}
+ *
+ * A student's browser NAVIGATES here — it arrives by following the provider's redirect — so that
+ * body was the whole window, with nothing to click and nothing naming an alternative. The cases
+ * that need a configured provider (state mismatch, a refused exchange, a disabled account) cannot
+ * be reached over HTTP without client credentials and are covered in
+ * `tests/unit/auth-callback-route.test.ts`.
+ */
+test.describe("OAuth callback", () => {
+  const CASES: { readonly what: string; readonly path: string; readonly code: string }[] = [
+    {
+      what: "the student cancelled at the consent screen",
+      path: "/api/auth/google/callback?error=access_denied",
+      code: "cancelled",
+    },
+    {
+      what: "an unknown provider — the case that measurably returned 404 JSON",
+      path: "/api/auth/facebook/callback?code=x&state=y",
+      code: "provider_unknown",
+    },
+    {
+      what: "a callback with nothing on it at all",
+      path: "/api/auth/github/callback",
+      // Which of these two depends on whether this host has GitHub configured, and both are
+      // legitimate. What must NOT vary is the shape of the answer.
+      code: "",
+    },
+  ];
+
+  for (const { what, path, code } of CASES) {
+    test(`lands on a PAGE, never a JSON envelope: ${what}`, async ({ playwright }) => {
+      const context = await playwright.request.newContext();
+      const response = await context.get(path, { maxRedirects: 0 });
+
+      expect([302, 307], `${path} answered ${response.status()}`).toContain(response.status());
+
+      const body = await response.text();
+      expect(body, "an API envelope was painted in front of a student").not.toContain('"success"');
+      expect(body).not.toContain('"error"');
+
+      const location = response.headers().location ?? "";
+      // Relative, always: an absolute Location invents a scheme and a host, and it invented
+      // `https://localhost:3000`, which the browser cannot open.
+      expect(location.startsWith("/sign-in?")).toBe(true);
+      expect(location).not.toContain("://");
+
+      const params = new URLSearchParams(location.split("?")[1]);
+      if (code !== "") expect(params.get("error")).toBe(code);
+      // And whatever code it is, the page can turn it into a sentence.
+      expect(signInErrorMessage(params.get("error"), params.get("provider"))).not.toBeNull();
+    });
+  }
+
+  test("the reason renders on the sign-in page and survives a reload", async ({ playwright }) => {
+    const context = await playwright.request.newContext();
+    const start = await context.get("/api/auth/google/callback?error=access_denied", {
+      maxRedirects: 0,
+    });
+    const location = start.headers().location ?? "";
+
+    // Twice, because the banner lives in the URL rather than in a flash cookie — a student who
+    // reloads must not be left staring at a form that has forgotten why it refused them.
+    for (let i = 0; i < 2; i += 1) {
+      const page = await context.get(location);
+      const html = await page.text();
+      expect(page.status()).toBe(200);
+      expect(html).toContain("You cancelled the Google sign-in");
+      expect(html).toContain('role="alert"');
+    }
   });
 });
 
@@ -381,5 +472,277 @@ test.describe("an OAuth-only ADMIN is unrepresentable", () => {
         data: { passwordHash: null },
       }),
     ).rejects.toThrow(/User_admin_requires_password|check constraint/i);
+  });
+});
+
+/**
+ * Account creation, against the real database.
+ *
+ * These call `linkedUserFor` and `ensureEnrolled` directly rather than through the callback,
+ * because the callback cannot be driven over HTTP without Google or GitHub client credentials —
+ * `oauthConfig()` returns null and the route redirects long before it reaches any of this. The
+ * ROUTE's own decisions are covered in `tests/unit/auth-callback-route.test.ts`; what these add is
+ * the half a mock cannot: that the rows Postgres ends up holding are the right ones.
+ */
+test.describe("signing up with a provider", () => {
+  const stamp = String(Date.now());
+
+  function identity(overrides: Partial<OAuthIdentity> = {}): OAuthIdentity {
+    return {
+      provider: "google",
+      subject: `signup-sub-${stamp}`,
+      email: `signup-${stamp}@parktudor.org`,
+      emailVerified: true,
+      displayName: "Signup Student",
+      ...overrides,
+    };
+  }
+
+  test.afterAll(async () => {
+    await testDb().participant.deleteMany({ where: { user: { email: { contains: stamp } } } });
+    await testDb().user.deleteMany({ where: { email: { contains: stamp } } });
+    await testDb().participant.deleteMany({ where: { displayName: { contains: stamp } } });
+    await testDb().user.deleteMany({ where: { googleSub: { contains: stamp } } });
+    await testDb().user.deleteMany({ where: { githubSub: { contains: stamp } } });
+  });
+
+  test("a brand-new identity creates a COMPETITOR and a Participant, and never an ADMIN", async () => {
+    const user = await linkedUserFor(identity());
+
+    expect(user.role).toBe("COMPETITOR");
+
+    const row = await testDb().user.findUnique({
+      where: { id: user.userId },
+      select: { role: true, passwordHash: true, googleSub: true, email: true },
+    });
+    // The role is a literal in `selfSignUpFromOAuth` and the database refuses an ADMIN with no
+    // password independently. Signing up cannot produce an organizer by any route.
+    expect(row?.role).toBe("COMPETITOR");
+    expect(row?.passwordHash).toBeNull();
+    expect(row?.googleSub).toBe(`signup-sub-${stamp}`);
+
+    const enrolment = await ensureEnrolled(user.userId, user.displayName);
+    expect(enrolment, "no enrollable contest — the fixture should have seeded one").not.toBeNull();
+
+    const participant = await testDb().participant.findFirst({
+      where: { userId: user.userId },
+      select: { id: true, contestId: true, teamId: true },
+    });
+    expect(participant?.id).toBe(enrolment?.participantId);
+    expect(participant?.contestId).toBe(enrolment?.contestId);
+    // No team. The organizer assigns it from the roster, and that is the only place it happens.
+    expect(participant?.teamId).toBeNull();
+  });
+
+  test("a second sign-in re-uses the account rather than creating a duplicate", async () => {
+    const first = await linkedUserFor(identity());
+    const second = await linkedUserFor(identity({ displayName: "Renamed In Google" }));
+
+    expect(second.userId).toBe(first.userId);
+
+    const count = await testDb().user.count({ where: { googleSub: `signup-sub-${stamp}` } });
+    expect(count, "a second sign-in minted a second account").toBe(1);
+
+    // And enrolment is idempotent too, keyed on (contestId, userId) rather than on the display
+    // name — a rename must not mint a second participant competing against the first.
+    await ensureEnrolled(first.userId, first.displayName);
+    await ensureEnrolled(second.userId, "Renamed In Google");
+    expect(await testDb().participant.count({ where: { userId: first.userId } })).toBe(1);
+  });
+
+  test("an UNVERIFIED provider email never links to an existing account", async () => {
+    /*
+      The takeover this stops: an unverified email is a claim by the person signing in, not by the
+      provider. Anyone who can type an organizer's address into their GitHub profile would
+      otherwise walk into that organizer's account.
+
+      The correct behaviour is not a refusal — a GitHub account with no verified public email is
+      the normal state of a student's GitHub account. It is: do not LOOK for an existing account,
+      and create a fresh one keyed on the provider's stable subject id.
+    */
+    const victimEmail = `victim-${stamp}@parktudor.org`;
+    const victim = await testDb().user.create({
+      data: {
+        email: victimEmail,
+        displayName: `Victim ${stamp}`,
+        role: "ADMIN",
+        passwordHash: await hashPassword("a-long-enough-e2e-passphrase"),
+      },
+      select: { id: true },
+    });
+
+    const attacker = await linkedUserFor({
+      provider: "github",
+      subject: `attacker-sub-${stamp}`,
+      email: victimEmail,
+      emailVerified: false,
+      displayName: `Attacker ${stamp}`,
+    });
+
+    expect(attacker.userId, "an unverified email took over an existing account").not.toBe(victim.id);
+    expect(attacker.role).toBe("COMPETITOR");
+
+    // The victim's row is untouched: no provider subject was written onto it.
+    const after = await testDb().user.findUnique({
+      where: { id: victim.id },
+      select: { githubSub: true, role: true },
+    });
+    expect(after?.githubSub).toBeNull();
+    expect(after?.role).toBe("ADMIN");
+
+    // And the address is NOT stored on the new account either — writing an unverified email would
+    // let the attacker squat the address a later verified sign-in matches against.
+    const created = await testDb().user.findUnique({
+      where: { id: attacker.userId },
+      select: { email: true },
+    });
+    expect(created?.email).toBeNull();
+  });
+
+  test("a RUNNING contest wins over a DRAFT that starts later", async () => {
+    /*
+      Ordering by `startsAt` alone picks the contest that starts FURTHEST IN THE FUTURE. The moment
+      an organizer drafts next month's Coding Night, every student signing in tonight is enrolled
+      in next month's — and nothing errors. They land on a contest with no problems published and
+      tonight's roster shows nobody: two quietly empty screens, the same signature as the "site
+      looked dead" failure from a different cause.
+    */
+    const nextMonth = await testDb().contest.create({
+      data: {
+        name: `Next Month ${stamp}`,
+        joinCode: `NX${stamp.slice(-4)}`,
+        scoringPresetId: "coding-night-classic",
+        startsAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        endsAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000 + 7_200_000),
+        state: "DRAFT",
+      },
+      select: { id: true },
+    });
+
+    try {
+      const user = await linkedUserFor(
+        identity({ subject: `ordering-sub-${stamp}`, email: `ordering-${stamp}@parktudor.org` }),
+      );
+      const enrolment = await ensureEnrolled(user.userId, `Ordering ${stamp}`);
+
+      expect(enrolment).not.toBeNull();
+      expect(
+        enrolment?.contestId,
+        "a student signing in tonight was enrolled in next month's contest",
+      ).not.toBe(nextMonth.id);
+    } finally {
+      await testDb().participant.deleteMany({ where: { contestId: nextMonth.id } });
+      await testDb().contest.delete({ where: { id: nextMonth.id } });
+    }
+  });
+
+  test("a VERIFIED email does link to the account that already owns it", async () => {
+    // The other half of the rule: verified is exactly the case where linking is safe, and without
+    // it an organizer who signs in with Google gets a second, competitor-shaped account.
+    const email = `linkable-${stamp}@parktudor.org`;
+    const existing = await testDb().user.create({
+      data: {
+        email,
+        displayName: `Linkable ${stamp}`,
+        role: "ADMIN",
+        passwordHash: await hashPassword("a-long-enough-e2e-passphrase"),
+      },
+      select: { id: true },
+    });
+
+    const linked = await linkedUserFor({
+      provider: "google",
+      subject: `linkable-sub-${stamp}`,
+      email,
+      emailVerified: true,
+      displayName: "Linked By Email",
+    });
+
+    expect(linked.userId).toBe(existing.id);
+    expect(linked.role).toBe("ADMIN");
+  });
+});
+
+/**
+ * The password path enrols a COMPETITOR, which it did not.
+ *
+ * Measured against this server before the fix: `POST /api/auth/password` answered
+ * `200 {"role":"COMPETITOR"}` and set a session cookie, and `GET /api/auth/session` with that very
+ * cookie answered `{"signedIn":false}`. `viewerFromSession` returns ANONYMOUS for a COMPETITOR
+ * session whose participantId or contestId is null, so the sign-in succeeded and authorized as
+ * nobody — the student is sent to /contest by a working sign-in and every screen there treats them
+ * as a stranger.
+ *
+ * The OAuth callback had already learned this and this route was left behind, which is why the
+ * assertion is on the SESSION and not on the sign-in response: the sign-in response was always 200.
+ */
+test.describe("a competitor with a password", () => {
+  const STUDENT = {
+    email: `e2e-student-pw-${Date.now()}@parktudor.org`,
+    password: "a-long-enough-e2e-passphrase",
+    displayName: `E2E Password Student ${Date.now()}`,
+  };
+
+  test.beforeAll(async () => {
+    await testDb().user.create({
+      data: {
+        email: STUDENT.email,
+        displayName: STUDENT.displayName,
+        role: "COMPETITOR",
+        passwordHash: await hashPassword(STUDENT.password),
+      },
+    });
+  });
+
+  test.afterAll(async () => {
+    await testDb().participant.deleteMany({ where: { user: { email: STUDENT.email } } });
+    await testDb().user.deleteMany({ where: { email: STUDENT.email } });
+  });
+
+  test("signs in AND can compete — the session carries participantId and contestId", async ({
+    playwright,
+  }) => {
+    const api = new ContestApi(await playwright.request.newContext(), seeded.contestId);
+
+    const login = await readOk(await api.passwordLoginRaw(STUDENT.email, STUDENT.password));
+    expect(login.status).toBe(200);
+    expect((login.data as { role: string }).role).toBe("COMPETITOR");
+
+    const session = await readOk(await api.sessionRaw());
+    const body = session.data as {
+      signedIn: boolean;
+      role: string;
+      participantId: string | null;
+      contestId: string | null;
+    };
+
+    expect(body.signedIn, "signed in and immediately anonymous — the bug this pins").toBe(true);
+    expect(body.role).toBe("COMPETITOR");
+    expect(body.participantId).not.toBeNull();
+    expect(body.contestId).not.toBeNull();
+  });
+
+  test("appears on the organizer's roster, which is the point of enrolling", async () => {
+    // A student the roster cannot see is a student nobody can put on a team.
+    const participant = await testDb().participant.findFirst({
+      where: { user: { email: STUDENT.email } },
+      select: { teamId: true, contestId: true },
+    });
+    expect(participant).not.toBeNull();
+    expect(participant?.teamId).toBeNull();
+  });
+
+  test("an ADMIN is still NOT enrolled, because an organizer is not a contestant", async ({
+    playwright,
+  }) => {
+    // Enrolling one would put them in a team's divisor, and team size is the divisor.
+    const api = new ContestApi(await playwright.request.newContext(), seeded.contestId);
+    await readOk(await api.passwordLoginRaw(ORGANIZER.email, ORGANIZER.password));
+
+    const session = await readOk(await api.sessionRaw());
+    expect((session.data as { role: string }).role).toBe("ADMIN");
+    expect((session.data as { participantId: string | null }).participantId).toBeNull();
+
+    expect(await testDb().participant.count({ where: { user: { email: ORGANIZER.email } } })).toBe(0);
   });
 });

@@ -1,0 +1,18 @@
+import { chromium } from "@playwright/test";
+const b = await chromium.launch();
+const ctx = await b.newContext({ viewport: { width: 1440, height: 1000 } });
+await ctx.addCookies([{ name: "ptcn_session", value: process.env.TOK, domain: "localhost", path: "/", httpOnly: true, sameSite: "Lax", secure: false }]);
+const page = await ctx.newPage();
+await page.goto("http://localhost:3000/contest/a-very-big-sum", { waitUntil: "load" });
+await page.waitForTimeout(2000);
+const cnt = await page.locator("article").count(); console.log("articles:", cnt);
+const m = await page.evaluate(() => {
+  const art = document.querySelector("main article") || document.querySelectorAll("article")[0] || document.querySelector("section[aria-label=\"Your solution\"]").parentElement.querySelector("article");
+  const md = art.querySelector("div,section");
+  const p = art.querySelector("p");
+  const ta = document.querySelector('section[aria-label="Your solution"] textarea');
+  const h2s = [...art.querySelectorAll("h2")].map(h => ({ t: h.innerText, nextText: (h.nextElementSibling?.innerText || "").slice(0,40) }));
+  return { articleW: art.getBoundingClientRect().width, mdW: md?.getBoundingClientRect().width, pW: p?.getBoundingClientRect().width, taH: ta.getBoundingClientRect().height, taRows: Math.round(ta.clientHeight / parseFloat(getComputedStyle(ta).lineHeight)), h2s };
+});
+console.log(JSON.stringify(m, null, 1));
+await b.close();

@@ -23,8 +23,8 @@ export function LanguagePicker({ value, allowed, onChange, disabled = false }: L
   const id = useId();
 
   return (
-    <div className="flex items-center gap-2">
-      <label htmlFor={id} className="text-ink/70" style={{ fontSize: "var(--text-xs)" }}>
+    <div className="flex min-w-0 items-center gap-2">
+      <label htmlFor={id} className="shrink-0 text-ink/70" style={{ fontSize: "var(--text-xs)" }}>
         Language
       </label>
       <select
@@ -36,7 +36,9 @@ export function LanguagePicker({ value, allowed, onChange, disabled = false }: L
           const parsed = LanguageSchema.safeParse(event.target.value);
           if (parsed.success) onChange(parsed.data);
         }}
-        className="rounded border border-ink/25 bg-paper px-2 py-1.5 text-ink disabled:opacity-50"
+        // Roomy like HackerRank's, which is a wide control rather than a squeezed one — but
+        // `max-w-full` so it shrinks instead of pushing the header bar past 360px.
+        className="w-52 max-w-full rounded border border-ink/25 bg-paper px-2 py-1.5 text-ink disabled:opacity-50"
         style={{ fontSize: "var(--text-xs)" }}
       >
         {allowed.map((language) => (

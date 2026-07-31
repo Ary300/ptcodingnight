@@ -13,6 +13,16 @@ const eslintConfig = defineConfig([
     "build/**",
     "next-env.d.ts",
 
+    // Agent worktrees. `.claude/worktrees/<name>/` is a full second checkout of this repository,
+    // created inside the repo root — so without this eslint walks into it and lints another
+    // branch's tree as if it were ours. Observed: one run reported 35,418 problems, almost all of
+    // them from a vendored bundle that the root config already ignores at ITS path; another died
+    // with ENOENT as the agent working in that checkout deleted a scratch file mid-run.
+    //
+    // Either way G2 reads as failed for reasons that have nothing to do with the code under
+    // review, which is the worst possible failure mode for a gate — it trains you to ignore it.
+    ".claude/**",
+
     // Judge fixtures are student submissions, and most of them are WRONG ON PURPOSE — the CE
     // cases do not parse at all, and the TLE cases are infinite loops with unused variables.
     // Linting them is a category error: eslint's job is our code, and every finding here would

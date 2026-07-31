@@ -84,7 +84,20 @@ test.describe("the competitor journey in a browser", () => {
     // guess which one was meant. The header is the one this assertion is about.
     await expect(page.getByRole("banner").getByText(displayName)).toBeVisible();
 
-    const problemLinks = page.getByRole("listitem").getByRole("link");
+    /*
+      Scoped to the named list, like the filter spec below it.
+
+      Unscoped, `getByRole("listitem")` is every `li` on the page — and the lobby now opens with a
+      breadcrumb, whose first crumb is a link with no `aria-label`. So `.first()` was the
+      breadcrumb, this assertion read its (absent) label, and clicking it would have navigated
+      back to `/contest` rather than into a problem. The assertion's subject was always "a PROBLEM
+      row carries an accessible name"; saying so is what makes it survive the next thing added
+      above the list.
+    */
+    const problemLinks = page
+      .getByRole("list", { name: "Problems" })
+      .getByRole("listitem")
+      .getByRole("link");
     await expect(problemLinks.first()).toBeVisible();
     const firstProblem = problemLinks.first();
     const problemLabel = (await firstProblem.getAttribute("aria-label")) ?? "";

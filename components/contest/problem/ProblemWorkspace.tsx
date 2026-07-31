@@ -19,7 +19,7 @@ import { HintPanel } from "../hints/HintPanel";
 import { Markdown } from "../markdown/Markdown";
 import { rememberSource } from "../submissions/source-cache";
 import { VerdictPanel } from "../verdict/VerdictPanel";
-import { ProblemBreadcrumb, ProblemMetaRail, ProblemTabs } from "./ProblemMeta";
+import { ProblemBreadcrumb, ProblemMetaRail, ProblemStatusPill, ProblemTabs } from "./ProblemMeta";
 import { SampleIO } from "./SampleIO";
 import { useDraft } from "./useDraft";
 
@@ -41,6 +41,19 @@ import { useDraft } from "./useDraft";
 
 export interface ProblemWorkspaceProps {
   slug: string;
+}
+
+/** A titled slice of the statement, rendered only when the author wrote one. */
+function StatementSection({ title, source }: { title: string; source: string }) {
+  if (source.trim() === "") return null;
+  return (
+    <section className="mt-8">
+      <h2 className="font-display font-bold" style={{ fontSize: "var(--text-md)" }}>
+        {title}
+      </h2>
+      <Markdown source={source} className="mt-1" />
+    </section>
+  );
 }
 
 export function ProblemWorkspace({ slug }: ProblemWorkspaceProps) {
@@ -133,16 +146,27 @@ export function ProblemWorkspace({ slug }: ProblemWorkspaceProps) {
   return (
     <div>
       {/*
-        Breadcrumb, title, tabs — HackerRank's header, spanning the full width above the split.
-        The limits line that used to live under the title has moved into the right-hand rail,
-        where HackerRank puts Difficulty and Max Score, so the title area carries the name and
-        nothing else.
+        Breadcrumb, title with its status pill, tabs — HackerRank's header, spanning the full
+        width above the split. The limits line that used to live under the title has moved into
+        the right-hand rail, where HackerRank puts Difficulty and Max Score, so the title area
+        carries the name and its state and nothing else.
+
+        The pill sits on the same row as the title at `sm` and above, and wraps under it at 360px
+        rather than squeezing the title into two words per line.
       */}
       <ProblemBreadcrumb slotLabel={detail.slotLabel} title={detail.title} />
-      <h1 className="mt-2 font-display font-bold" style={{ fontSize: "var(--text-lg)" }}>
-        {detail.title}
-      </h1>
-      <ProblemTabs />
+      <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2">
+        {/*
+          Two steps of the app scale rather than one fixed size: HackerRank's challenge title is
+          the largest thing on its page, and 31px of Baskerville at 360px eats three lines of a
+          long title. On scale at both ends (DESIGN.md §4) — `--text-lg` then `--text-xl`.
+        */}
+        <h1 className="min-w-0 font-display font-bold text-[length:var(--text-lg)] sm:text-[length:var(--text-xl)]">
+          {detail.title}
+        </h1>
+        <ProblemStatusPill detail={detail} />
+      </div>
+      <ProblemTabs slug={slug} />
 
       {/*
         Statement across the measure with a metadata rail beside it, and the editor as a full-width
@@ -162,22 +186,15 @@ export function ProblemWorkspace({ slug }: ProblemWorkspaceProps) {
             className="mt-5"
           />
 
-          <section className="mt-8">
-            <h2 className="font-display font-bold" style={{ fontSize: "var(--text-md)" }}>
-              Input
-            </h2>
-            <Markdown source={detail.inputSpec} className="mt-1" />
-
-            <h2 className="mt-6 font-display font-bold" style={{ fontSize: "var(--text-md)" }}>
-              Output
-            </h2>
-            <Markdown source={detail.outputSpec} className="mt-1" />
-
-            <h2 className="mt-6 font-display font-bold" style={{ fontSize: "var(--text-md)" }}>
-              Constraints
-            </h2>
-            <Markdown source={detail.constraints} className="mt-1" />
-          </section>
+          {/*
+            Input, Output and Constraints are separate columns on `Problem`, and an author who has
+            already written them into the statement leaves them empty. Rendering the heading anyway
+            printed three bold words with nothing under them — which reads as content that failed
+            to load rather than as content that was never there.
+          */}
+          <StatementSection title="Input" source={detail.inputSpec} />
+          <StatementSection title="Output" source={detail.outputSpec} />
+          <StatementSection title="Constraints" source={detail.constraints} />
 
           <section className="mt-8">
             <h2 className="mb-3 font-display font-bold" style={{ fontSize: "var(--text-md)" }}>
@@ -195,25 +212,32 @@ export function ProblemWorkspace({ slug }: ProblemWorkspaceProps) {
 
       {/* ---- the editor panel, full width, below the statement ---- */}
       <section aria-label="Your solution" className="mt-8">
+        {/*
+          No `overflow-hidden` on this box, deliberately. It would tidy the dark band's corners
+          and it would also crop the editor's focus ring, which is drawn 2px OUTSIDE the textarea
+          and therefore outside this border — and a focus ring that is only mostly visible is the
+          one part of this panel that has to be exactly visible (G9, keyboard-only submit).
+          The header bar and the status strip cover the rounded corners on their own.
+        */}
         <div className="rounded border border-ink/15 bg-paper">
           {/*
-            The panel's own header bar, holding the language picker — where HackerRank puts its
-            language dropdown. Inside the panel rather than floating above it, so it reads as a
-            property of the editor rather than of the page.
+            The panel's own header bar, holding the language picker on the RIGHT — where
+            HackerRank puts its language dropdown. Inside the panel rather than floating above it,
+            so it reads as a property of the editor rather than of the page.
           */}
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-ink/15 bg-ink/[0.03] px-3 py-2">
-            <LanguagePicker
-              value={activeLanguage}
-              allowed={detail.allowedLanguages}
-              onChange={setChosenLanguage}
-              disabled={submitBusy || judging}
-            />
+          <div className="flex flex-wrap-reverse items-center justify-between gap-x-3 gap-y-2 border-b border-ink/15 bg-ink/[0.03] px-3 py-2">
             {/* 60%, not 55%: ink at 55% over paper composites to #7f7373, which measures
                 4.34:1 and fails AA's 4.5:1 at this size. 57% is the minimum that clears it;
                 60% gives 5.16:1 so a later token tweak does not silently drop it back under. */}
             <span className="text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
               Your work is kept in this tab until you close it.
             </span>
+            <LanguagePicker
+              value={activeLanguage}
+              allowed={detail.allowedLanguages}
+              onChange={setChosenLanguage}
+              disabled={submitBusy || judging}
+            />
           </div>
 
           <CodeEditor
@@ -224,39 +248,44 @@ export function ProblemWorkspace({ slug }: ProblemWorkspaceProps) {
             onSubmitShortcut={() => void submit()}
             label={`Solution for ${detail.title}`}
           />
+        </div>
 
-          {/*
-            The panel's action bar: upload on the LEFT, run and submit on the RIGHT — the
-            arrangement HackerRank uses, and the one that keeps the two destructive-ish actions
-            away from the one a student clicks by accident.
-          */}
-          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-ink/15 px-3 py-2.5">
-            <UploadCode
-              language={activeLanguage}
-              disabled={submitBusy || sampleBusy}
-              onLoaded={setSource}
-            />
+        {/*
+          The action row sits BELOW the panel, not inside it — HackerRank's arrangement, upload on
+          the left and the two run controls on the right.
 
-            <div className="flex flex-wrap items-center gap-3">
-              <span className="text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
-                Running samples is free. Submitting counts.
-              </span>
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => void runSamples()}
-                disabled={sampleBusy || submitBusy}
-              >
-                {sampleBusy ? "Running…" : "Run samples"}
-              </Button>
-              <Button
-                type="button"
-                onClick={() => void submit()}
-                disabled={submitBusy || sampleBusy || judging}
-              >
-                {submitBusy ? "Submitting…" : "Submit for judging"}
-              </Button>
-            </div>
+          The two buttons are not the same button and must not look it. `secondary` is an outline
+          and `primary` is filled panther, which is the same grey/accent pair HackerRank uses, and
+          the sentence between them says which one costs an attempt. On a phone they wrap to their
+          own row and Submit stays last, so the button nearest the thumb is still the deliberate
+          one rather than the accidental one.
+        */}
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
+          <UploadCode
+            language={activeLanguage}
+            disabled={submitBusy || sampleBusy}
+            onLoaded={setSource}
+          />
+
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
+              Running samples is free. Submitting counts.
+            </span>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => void runSamples()}
+              disabled={sampleBusy || submitBusy}
+            >
+              {sampleBusy ? "Running…" : "Run samples"}
+            </Button>
+            <Button
+              type="button"
+              onClick={() => void submit()}
+              disabled={submitBusy || sampleBusy || judging}
+            >
+              {submitBusy ? "Submitting…" : "Submit for judging"}
+            </Button>
           </div>
         </div>
 

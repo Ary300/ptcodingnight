@@ -370,6 +370,38 @@ export const SetContestStateRequestSchema = z.object({
 });
 export const SetContestStateResponseSchema = z.object({ state: z.string() });
 
+/**
+ * One problem in the bank, as the organizer's screen shows it.
+ *
+ * `readyBlockers` is a LIST OF REASONS rather than a boolean, because "why can I not use this
+ * one" is the question actually being asked, and a disabled button with no explanation is how an
+ * organizer ends up editing the database.
+ *
+ * There is deliberately no `referencePasses` field. Whether a reference solution passes is known
+ * only by running it through the real judge in a real container, which is G13's job
+ * (`npm run test:content`). The screen this replaces displayed a green "reference passed" computed
+ * by a function that never executed any code.
+ */
+export const AdminProblemRowSchema = z.object({
+  problemId: z.string(),
+  slug: z.string(),
+  title: z.string(),
+  state: z.enum(["DRAFT", "READY", "ARCHIVED"]),
+  difficulty: z.enum(["E", "M", "H"]).nullable(),
+  pastStatus: z.string().nullable(),
+  round: z.string(),
+  hasOriginalStatement: z.boolean(),
+  testCaseCount: z.number().int().nonnegative(),
+  sampleCaseCount: z.number().int().nonnegative(),
+  readyBlockers: z.array(z.string()),
+});
+export type AdminProblemRow = z.infer<typeof AdminProblemRowSchema>;
+
+export const AdminProblemBankSchema = z.object({
+  problems: z.array(AdminProblemRowSchema),
+});
+export type AdminProblemBank = z.infer<typeof AdminProblemBankSchema>;
+
 /** The organizer's roster view: every team plus everybody on none. */
 export const AdminRosterSchema = z.object({
   maxTeamSize: z.number().int().positive(),

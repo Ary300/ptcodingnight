@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui";
 import { GitHubMark, GoogleMark } from "./ProviderIcons";
@@ -27,10 +27,27 @@ import { GitHubMark, GoogleMark } from "./ProviderIcons";
  * The server answers one message for an unknown email and for a wrong password, and this renders
  * whatever it is told rather than improving on it. Distinguishing them turns the form into an
  * account-enumeration oracle, and organizers' addresses are their school addresses.
+ *
+ * ## THREE error slots, not one, and each sits next to the control that produced it
+ *
+ * There was one `error` state and one place that rendered it: underneath the organizer PASSWORD
+ * field. So a failed **passcode** submit printed "That passcode is not right" three hundred pixels
+ * above the passcode box the organizer had just used, tucked under an unrelated password input —
+ * and a failed **Google** sign-in printed its reason below the fold on a phone, nowhere near the
+ * button that had been pressed. Screenshot evidence: `05-wrong-passcode.png`, `02-google-…png`.
+ *
+ * A message that is not next to the thing it is about is a message most people never read.
+ * `busy` was shared for the same reason and had the same effect — submitting either form greyed
+ * out the other one's button.
  */
 
 interface SignInFormProps {
-  /** Rendered above the form — the OAuth callback redirects here with `?error=`. */
+  /**
+   * Rendered above everything, because the OAuth buttons are what produced it.
+   *
+   * Already resolved to a sentence by `signInErrorMessage` on the server. This component never
+   * sees the raw `?error=` code, which is what keeps arbitrary query-string text off the page.
+   */
   readonly initialError?: string | null;
 }
 
@@ -38,8 +55,36 @@ export function SignInForm({ initialError = null }: SignInFormProps) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [passcode, setPasscode] = useState("");
-  const [error, setError] = useState<string | null>(initialError);
-  const [busy, setBusy] = useState(false);
+
+  // One slot per control. See the note above about the passcode error landing under the password.
+  const [pageError, setPageError] = useState<string | null>(initialError);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [passcodeError, setPasscodeError] = useState<string | null>(null);
+
+  const [passwordBusy, setPasswordBusy] = useState(false);
+  const [passcodeBusy, setPasscodeBusy] = useState(false);
+
+  const bannerRef = useRef<HTMLDivElement>(null);
+
+  /**
+   * Announce the arrival-time error, which `role="alert"` alone does NOT do.
+   *
+   * A live region is announced when its content CHANGES. This banner's content is in the server
+   * response — `?error=` is resolved during render, so the element is already in the HTML the
+   * browser parses. There is no change for a screen reader to notice, and the message a student
+   * was redirected here to read is the one least likely to be read.
+   *
+   * Moving focus to it is the fix that works across screen readers: the banner is `tabIndex={-1}`
+   * so it can receive focus programmatically without joining the tab order, and taking focus also
+   * scrolls it into view, which is the same defect for a sighted student on a phone.
+   *
+   * Runs once, on mount, and only for the server-supplied error — the two fetch paths below set
+   * their own errors after an interaction, where `role="alert"` does fire and stealing focus from
+   * a form the person is still using would be worse than useless.
+   */
+  useEffect(() => {
+    if (initialError !== null && initialError !== "") bannerRef.current?.focus();
+  }, [initialError]);
 
   /**
    * The organizer passcode — the night's fallback, and the only way into `/admin` on a fresh
@@ -58,8 +103,8 @@ export function SignInForm({ initialError = null }: SignInFormProps) {
    */
   const submitPasscode = async (event: React.SyntheticEvent): Promise<void> => {
     event.preventDefault();
-    setBusy(true);
-    setError(null);
+    setPasscodeBusy(true);
+    setPasscodeError(null);
     try {
       const response = await fetch("/api/admin/session", {
         method: "POST",
@@ -67,49 +112,35 @@ export function SignInForm({ initialError = null }: SignInFormProps) {
         body: JSON.stringify({ passcode }),
       });
       if (!response.ok) {
-        const body: unknown = await response.json();
-        const message =
-          typeof body === "object" &&
-          body !== null &&
-          "error" in body &&
-          typeof (body as { error: { message?: unknown } }).error.message === "string"
-            ? (body as { error: { message: string } }).error.message
-            : "That passcode was not accepted.";
-        setError(message);
+        setPasscodeError(await messageFrom(response, "That passcode was not accepted."));
         return;
       }
       // A full navigation, not a router push: the session cookie was just set and the admin
       // layout is a server component that has to be rendered with it.
       window.location.assign("/admin");
     } catch {
-      setError("Could not reach the server.");
+      setPasscodeError("Could not reach the server. Check the connection and try again.");
     } finally {
-      setBusy(false);
+      setPasscodeBusy(false);
     }
   };
 
   const submit = async (event: React.SyntheticEvent): Promise<void> => {
     event.preventDefault();
-    setBusy(true);
-    setError(null);
+    setPasswordBusy(true);
+    setPasswordError(null);
     try {
       const response = await fetch("/api/auth/password", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ email, password }),
       });
-      const body: unknown = await response.json();
       if (!response.ok) {
-        const message =
-          typeof body === "object" &&
-          body !== null &&
-          "error" in body &&
-          typeof (body as { error: { message?: unknown } }).error.message === "string"
-            ? (body as { error: { message: string } }).error.message
-            : "That sign-in did not work.";
-        setError(message);
+        setPasswordError(await messageFrom(response, "That sign-in did not work."));
         return;
       }
+      const body: unknown = await response.json();
+
       // Routed by ROLE, not hardcoded to /admin. Competitors can hold a password too — an
       // organizer may set one for a student whose provider is not working — and sending them to
       // the console lands them on a screen that refuses them, which reads as "your sign-in
@@ -124,14 +155,48 @@ export function SignInForm({ initialError = null }: SignInFormProps) {
       // from before the sign-in.
       window.location.assign(role === "ADMIN" ? "/admin" : "/contest");
     } catch {
-      setError("Could not reach the server.");
+      setPasswordError("Could not reach the server. Check the connection and try again.");
     } finally {
-      setBusy(false);
+      setPasswordBusy(false);
     }
   };
 
   return (
     <div>
+      {/*
+        The page-level banner, ABOVE the OAuth buttons.
+
+        This is where an `?error=` redirect lands, and every redirect that sets one came from
+        pressing one of those two buttons. It used to render under the organizer password field,
+        which is both the wrong control and — at 360px, with the real three-line message — below
+        the fold.
+      */}
+      {pageError !== null && (
+        <div
+          ref={bannerRef}
+          role="alert"
+          tabIndex={-1}
+          /*
+            6%, not more. Panther on paper is 5.08:1; over a 6% panther tint it is 4.65:1, still
+            clear of AA's 4.5:1 at this size. A heavier tint reads better as a banner and puts the
+            message under the threshold, which is the wrong trade for the one sentence on this page
+            somebody has to be able to read.
+          */
+          className="mb-4 rounded border border-panther/40 bg-panther/[0.06] px-3 py-2.5 text-panther"
+          style={{ fontSize: "var(--text-sm)" }}
+        >
+          <p>{pageError}</p>
+          <button
+            type="button"
+            onClick={() => setPageError(null)}
+            className="mt-1 underline underline-offset-2 hover:no-underline"
+            style={{ fontSize: "var(--text-xs)" }}
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
       {/*
         OAuth first, and prominent. This is how a STUDENT signs up now — the buttons are the
         primary action for almost everyone who reaches this page, so they sit above the fold
@@ -188,6 +253,13 @@ export function SignInForm({ initialError = null }: SignInFormProps) {
             required
             value={email}
             onChange={(event) => setEmail(event.target.value)}
+            /*
+              Both fields carry the invalid state and point at the message, because the server
+              cannot say WHICH of the two was wrong (see the note on enumeration above) — so
+              flagging one of them would be a guess presented as a fact.
+            */
+            aria-invalid={passwordError !== null}
+            aria-describedby={passwordError !== null ? "password-form-error" : undefined}
             className="rounded border border-ink/25 bg-paper px-3 py-2"
             style={{ fontSize: "var(--text-sm)" }}
           />
@@ -201,19 +273,26 @@ export function SignInForm({ initialError = null }: SignInFormProps) {
             required
             value={password}
             onChange={(event) => setPassword(event.target.value)}
+            aria-invalid={passwordError !== null}
+            aria-describedby={passwordError !== null ? "password-form-error" : undefined}
             className="rounded border border-ink/25 bg-paper px-3 py-2"
             style={{ fontSize: "var(--text-sm)" }}
           />
         </label>
 
-        {error !== null && (
-          <p role="alert" className="text-panther" style={{ fontSize: "var(--text-xs)" }}>
-            {error}
+        {passwordError !== null && (
+          <p
+            id="password-form-error"
+            role="alert"
+            className="text-panther"
+            style={{ fontSize: "var(--text-xs)" }}
+          >
+            {passwordError}
           </p>
         )}
 
-        <Button type="submit" disabled={busy || email === "" || password === ""}>
-          {busy ? "Signing in…" : "Sign in"}
+        <Button type="submit" disabled={passwordBusy || email === "" || password === ""}>
+          {passwordBusy ? "Signing in…" : "Sign in"}
         </Button>
       </form>
 
@@ -227,8 +306,11 @@ export function SignInForm({ initialError = null }: SignInFormProps) {
         student in the room to have a go at it, and the thing it opens is the console that can
         rewrite a verdict. `<details>` rather than state: it is a disclosure, the element exists
         for exactly this, and it keeps working with no JavaScript.
+
+        `open` is forced while there is a passcode error, so a refusal cannot be reported into a
+        collapsed section — which is what would happen to anyone who submitted and then closed it.
       */}
-      <details className="mt-6 border-t border-ink/12 pt-4">
+      <details className="mt-6 border-t border-ink/12 pt-4" open={passcodeError !== null}>
         <summary
           className="cursor-pointer text-ink/70 hover:text-ink"
           style={{ fontSize: "var(--text-xs)" }}
@@ -244,13 +326,26 @@ export function SignInForm({ initialError = null }: SignInFormProps) {
               autoComplete="off"
               value={passcode}
               onChange={(event) => setPasscode(event.target.value)}
+              aria-invalid={passcodeError !== null}
+              aria-describedby={passcodeError !== null ? "passcode-form-error" : undefined}
               className="rounded border border-ink/25 bg-paper px-3 py-2"
               style={{ fontSize: "var(--text-sm)" }}
             />
           </label>
 
-          <Button type="submit" variant="secondary" disabled={busy || passcode === ""}>
-            {busy ? "Checking…" : "Open the organizer console"}
+          {passcodeError !== null && (
+            <p
+              id="passcode-form-error"
+              role="alert"
+              className="text-panther"
+              style={{ fontSize: "var(--text-xs)" }}
+            >
+              {passcodeError}
+            </p>
+          )}
+
+          <Button type="submit" variant="secondary" disabled={passcodeBusy || passcode === ""}>
+            {passcodeBusy ? "Checking…" : "Open the organizer console"}
           </Button>
 
           <p className="text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
@@ -261,4 +356,30 @@ export function SignInForm({ initialError = null }: SignInFormProps) {
       </details>
     </div>
   );
+}
+
+/**
+ * Pull the message out of an error envelope, or fall back.
+ *
+ * Both submit handlers had their own inline copy of this, and they had drifted: the password one
+ * read the body before checking `response.ok` and the passcode one after, so a non-JSON response
+ * (a proxy's 502 page, say) threw in one and was handled in the other. One function, and it never
+ * throws — `response.json()` on an HTML body is exactly the case a sign-in form meets when
+ * something upstream is unwell.
+ */
+async function messageFrom(response: Response, fallback: string): Promise<string> {
+  try {
+    const body: unknown = await response.json();
+    if (
+      typeof body === "object" &&
+      body !== null &&
+      "error" in body &&
+      typeof (body as { error: { message?: unknown } }).error?.message === "string"
+    ) {
+      return (body as { error: { message: string } }).error.message;
+    }
+  } catch {
+    // Not JSON. The fallback is a sentence; the response body could be anything at all.
+  }
+  return fallback;
 }

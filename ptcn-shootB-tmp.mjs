@@ -1,0 +1,27 @@
+import { chromium } from "@playwright/test";
+const OUT = process.env.OUT;
+const b = await chromium.launch();
+const ctx = await b.newContext({ viewport: { width: 360, height: 780 }, deviceScaleFactor: 2, isMobile: false });
+await ctx.addCookies([{ name: "ptcn_session", value: process.env.TOK, domain: "localhost", path: "/", httpOnly: true, sameSite: "Lax", secure: false }]);
+const page = await ctx.newPage();
+await page.goto("http://localhost:3000/contest/a-very-big-sum", { waitUntil: "load" });
+await page.waitForTimeout(2500);
+const ta = page.locator("textarea");
+await ta.click();
+await ta.fill("");
+const read = async (label) => {
+  const s = await page.evaluate(() => { const t = document.querySelector('section[aria-label="Your solution"] textarea'); const p = t.closest("div.relative").querySelector("pre"); return { taLeft: t.scrollLeft, preLeft: p.scrollLeft, sel: t.selectionStart, val: t.value.length }; });
+  console.log(label, JSON.stringify(s));
+};
+await page.keyboard.type("import sys\ndef main():\nd = sys.stdin.read().split()  # a deliberately long trailing comment that runs past the edge");
+await read("after long line, caret at end");
+await page.keyboard.type("\nprint(sum(int(x) for x in d[1:]))");
+await read("after next short line typed");
+await page.keyboard.press("ArrowUp");
+await page.keyboard.press("Home");
+await read("after Home on short line");
+const panel = page.locator('section[aria-label="Your solution"]');
+await panel.scrollIntoViewIfNeeded();
+await page.waitForTimeout(300);
+await panel.screenshot({ path: `${OUT}/editor-360-after-short-line.png` });
+await b.close();

@@ -1,10 +1,11 @@
-import Link from "next/link";
+import { Crumbs, TabStrip } from "@/components/ui";
 
 import type { ProblemDetail } from "@/lib/schemas/api";
 
 /**
- * The furniture HackerRank puts around a problem: a breadcrumb above the title, a tab strip under
- * it, and a metadata rail down the right — Difficulty, Max Score, and the limits.
+ * The furniture HackerRank puts around a problem: a breadcrumb above the title, a status pill
+ * beside it, a folder-tab strip under it, and a metadata rail down the right — Difficulty,
+ * Max Score, and the limits.
  *
  * ## Why this is worth copying rather than inventing
  *
@@ -18,8 +19,12 @@ import type { ProblemDetail } from "@/lib/schemas/api";
  * HackerRank's rail also carries Author, Submitted By, a five-star rating, discussions, an
  * editorial, and "download problem statement". Every one of those is either a thing we do not
  * have or a thing we must not offer mid-contest — an editorial link during a live round is a
- * cheating vector, not a convenience. The tab strip is Problem / Submissions / Leaderboard and
+ * cheating vector, not a convenience. Its social share row goes for the same reason: a student
+ * tweeting the problem mid-round is publishing it. The tab strip is Problem / Submissions and
  * stops there.
+ *
+ * The strip and the breadcrumb are `components/ui`'s, not this file's. They are shared with the
+ * organizer console on purpose — a student and an organizer should recognise the same furniture.
  */
 
 const DIFFICULTY_LABEL: Record<string, string> = { E: "Easy", M: "Medium", H: "Hard" };
@@ -51,81 +56,118 @@ export function DifficultyPill({ difficulty }: { difficulty: string | null }) {
   );
 }
 
+/**
+ * The pill beside the title — where HackerRank puts its red `locked` badge.
+ *
+ * It is a WORD in every state, never a colour on its own (DESIGN.md §3): "Locked", "Solved",
+ * "Attempted". Solved is the filled one because it is the state a student is looking for when
+ * they scan back over a problem they have already been in.
+ */
+export function ProblemStatusPill({ detail }: { detail: ProblemDetail }) {
+  if (!detail.unlocked) {
+    return (
+      <span
+        className="inline-flex shrink-0 items-center gap-1.5 rounded bg-panther px-2.5 py-1 font-semibold text-paper"
+        style={{ fontSize: "var(--text-xs)" }}
+      >
+        {/* Drawn, not a glyph: a padlock character sits outside the vendored woff2 subsets and
+            would tofu on an unknown machine (DESIGN.md §3). */}
+        <svg width="10" height="12" viewBox="0 0 10 12" aria-hidden="true" fill="currentColor">
+          <path d="M5 0a3 3 0 0 0-3 3v1H1v8h8V4H8V3a3 3 0 0 0-3-3zm0 1.5A1.5 1.5 0 0 1 6.5 3v1h-3V3A1.5 1.5 0 0 1 5 1.5z" />
+        </svg>
+        Locked
+      </span>
+    );
+  }
+
+  if (detail.solved) {
+    return (
+      <span
+        className="inline-flex shrink-0 items-center rounded bg-panther px-2.5 py-1 font-semibold text-paper"
+        style={{ fontSize: "var(--text-xs)" }}
+      >
+        Solved{detail.bestScore === null ? "" : ` · ${String(detail.bestScore)} pts`}
+      </span>
+    );
+  }
+
+  if (detail.bestScore !== null) {
+    return (
+      <span
+        className="inline-flex shrink-0 items-center rounded border border-ink/25 px-2.5 py-1 text-ink/80"
+        style={{ fontSize: "var(--text-xs)" }}
+      >
+        Attempted · {detail.bestScore} pts
+      </span>
+    );
+  }
+
+  return null;
+}
+
+/** `Problems › B2 › A Very Big Sum`, in the shared breadcrumb. */
 export function ProblemBreadcrumb({ slotLabel, title }: { slotLabel: string; title: string }) {
   return (
-    <nav aria-label="Breadcrumb">
-      <ol className="flex flex-wrap items-center gap-2 text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
-        <li>
-          <Link href="/contest" className="underline underline-offset-2 hover:text-panther">
-            Problems
-          </Link>
-        </li>
-        <li aria-hidden="true">&rsaquo;</li>
-        <li className="numeric">{slotLabel}</li>
-        <li aria-hidden="true">&rsaquo;</li>
-        <li aria-current="page" className="text-ink/80">
-          {title}
-        </li>
-      </ol>
-    </nav>
+    <Crumbs
+      trail={[{ href: "/contest", label: "Problems" }, { label: slotLabel }, { label: title }]}
+    />
   );
 }
 
 /**
- * The tab strip. `Problem` is the current page; the other two are real destinations rather than
- * client-side panels, because a student who wants their submission history mid-contest wants the
- * full list, not a truncated preview of it.
+ * The folder-tab strip. Two tabs, like HackerRank's challenge screen.
+ *
+ * `Submissions` is a real destination rather than a client-side panel, because a student who
+ * wants their history mid-contest wants the full list, not a truncated preview of it. The
+ * standings are one click away in the account menu and in the top bar, so a third tab here would
+ * be a third route into the same board.
  */
-export function ProblemTabs() {
+export function ProblemTabs({ slug }: { slug: string }) {
   return (
-    <nav aria-label="Problem views" className="mt-4 border-b border-ink/15">
-      <ul className="flex flex-wrap gap-6">
-        <li>
-          <span
-            aria-current="page"
-            className="inline-block border-b-2 border-panther pb-2 font-semibold"
-            style={{ fontSize: "var(--text-sm)" }}
-          >
-            Problem
-          </span>
-        </li>
-        <li>
-          <Link
-            href="/submissions"
-            className="inline-block border-b-2 border-transparent pb-2 text-ink/65 hover:text-ink"
-            style={{ fontSize: "var(--text-sm)" }}
-          >
-            Submissions
-          </Link>
-        </li>
-        <li>
-          <Link
-            href="/contest"
-            className="inline-block border-b-2 border-transparent pb-2 text-ink/65 hover:text-ink"
-            style={{ fontSize: "var(--text-sm)" }}
-          >
-            Leaderboard
-          </Link>
-        </li>
-      </ul>
-    </nav>
+    <TabStrip
+      label="Problem views"
+      pathname={`/contest/${slug}`}
+      items={[
+        { href: `/contest/${slug}`, label: "Problem" },
+        { href: "/submissions", label: "Submissions" },
+      ]}
+    />
   );
 }
 
-/** Difficulty, Max Score and the limits, as a description list so it reads as pairs. */
+/**
+ * Difficulty, Max Score and the limits, as a description list so it reads as pairs.
+ *
+ * Borderless with hairline separators, the way HackerRank's rail is: it is an annotation on the
+ * statement beside it, and a card would make it compete with the statement for attention. At
+ * `lg` and below it stacks under the statement, where a top rule is what keeps it from reading
+ * as another paragraph of the problem.
+ */
 export function ProblemMetaRail({ detail }: { detail: ProblemDetail }) {
   const rows: { label: string; value: React.ReactNode }[] = [
     { label: "Difficulty", value: <DifficultyPill difficulty={detail.difficulty} /> },
     { label: "Max Score", value: <span className="numeric">{detail.basePoints}</span> },
+    {
+      label: "Your best",
+      value:
+        detail.bestScore === null ? (
+          <span className="text-ink/60">—</span>
+        ) : (
+          <span className="numeric">{detail.bestScore}</span>
+        ),
+    },
     { label: "Time limit", value: <span className="numeric">{detail.timeLimitMs} ms</span> },
     { label: "Memory", value: <span className="numeric">{detail.memoryLimitMb} MB</span> },
   ].filter((row) => row.value !== null);
 
   return (
-    <aside aria-label="Problem details" className="rounded border border-ink/15 bg-paper p-4">
+    <aside aria-label="Problem details" className="border-t border-ink/15 pt-4 lg:border-t-0 lg:pt-0">
       <dl className="flex flex-col gap-2.5">
         {rows.map((row) => (
-          <div key={row.label} className="flex items-center justify-between gap-4">
+          <div
+            key={row.label}
+            className="flex items-center justify-between gap-4 border-b border-ink/10 pb-2 last:border-b-0"
+          >
             <dt className="text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
               {row.label}
             </dt>

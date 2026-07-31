@@ -68,13 +68,16 @@ export function Countdown({ endsAt, label = "Time remaining" }: CountdownProps) 
       invisible pill. A hairline and a barely-lifted surface keep it readable as a distinct
       object without introducing a third colour into the bar.
     */
-    <div className="inline-flex items-center gap-3 rounded border border-paper/25 bg-paper/10 px-3 py-1.5">
-      <span className="text-paper/75 uppercase" style={{ fontSize: "var(--text-xs)", letterSpacing: "0.08em" }}>
+    <div className="inline-flex shrink-0 items-center gap-2.5 rounded border border-paper/25 bg-paper/10 px-2.5 py-1">
+      <span
+        className="whitespace-nowrap text-paper/75 uppercase"
+        style={{ fontSize: "var(--text-xs)", letterSpacing: "0.08em" }}
+      >
         {over ? "Finished" : label}
       </span>
       <span
         aria-hidden="true"
-        className="numeric font-semibold"
+        className="numeric font-semibold whitespace-nowrap"
         style={{
           fontSize: "var(--text-md)",
           color: urgent ? "var(--color-gold)" : "var(--color-paper)",

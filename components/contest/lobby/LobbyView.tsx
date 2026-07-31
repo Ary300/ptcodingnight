@@ -3,9 +3,12 @@
 import Link from "next/link";
 import { useCallback } from "react";
 
+import { Crumbs } from "@/components/ui";
+
 import { contestApi } from "../data/backend";
 import { useParticipant } from "../data/participant";
 import { useResource } from "../data/useResource";
+import { AssignmentNotice } from "./AssignmentNotice";
 import { ProblemBrowser } from "./ProblemBrowser";
 import { StandingsCard } from "./StandingsCard";
 
@@ -16,6 +19,9 @@ import { StandingsCard } from "./StandingsCard";
  * An un-joined visitor gets a link, not a redirect. A `router.replace` here races the
  * `sessionStorage` read that decides whether they are joined at all, and the failure mode is
  * a student bounced back to the join screen mid-contest for no visible reason.
+ *
+ * The breadcrumb is HackerRank's, and it earns its line: the dark bar says which tab you are on
+ * but not which contest you are in, and a student on a phone has no other place to read that.
  */
 
 export function LobbyView() {
@@ -48,17 +54,41 @@ export function LobbyView() {
     );
   }
 
+  const joined = participant.status === "joined" ? participant.participant : null;
+  const groupProblemCount = (problems.data ?? []).filter(
+    (problem) => problem.isGroupProblem,
+  ).length;
+
   return (
     <div className="grid gap-8 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
       <section className="min-w-0">
-        <h1 className="font-display font-bold" style={{ fontSize: "var(--text-xl)" }}>
+        <Crumbs trail={[{ href: "/contest", label: "Coding Night" }, { label: "Problems" }]} />
+
+        <h1 className="mt-1 font-display font-bold" style={{ fontSize: "var(--text-xl)" }}>
           Problems
         </h1>
-        <p className="mt-1 text-ink/65" style={{ fontSize: "var(--text-xs)" }}>
+        <p className="mt-1 text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
           Running samples is always free. Only submissions are scored.
         </p>
 
-        <div className="mt-5">
+        {/*
+          Above the list, not below it. Whether you are on a team decides what the list can
+          contain, so a student reading top to bottom has the explanation before the thing it
+          explains — which is the difference between "the site is broken" and "I am waiting for an
+          organizer". Held until the problems have loaded, so the group count it quotes is real
+          rather than zero-for-one-frame.
+        */}
+        {joined !== null && problems.status === "ready" && (
+          <div className="mt-4">
+            <AssignmentNotice
+              needsTeam={joined.needsTeam}
+              setLabel={joined.chosenSetLabel}
+              groupProblemCount={groupProblemCount}
+            />
+          </div>
+        )}
+
+        <div className="mt-4">
           {problems.status === "loading" && (
             <p role="status" className="text-ink/60" style={{ fontSize: "var(--text-sm)" }}>
               Loading problems…

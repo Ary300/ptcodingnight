@@ -27,19 +27,47 @@ export interface Enrolment {
 }
 
 /**
+ * How an enrollable contest is chosen when there is more than one.
+ *
+ * A RUNNING contest beats one that has not started, always. Ordering by `startsAt` alone — which
+ * is what this did — picks the contest that starts FURTHEST IN THE FUTURE, so the moment an
+ * organizer drafts next month's Coding Night, every student signing in tonight is enrolled in next
+ * month's instead. Nothing errors. They land on a contest with no problems published, the roster
+ * for tonight shows nobody, and the only visible symptom is two screens that are quietly empty —
+ * the same signature as the "site looked dead" failure, from a different cause.
+ */
+const STATE_PRIORITY: Readonly<Record<"RUNNING" | "SCHEDULED" | "DRAFT", number>> = {
+  RUNNING: 0,
+  SCHEDULED: 1,
+  DRAFT: 2,
+};
+
+/**
  * The contest an organizer is currently running, or null.
  *
  * DRAFT and SCHEDULED are included, unlike the projector's version of this query. The roster is
  * built BEFORE the contest starts — that is the whole point of it — so enrolling only into a
  * RUNNING contest would mean nobody appears until the moment it is too late to organise them.
+ *
+ * Null means "there is nothing to enrol anyone in", and its callers must SAY so rather than sign
+ * the student in anyway: a session with no participantId authorizes as nobody.
  */
 async function enrollableContestId(): Promise<string | null> {
-  const contest = await prisma.contest.findFirst({
+  const contests = await prisma.contest.findMany({
     where: { state: { in: ["DRAFT", "SCHEDULED", "RUNNING"] } },
     orderBy: { startsAt: "desc" },
-    select: { id: true },
+    select: { id: true, state: true },
   });
-  return contest?.id ?? null;
+
+  // Sorted on a copy: `Array.prototype.sort` mutates, and the rows are the query's, not ours.
+  // The sort is stable, so `startsAt desc` still decides ties inside a state.
+  const ranked = [...contests].sort(
+    (a, b) =>
+      STATE_PRIORITY[a.state as keyof typeof STATE_PRIORITY] -
+      STATE_PRIORITY[b.state as keyof typeof STATE_PRIORITY],
+  );
+
+  return ranked[0]?.id ?? null;
 }
 
 /**

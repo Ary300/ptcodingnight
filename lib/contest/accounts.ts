@@ -22,6 +22,37 @@ import type { OAuthIdentity, OAuthProvider } from "@/lib/contest/oauth";
  * linkable to a provider by verified email.
  */
 
+/**
+ * The two refusals `linkedUserFor` can produce, as TYPES rather than as message strings.
+ *
+ * The OAuth callback has to tell them apart to pick which sentence a student reads, and it was
+ * doing that by not telling them apart at all: both are `DomainError("UNAUTHORIZED", …)`, both
+ * were thrown through `handle()`, and both therefore painted an API envelope across the browser
+ * window. Matching on `error.publicMessage` would have worked and would have coupled the wording
+ * of a student-facing sentence to a control-flow decision — change the copy, silently change the
+ * branch.
+ *
+ * Both still extend `DomainError`, so every OTHER caller — the ones that do answer with JSON —
+ * keeps the same code, status and message it had.
+ */
+export class AccountDisabledError extends DomainError {
+  constructor() {
+    super("UNAUTHORIZED", "That account has been disabled");
+    this.name = "AccountDisabledError";
+  }
+}
+
+export class ProviderLinkConflictError extends DomainError {
+  constructor(provider: OAuthProvider) {
+    super(
+      "UNAUTHORIZED",
+      `That account is already linked to a different ${providerLabel(provider)} account. ` +
+        "An organizer needs to unlink it first.",
+    );
+    this.name = "ProviderLinkConflictError";
+  }
+}
+
 export const EmailLoginSchema = z.object({
   email: z.string().trim().toLowerCase().pipe(z.email("That does not look like an email address")),
   password: z.string().min(1, "Enter your password").max(400),
@@ -93,10 +124,15 @@ const DUMMY_HASH =
   "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==";
 
 /**
- * Resolve an OAuth identity to an existing account, linking on first use.
+ * Resolve an OAuth identity to an account, CREATING one on a first sign-in.
  *
- * Throws rather than creating. The error names the fallback, because a student staring at "no
- * account" needs to know a join code will work.
+ * The doc comment here used to read "throws rather than creating — the error names the fallback,
+ * because a student staring at 'no account' needs to know a join code will work". Both halves are
+ * now false: this creates accounts, and there is no join code. Left uncorrected it is worse than
+ * no comment, because it describes a refusal that a reader would then go looking for.
+ *
+ * What replaces it is narrower and is enforced twice: signing in can only ever produce a
+ * COMPETITOR. See `selfSignUpFromOAuth`.
  */
 export async function linkedUserFor(identity: OAuthIdentity): Promise<AuthenticatedUser> {
   const subjectField = identity.provider === "google" ? "googleSub" : "githubSub";
@@ -109,7 +145,7 @@ export async function linkedUserFor(identity: OAuthIdentity): Promise<Authentica
 
   if (linked !== null) {
     if (linked.disabledAt !== null) {
-      throw new DomainError("UNAUTHORIZED", "That account has been disabled");
+      throw new AccountDisabledError();
     }
     return {
       userId: linked.id,
@@ -154,7 +190,7 @@ export async function linkedUserFor(identity: OAuthIdentity): Promise<Authentica
   }
 
   if (byEmail.disabledAt !== null) {
-    throw new DomainError("UNAUTHORIZED", "That account has been disabled");
+    throw new AccountDisabledError();
   }
 
   // Refuse to move a link that already points somewhere else. Reaching here means the same email
@@ -162,11 +198,7 @@ export async function linkedUserFor(identity: OAuthIdentity): Promise<Authentica
   // address, or an attempt to take over the account. Either way a human should look.
   const existingSubject = identity.provider === "google" ? byEmail.googleSub : byEmail.githubSub;
   if (existingSubject !== null && existingSubject !== identity.subject) {
-    throw new DomainError(
-      "UNAUTHORIZED",
-      `That account is already linked to a different ${providerLabel(identity.provider)} account. ` +
-        "An organizer needs to unlink it first.",
-    );
+    throw new ProviderLinkConflictError(identity.provider);
   }
 
   await prisma.user.update({

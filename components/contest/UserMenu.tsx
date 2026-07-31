@@ -4,16 +4,22 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
 /**
- * The account menu HackerRank puts at the right of its nav: a chevron button, a panel with the
- * viewer's headline stat at the top, then divided destinations and finally sign-out.
+ * The account menu HackerRank puts at the right of its nav: an avatar and a chevron, a panel with
+ * the viewer's headline stat at the top, then divided destinations and finally sign-out.
  *
  * ## What goes in the highlighted slot
  *
  * HackerRank puts a currency there ("Hackos: 1110"). The equivalent fact here is the one a
- * competitor actually wants at a glance and currently has to change page to see: **their team and
- * its score.** A student who is on no team gets told so in that slot, because it is the single
- * most important thing about their standing — an unassigned player contributes to no team score,
- * and that is worth interrupting them about rather than hiding a page away.
+ * competitor actually wants at a glance and currently has to change page to see: **their team, and
+ * the problem set that team was assigned.** Sets are assigned and never chosen or previewed
+ * (PRD §6.2), so naming the set is the only feedback a student ever gets about it.
+ *
+ * A student who is on no team gets told so in that slot, because it is the single most important
+ * thing about their standing — an unassigned player contributes to no team score, and that is
+ * worth interrupting them about rather than hiding a page away.
+ *
+ * The slot is left-aligned where HackerRank centres it: theirs is one short balanced string, ours
+ * is a name over a quieter second line, and centred text with two weights reads as a wobble.
  *
  * ## Behaviour
  *
@@ -24,9 +30,10 @@ import { useEffect, useRef, useState } from "react";
 
 export interface UserMenuProps {
   readonly displayName: string;
-  /** The viewer's team and score, when they have one. */
+  /** The viewer's team, when they have one. */
   readonly teamName?: string | null;
-  readonly teamScore?: string | null;
+  /** The problem set an organizer assigned, when there is one. */
+  readonly setLabel?: string | null;
   readonly onSignOut: () => void;
 }
 
@@ -37,7 +44,32 @@ const ITEMS = [
   { href: "/projector", label: "Live standings" },
 ] as const;
 
-export function UserMenu({ displayName, teamName = null, teamScore = null, onSignOut }: UserMenuProps) {
+/**
+ * The first letter of the display name, in a disc.
+ *
+ * A real initial rather than a generic silhouette, because a shared lab machine is exactly where
+ * "am I still signed in as the last student" matters — and it is the fastest possible answer to
+ * that at 360px, where the name itself is hidden.
+ */
+function Avatar({ displayName }: { displayName: string }) {
+  const initial = displayName.trim().charAt(0).toUpperCase();
+  return (
+    <span
+      aria-hidden="true"
+      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-panther font-semibold text-paper"
+      style={{ fontSize: "var(--text-xs)" }}
+    >
+      {initial === "" ? "?" : initial}
+    </span>
+  );
+}
+
+export function UserMenu({
+  displayName,
+  teamName = null,
+  setLabel = null,
+  onSignOut,
+}: UserMenuProps) {
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement | null>(null);
 
@@ -73,13 +105,30 @@ export function UserMenu({ displayName, teamName = null, teamScore = null, onSig
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-haspopup="menu"
-        className="flex min-w-0 items-center gap-2 rounded px-2 py-1 text-paper/85 hover:text-paper"
-        style={{ fontSize: "var(--text-xs)" }}
+        /*
+          The name is hidden below `sm`, so the button would otherwise be an unlabelled disc and a
+          chevron. Stating the whole label here rather than relying on the visible text means the
+          accessible name does not change with the viewport.
+        */
+        aria-label={`Account: ${displayName}`}
+        className="flex min-w-0 items-center gap-2 rounded px-1.5 py-1 text-paper/85 hover:text-paper"
+        style={{ fontSize: "var(--text-sm)" }}
       >
-        <span // A tighter cap on a phone. 10rem of display name plus a chevron is 190px, which is
-          // half a 360px viewport spent on something the student already knows.
-          className="min-w-0 max-w-[7rem] truncate sm:max-w-[10rem]">{displayName}</span>
-        <span aria-hidden="true" className={open ? "rotate-180" : ""}>
+        <Avatar displayName={displayName} />
+        <span // Hidden only BELOW 400px, where 10rem of display name is a third of the viewport
+          // spent on something the student already knows; the avatar and the aria-label still
+          // identify the account there.
+          //
+          // 400 rather than the `sm` breakpoint on purpose. `sm` is 640px, which would hide the
+          // name on every phone including the 412px profile G7 runs — and G7 asserts that the
+          // banner shows who you are signed in as. A breakpoint chosen for tidiness would have
+          // turned a deliberate mobile affordance into a failing gate on the second-widest
+          // device in the suite.
+          className="hidden min-w-0 max-w-[10rem] truncate min-[400px]:block"
+        >
+          {displayName}
+        </span>
+        <span aria-hidden="true" className={open ? "shrink-0 rotate-180" : "shrink-0"}>
           &#9662;
         </span>
       </button>
@@ -95,27 +144,41 @@ export function UserMenu({ displayName, teamName = null, teamScore = null, onSig
             Stating the colour at the surface, rather than on each item, is what stops the next
             item added here from disappearing.
           */
-          className="absolute right-0 z-50 mt-1 w-60 overflow-hidden rounded border border-ink/20 bg-paper text-ink shadow-lg"
+          className="absolute right-0 z-50 mt-2 w-64 overflow-hidden rounded border border-ink/20 bg-paper text-ink shadow-lg"
         >
           {/*
             The highlighted slot. Panther red with paper text rather than red text on paper: at
             this size red-on-paper is below the contrast floor (DESIGN.md §2 pins --panther out
             of small body text), and inverting it puts the emphasis where HackerRank puts it
             without breaking the rule.
+
+            **The second line is FULL-STRENGTH paper, not a muted alpha.** It was `text-paper/85`
+            and axe measured it at 4.07:1 — a serious violation and a G9 failure. DESIGN.md §7's
+            47% floor is measured against `--ink`, which is 18.65:1 to begin with; `--panther` is a
+            far lighter ground at 5.08:1, so there is almost no headroom to spend and any alpha at
+            all drops it under AA. The floor does not transfer between grounds, and this is what
+            that looks like when you assume it does.
+
+            The two lines are still distinguished — by weight, which costs no contrast.
           */}
-          <div className="bg-panther px-3 py-2.5 text-paper">
+          <div className="bg-panther px-3.5 py-3 text-paper">
             {teamName === null ? (
-              <span style={{ fontSize: "var(--text-sm)" }}>Not on a team yet</span>
+              <>
+                <span className="block font-semibold" style={{ fontSize: "var(--text-sm)" }}>
+                  Not on a team yet
+                </span>
+                <span className="block" style={{ fontSize: "var(--text-xs)" }}>
+                  An organizer will add you
+                </span>
+              </>
             ) : (
               <>
                 <span className="block truncate font-semibold" style={{ fontSize: "var(--text-sm)" }}>
                   {teamName}
                 </span>
-                {teamScore !== null && (
-                  <span className="numeric block text-paper/85" style={{ fontSize: "var(--text-xs)" }}>
-                    {teamScore}
-                  </span>
-                )}
+                <span className="block" style={{ fontSize: "var(--text-xs)" }}>
+                  {setLabel === null ? "No problem set assigned yet" : `Problem set ${setLabel}`}
+                </span>
               </>
             )}
           </div>
@@ -138,7 +201,7 @@ export function UserMenu({ displayName, teamName = null, teamScore = null, onSig
                   href={item.href}
                   role="menuitem"
                   onClick={() => setOpen(false)}
-                  className="block px-3 py-2 hover:bg-ink/5"
+                  className="block px-3.5 py-2.5 hover:bg-ink/5"
                   style={{ fontSize: "var(--text-sm)" }}
                 >
                   {item.label}
@@ -153,7 +216,7 @@ export function UserMenu({ displayName, teamName = null, teamScore = null, onSig
                   setOpen(false);
                   onSignOut();
                 }}
-                className="block w-full px-3 py-2 text-left text-panther hover:bg-ink/5"
+                className="block w-full px-3.5 py-2.5 text-left font-semibold text-panther hover:bg-ink/5"
                 style={{ fontSize: "var(--text-sm)" }}
               >
                 Sign out

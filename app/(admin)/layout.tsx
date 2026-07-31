@@ -4,6 +4,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { AdminNav } from "@/components/admin/AdminNav";
+import { signInErrorLocation } from "@/lib/contest/sign-in-errors";
 import { isAdmin, viewerFromCookies } from "@/lib/contest/viewer";
 
 /**
@@ -45,6 +46,11 @@ import { isAdmin, viewerFromCookies } from "@/lib/contest/viewer";
  *
  * `redirect` rather than a 403 page: an organizer arriving with an expired session wants the
  * sign-in form, not an explanation of why they cannot have the console.
+ *
+ * The reason travels as a CODE, never as prose. `?error=` used to carry the sentence itself, which
+ * meant anybody could hand a student a link whose "error" was a paragraph of their own choosing,
+ * rendered in our styling on our domain above our sign-in form. `lib/contest/sign-in-errors.ts`
+ * owns the copy now, so the query string can only select from a closed set.
  */
 
 export const metadata: Metadata = {
@@ -54,7 +60,7 @@ export const metadata: Metadata = {
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   if (!isAdmin(await viewerFromCookies())) {
-    redirect("/sign-in?error=Sign+in+as+an+organizer+to+open+the+console.");
+    redirect(signInErrorLocation("organizer_required"));
   }
 
   return (

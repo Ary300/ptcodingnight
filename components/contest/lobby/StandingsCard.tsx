@@ -61,32 +61,70 @@ export function StandingsCard({ standings, participantId }: StandingsCardProps) 
             {division.name}
           </h3>
 
-          <table className="mt-2 w-full border-collapse">
+          {/*
+            The table scrolls INSIDE the card rather than being clipped by it.
+
+            Six columns do not fit a 360px phone, and without this the card simply cut "Penalty"
+            off at its right edge — a number a student is being scored on, silently missing, with
+            no scrollbar to say it was there. The page itself still does not scroll sideways,
+            which is the rule that matters (DESIGN.md §7).
+          */}
+          {/*
+            `tabIndex` because a scrollable box with nothing focusable in it is unreachable by
+            keyboard — axe calls that `scrollable-region-focusable`, and a serious finding there
+            is a G9 failure as well as a real one.
+          */}
+          {/*
+            `role="group"` rather than a bare div, because `aria-label` on an element with no role
+            is prohibited (axe: `aria-prohibited-attr`, serious) — and rather than `region`,
+            because one landmark per division would bury the real ones.
+          */}
+          <div
+            tabIndex={0}
+            role="group"
+            aria-label={`${division.name} standings table`}
+            /*
+              Height-capped as well as width-scrolled.
+
+              This is the "where am I" glance, not the board — the projector owns the board. With
+              a real roster the card ran past 3,000px and pushed the whole lobby into a scroll
+              whose only content was other people's names, which is exactly the opposite of a
+              glance. The viewer's own row stays findable because it is tinted, and the full board
+              is one click away in the nav.
+            */
+            className="mt-2 max-h-[28rem] overflow-auto"
+          >
+          <table className="w-full border-collapse">
             <caption className="sr-only">
               {division.name} standings{standings.frozen ? ", frozen" : ""}
             </caption>
             <thead>
+              {/*
+                `sticky` on each `th`, not on the `tr` — a table row is not a positionable box in
+                any browser that matters, so sticking the row silently does nothing. It has to
+                carry `bg-ink` too, or the rows scroll THROUGH the header rather than under it.
+              */}
               <tr className="text-paper/50" style={{ fontSize: "var(--text-xs)" }}>
-                <th scope="col" className="w-2" />
+                <th scope="col" className="sticky top-0 z-10 w-2 bg-ink" />
                 {/*
                   `pl-2` on every column after the first, because these headers ran together:
                   "RankName" and "Move ScorePenalty" rendered as single words. A table cell has no
                   gap of its own, and three right-aligned numeric columns put their labels flush
                   against each other — legible in the mock-up, unreadable with real data.
                 */}
-                <th scope="col" className="py-1 pl-2 text-left font-normal">
+                <th scope="col" className="sticky top-0 z-10 bg-ink py-1 pl-2 text-left font-normal">
                   Rank
                 </th>
-                <th scope="col" className="py-1 pl-2 text-left font-normal">
+                <th scope="col" className="sticky top-0 z-10 bg-ink py-1 pl-2 text-left font-normal">
                   Name
                 </th>
-                <th scope="col" className="py-1 pl-3 text-right font-normal">
+                <th scope="col" className="sticky top-0 z-10 bg-ink py-1 pl-3 text-right font-normal">
                   Move
                 </th>
-                <th scope="col" className="py-1 pl-3 text-right font-normal">
+                <th scope="col" className="sticky top-0 z-10 bg-ink py-1 pl-3 text-right font-normal">
                   Score
                 </th>
-                <th scope="col" className="py-1 pl-3 text-right font-normal">
+                <th scope="col" className="sticky top-0 z-10 bg-ink py-1 pl-3 text-right font-normal">
                   Penalty
                 </th>
               </tr>
@@ -134,6 +172,7 @@ export function StandingsCard({ standings, participantId }: StandingsCardProps) 
               })}
             </tbody>
           </table>
+          </div>
         </div>
       ))}
     </section>

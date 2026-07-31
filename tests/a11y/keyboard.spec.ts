@@ -78,7 +78,9 @@ test.describe("keyboard-only", () => {
     // placed. Nothing below this line uses anything but the keyboard.
     await placeInDivisionAndSet(page);
     await expect(page.getByRole("heading", { name: "Problems", level: 1 })).toBeVisible();
-    await expect(page.getByRole("listitem").getByRole("link").first()).toBeVisible();
+    await expect(
+      page.getByRole("list", { name: "Problems" }).getByRole("listitem").getByRole("link").first(),
+    ).toBeVisible();
 
     // --- pick a problem ------------------------------------------------------
     await page.evaluate(() => {
@@ -204,7 +206,14 @@ test.describe("keyboard-only", () => {
     await joinContest(page);
     await placeInDivisionAndSet(page);
 
-    await page.getByRole("listitem").getByRole("link").first().click();
+    // Scoped to the named list: the lobby opens with a breadcrumb now, so the first `li` link on
+    // the page is the crumb back to `/contest` rather than a problem.
+    await page
+      .getByRole("list", { name: "Problems" })
+      .getByRole("listitem")
+      .getByRole("link")
+      .first()
+      .click();
     await page.waitForURL(/\/contest\/[^/]+$/);
 
     const editor = page.getByRole("textbox", { name: /^Solution for / });

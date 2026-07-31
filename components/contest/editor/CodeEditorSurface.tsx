@@ -11,6 +11,7 @@ import {
   type UIEvent,
 } from "react";
 
+import { tokenize, type TokenKind } from "./highlight";
 import { LANGUAGE_LABEL, type CodeEditorProps } from "./types";
 
 /**
@@ -19,8 +20,30 @@ import { LANGUAGE_LABEL, type CodeEditorProps } from "./types";
  * **This is not Monaco.** `monaco-editor` / `@monaco-editor/react` are not installed and
  * `package.json` is orchestrator-owned (docs/PLAN.md §3), so this scope cannot add them.
  * The dependency request is in the report. What is here is a real, keyboard-complete code
- * editor — line numbers, Tab-to-indent, block indent/dedent, auto-indent — minus syntax
- * highlighting, which is the one thing that genuinely needs the library.
+ * editor — line numbers, Tab-to-indent, block indent/dedent, auto-indent, and syntax
+ * highlighting through a transparent-text textarea over a coloured layer.
+ *
+ * ## The overlay, and the one invariant it has
+ *
+ * A `<pre>` sits exactly under the textarea; the textarea paints its text transparent and keeps
+ * only its caret and its selection. So the two layers must agree on **every** metric that moves
+ * a glyph: family, size, line height, padding, tab size, and wrapping. They are set together
+ * below and in `SHARED_TEXT`, and `tokenize()` guarantees the other half — concatenating its
+ * tokens reproduces the source byte for byte. Drop one character there and every line after it
+ * slides out from under the caret.
+ *
+ * `wrap="off"` is part of that agreement rather than a style choice. A soft-wrapped line
+ * occupies two rows in the textarea and one row in the gutter, so line 40 stops being the
+ * fortieth row the moment anybody writes a long line — which is exactly when they need the
+ * number, because the compiler just quoted it. HackerRank scrolls sideways for the same reason.
+ *
+ * ## Colour on a dark ground, not HackerRank's white one
+ *
+ * The one place this deliberately departs from the reference screenshots. `--gold`, `--rise`
+ * and `--fall` all FAIL AA on `--paper` and are AAA on `--ink` (DESIGN.md §2), so a light code
+ * surface leaves exactly two usable hues — and the verdict panel below the editor is dark for
+ * that same unavoidable reason. A light editor above a dark verdict panel above dark statement
+ * code blocks would be the odd one out on its own page.
  *
  * ## Tab, and why it is not simply trapped
  *
@@ -35,6 +58,30 @@ import { LANGUAGE_LABEL, type CodeEditorProps } from "./types";
  */
 
 const INDENT = "    ";
+
+/** Every metric the two layers must agree on, in one object so they cannot drift apart. */
+const SHARED_TEXT = {
+  fontSize: "var(--text-xs)",
+  lineHeight: "1.6",
+  tabSize: 4,
+} as const;
+
+/**
+ * Token colours. All four accents are AAA on `--ink` (DESIGN.md §2's measured table:
+ * gold 13.44, fall 9.60, rise 9.23, paper 18.65), and comments sit at 65% — above the 47%
+ * floor for paper on ink with room to spare.
+ *
+ * Weight and slant carry the same distinctions as the hue does, so the surface still reads
+ * with the colour removed (DESIGN.md §3).
+ */
+const TOKEN_CLASS: Readonly<Record<TokenKind, string>> = {
+  plain: "text-paper",
+  keyword: "font-semibold text-gold",
+  string: "text-rise",
+  number: "text-fall",
+  comment: "text-paper/65 italic",
+  punctuation: "text-paper/75",
+};
 
 function lineStartBefore(value: string, index: number): number {
   return value.lastIndexOf("\n", index - 1) + 1;
@@ -55,10 +102,15 @@ export function CodeEditorSurface({
 }: CodeEditorProps) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const gutterRef = useRef<HTMLDivElement | null>(null);
+  const overlayRef = useRef<HTMLPreElement | null>(null);
   const [tabMovesFocus, setTabMovesFocus] = useState(false);
   const hintId = useId();
 
   const lineCount = useMemo(() => value.split("\n").length, [value]);
+
+  // Memoised on the two things it depends on: a scan of every character runs on each keystroke
+  // otherwise, and a 200 000-character source is a legal submission (SubmitRequestSchema).
+  const tokens = useMemo(() => tokenize(value, language), [value, language]);
 
   /**
    * Where the caret is, as a 1-based line and column.
@@ -121,6 +173,25 @@ export function CodeEditorSurface({
     if (element === null) return;
     element.setSelectionRange(pending[0], pending[1]);
   });
+
+  /**
+   * Re-align the overlay after any edit, not only after a scroll.
+   *
+   * Typing past the right edge scrolls the textarea without firing `scroll` in every browser,
+   * and the layer underneath would be left a few columns behind — which looks like the colours
+   * belong to the wrong characters.
+   */
+  useLayoutEffect(() => {
+    const element = textareaRef.current;
+    const overlay = overlayRef.current;
+    const gutter = gutterRef.current;
+    if (element === null) return;
+    if (overlay !== null) {
+      overlay.scrollTop = element.scrollTop;
+      overlay.scrollLeft = element.scrollLeft;
+    }
+    if (gutter !== null) gutter.scrollTop = element.scrollTop;
+  }, [value, caret]);
 
   const indentSelection = useCallback(
     (element: HTMLTextAreaElement, dedent: boolean) => {
@@ -225,57 +296,100 @@ export function CodeEditorSurface({
     [autoIndent, indentSelection, onSubmitShortcut, tabMovesFocus],
   );
 
-  const syncGutter = useCallback((event: UIEvent<HTMLTextAreaElement>) => {
+  /** One handler for both followers: the gutter tracks rows, the overlay tracks rows and columns. */
+  const syncScroll = useCallback((event: UIEvent<HTMLTextAreaElement>) => {
+    const source = event.currentTarget;
     const gutter = gutterRef.current;
-    if (gutter === null) return;
-    gutter.scrollTop = event.currentTarget.scrollTop;
+    const overlay = overlayRef.current;
+    if (gutter !== null) gutter.scrollTop = source.scrollTop;
+    if (overlay !== null) {
+      overlay.scrollTop = source.scrollTop;
+      overlay.scrollLeft = source.scrollLeft;
+    }
   }, []);
 
   return (
     <div className="flex flex-col">
-      <div className="flex overflow-hidden rounded border border-ink/20 bg-ink focus-within:border-panther">
+      {/*
+        The code area itself: gutter, coloured layer, and the textarea over both. No border and
+        no radius — it is one band inside the panel the workspace draws around it, which is how
+        HackerRank's editor sits inside its challenge card.
+      */}
+      <div className="flex bg-ink">
         <div
           ref={gutterRef}
           aria-hidden="true"
-          className="numeric shrink-0 overflow-hidden bg-paper/5 py-3 pr-2 pl-3 text-right text-paper/55 select-none"
-          style={{ fontSize: "var(--text-xs)", lineHeight: "1.6" }}
+          className="numeric shrink-0 overflow-hidden border-r border-paper/10 bg-paper/5 py-3 pr-2 pl-3 text-right select-none"
+          style={{ ...SHARED_TEXT }}
         >
           {Array.from({ length: lineCount }, (_unused, index) => (
-            <div key={index}>{index + 1}</div>
+            <div
+              key={index}
+              // The caret's own row, marked the way HackerRank marks it — but in the gutter
+              // rather than as a band across the code, because a band would have to be redrawn
+              // on every keystroke and horizontal scroll to stay under the right characters.
+              className={index + 1 === caret.line ? "text-paper" : "text-paper/55"}
+            >
+              {index + 1}
+            </div>
           ))}
         </div>
 
-        <textarea
-          ref={textareaRef}
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
-          onKeyDown={handleKeyDown}
-          onScroll={syncGutter}
-          disabled={disabled}
-          spellCheck={false}
-          autoCapitalize="off"
-          autoCorrect="off"
-          autoComplete="off"
-          aria-label={`${label} — ${LANGUAGE_LABEL[language]}`}
-          aria-describedby={hintId}
-          onSelect={(event) => syncCaret(event.currentTarget)}
-          onKeyUp={(event) => syncCaret(event.currentTarget)}
-          onClick={(event) => syncCaret(event.currentTarget)}
-          className="min-h-[18rem] flex-1 resize-y bg-transparent p-3 font-mono text-paper caret-gold outline-none disabled:opacity-60"
-          style={{ fontSize: "var(--text-xs)", lineHeight: "1.6", tabSize: 4 }}
-        />
+        <div className="relative min-w-0 flex-1">
+          <pre
+            ref={overlayRef}
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0 overflow-hidden p-3 font-mono whitespace-pre"
+            style={{ ...SHARED_TEXT }}
+          >
+            {tokens.map((token, index) => (
+              <span key={index} className={TOKEN_CLASS[token.kind]}>
+                {token.value}
+              </span>
+            ))}
+            {/* A trailing newline leaves the last row blank; this keeps the layer as tall as the
+                textarea so the final line never sits over nothing. */}
+            {"\n"}
+          </pre>
+
+          <textarea
+            ref={textareaRef}
+            value={value}
+            onChange={(event) => onChange(event.target.value)}
+            onKeyDown={handleKeyDown}
+            onScroll={syncScroll}
+            disabled={disabled}
+            spellCheck={false}
+            autoCapitalize="off"
+            autoCorrect="off"
+            autoComplete="off"
+            wrap="off"
+            aria-label={`${label} — ${LANGUAGE_LABEL[language]}`}
+            aria-describedby={hintId}
+            onSelect={(event) => syncCaret(event.currentTarget)}
+            onKeyUp={(event) => syncCaret(event.currentTarget)}
+            onClick={(event) => syncCaret(event.currentTarget)}
+            // `text-transparent` hands the glyphs to the layer underneath and keeps the caret and
+            // the selection, which are the two things only a real textarea can draw. The
+            // selection therefore needs its own colour: without it, selected text is an invisible
+            // block on a dark ground.
+            // Shorter on a phone: 22rem of editor plus the statement above it is a lot of
+            // scrolling to reach Submit, and the box is resizable anyway.
+            className="relative block max-h-[70vh] min-h-[16rem] w-full resize-y overflow-auto bg-transparent p-3 font-mono text-transparent caret-gold outline-none selection:bg-paper/25 disabled:cursor-not-allowed sm:min-h-[22rem]"
+            style={{ ...SHARED_TEXT }}
+          />
+        </div>
       </div>
 
       {/*
-        The keyboard contract on the left, the caret position on the right — the status strip
-        HackerRank runs under its editor.
-
-        `Line: N Col: M` earns its place on a screen with no syntax highlighting: a compiler error
-        names a line, and without this a student counts rows with a finger. It is `aria-hidden`
-        because it changes on every keystroke, and a live region that announces the column number
-        as you type is actively hostile to a screen-reader user.
+        The panel's status strip, inside its border — HackerRank's `Line: 60 Col: 1` footer, with
+        the keyboard contract in the space it leaves empty on the left.
+        `Line: N Col: M` earns its place on a screen this size: a compiler error names a line, and
+        without this a student counts rows with a finger. It is `aria-hidden` because it changes on
+        every keystroke, and a live region that announces the column number as you type is
+        actively hostile to a screen-reader user.
       */}
-      <div className="mt-2 flex flex-wrap items-baseline justify-between gap-3">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-t border-ink/15 px-3 py-2">
         <p id={hintId} className="text-ink/70" style={{ fontSize: "var(--text-xs)" }}>
           Tab indents. Press <kbd className="font-mono">Esc</kbd> then{" "}
           <kbd className="font-mono">Tab</kbd> to move on. <kbd className="font-mono">Ctrl</kbd>

@@ -1,0 +1,18 @@
+import { chromium } from "@playwright/test";
+const OUT = process.env.OUT;
+const b = await chromium.launch();
+const ctx = await b.newContext({ viewport: { width: 1440, height: 1000 }, deviceScaleFactor: 2 });
+await ctx.addCookies([{ name: "ptcn_session", value: process.env.TOK, domain: "localhost", path: "/", httpOnly: true, sameSite: "Lax", secure: false }]);
+const page = await ctx.newPage();
+await page.goto("http://localhost:3000/contest/a-very-big-sum", { waitUntil: "load" });
+await page.waitForTimeout(2000);
+const ta = page.locator("textarea");
+await ta.fill("import sys\nd=sys.stdin.read().split()\nprint(sum(int(x) for x in d[1:]))\n");
+await page.getByRole("button", { name: /Run samples/i }).click();
+await page.waitForTimeout(15000);
+const panel = page.locator('section[aria-label="Your solution"]');
+await panel.scrollIntoViewIfNeeded();
+await page.waitForTimeout(300);
+await panel.screenshot({ path: `${OUT}/editor-after-run.png` });
+console.log((await panel.innerText()).slice(0, 900));
+await b.close();

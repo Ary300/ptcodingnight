@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 
 import { TeamStandingsBoard, useTeamStandings } from "@/components/leaderboard";
+import { Crumbs } from "@/components/ui";
 
 
 /**
@@ -101,7 +102,16 @@ export function MyTeamView() {
   return (
     <div className="flex flex-col gap-5">
       <header>
-        <h1 className="font-display font-bold" style={{ fontSize: "var(--text-lg)" }}>
+        <Crumbs
+          trail={[
+            { href: "/contest", label: "Coding Night" },
+            { href: "/team", label: "My team" },
+            // The team's own name is the page you are on, so it is text rather than a link. Before
+            // the roster is set there is no name, and the trail simply ends at "My team".
+            ...(session?.teamName == null ? [] : [{ label: session.teamName }]),
+          ]}
+        />
+        <h1 className="mt-1 font-display font-bold" style={{ fontSize: "var(--text-xl)" }}>
           {session?.teamName ?? "My team"}
         </h1>
 
@@ -117,10 +127,21 @@ export function MyTeamView() {
           // Not a warning for its own sake. Team size is the divisor in every team score, so a
           // student with no team is scoring for nobody — and the only way they find out is if the
           // screen says so.
-          <p role="alert" className="mt-2 text-panther" style={{ fontSize: "var(--text-sm)" }}>
-            You are not on a team yet, so your points are not counted toward any team score. Tell an
-            organizer — they can add you.
-          </p>
+          //
+          // The second sentence is worth as much as the first and is load-bearing rather than
+          // reassurance: standings are recomputed from the raw submission log every time
+          // (`computeTeamStandings` reads the CURRENT roster and each member's whole history), so
+          // points scored before the roster catches up are not lost. A student who believes they
+          // are stops solving, which is a real cost for a wording problem.
+          <div className="mt-2" style={{ fontSize: "var(--text-sm)" }}>
+            <p role="alert" className="text-panther">
+              You are not on a team yet, so your points are not part of any team score.
+            </p>
+            <p className="mt-1">
+              An organizer will add you — there is nothing for you to do. Everything you solve
+              before then joins your team&apos;s total the moment you are on it.
+            </p>
+          </div>
         ) : (
           <p className="mt-1 text-ink/60" style={{ fontSize: "var(--text-sm)" }}>
             Your team&apos;s score is every member&apos;s points, group problems included, divided by

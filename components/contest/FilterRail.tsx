@@ -35,7 +35,18 @@ export interface FilterRailProps {
 
 export function FilterRail({ groups, selected, onChange, footer }: FilterRailProps) {
   return (
-    <aside aria-label="Filters" className="flex flex-col gap-5">
+    /*
+      On its own paper card, matching the list beside it.
+
+      The rail used to sit bare on the tinted ground while the problems sat on paper, so the two
+      halves of the same screen belonged to different surfaces. HackerRank puts both on the same
+      one; it costs a border and it is what makes the pair read as one screen rather than a list
+      with some loose controls next to it.
+    */
+    <aside
+      aria-label="Filters"
+      className="flex h-fit flex-col gap-5 rounded border border-ink/15 bg-paper p-4"
+    >
       {groups.map((group, index) => (
         <fieldset
           key={group.id}

@@ -99,6 +99,16 @@ export function CompetitorChrome({ children }: { children: ReactNode }) {
     };
   }, [joined]);
 
+  /*
+    The set the organizer assigned, for the menu's highlighted slot.
+
+    Sets are ASSIGNED and never chosen or previewed (PRD §6.2), so naming the set is the only
+    feedback a student ever gets about which half of the problem list is theirs. It comes off the
+    identity the client already holds rather than a second request.
+  */
+  const setLabel =
+    participant.status === "joined" ? participant.participant.chosenSetLabel : null;
+
   /**
    * Sign out on the SERVER, then clear the tab, then leave.
    *
@@ -146,8 +156,16 @@ export function CompetitorChrome({ children }: { children: ReactNode }) {
         identity and emphasis rather than to large fills.
       */}
       <header className="bg-ink text-paper">
-        <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center gap-x-6 gap-y-3 px-4 py-2.5">
-          <Link href="/contest" className="flex items-center gap-2.5">
+        {/*
+          `items-stretch`, and the nav is the tallest child.
+
+          That is what puts the active tab's underline on the BAR's bottom edge rather than a few
+          pixels under its own label — the detail that separates HackerRank's app nav from a row
+          of links that happen to be underlined. Centre the items instead and the rule floats in
+          the middle of the bar, which reads as decoration rather than as "you are here".
+        */}
+        <div className="mx-auto flex w-full max-w-6xl flex-wrap items-stretch gap-x-5 px-4">
+          <Link href="/contest" className="order-1 flex items-center gap-2.5 py-2.5">
             <Image
               src="/brand/pt-panther.png"
               alt=""
@@ -156,30 +174,57 @@ export function CompetitorChrome({ children }: { children: ReactNode }) {
               aria-hidden="true"
               className="h-8 w-auto"
             />
-            <span className="font-display font-bold" style={{ fontSize: "var(--text-sm)" }}>
+            <span
+              className="font-display font-bold whitespace-nowrap"
+              style={{ fontSize: "var(--text-sm)" }}
+            >
               Coding Night
             </span>
           </Link>
 
-          <nav aria-label="Competitor" className="flex gap-4">
-            {NAV.map((item) => {
-              const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  aria-current={active ? "page" : undefined}
-                  className={
-                    active
-                      ? "border-b-2 border-panther pb-0.5 font-semibold text-paper"
-                      : "border-b-2 border-transparent pb-0.5 text-paper/75 hover:text-paper"
-                  }
-                  style={{ fontSize: "var(--text-xs)" }}
-                >
-                  {item.label}
-                </Link>
-              );
-            })}
+          {/*
+            The hairline HackerRank puts between its mark and its tabs. It is what stops the
+            wordmark and the first tab reading as one run of text; without it "Coding Night
+            Problems" is a single phrase at a glance. Hidden once the nav drops to its own row,
+            where it would divide nothing.
+          */}
+          <span aria-hidden="true" className="order-1 hidden w-px self-center bg-paper/25 md:block md:h-6" />
+
+          {/*
+            Third in source order and third in the flex line on a phone, second on a laptop.
+
+            One nav element, moved with `order`, rather than a desktop copy and a mobile copy:
+            two navigation landmarks with the same accessible name is a landmark-uniqueness
+            failure, and it is the obvious way to get a responsive nav wrong.
+
+            `overflow-x-auto` on the phone row for the same reason TabStrip has it — three tabs at
+            360px are close to the edge, and a wrapped tab row stops reading as tabs.
+          */}
+          <nav
+            aria-label="Competitor"
+            className="order-3 -mx-4 w-full overflow-x-auto px-4 md:order-2 md:mx-0 md:w-auto md:overflow-x-visible md:px-0"
+          >
+            <ul className="flex items-stretch gap-1">
+              {NAV.map((item) => {
+                const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
+                return (
+                  <li key={item.href} className="flex shrink-0">
+                    <Link
+                      href={item.href}
+                      aria-current={active ? "page" : undefined}
+                      className={
+                        active
+                          ? "flex items-center border-b-2 border-panther px-2 py-3 font-semibold text-paper sm:px-3"
+                          : "flex items-center border-b-2 border-transparent px-2 py-3 text-paper/75 hover:border-paper/30 hover:text-paper sm:px-3"
+                      }
+                      style={{ fontSize: "var(--text-sm)" }}
+                    >
+                      {item.label}
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
           </nav>
 
           {/*
@@ -201,7 +246,7 @@ export function CompetitorChrome({ children }: { children: ReactNode }) {
             screen scrolled sideways. Letting the two stack is the fix; shrinking the name only
             moved the number.
           */}
-          <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-x-4 gap-y-2">
+          <div className="order-2 ml-auto flex min-w-0 flex-wrap items-center justify-end gap-x-3 gap-y-2 py-2 md:order-3">
             {standings.status === "ready" && standings.data !== null && (
               <Countdown endsAt={standings.data.endsAt} />
             )}
@@ -210,6 +255,7 @@ export function CompetitorChrome({ children }: { children: ReactNode }) {
               <UserMenu
                 displayName={participant.participant.displayName}
                 teamName={team?.name ?? null}
+                setLabel={setLabel}
                 onSignOut={leave}
               />
             )}

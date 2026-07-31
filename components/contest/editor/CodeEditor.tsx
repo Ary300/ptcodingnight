@@ -29,10 +29,15 @@ import type { CodeEditorProps } from "./types";
  * a CDN, and the night has no internet.
  */
 
+/**
+ * Reserves the same band the surface will occupy — `min-h-[22rem]`, `--ink` ground, no border of
+ * its own — so the panel around it does not jump when the chunk lands. A skeleton with different
+ * metrics moves the Submit button under the student's cursor at the moment they reach for it.
+ */
 function EditorSkeleton() {
   return (
     <div
-      className="flex min-h-[18rem] items-center justify-center rounded border border-ink/20 bg-ink text-paper/60"
+      className="flex min-h-[16rem] items-center justify-center bg-ink text-paper/60 sm:min-h-[22rem]"
       style={{ fontSize: "var(--text-xs)" }}
       role="status"
     >
