@@ -16,7 +16,7 @@ and a couple are reachable but wrong on this hardware.
 |---|---|---|
 | T1 | Hints — specified and priced, deliberately unimplemented pending organizer-written content | deferred by decision |
 | T2 | Java time limits are unenforceable on a slow host — a *scoring* error, not a speed one | **high** |
-| T3 | Verdict latency straddles the G8 threshold — 8.7 s to 18.7 s on the same commit | **high**, hardware |
+| T3 | Verdict latency straddles the G8 threshold — 7.4 s to 22.8 s on the same commit | **high**, hardware |
 | T4 | ~~A submission can fill the judge host's disk~~ **fixed** | resolved |
 | T5 | ~~Re-joining re-rolls the problem set, leaking other sets~~ **fixed**; one residual stated | low |
 | T6 | Monaco is specified but not installed | medium |
@@ -129,20 +129,30 @@ contest must run on this one anyway — is `docs/HOSTING.md` §5.
 **Severity: medium, downgraded from high.** The threshold was never lowered; the machine got
 quieter.
 
-Same code, seven measurements, against a 10,000 ms target:
+Same code, nine measurements, against a 10,000 ms target:
 
 | Condition | p95 | |
 |---|---|---|
 | Standalone, host load 4.25 | **7,363 ms** / 7,476 ms | PASS, reproducible back to back |
 | Standalone, host load 7.74 | **8,713 ms** | PASS, 1.3 s of headroom |
+| Inside `npm run verify`, host load 6.06 | **8,449 ms** | PASS, 1.6 s of headroom |
 | Inside `npm run verify` | 9,261 ms | PASS, 0.7 s of headroom |
 | Inside `npm run verify` | **14,737 ms** | **FAIL** |
 | Inside `npm run verify` | **18,723 ms** | **FAIL** |
+| Inside `npm run verify` | **22,781 ms** | **FAIL, 2.3×** |
 | Earlier sessions, load ~8 / 32 | 110,767 / 283,436 ms | FAIL, 11× and 28× |
 
-**It straddles the threshold.** Identical code, and the result depends on how loaded the machine is
-and on what ran immediately before — inside `npm run verify` several gates have just finished and
-the judge queue is still settling, and that is enough to move p95 from 8.7 s to 18.7 s.
+**The full spread on one unchanged commit is 7,363 ms to 22,781 ms — a factor of 3.1.** The
+threshold sits inside that spread, which is the whole problem.
+
+**It has now passed inside a complete `npm run verify` run**, at 8,449 ms with 1.6 s of headroom,
+alongside every other gate in the same run. That is the best result recorded here and it is worth
+having: it means the gate is achievable on this machine rather than only in isolation. It does not
+make the gate reliable, and it settles nothing about the droplet.
+
+Identical code, and the result depends on how loaded the machine is and on what ran immediately
+before — inside `npm run verify` several gates have just finished and the judge queue is still
+settling, and that is enough to move p95 from 8.4 s to 22.8 s.
 
 So: **a green G8 says the machine was quiet when the gate ran.** It is not a property of the code.
 Container creation dominates and degrades with load — 2.4–16 s against a 1.0 s per-container
@@ -151,9 +161,10 @@ budget — which is the whole of the effect.
 **Correctness never varied**: 40/40 accepted, 40/40 `AC`, zero `IE`, zero dropped, on every run
 including the slowest. Students get the right verdict; on a busy host they wait for it.
 
-**Still open, and it should be treated as failing rather than passing.** A gate that passes at
-8.7 s and fails at 18.7 s on the same commit has no margin, and the deployment target is a 2 vCPU
-droplet shared with Postgres, Redis and the web app — busier than this laptop, not quieter. The fix is
+**Still open. A pass is not a resolution.** A gate that measures 7.4 s and 22.8 s on the same
+commit has no margin, and one green run does not create margin — it samples a distribution whose
+spread is the actual finding. The deployment target is a 2 vCPU droplet shared with Postgres,
+Redis and the web app: busier than this laptop, not quieter. The fix is
 the host, not the code — `docs/HOSTING.md` §6 for the recommendation and §7 for the ten-minute
 re-measurement to run on whatever machine the contest actually uses.
 

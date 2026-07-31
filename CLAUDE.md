@@ -178,6 +178,20 @@ imports nothing from either. If scoring needs a fact, it arrives as an argument.
   key, so **any flag in the registry's `compileCommand` that the Dockerfile did not also use
   silently misses the entire cache.** `scripts/build-judge-images.sh --verify` is what catches
   that, and it must run on the judge host before the night.
+- **A judge image can rot with age, so a gate that passed at build time is not evidence the
+  image still works.** Go rewrites `$GOCACHE/trim.txt` once the trim it records is over 24 hours
+  old; the rootfs is read-only, so the write fails, `go build` exits 1, and the judge reports
+  **CE on correct code** — with the correct binary sitting in `/build`, because only the exit
+  code was wrong. Measured on one unchanged commit: G4 **57/57** against a fresh image and
+  **52/57** against the same image 25.5 hours later. `docker/go/Dockerfile` symlinks `trim.txt`
+  into tmpfs so the write lands.
+  **The general rule this is an instance of:** *no check that runs immediately after a build can
+  detect time-triggered decay* — it is inside the window where the bug does not exist yet. Such a
+  property has to be asserted **structurally** (`--verify` checks that `trim.txt` resolves off
+  the rootfs) rather than **behaviourally** (compile something and see). And rebuilding the image
+  is not a fix: it resets the clock for 24 hours, which is a countdown, not a repair.
+  **So when a runtime starts failing on correct code and nothing in the repo changed, check the
+  image's age before you read any code.** `docker images <name> --format '{{.CreatedSince}}'`.
 - **Compile limits are separate from run limits on all five axes** — timeout, memory, pids,
   tmpfs, cpus. A cgroup has one cap each. Size them for the compiler and an 800 MB program is
   never OOM-killed, so MLE detection silently stops working; size them for the problem and
