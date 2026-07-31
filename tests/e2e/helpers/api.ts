@@ -206,6 +206,58 @@ export class ContestApi {
     return unwrap(await this.teamStandingsRaw(), TeamStandingsResponseSchema);
   }
 
+  // --- teams ---------------------------------------------------------------
+
+  createTeamRaw(body: { name: string }): Promise<APIResponse> {
+    return this.request.post(`/api/contests/${this.contestId}/teams`, { data: body });
+  }
+
+  joinTeamRaw(body: { code: string }): Promise<APIResponse> {
+    return this.request.post(`/api/contests/${this.contestId}/teams/join`, { data: body });
+  }
+
+  leaveTeamRaw(): Promise<APIResponse> {
+    return this.request.post(`/api/contests/${this.contestId}/teams/leave`, { data: {} });
+  }
+
+  myTeamRaw(): Promise<APIResponse> {
+    return this.request.get(`/api/contests/${this.contestId}/teams/mine`);
+  }
+
+  // --- admin: roster -------------------------------------------------------
+
+  rosterRaw(): Promise<APIResponse> {
+    return this.request.get(`/api/admin/contests/${this.contestId}/roster`);
+  }
+
+  createTeamAsAdminRaw(body: { name: string }): Promise<APIResponse> {
+    return this.request.post(`/api/admin/contests/${this.contestId}/teams`, { data: body });
+  }
+
+  moveParticipantRaw(body: {
+    participantId: string;
+    teamId: string | null;
+    reason?: string;
+  }): Promise<APIResponse> {
+    return this.request.post(`/api/admin/contests/${this.contestId}/roster/move`, { data: body });
+  }
+
+  reassignSetRaw(body: {
+    participantId: string;
+    setId: string | null;
+    reason?: string;
+  }): Promise<APIResponse> {
+    return this.request.post(`/api/admin/contests/${this.contestId}/roster/set`, { data: body });
+  }
+
+  renameTeamRaw(teamId: string, body: { name: string; reason?: string }): Promise<APIResponse> {
+    return this.request.patch(`/api/admin/teams/${encodeURIComponent(teamId)}`, { data: body });
+  }
+
+  dissolveTeamRaw(teamId: string, body: { reason?: string }): Promise<APIResponse> {
+    return this.request.delete(`/api/admin/teams/${encodeURIComponent(teamId)}`, { data: body });
+  }
+
   // --- auth ----------------------------------------------------------------
 
   passwordLoginRaw(email: string, password: string): Promise<APIResponse> {
