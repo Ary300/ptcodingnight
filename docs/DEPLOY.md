@@ -665,3 +665,111 @@ docker stats --no-stream
 
 If Postgres is being OOM-killed, its memory limit in `docker-compose.prod.yml` is too high for
 the box, or swap (§5) is missing.
+
+---
+
+## 14. Updating a deployment that is already running
+
+§§1–8 build a box from nothing. This is the other job: the site is live and you want the new
+commits on it.
+
+### 14.1 The local edits question, first
+
+If you patched anything on the droplet with `sed` or an editor, `git pull` will either refuse or
+merge, and neither is what you want. Look before you pull:
+
+```bash
+cd /srv/ptcn/app
+git status --short
+```
+
+**Empty output — nothing to think about, go to §14.2.**
+
+Otherwise, decide per file. `.env.production` will never appear here (it is gitignored, and it
+survives every update — do not recreate it). Anything else that appears is a patch you applied by
+hand, and the question is whether the repo has since fixed it properly. For the six bugs patched
+on the droplet during the first deploy — hardcoded CPU counts, the Go verify fixture, swallowed
+stderr, and the three `docs/DEPLOY.md` errors — the answer is yes, all six are fixed upstream, so
+the local versions are strictly older:
+
+```bash
+git stash                 # keeps them recoverable — `git stash pop` if you were wrong
+git pull --ff-only origin main
+```
+
+`--ff-only` rather than a bare `pull`: if the droplet's history has diverged, this stops and says
+so instead of producing a merge commit on a production box at nine in the evening.
+
+### 14.2 Does this update need a migration?
+
+```bash
+git diff --name-only HEAD@{1}..HEAD -- prisma/migrations
+```
+
+**No output: skip §14.4.** Output: it is a schema change, and §14.4 is not optional.
+
+### 14.3 Rebuild and restart
+
+The web image bakes the built application, so a pull alone changes nothing that is serving.
+
+```bash
+docker compose -f docker-compose.prod.yml up -d --build web worker
+```
+
+`web worker` rather than everything: Postgres, Redis and Caddy are unaffected by an application
+change, and restarting Postgres for no reason is a way to lose a contest. The build takes a few
+minutes on 2 vCPU and the old containers keep serving until the new ones are ready.
+
+**If any judge runtime changed** — anything under `docker/`, or `lib/judge/runtimes.ts` — the
+judge images are separate from the compose build and must be rebuilt too:
+
+```bash
+scripts/build-judge-images.sh --verify
+```
+
+Also do this if the images are more than a day old: **a judge image rots with age.** Go rewrites
+`$GOCACHE/trim.txt` once the trim it records is over 24 hours old, the rootfs is read-only, the
+write fails, and `go build` exits 1 — so the judge reports **CE on correct code**. `--verify`
+asserts structurally that `trim.txt` resolves off the read-only rootfs. See CLAUDE.md.
+
+### 14.4 Migrate, only if §14.2 said so
+
+```bash
+docker compose -f docker-compose.prod.yml exec web npx prisma migrate deploy
+```
+
+`migrate deploy`, never `migrate dev`: `dev` will offer to reset the database, and on this box
+that is every student's submission history.
+
+### 14.5 Prove it actually updated
+
+A pull that failed silently and a rebuild that used a cached layer both look exactly like success.
+
+```bash
+git log --oneline -1                                   # the commit you expected
+docker compose -f docker-compose.prod.yml ps           # web and worker "Up", not "Restarting"
+./scripts/smoke-prod.sh https://ptcodingnight.com
+```
+
+Then open the site and press something that changed. A green smoke test proves the stack is
+serving; it does not prove the screen you rewrote does what you rewrote it to do.
+
+### 14.6 If the new containers will not start
+
+```bash
+docker compose -f docker-compose.prod.yml logs --tail=100 web
+```
+
+`FATAL: refusing to start` is the boot check and it names the variable — §13. A new release that
+requires a variable your `.env.production` does not have will fail exactly this way, which is the
+intended behaviour: it refuses rather than serving a half-configured site.
+
+Rolling back is the same procedure aimed at the previous commit:
+
+```bash
+git reset --hard <previous-sha>
+docker compose -f docker-compose.prod.yml up -d --build web worker
+```
+
+**A rollback across a migration is not a rollback.** `migrate deploy` moved the schema forward and
+this moves only the code; if §14.2 reported a migration, restore from §11 instead.
