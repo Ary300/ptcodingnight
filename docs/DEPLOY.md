@@ -250,10 +250,25 @@ nano .env
 Fill in every blank. Generate each secret **on this server** with the command written above it:
 
 ```bash
-openssl rand -base64 32     # POSTGRES_PASSWORD
-openssl rand -base64 32     # REDIS_PASSWORD
+openssl rand -hex 24        # POSTGRES_PASSWORD
+openssl rand -hex 24        # REDIS_PASSWORD
 openssl rand -hex 32        # SESSION_SECRET
 ```
+
+> **`-hex`, not `-base64`, and this is not a style preference.**
+>
+> `POSTGRES_PASSWORD` and `REDIS_PASSWORD` are interpolated into `postgresql://` and `redis://`
+> URLs in `docker-compose.prod.yml`. Base64's alphabet includes `+`, `/` and `=`, all of which
+> are meaningful inside a URL — `/` ends the authority section, `+` decodes to a space in some
+> parsers, and `=` is unpredictable. A generated password containing one produces a connection
+> string that parses into something other than what you generated, and the failure surfaces as
+> an authentication error against a database whose password is, as far as you can see, correct.
+>
+> Hex is `[0-9a-f]` and needs no escaping anywhere. 24 bytes is 48 characters and 192 bits — more
+> than base64's 32 bytes needed to be.
+>
+> `SESSION_SECRET` stays `-hex 32` because it was already hex; it is read as an opaque string and
+> never goes in a URL, but there is no reason to make it the odd one out.
 
 `ADMIN_PASSCODE` is typed by a human — four unrelated words beat a clever short one.
 `ACME_EMAIL` must be an address someone reads; certificate-expiry warnings go there.
@@ -290,6 +305,32 @@ messages for it are unhelpful.
    ```
 
 4. Copy the client ID and secret into `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`.
+
+#### 7.1 Publish the consent screen, or nobody can sign in
+
+**A new Google OAuth app starts in Testing mode, and in Testing mode it only works for accounts
+you have explicitly listed.** Everyone else gets `Error 403: access_denied` — which reads like a
+misconfiguration and is in fact the app working exactly as configured. This is the failure that
+will hit you on the night, because it does not appear while you are testing with your own account:
+the account that created the app can always sign in.
+
+Two ways out, and pick deliberately:
+
+**Publish it (recommended for the contest).** APIs & Services → **OAuth consent screen** →
+**Publish app**. Anyone with a Google account can then sign in.
+
+> Publishing sounds like it triggers a review, and for these scopes it does not. Verification is
+> required only for **sensitive or restricted** scopes — Gmail, Drive, contacts. This app requests
+> `openid`, `email` and `profile`, which are none of those, so publishing takes effect
+> immediately. You will see an "unverified app" interstitial the first time; that is cosmetic and
+> the user can continue past it.
+
+**Or add test users**, if you would rather stay in Testing: OAuth consent screen → **Test users**
+→ **Add users**. Capped at 100, and each address must be added by hand — workable for a rehearsal,
+not for a room of students arriving at once.
+
+Either way, verify with an account that is **not** the one that created the app. Testing your own
+sign-in proves nothing here.
 
 ### GitHub
 
@@ -352,6 +393,27 @@ docker compose -f docker-compose.prod.yml exec web npx prisma migrate deploy
 ```
 
 `migrate deploy`, never `migrate dev` — the latter can reset data.
+
+> **If this fails with `EACCES ... /app/node_modules/@prisma/engines`, your image predates the
+> fix.** The container runs as a non-root user, and the Prisma CLI writes when it resolves its
+> query engine — a checksum probe, and a re-fetch if it is unhappy. The engine directories used to
+> arrive from the build stage owned by root, so the command could not touch them.
+>
+> The Dockerfile now hands those two directories to the runtime user, so this works as written.
+> Rebuild rather than working around it:
+>
+> ```bash
+> docker compose -f docker-compose.prod.yml build web
+> docker compose -f docker-compose.prod.yml up -d web
+> ```
+>
+> `exec -u 0` also gets you past it and is the wrong fix: it runs the migration as root, which
+> leaves root-owned files behind in a container that is deliberately not root.
+>
+> **Watch for the second failure this causes.** A migration that did not run is silent until the
+> next step, where both seed commands fail with `table does not exist` — an error that points at
+> the database and not at a permission problem three steps upstream. If you see that, come back
+> here before debugging Postgres.
 
 ### 8.4 Seed
 

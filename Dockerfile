@@ -54,6 +54,24 @@ COPY --from=build /app/lib ./lib
 COPY --from=build /app/scripts ./scripts
 COPY --from=build /app/data ./data
 COPY --from=build /app/content ./content
+
+# The Prisma CLI needs somewhere writable, and the runtime user is not root.
+#
+# `prisma migrate deploy` resolves its query engine before it will run, and that resolution WRITES
+# — a checksum probe and, if it is unhappy, a re-fetch — into node_modules/@prisma/engines. Those
+# directories arrive from the build stage owned by root, so as `nextjs` the command dies with
+#
+#     Error: EACCES: permission denied, ... '/app/node_modules/@prisma/engines'
+#
+# The engines are already baked in by `npx prisma generate` in the build stage; the only thing
+# missing was permission to touch them. Handing the two Prisma directories to the runtime user
+# fixes it without running the container as root and without a separate migrate service.
+#
+# This mattered more than a failed migration: with the schema never applied, BOTH seed commands
+# then failed with "table does not exist" — an error pointing at the database rather than at the
+# permission problem three steps upstream. See docs/DEPLOY.md §8.3.
+RUN chown -R nextjs:nodejs /app/node_modules/@prisma /app/node_modules/.prisma
+
 USER nextjs
 EXPOSE 3000
 CMD ["npm", "run", "start"]
