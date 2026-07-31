@@ -37,8 +37,56 @@ interface SignInFormProps {
 export function SignInForm({ initialError = null }: SignInFormProps) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [passcode, setPasscode] = useState("");
   const [error, setError] = useState<string | null>(initialError);
   const [busy, setBusy] = useState(false);
+
+  /**
+   * The organizer passcode — the night's fallback, and the only way into `/admin` on a fresh
+   * deployment.
+   *
+   * `POST /api/admin/session` has existed and been tested since the beginning, and **nothing in
+   * the browser posted to it.** That was survivable while `/admin/**` rendered for anybody; the
+   * moment the console got a server-side gate it became a lockout, because no seed script creates
+   * a `User` with `role: "ADMIN"` either. The two ways in were an account nothing creates and a
+   * route nothing calls.
+   *
+   * It is last on the page and behind its own heading because almost nobody who reaches this
+   * screen wants it. It is also the path that works when OAuth does not — an expired client
+   * secret, a consent screen, a student with no school account — which is exactly the situation
+   * an organizer is in when they need the console most.
+   */
+  const submitPasscode = async (event: React.SyntheticEvent): Promise<void> => {
+    event.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      const response = await fetch("/api/admin/session", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ passcode }),
+      });
+      if (!response.ok) {
+        const body: unknown = await response.json();
+        const message =
+          typeof body === "object" &&
+          body !== null &&
+          "error" in body &&
+          typeof (body as { error: { message?: unknown } }).error.message === "string"
+            ? (body as { error: { message: string } }).error.message
+            : "That passcode was not accepted.";
+        setError(message);
+        return;
+      }
+      // A full navigation, not a router push: the session cookie was just set and the admin
+      // layout is a server component that has to be rendered with it.
+      window.location.assign("/admin");
+    } catch {
+      setError("Could not reach the server.");
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const submit = async (event: React.SyntheticEvent): Promise<void> => {
     event.preventDefault();
@@ -173,6 +221,44 @@ export function SignInForm({ initialError = null }: SignInFormProps) {
         Students do not need a code. Signing in creates your account, and an organizer puts you on
         a team.
       </p>
+
+      {/*
+        Collapsed by default. A passcode field sitting open on the front door invites every
+        student in the room to have a go at it, and the thing it opens is the console that can
+        rewrite a verdict. `<details>` rather than state: it is a disclosure, the element exists
+        for exactly this, and it keeps working with no JavaScript.
+      */}
+      <details className="mt-6 border-t border-ink/12 pt-4">
+        <summary
+          className="cursor-pointer text-ink/70 hover:text-ink"
+          style={{ fontSize: "var(--text-xs)" }}
+        >
+          Organizer passcode
+        </summary>
+
+        <form className="mt-3 flex flex-col gap-3" onSubmit={(event) => void submitPasscode(event)}>
+          <label className="flex flex-col gap-1" style={{ fontSize: "var(--text-sm)" }}>
+            Passcode
+            <input
+              type="password"
+              autoComplete="off"
+              value={passcode}
+              onChange={(event) => setPasscode(event.target.value)}
+              className="rounded border border-ink/25 bg-paper px-3 py-2"
+              style={{ fontSize: "var(--text-sm)" }}
+            />
+          </label>
+
+          <Button type="submit" variant="secondary" disabled={busy || passcode === ""}>
+            {busy ? "Checking…" : "Open the organizer console"}
+          </Button>
+
+          <p className="text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
+            The fallback that works when a provider does not. Rate limited, and every organizer
+            action it opens is recorded with a reason.
+          </p>
+        </form>
+      </details>
     </div>
   );
 }

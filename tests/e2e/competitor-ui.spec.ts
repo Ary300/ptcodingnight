@@ -273,3 +273,62 @@ test.describe("the account menu", () => {
     await expect(menu).toBeHidden();
   });
 });
+
+
+test.describe("the organizer can get in", () => {
+  /*
+    THE LOCKOUT THIS PINS.
+
+    `POST /api/admin/session` existed, was tested, and **nothing in the browser posted to it.**
+    That was survivable for as long as `/admin/**` rendered for anybody who typed the URL. The
+    moment the console got a server-side gate it became a lockout — and the other door, an
+    email-and-password `User` with `role: "ADMIN"`, is created by no seed script and no sign-up
+    path. A fresh deployment therefore had two ways into the organizer console: an account
+    nothing creates, and a route nothing calls.
+
+    It would not have failed anything. Every admin API spec mints its session with
+    `adminLogin()`, which posts to the route directly — exactly the thing a browser could not do.
+    So this asserts the BROWSER path, by clicking.
+  */
+  test("signs in with the passcode and lands on the console", async ({ page }) => {
+    const passcode = process.env.ADMIN_PASSCODE ?? "";
+    expect(passcode, "ADMIN_PASSCODE is required for this spec").not.toBe("");
+
+    await page.goto("/sign-in");
+
+    // Collapsed by default: a passcode field open on the front door invites the room to try it.
+    const disclosure = page.getByText("Organizer passcode", { exact: true });
+    await expect(disclosure).toBeVisible();
+    await expect(page.getByLabel("Passcode")).toBeHidden();
+
+    await disclosure.click();
+    await page.getByLabel("Passcode").fill(passcode);
+    await page.getByRole("button", { name: /organizer console/i }).click();
+
+    await page.waitForURL(/\/admin/);
+    await expect(page.getByRole("navigation", { name: "Admin sections" })).toBeVisible();
+  });
+
+  test("a wrong passcode is refused and stays on the page", async ({ page }) => {
+    await page.goto("/sign-in");
+    await page.getByText("Organizer passcode", { exact: true }).click();
+    await page.getByLabel("Passcode").fill("not-the-passcode");
+    await page.getByRole("button", { name: /organizer console/i }).click();
+
+    await expect(page.getByRole("alert")).toBeVisible();
+    await expect(page).toHaveURL(/\/sign-in/);
+  });
+
+  test("/admin is refused to somebody with no organizer session", async ({ browser }) => {
+    // A fresh context: no cookies from the specs above.
+    const context = await browser.newContext();
+    const fresh = await context.newPage();
+    await fresh.goto("/admin");
+
+    // Redirected to sign-in, not rendered. The console used to draw in full for anybody, with a
+    // single refused panel in it, which reads as a door that is nearly open.
+    await expect(fresh).toHaveURL(/\/sign-in/);
+    await expect(fresh.getByRole("navigation", { name: "Admin sections" })).toHaveCount(0);
+    await context.close();
+  });
+});
