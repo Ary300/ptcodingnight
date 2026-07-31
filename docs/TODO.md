@@ -157,6 +157,43 @@ contest must run on this one anyway — is `docs/HOSTING.md` §5.
 
 </details>
 
+## T12 — What a full multi-agent sweep of the product found — **all fixed**
+
+**Severity: was contest-blocking, several times over.** Recorded because the pattern matters more
+than the individual bugs.
+
+Seven agents drove the product from every side — student, organizer, contest creator, spectator —
+plus one agent per reference screenshot. **Nine defects, of which six were contest-blocking, and
+not one of them failed a gate beforehand.**
+
+| # | Defect | Why no gate saw it |
+|---|---|---|
+| 1 | A signed-in student could never enter the contest: the UI's identity came from a `sessionStorage` key nothing in the product wrote | **The test helpers wrote it themselves.** G7 and G9 were green against a front door that did not open |
+| 2 | A race in the input feeder gave correct C/C++/Go wrong answers | Fixture inputs are small, so the create-to-complete window is usually won. Python never fails it |
+| 3 | All 20 problems allowed only Python and Java 21 | A data fact in `content/problems/*/problem.json`; no gate asserted the registry and the content agreed |
+| 4 | "Run samples" always 500'd for C++ and Go | The budget was wrong in principle but only failed above ~15 s of compile |
+| 5 | Contest creation was a dead end in three places | Nothing tested the setup journey — only the night-of one |
+| 6 | The problem bank was 12 fixtures with a reference runner that executed nothing | It rendered, so it looked done |
+| 7 | `?error=` rendered attacker-authored prose | Not XSS; the text WAS the payload |
+| 8 | Password sign-in gave competitors a session that could not compete | The callback had learned this; the password route had not |
+| 9 | The bare `/projector` showed an instruction to edit the URL | Every projector test passed a contest id |
+
+**The generalisable lesson, and it is the same one as T7 and T8:** these gates prove that the
+pieces work. They do not prove the pieces are CONNECTED, and they do not prove a human can reach
+them. Three separate times now the answer has been a screen that rendered, responded to every
+action, and did nothing — and the only thing that found it was somebody using it.
+
+Two smaller findings worth keeping:
+
+- **DESIGN.md's contrast floors do not transfer between grounds.** They are measured against
+  `--ink` (18.65:1 on paper), so 47% still clears AA. `--panther` is 5.08:1 and *any* alpha on it
+  fails: `text-paper/85` measures 4.07:1. Caught by G9 on an agent's own change, within minutes.
+- **A CSS variable defined on one class is undefined elsewhere, silently.** The projector's team
+  board did not stand on `.stage`, so the contest clock rendered at the browser default of 16px on
+  a 1920 wall, and nothing errored.
+
+---
+
 ## T3 — Verdict latency depends on how busy the host is, and G8 passes only on a quiet one
 
 **Severity: medium, downgraded from high.** The threshold was never lowered; the machine got

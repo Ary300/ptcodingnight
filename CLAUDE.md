@@ -49,6 +49,24 @@ set assignment, the auth layer, the routes (`app/api/contests/[id]/team-standing
 `app/api/admin/teams/[id]/side-activities`), the UI (`TeamStandingsBoard`, `TeamProjectorScreen`,
 `MyTeamView`, `/team`) and the G7 specs are all done and tested.
 
+**The whole product was driven from every side by agents, and it did not work.** The failures
+were not in the places the gates look:
+
+| What | Effect |
+|---|---|
+| The competitor UI's identity came from a `sessionStorage` key nothing wrote | **A signed-in student could never enter the contest.** Fixed: `GET /api/auth/session` is the source of truth |
+| A race in the judge's input feeder | **Correct C, C++ and Go got WA**, intermittently. Fixed with an atomic rename |
+| All 20 problems allowed only Python and Java 21 | 8 of the 10 working variants unreachable by any student |
+| The run-samples wait ignored compile time | **C++ and Go always 500'd** on "Run samples" |
+| Contest creation was a dead end in three places | Builder POSTed nowhere; nothing wrote `ContestProblem`; nothing published a DRAFT |
+| The problem bank was 12 fixtures | 130 real problems hidden, and its reference runner **reported pass/fail without executing anything** |
+| `?error=` rendered attacker-authored prose | A link could put arbitrary text in our styling above our sign-in form |
+| Password sign-in issued a competitor session with no `participantId` | 200 and a cookie, then `signedIn: false` |
+| The bare `/projector` never fetched | The projector laptop showed "Add `?contest=<id>` to this URL" |
+
+All fixed, each with a regression test. **Every one was found by using the product, not by reading
+it, and none of them failed a gate beforehand.**
+
 **The organizer console is real, and the join code is gone.** Both were found by using the site
 rather than reading it, and both had the same shape — a screen that responded to every action and
 performed none of them:
@@ -255,6 +273,40 @@ imports nothing from either. If scoring needs a fact, it arrives as an argument.
   clean because everything before it has finished.
 - **A verdict is not a gate.** `npm run verify` output goes in the transcript verbatim. See
   **Definition of done**.
+- **A TEST HELPER THAT SETS UP STATE THE PRODUCT CANNOT PRODUCE IS A BLINDFOLD, NOT A SHORTCUT.**
+  The competitor UI read its identity from a `sessionStorage` record written by the join response.
+  The join route was deleted and **nothing else ever wrote it** — `writeParticipant` had no callers
+  outside `tests/e2e/helpers/session.ts` and the a11y journey helper. So the product issued a valid
+  session cookie and a client that could not name its own contest: every competitor screen answered
+  a signed-in student with *"You are not in the contest yet."* Forever. **G7 and G9 were green
+  throughout, because the helpers wrote the record themselves.** When a helper has to inject
+  something, ask which line of the application writes it; if the answer is "none", that is the bug.
+  `tests/e2e/session-only.api.spec.ts` sets only the cookie and requires the problem list to arrive.
+- **A file is not readable the moment it exists.** `worker/batch-driver.ts` waits for a test input
+  with `[ ! -f "/in/$i.in" ]` and then reads it; `-f` is true the instant `writeFile` CREATES the
+  file, before its bytes land. Correct C++17 measured 5 AC and 3 WA over 8 runs, and a probe that
+  exits 42 on a short read returned `RE`. Python was 6/6 — interpreter startup hides it — so **the
+  failure hit the FAST languages hardest, and intermittently.** Inputs go through `placeInput`,
+  which writes `.<n>.in.partial` and renames; rename within a directory is atomic. Pinned
+  structurally, because a timing race passes on a quiet machine and proves nothing.
+- **A wait budget must be able to contain what it is waiting for.** "Run samples" waited
+  `wallClockKillMs × tests + 15s` — run limits only — while `gcc14` is allowed 60 s to compile and
+  `go123` 90 s. Any compile over ~15 s was a guaranteed 500 and the student read "The judge is busy
+  right now". The ceiling had the same bug one level up: 60 s cannot cap a 90 s compile.
+- **`?error=` must carry a CODE, never prose.** `/sign-in` rendered whatever arrived in the query
+  string, so a link could put arbitrary text in our styling, on our domain, above our sign-in form.
+  Not XSS — the text was the payload. `lib/contest/sign-in-errors.ts` owns the copy, which also
+  makes it structurally impossible for an exception message to reach a student.
+- **DESIGN.md's contrast floors are measured against `--ink`, and DO NOT TRANSFER to another
+  ground.** `--ink` is 18.65:1 on paper so 47% still clears AA; `--panther` is 5.08:1, so *any*
+  alpha on it fails. `text-paper/85` on `--panther` measures 4.07:1. Differentiate by weight there.
+- **A CSS variable defined on one class is undefined everywhere else, and silently.** The projector's
+  team board did not stand on `.stage`, so `var(--fs-xl)` was undefined and the contest clock
+  rendered at the browser's default 16px **on a 1920 wall**. Nothing errored.
+- **eslint walks into `.claude/worktrees/`**, which is a second checkout inside the repo root. One
+  run reported 35,418 problems from another branch's vendored bundle; another died with `ENOENT` as
+  that agent deleted a scratch file mid-run. `globalIgnores` now excludes `.claude/**`. A gate that
+  fails for reasons unrelated to the code under review trains you to ignore the gate.
 - **A route under `/api` that a BROWSER navigates to must never answer with a JSON envelope.**
   `/api/auth/{provider}` and its callback are hrefs on buttons, not fetches. Both ran through
   `handle()` and painted `{"ok":false,"error":{"code":"FORBIDDEN",…}}` across the whole window on
