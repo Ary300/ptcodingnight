@@ -4,18 +4,23 @@ import { DomainError } from "@/lib/errors";
 import { prisma } from "@/lib/db";
 import { verifyPassword } from "@/lib/contest/password";
 import type { OAuthIdentity, OAuthProvider } from "@/lib/contest/oauth";
+import { emailMayCreateAccount, parseAllowedDomains } from "@/lib/contest/signup-domains";
 
 /**
  * Account resolution for all three sign-in providers.
  *
- * One rule governs this file: **OAuth links to accounts, it never creates them.** `User.passwordHash`
- * is NOT NULL in the schema, so an account reachable only through Google or GitHub is
- * unrepresentable — but the schema can only refuse the insert, not explain why, so the reasoning
- * lives here and the code path that would do it does not exist.
+ * The rule that used to govern this file was "OAuth links to accounts, it never creates them".
+ * Students now sign themselves up with Google or GitHub, so that is no longer true — and the rule
+ * that replaces it is narrower and load-bearing:
  *
- * Why, given that internet at the event is guaranteed (PRD §10.1): OAuth fails for reasons that
- * have nothing to do with the venue. An expired client secret, a changed consent screen, a student
- * without a school account. Every account keeps a way in that does not depend on a third party.
+ *   **Signing in can create a COMPETITOR. Nothing here can ever produce an ADMIN.**
+ *
+ * `selfSignUpFromOAuth` writes `role: "COMPETITOR"` as a literal, with no argument that could
+ * change it, and the database refuses an ADMIN with no password independently via a CHECK
+ * constraint. Two mechanisms, neither relying on a caller remembering anything.
+ *
+ * Organizer accounts stay admin-issued, exactly as before: created with a password, and only then
+ * linkable to a provider by verified email.
  */
 
 export const EmailLoginSchema = z.object({
@@ -53,6 +58,16 @@ export async function authenticateWithPassword(input: EmailLogin): Promise<Authe
   if (user === null) {
     // Constant-ish work for an unknown email. Without this, a fast rejection says "no such
     // account" as clearly as a message would.
+    await verifyPassword(input.password, DUMMY_HASH);
+    return refuse();
+  }
+
+  // A student who signed up with Google or GitHub has no password hash. They must not be able to
+  // sign in here with anything — and must not be DISTINGUISHABLE from an unknown email either, so
+  // the dummy verify runs before refusing, exactly as it does above. Skipping it would make a
+  // passwordless account answer measurably faster than a real one, which is an account
+  // enumerator built out of a stopwatch.
+  if (user.passwordHash === null) {
     await verifyPassword(input.password, DUMMY_HASH);
     return refuse();
   }
@@ -130,13 +145,9 @@ export async function linkedUserFor(identity: OAuthIdentity): Promise<Authentica
   });
 
   if (byEmail === null) {
-    // The invariant, stated to the person who hit it. No account is created here — not as a
-    // convenience, not behind a flag.
-    throw new DomainError(
-      "UNAUTHORIZED",
-      `There is no account for that ${providerLabel(identity.provider)} address. ` +
-        "An organizer has to create it first. To compete now, use the contest join code.",
-    );
+    // No account yet. This is where a student signs themselves up — if, and only if, their
+    // verified email is on the allowlist. See selfSignUpFromOAuth for why the role is a literal.
+    return selfSignUpFromOAuth(identity, subjectField);
   }
 
   if (byEmail.disabledAt !== null) {
@@ -165,6 +176,59 @@ export async function linkedUserFor(identity: OAuthIdentity): Promise<Authentica
     displayName: byEmail.displayName,
     role: byEmail.role === "ADMIN" ? "ADMIN" : "COMPETITOR",
   };
+}
+
+/**
+ * Create a COMPETITOR account for a verified email on the allowlist.
+ *
+ * ## The two things that make this safe, and neither is a check on the caller
+ *
+ * **1. The role is a literal.** `role: "COMPETITOR"` is written here and comes from nothing the
+ * person signing in can influence — not the email, not a provider claim, not a query parameter,
+ * not a mapping table. There is no argument to this function that could make it produce an ADMIN,
+ * so no future caller can pass one. The database agrees independently: a CHECK constraint refuses
+ * an ADMIN with no password, so even a mistake here fails loudly instead of minting an organizer.
+ *
+ * **2. The allowlist is fail-closed.** Unset means nobody may self-signup and the behaviour is
+ * exactly what it was before this existed. `ptcodingnight.com` is on the open internet; an
+ * allowlist that defaulted to "anyone with a Google account" would let strangers onto the
+ * leaderboard with nothing written to any log.
+ *
+ * The email is already known to be VERIFIED by the caller — that check is what stops someone
+ * setting their provider profile email to a school address and walking in.
+ */
+async function selfSignUpFromOAuth(
+  identity: OAuthIdentity,
+  subjectField: "googleSub" | "githubSub",
+): Promise<AuthenticatedUser> {
+  const email = identity.email?.toLowerCase() ?? null;
+  const allowed = parseAllowedDomains(process.env.SIGNUP_ALLOWED_EMAIL_DOMAINS);
+
+  if (email === null || !emailMayCreateAccount(email, allowed)) {
+    // One message for "signup is switched off" and for "your domain is not on the list". The
+    // difference is only interesting to someone probing for which domains are accepted.
+    throw new DomainError(
+      "UNAUTHORIZED",
+      `That ${providerLabel(identity.provider)} account is not eligible to sign up here. ` +
+        "Use your school account, or ask an organizer to create one for you.",
+    );
+  }
+
+  const created = await prisma.user.create({
+    data: {
+      email,
+      displayName: identity.displayName?.trim() ?? email.slice(0, email.indexOf("@")),
+      role: "COMPETITOR",
+      // No password. The account is reachable through this provider and through an
+      // organizer-set password later; see the CHECK constraint in the schema for why that is
+      // acceptable for a competitor and refused for an admin.
+      passwordHash: null,
+      [subjectField]: identity.subject,
+    },
+    select: { id: true, displayName: true },
+  });
+
+  return { userId: created.id, displayName: created.displayName, role: "COMPETITOR" };
 }
 
 export function providerLabel(provider: OAuthProvider): string {

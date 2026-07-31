@@ -231,13 +231,16 @@ imports nothing from either. If scoring needs a fact, it arrives as an argument.
   megabytes; truncating it kills the container and reports `WA`, which the student cannot
   distinguish from their own bug. The cap is derived per test from the expected output
   (`outputCapFor`).
-- **G8 and G13 must never run concurrently.** Both spawn containers, and interleaving them
-  corrupts G8's p95 latency measurement, which is the only thing G8 measures.
-- **Nothing that drives a browser may run immediately AFTER G8 either.** G8's 40-submission burst
-  leaves the queue draining and the host loaded long after its own measurement ends, so G9's
-  navigations time out at 120 s — measured, 29/32 inside `npm run verify` against 32/32
-  standalone, which reads as an accessibility regression and is nothing of the kind. `verify.sh`
-  therefore runs G9 *before* G8.
+- **Nothing that measures anything may run AFTER G8 — it goes last of the container gates.**
+  G8's 40-submission burst leaves the queue draining and the host loaded long after its own
+  measurement ends, and every gate that follows inherits that wake. Measured on unchanged commits:
+  G9 at **29/32** against 32/32 standalone (reads as an accessibility regression), and G13 with
+  `designer-pdf-viewer` at **160/170, verdict RE**, against AC 170/170 and 20/20 standalone (reads
+  as an unshippable problem). Neither is real.
+  The rule used to be stated as "G8 and G13 must never run **concurrently**", which `verify.sh`
+  guarantees anyway by being strictly sequential — so G13 was left running straight after G8 and
+  went on failing. **Concurrency was never the whole hazard; the wake is.** G8's own p95 stays
+  clean because everything before it has finished.
 - **A verdict is not a gate.** `npm run verify` output goes in the transcript verbatim. See
   **Definition of done**.
 

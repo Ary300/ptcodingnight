@@ -8,7 +8,11 @@ export const metadata: Metadata = {
 };
 
 /**
- * Organizer sign-in, on the same split-screen as `/join`.
+ * Sign-in for everyone, on the same split-screen as `/join`.
+ *
+ * This used to be organizer-only, with students entering through a join code. Students now sign
+ * up with Google or GitHub — the first sign-in creates their account — and an organizer places
+ * them on a team afterwards. The join code survives as break-glass, not as the front door.
  *
  * Outside the `(competitor)` route group on purpose: that group's chrome carries the competitor
  * nav and a contest countdown, neither of which belongs on the page an organizer reaches before
@@ -37,7 +41,7 @@ export default async function SignInPage({
           Coding Night
         </p>
         <p className="mt-3 text-paper/75" style={{ fontSize: "var(--text-sm)" }}>
-          Organizer sign-in. Run the contest, judge, override, and export the results.
+          Sign in with your school account to compete. Organizers sign in here too.
         </p>
       </BrandPanel>
 
@@ -47,7 +51,7 @@ export default async function SignInPage({
             Sign in
           </h1>
           <p className="mt-2 text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
-            For organizers. Students join with a code instead.
+            Students and organizers both start here.
           </p>
 
           <div className="mt-6">

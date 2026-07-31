@@ -150,20 +150,32 @@ model User {
   createdAt   DateTime  @default(now())
   disabledAt  DateTime?
 
-  /// Scrypt hash of an admin-issued password. **Required, and that is the enforcement.**
+  /// Scrypt hash of a password. NULL for a student who signed up with Google or GitHub.
   ///
-  /// No account may be reachable ONLY through an OAuth provider. Internet at the event is now
-  /// guaranteed (PRD §10.1), so this is no longer about the venue — it is about OAuth's own
-  /// failure modes, which have nothing to do with the room: an expired client secret, a changed
-  /// consent screen, a student without a school account, a provider having an afternoon.
+  /// ## This column used to be NOT NULL, and half of that invariant is still enforced
   ///
-  /// Rather than checking that invariant in application code where some future code path could
-  /// forget it, the column is NOT NULL. An OAuth-only account is unrepresentable in this schema,
-  /// which is a stronger guarantee than any test.
+  /// The original rule was "no account may be reachable ONLY through an OAuth provider", made
+  /// unrepresentable rather than merely tested. The reasoning was never the venue — internet is
+  /// guaranteed (PRD §10.1) — it was OAuth's own failure modes: an expired client secret, a
+  /// changed consent screen, a provider having an afternoon.
   ///
-  /// The consequence, deliberately: the Google and GitHub paths never INSERT a User. They only
-  /// ever LINK to one that already exists. Accounts are admin-issued. See lib/contest/oauth.ts.
-  passwordHash String
+  /// Students now sign up with Google or GitHub and have no password to store, so the column has
+  /// to admit NULL. But the reasoning above is not equally true of both roles:
+  ///
+  ///   - A COMPETITOR locked out by an OAuth outage is an organizer's problem to solve for one
+  ///     student, and the join code is still there as break-glass.
+  ///   - An ADMIN locked out by an OAuth outage is a contest that cannot be started, frozen,
+  ///     unfrozen or exported, with a room full of people waiting.
+  ///
+  /// So the guarantee is kept exactly where it carries weight, as a CHECK constraint in
+  /// `20260801020000_oauth_signup`:
+  ///
+  ///     role <> 'ADMIN' OR "passwordHash" IS NOT NULL
+  ///
+  /// **An OAuth-only ADMIN is still unrepresentable in this schema.** A future code path that
+  /// tries to create one fails at the database rather than succeeding quietly, which is the
+  /// property the NOT NULL was really buying.
+  passwordHash String?
 
   /// Google's stable subject claim (`sub`), if linked. Never an email: emails get reassigned
   /// between people, `sub` does not.

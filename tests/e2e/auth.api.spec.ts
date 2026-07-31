@@ -282,3 +282,64 @@ test.describe("mid-contest session revocation", () => {
     expect(body.sessions.some((s) => s.method === "ADMIN_PASSCODE")).toBe(true);
   });
 });
+
+/**
+ * The one invariant that survived opening self-signup, asserted against the real database.
+ *
+ * Students now create their own accounts by signing in with Google or GitHub. `selfSignUpFromOAuth`
+ * writes `role: "COMPETITOR"` as a literal, so no argument can make it produce an organizer — but
+ * "the code currently does the right thing" is a weaker guarantee than "the wrong thing cannot be
+ * stored", and this is the one place in the app where the difference is worth a CHECK constraint.
+ *
+ * These talk to Postgres directly rather than through a route, on purpose. The point is that the
+ * database refuses regardless of which code path asks — including one written later by someone
+ * who never read `accounts.ts`.
+ */
+test.describe("an OAuth-only ADMIN is unrepresentable", () => {
+  const probe = `probe-${String(Date.now())}@example.org`;
+
+  test.afterAll(async () => {
+    await testDb().user.deleteMany({ where: { email: { startsWith: "probe-" } } });
+  });
+
+  test("the database REFUSES an admin with no password", async () => {
+    await expect(
+      testDb().user.create({
+        data: {
+          email: probe,
+          displayName: "Probe Admin",
+          role: "ADMIN",
+          // What an OAuth signup would produce. For an admin it must not be storable at all.
+          passwordHash: null,
+          googleSub: `probe-sub-${String(Date.now())}`,
+        },
+      }),
+    ).rejects.toThrow(/User_admin_requires_password|check constraint/i);
+  });
+
+  test("but a competitor with no password is fine, which is the whole point", async () => {
+    const created = await testDb().user.create({
+      data: {
+        email: `probe-competitor-${String(Date.now())}@example.org`,
+        displayName: "Probe Competitor",
+        role: "COMPETITOR",
+        passwordHash: null,
+        githubSub: `probe-gh-${String(Date.now())}`,
+      },
+      select: { id: true, role: true, passwordHash: true },
+    });
+    expect(created.role).toBe("COMPETITOR");
+    expect(created.passwordHash).toBeNull();
+  });
+
+  test("and an existing admin cannot be stripped of its password by an update", async () => {
+    // The insert is guarded above; a CHECK also has to hold on UPDATE, which is the path a
+    // "let them link Google instead" feature would take.
+    await expect(
+      testDb().user.updateMany({
+        where: { email: ORGANIZER.email },
+        data: { passwordHash: null },
+      }),
+    ).rejects.toThrow(/User_admin_requires_password|check constraint/i);
+  });
+});

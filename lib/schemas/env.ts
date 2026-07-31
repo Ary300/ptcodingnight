@@ -34,6 +34,22 @@ export const ServerEnvSchema = z.object({
   /** Shared passcode for the organizer console. */
   ADMIN_PASSCODE: z.string().min(8, "ADMIN_PASSCODE must be at least 8 characters").optional(),
 
+  /**
+   * Email domains allowed to CREATE an account by signing in with Google or GitHub.
+   *
+   * Comma-separated, no `@`: `parktudor.org` or `parktudor.org,students.parktudor.org`.
+   *
+   * **Unset means self-signup is off**, and the OAuth paths behave exactly as they did before it
+   * existed: link to an account an organizer already created, or refuse. Fail-closed is the only
+   * safe default here, because the failure is silent and public — `ptcodingnight.com` is on the
+   * open internet, and an allowlist that defaults to "anyone" lets anyone on Earth with a Google
+   * account enrol in a school contest without a single error being logged.
+   *
+   * This never grants a role. Passing the allowlist makes you a COMPETITOR and nothing else; see
+   * `selfSignUpFromOAuth` in lib/contest/accounts.ts, where the role is a literal.
+   */
+  SIGNUP_ALLOWED_EMAIL_DOMAINS: z.string().optional(),
+
   TEST_DATA_ROOT: z.string().min(1).default("./data/testcases"),
   /**
    * Where the judge stages a submission's source, inputs and results.

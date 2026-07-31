@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 
 import { Button } from "@/components/ui";
+import { GitHubMark, GoogleMark } from "./ProviderIcons";
 
 /**
  * Email and password sign-in, plus the two OAuth buttons.
@@ -62,10 +63,19 @@ export function SignInForm({ initialError = null }: SignInFormProps) {
         setError(message);
         return;
       }
+      // Routed by ROLE, not hardcoded to /admin. Competitors can hold a password too — an
+      // organizer may set one for a student whose provider is not working — and sending them to
+      // the console lands them on a screen that refuses them, which reads as "your sign-in
+      // failed" when it in fact succeeded.
+      const role =
+        typeof body === "object" && body !== null && "data" in body
+          ? (body as { data: { role?: unknown } }).data.role
+          : null;
+
       // A full navigation rather than a router push: the session cookie was just set, and every
       // server component downstream has to be rendered with it rather than with the cached tree
       // from before the sign-in.
-      window.location.assign("/admin");
+      window.location.assign(role === "ADMIN" ? "/admin" : "/contest");
     } catch {
       setError("Could not reach the server.");
     } finally {
@@ -75,6 +85,53 @@ export function SignInForm({ initialError = null }: SignInFormProps) {
 
   return (
     <div>
+      {/*
+        OAuth first, and prominent. This is how a STUDENT signs up now — the buttons are the
+        primary action for almost everyone who reaches this page, so they sit above the fold
+        rather than under an "or" divider as an afterthought for people who could not remember a
+        password. The email form below is for organizers, who are a handful of people.
+
+        `no-html-link-for-pages` is suppressed on both, and only here. The rule exists to stop an
+        `<a>` doing a full page load to a route the client router could have handled — but these
+        are not pages. `/api/auth/{provider}` sets a state cookie and 302s to Google or GitHub,
+        and a client-side navigation cannot follow a redirect to another origin. `<Link>` would
+        satisfy the linter and break sign-in.
+      */}
+      <div className="flex flex-col gap-2">
+        {/* eslint-disable-next-line @next/next/no-html-link-for-pages -- OAuth start: must be a document navigation */}
+        <a
+          href="/api/auth/google"
+          className="flex items-center justify-center gap-2.5 rounded border border-ink/25 px-3 py-2.5 font-semibold hover:border-ink/45 hover:bg-ink/[0.03]"
+          style={{ fontSize: "var(--text-sm)" }}
+        >
+          <GoogleMark />
+          Continue with Google
+        </a>
+        {/* eslint-disable-next-line @next/next/no-html-link-for-pages -- OAuth start: must be a document navigation */}
+        <a
+          href="/api/auth/github"
+          className="flex items-center justify-center gap-2.5 rounded border border-ink/25 px-3 py-2.5 font-semibold hover:border-ink/45 hover:bg-ink/[0.03]"
+          style={{ fontSize: "var(--text-sm)" }}
+        >
+          <GitHubMark />
+          Continue with GitHub
+        </a>
+      </div>
+
+      <p className="mt-3 text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
+        Students: use your school account. Signing in creates yours the first time, and an
+        organizer puts you on a team.
+      </p>
+
+      <div className="my-5 flex items-center gap-3" aria-hidden="true">
+        <span className="h-px flex-1 bg-ink/15" />
+        {/* 60, not 55. Ink at 55% over paper is 4.34:1, under AA's 4.5:1 at this size. */}
+        <span className="text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
+          or, for organizers
+        </span>
+        <span className="h-px flex-1 bg-ink/15" />
+      </div>
+
       <form className="flex flex-col gap-3" onSubmit={(event) => void submit(event)}>
         <label className="flex flex-col gap-1" style={{ fontSize: "var(--text-sm)" }}>
           Email
@@ -113,53 +170,14 @@ export function SignInForm({ initialError = null }: SignInFormProps) {
         </Button>
       </form>
 
-      <div className="my-5 flex items-center gap-3" aria-hidden="true">
-        <span className="h-px flex-1 bg-ink/15" />
-        {/* 60, not 55. Ink at 55% over paper composites to #7f7373 — 4.34:1, under AA's 4.5:1 at
-            this size. The same mistake is recorded in ProblemWorkspace; 60% measures 5.16:1. */}
-        <span className="text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
-          or
-        </span>
-        <span className="h-px flex-1 bg-ink/15" />
-      </div>
-
-      {/*
-        Plain links, and deliberately not disabled when a provider has no credentials. The route
-        answers 503 with a readable reason in that case; a greyed-out button would say "not for
-        you" to an organizer whose account is fine and whose server is merely misconfigured.
-      */}
-      {/*
-        `no-html-link-for-pages` is suppressed here, and only here. The rule exists to stop an
-        `<a>` doing a full page load to a route the client router could have handled — but these
-        are not pages. `/api/auth/{provider}` sets a state cookie and 302s to Google or GitHub,
-        and a client-side navigation cannot follow a redirect to another origin. `<Link>` would
-        satisfy the linter and break the sign-in, which is the wrong trade.
-      */}
-      <div className="flex flex-col gap-2">
-        {/* eslint-disable-next-line @next/next/no-html-link-for-pages -- OAuth start: must be a document navigation */}
-        <a
-          href="/api/auth/google"
-          className="rounded border border-ink/25 px-3 py-2 text-center hover:border-ink/45"
-          style={{ fontSize: "var(--text-sm)" }}
-        >
-          Continue with Google
-        </a>
-        {/* eslint-disable-next-line @next/next/no-html-link-for-pages -- OAuth start: must be a document navigation */}
-        <a
-          href="/api/auth/github"
-          className="rounded border border-ink/25 px-3 py-2 text-center hover:border-ink/45"
-          style={{ fontSize: "var(--text-sm)" }}
-        >
-          Continue with GitHub
-        </a>
-      </div>
-
-      <p className="mt-6 text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
-        Here to compete?{" "}
+      <p className="mt-6 text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
+        Provider not working?{" "}
         <Link href="/join" className="text-panther underline underline-offset-2">
           Join with a contest code
         </Link>{" "}
-        — students do not need an account.
+        &mdash; kept as a fallback for the night, because OAuth fails for reasons that have nothing
+        to do with the room: an expired client secret, a changed consent screen, a provider having
+        an afternoon.
       </p>
     </div>
   );

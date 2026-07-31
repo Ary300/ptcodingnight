@@ -149,24 +149,28 @@ fi
 run_gate G6 "scoring golden " "npm run test:scoring:golden"
 run_gate G7 "e2e            " "npm run test:e2e"
 
-# G9 BEFORE G8, and the order is load-bearing.
+# G8 RUNS LAST OF THE CONTAINER GATES, and the order is load-bearing.
 #
 # G8 fires 40 concurrent submissions and leaves the judge queue draining and the host loaded well
-# after its own measurement finishes. Run straight afterwards, G9's browser navigations time out
-# at 120 s waiting for a page the busy dev server has not rendered — measured, 29/32 inside
-# `npm run verify` against 32/32 standalone, which reads as an accessibility regression and is
-# nothing of the kind.
+# after its own measurement finishes. ANY gate that follows it inherits that wake:
 #
-# G9 spawns no containers, so nothing is lost by putting it first. This is the same class as the
-# rule that keeps G8 and G13 apart (CLAUDE.md): a gate that measures latency cannot share a
-# machine with one that creates it.
+#   G9 — browser navigations time out at 120 s waiting for a page the busy dev server has not
+#        rendered. Measured 29/32 inside `npm run verify` against 32/32 standalone, which reads
+#        as an accessibility regression and is nothing of the kind.
+#   G13 — a reference solution reports RE on one test. Measured `designer-pdf-viewer` at
+#        160/170 immediately after G8, against AC 170/170 and 20/20 overall standalone, on the
+#        same commit. That reads as an unshippable problem and is nothing of the kind.
+#
+# G9 was moved ahead of G8 when the first of those was found. G13 was left behind it, because
+# the rule everyone remembered was "G8 and G13 must never run CONCURRENTLY" (CLAUDE.md) — which
+# this script guarantees anyway by being strictly sequential, in either order. Concurrency was
+# never the whole hazard; the wake is.
+#
+# So the rule is the more general one: nothing that measures anything runs after G8. G8 goes
+# last, and its own p95 is still uncontaminated because everything before it has finished.
 run_gate G9 "a11y           " "npm run test:a11y"
-run_gate G8 "load           " "npm run test:load"
-
-# G13 runs AFTER G8, never alongside it. Both spawn containers, and interleaving them would
-# corrupt G8's p95 latency — the only thing G8 measures. This script is strictly sequential,
-# so ordering is the guarantee.
 run_gate G13 "problem content" "npm run test:content"
+run_gate G8 "load           " "npm run test:load"
 
 # G7's judged project, G8 and G13 all create containers, so the host is checked again at the end
 # of the run. A leak here is not G5's — it belongs to whichever gate created it.
