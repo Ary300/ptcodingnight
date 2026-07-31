@@ -429,7 +429,19 @@ model Problem {
 
   timeLimitMs      Int        @default(2000)
   memoryLimitMb    Int        @default(256)
-  allowedLanguages Language[] @default([PYTHON_312, JAVA_21])
+  /// Every runtime the judge can actually run, unless a problem narrows it deliberately.
+  ///
+  /// **This defaulted to `[PYTHON_312, JAVA_21]` and that was the wrong default.** The bank is
+  /// seeded from `data/problems_seed.csv`, which names no languages, so 122 of the 130 problems
+  /// took the default — and an organizer who built a contest out of the bank produced one where a
+  /// student could not choose C, C++, JavaScript or Go, on any problem. The judge runs all ten
+  /// variants and always did; the data said otherwise.
+  ///
+  /// A problem is stdin-to-stdout, so nothing about it is language-specific. The narrow case is a
+  /// CODINGBAT warmup, which exists per language and carries `language` above — narrowing there is
+  /// deliberate and set by the author, which is the point: **restriction should be a decision, not
+  /// a default.**
+  allowedLanguages Language[] @default([PYTHON_312, JAVA_8, JAVA_11, JAVA_17, JAVA_21, C_17, CPP_11, CPP_17, JAVASCRIPT_NODE22, GO_123])
 
   /// Used by the authoring flow to generate expected outputs. Must pass its own tests
   /// before the problem may leave DRAFT (PRD §9.2).
