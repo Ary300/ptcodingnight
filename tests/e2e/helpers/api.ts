@@ -418,6 +418,37 @@ export class ContestApi {
     );
   }
 
+  createContestRaw(body: {
+    name: string;
+    startsAt: string;
+    endsAt: string;
+    freezeAt: string | null;
+    scoringPresetId: "classic" | "icpc";
+    divisions: string[];
+  }): Promise<APIResponse> {
+    return this.req().post("/api/admin/contests", { data: body });
+  }
+
+  setContestProblemsRaw(
+    contestId: string,
+    body: {
+      reason: string;
+      problems: {
+        problemId: string;
+        slotLabel: string;
+        basePoints: number;
+        setLabel: string | null;
+        divisionId: string | null;
+      }[];
+    },
+  ): Promise<APIResponse> {
+    return this.req().put(`/api/admin/contests/${contestId}/problems`, { data: body });
+  }
+
+  setContestStateRaw(contestId: string, state: string, reason: string): Promise<APIResponse> {
+    return this.req().post(`/api/admin/contests/${contestId}/state`, { data: { state, reason } });
+  }
+
   adminContestsRaw(): Promise<APIResponse> {
     return this.req().get("/api/admin/contests");
   }

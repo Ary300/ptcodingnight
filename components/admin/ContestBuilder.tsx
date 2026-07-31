@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState, type FormEvent } from "react";
 
 import { Button } from "@/components/ui";
@@ -23,20 +24,11 @@ import {
  * the API is the authority.
  */
 
-const JOIN_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no O/0, no I/1
-
-function generateJoinCode(): string {
-  const bytes = new Uint8Array(6);
-  crypto.getRandomValues(bytes);
-  return Array.from(bytes, (b) => JOIN_CODE_ALPHABET[b % JOIN_CODE_ALPHABET.length] ?? "X").join("");
-}
-
 const EMPTY_DRAFT: ContestDraft = {
   name: "",
   startsAtLocal: "",
   endsAtLocal: "",
   freezeAtLocal: "",
-  joinCode: "",
   scoringPresetId: "classic",
   divisions: [
     { key: "d1", name: "Intermediate" },
@@ -72,6 +64,9 @@ export function ContestBuilder({ initial = EMPTY_DRAFT }: ContestBuilderProps) {
   const [draft, setDraft] = useState<ContestDraft>(initial);
   const [errors, setErrors] = useState<Errors>({});
   const [saved, setSaved] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [createdId, setCreatedId] = useState<string | null>(null);
 
   const update = <K extends keyof ContestDraft>(key: K, value: ContestDraft[K]): void => {
     setDraft((previous) => ({ ...previous, [key]: value }));
@@ -97,23 +92,72 @@ export function ContestBuilder({ initial = EMPTY_DRAFT }: ContestBuilderProps) {
     );
   };
 
-  const onSubmit = (event: FormEvent<HTMLFormElement>): void => {
+  /**
+   * Create the contest.
+   *
+   * This used to validate the draft and then set a "saved" flag, next to a comment explaining that
+   * there was no route to call. There is one now, and the organizer's first job — the one every
+   * other screen depends on — no longer requires running a seed script.
+   *
+   * `datetime-local` yields wall-clock text with no zone, which is not an instant. `new Date(...)`
+   * on that string resolves it in the BROWSER's zone, which is the organizer's, which is the one
+   * they typed it in. Converting here rather than sending the raw string is what stops a contest
+   * starting an hour early on a server set to UTC.
+   */
+  const onSubmit = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault();
     const found = collectErrors(draft);
     setErrors(found);
-    // No route to call yet: `app/api/**` belongs to backend-api and does not exist in this
-    // worktree. When it does, this is the single place that POSTs the parsed draft.
-    setSaved(Object.keys(found).length === 0);
+    if (Object.keys(found).length > 0) return;
+
+    setBusy(true);
+    setSaved(false);
+    setFormError(null);
+    try {
+      const response = await fetch("/api/admin/contests", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          name: draft.name,
+          startsAt: new Date(draft.startsAtLocal).toISOString(),
+          endsAt: new Date(draft.endsAtLocal).toISOString(),
+          freezeAt: draft.freezeAtLocal === "" ? null : new Date(draft.freezeAtLocal).toISOString(),
+          scoringPresetId: draft.scoringPresetId,
+          divisions: draft.divisions.map((d) => d.name),
+        }),
+      });
+
+      const body: unknown = await response.json();
+      if (!response.ok) {
+        const message =
+          typeof body === "object" && body !== null && "error" in body
+            ? String((body as { error: { message?: unknown } }).error.message ?? "")
+            : "";
+        setFormError(message === "" ? "That contest could not be created." : message);
+        return;
+      }
+
+      const id =
+        typeof body === "object" && body !== null && "data" in body
+          ? (body as { data: { contestId?: unknown } }).data.contestId
+          : null;
+      setSaved(true);
+      if (typeof id === "string") setCreatedId(id);
+    } catch {
+      setFormError("Could not reach the server.");
+    } finally {
+      setBusy(false);
+    }
   };
 
   const preset = SCORING_PRESETS.find((p) => p.id === draft.scoringPresetId);
   const divisionError = errors["divisions"];
 
   return (
-    <form onSubmit={onSubmit} noValidate className="flex flex-col gap-6">
+    <form onSubmit={(event) => void onSubmit(event)} noValidate className="flex flex-col gap-6">
       <Panel
         title="Contest"
-        description="The window, the join code and the freeze time are the four things nobody wants to be editing at 6:55pm. Set them now."
+        description="The window, the divisions, the preset and the freeze are what nobody wants to be deciding at 6:55pm. Set them now. A contest is created as a DRAFT — students cannot see it until you publish it."
       >
         <div className="grid gap-5 sm:grid-cols-2">
           <TextInput
@@ -125,22 +169,6 @@ export function ContestBuilder({ initial = EMPTY_DRAFT }: ContestBuilderProps) {
             onChange={(e) => update("name", e.target.value)}
           />
 
-          <div className="flex items-end gap-2">
-            <div className="flex-1">
-              <TextInput
-                label="Join code"
-                required
-                numeric
-                value={draft.joinCode}
-                error={errors["joinCode"] ?? null}
-                hint="Read aloud to a room. Ambiguous characters are left out of the generator."
-                onChange={(e) => update("joinCode", e.target.value.toUpperCase())}
-              />
-            </div>
-            <Button type="button" variant="secondary" onClick={() => update("joinCode", generateJoinCode())}>
-              Generate
-            </Button>
-          </div>
 
           <TextInput
             label="Starts at"
@@ -251,13 +279,50 @@ export function ContestBuilder({ initial = EMPTY_DRAFT }: ContestBuilderProps) {
         </AlertPlate>
       )}
 
-      <div className="flex flex-wrap items-center gap-3">
-        <Button type="submit">Save contest</Button>
-        {saved && (
-          <span role="status" className="font-semibold text-panther" style={{ fontSize: "var(--text-sm)" }}>
-            Draft is valid. Wiring to the API lands with the admin routes.
-          </span>
-        )}
+      {formError !== null && (
+        <AlertPlate tone="alarm" title="The server refused this contest">
+          {formError}
+        </AlertPlate>
+      )}
+
+      {/*
+        The action bar HackerRank puts at the foot of its contest admin: the primary action on the
+        right, and what to do NEXT beside it once the thing exists. A "saved" message that only
+        says "saved" leaves an organizer on a form with nothing to press, when what they actually
+        want is to go and put problems in it.
+      */}
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-ink/12 pt-4">
+        <div>
+          {saved && (
+            <span role="status" className="font-semibold" style={{ fontSize: "var(--text-sm)" }}>
+              Created as a <strong>DRAFT</strong>. Students cannot see it yet.
+            </span>
+          )}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3">
+          {saved && createdId !== null && (
+            <>
+              <Link
+                href={`/admin/teams?contest=${encodeURIComponent(createdId)}`}
+                className="rounded border border-ink/25 px-3 py-2 font-semibold hover:border-ink/50"
+                style={{ fontSize: "var(--text-sm)" }}
+              >
+                Build the roster
+              </Link>
+              <Link
+                href="/admin/problems"
+                className="rounded border border-ink/25 px-3 py-2 font-semibold hover:border-ink/50"
+                style={{ fontSize: "var(--text-sm)" }}
+              >
+                Add problems
+              </Link>
+            </>
+          )}
+          <Button type="submit" disabled={busy}>
+            {busy ? "Creating…" : "Create contest"}
+          </Button>
+        </div>
       </div>
     </form>
   );

@@ -317,6 +317,59 @@ export const AdminConsoleViewSchema = z.object({
 });
 export type AdminConsoleView = z.infer<typeof AdminConsoleViewSchema>;
 
+/**
+ * Creating a contest.
+ *
+ * Times arrive as ISO strings rather than as a local-time string plus a zone, because a contest
+ * window is an instant and the browser is the only party that knows the organizer's zone. The form
+ * converts once, at the edge, and everything downstream handles a `Date`.
+ *
+ * No `joinCode`. The builder used to generate one and ask the organizer to write it down; there is
+ * no join route for it to open, so prompting for it was prompting for a credential that does
+ * nothing. The column is still non-null in the schema, and `createContest` fills it.
+ */
+export const CreateContestRequestSchema = z.object({
+  name: z.string().trim().min(1, "Give the contest a name").max(120),
+  startsAt: z.string(),
+  endsAt: z.string(),
+  freezeAt: z.string().nullable(),
+  scoringPresetId: z.enum(["classic", "icpc"]),
+  divisions: z.array(z.string().trim().min(1).max(40)),
+});
+export type CreateContestRequest = z.infer<typeof CreateContestRequestSchema>;
+
+export const CreateContestResponseSchema = z.object({ contestId: z.string() });
+
+/**
+ * A contest's line-up, set in one call.
+ *
+ * `setLabel` null means a GROUP problem — every team works it regardless of which set a player was
+ * assigned. That is the distinction the whole Coding Night format rests on, so it is a field
+ * rather than something inferred from the slot label's spelling.
+ */
+export const SetContestProblemsRequestSchema = z.object({
+  problems: z.array(
+    z.object({
+      problemId: z.string(),
+      slotLabel: z.string().trim().min(1).max(24),
+      basePoints: z.number().int().nonnegative(),
+      setLabel: z.string().trim().min(1).max(8).nullable(),
+      divisionId: z.string().nullable(),
+    }),
+  ),
+  reason: z.string().trim().min(1, "Say why this line-up changed").max(300),
+});
+export const SetContestProblemsResponseSchema = z.object({
+  count: z.number().int().nonnegative(),
+});
+
+/** Publishing, opening and ending a contest. Freezing is NOT here — it belongs to the console. */
+export const SetContestStateRequestSchema = z.object({
+  state: z.enum(["SCHEDULED", "RUNNING", "ENDED"]),
+  reason: z.string().trim().min(1, "Say why").max(300),
+});
+export const SetContestStateResponseSchema = z.object({ state: z.string() });
+
 /** The organizer's roster view: every team plus everybody on none. */
 export const AdminRosterSchema = z.object({
   maxTeamSize: z.number().int().positive(),

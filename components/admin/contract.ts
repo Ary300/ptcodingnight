@@ -105,12 +105,9 @@ export const ContestDraftSchema = z
     endsAtLocal: localDateTime,
     /** Optional: no freeze means the board never stops updating (PRD §6.3). */
     freezeAtLocal: z.union([localDateTime, z.literal("")]),
-    joinCode: z
-      .string()
-      .trim()
-      .min(4, "Join codes are at least 4 characters")
-      .max(24)
-      .regex(/^[A-Za-z0-9-]+$/, "Letters, numbers and hyphens only"),
+    // No joinCode. The builder used to generate one and tell the organizer to write it down —
+    // for a route that no longer exists. Prompting for a credential that opens nothing is worse
+    // than not prompting: somebody reads it out to a room and then wonders why it does not work.
     scoringPresetId: z.enum(["classic", "icpc"]),
     divisions: z.array(DivisionDraftSchema).min(1, "At least one division"),
   })

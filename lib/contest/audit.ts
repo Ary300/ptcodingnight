@@ -26,6 +26,17 @@ export const AUDIT_ACTIONS = {
   /// after the rejudge there is nothing left in the row to say what was replaced — and "the IE
   /// that was there before" is the whole justification for having pressed the button.
   submissionRejudge: "submission.rejudge",
+  /// A contest was created through the organizer console. Recorded because a contest is the root
+  /// of everything else that is audited, and "who set this up, and when" is the first question
+  /// asked when a window or a preset turns out to be wrong.
+  contestCreate: "contest.create",
+  /// The line-up changed. Records the slot labels rather than the problem ids, because "which
+  /// problems were in this contest" is the question asked afterwards and an id answers it only
+  /// for somebody with database access.
+  contestProblemsSet: "contest.problems_set",
+  /// Published, opened or ended. The transition an organizer makes deliberately, as distinct from
+  /// a freeze, which is reversible and lives in the live console.
+  contestStateSet: "contest.state_set",
   contestFreeze: "contest.freeze",
   contestUnfreeze: "contest.unfreeze",
   participantJoin: "participant.join",
