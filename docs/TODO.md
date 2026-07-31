@@ -162,7 +162,7 @@ contest must run on this one anyway — is `docs/HOSTING.md` §5.
 **Severity: medium, downgraded from high.** The threshold was never lowered; the machine got
 quieter.
 
-Same code, nine measurements, against a 10,000 ms target:
+Same code, eleven measurements, against a 10,000 ms target:
 
 | Condition | p95 | |
 |---|---|---|
@@ -171,12 +171,20 @@ Same code, nine measurements, against a 10,000 ms target:
 | Inside `npm run verify`, host load 6.06 | **8,449 ms** | PASS, 1.6 s of headroom |
 | Inside `npm run verify` | 9,261 ms | PASS, 0.7 s of headroom |
 | Inside `npm run verify` | **14,737 ms** | **FAIL** |
+| **Standalone, host load 8.76, 11 unrelated containers up** | **16,447 ms** | **FAIL, 1.6×** |
 | Inside `npm run verify` | **18,723 ms** | **FAIL** |
 | Inside `npm run verify` | **22,781 ms** | **FAIL, 2.3×** |
+| **Inside `npm run verify`, dev server + browser + 11 containers** | **45,620 ms** | **FAIL, 4.6×** |
 | Earlier sessions, load ~8 / 32 | 110,767 / 283,436 ms | FAIL, 11× and 28× |
 
-**The full spread on one unchanged commit is 7,363 ms to 22,781 ms — a factor of 3.1.** The
+**The full spread on one unchanged commit is 7,363 ms to 45,620 ms — a factor of 6.2.** The
 threshold sits inside that spread, which is the whole problem.
+
+**The two worst numbers here are the newest, and they are the same finding as the rest.** They
+were taken on a laptop that had been up for a day with eleven unrelated containers, VS Code and a
+browser running — and the standalone run, at 16,447 ms, is worse than every *verify-embedded* run
+from a quieter day. Nothing in the judging path changed between them. That is the point of this
+entry: the number is a property of the machine, and it moves by 6× without a line of code moving.
 
 **It has now passed inside a complete `npm run verify` run**, at 8,449 ms with 1.6 s of headroom,
 alongside every other gate in the same run. That is the best result recorded here and it is worth
@@ -192,7 +200,7 @@ Container creation dominates and degrades with load — 2.4–16 s against a 1.0
 budget — which is the whole of the effect.
 
 **Correctness never varied**: 40/40 accepted, 40/40 `AC`, zero `IE`, zero dropped, on every run
-including the slowest. Students get the right verdict; on a busy host they wait for it.
+including the two newest and slowest. Students get the right verdict; on a busy host they wait for it.
 
 **Still open. A pass is not a resolution.** A gate that measures 7.4 s and 22.8 s on the same
 commit has no margin, and one green run does not create margin — it samples a distribution whose

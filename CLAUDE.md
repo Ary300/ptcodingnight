@@ -19,13 +19,13 @@ Full `npm run verify` run, every gate's real output in the transcript:
 | Gate | State | Note |
 |---|---|---|
 | G0 build, G1 typecheck, G2 lint | PASS | |
-| G3 unit | PASS | 352 tests, 96% statements |
+| G3 unit | PASS | 360 tests, 96.2% statements |
 | G4 judge fixtures | PASS | 57/57 across all five runtimes |
 | G5 sandbox | PASS | 19/19, and `docker ps -a` back at baseline |
 | G6 golden scoring | PASS | includes the team formula and its variants |
-| G7 E2E | PASS | 89/89 against the **real API**, both browser profiles |
-| G8 load | **STRADDLES the threshold — treat as FAIL** | Same commit, measured: 7,363 / 7,476 / 8,713 / 9,261 ms (pass) and 14,737 / 18,723 ms (fail). It passes standalone on a settled machine and fails inside `npm run verify`, where other gates have just run. 40/40 AC and zero dropped every time — only the waiting moves. T3, `docs/HOSTING.md` §3 |
-| G9 a11y | PASS | 32/32. `/admin/awards` is the one surface it does not cover, because that screen still renders the individual board (T7) |
+| G7 E2E | PASS | 109/109 against the **real API**, both browser profiles |
+| G8 load | **FAIL on this machine as it stands** | Same commit, eleven measurements: 7,363 / 7,476 / 8,713 / 9,261 ms pass; 14,737 / 16,447 / 18,723 / 22,781 / 45,620 ms fail. The 45,620 ms was inside a full `npm run verify` with a dev server, a browser and eleven unrelated containers up; the 16,447 ms was **standalone** on the same busy host, and is worse than every verify-embedded run from a quieter day. A factor of 6.2 with no code change. 40/40 AC and zero dropped every time — only the waiting moves. T3, `docs/HOSTING.md` §3 |
+| G9 a11y | PASS | 34/34. `/admin/awards` renders the team board and is now behind the organizer gate, so the audit signs in as an organizer to reach the admin surfaces |
 | G13 problem content | PASS | 20/20 references, 297 test cases, 0 containers leaked |
 | G10 cold start, G11 security | NOT RUN | neither is scriptable from inside the clone |
 | G12 clean tree | PASS | |
