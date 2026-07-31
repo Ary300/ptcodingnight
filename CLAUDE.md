@@ -24,7 +24,7 @@ Full `npm run verify` run, every gate's real output in the transcript:
 | G5 sandbox | PASS | 19/19, and `docker ps -a` back at baseline |
 | G6 golden scoring | PASS | includes the team formula and its variants |
 | G7 E2E | PASS | 89/89 against the **real API**, both browser profiles |
-| G8 load | **PASS on a quiet host, and that is the caveat** | p95 **7,363 ms** against 10,000 ms at host load 4.25, reproducible. The same code measured 110,767 ms at load ~8 and 283,436 ms at load 32 — a 38× spread. **A green G8 means the machine was quiet.** T3, `docs/HOSTING.md` §3 |
+| G8 load | **STRADDLES the threshold — treat as FAIL** | Same commit, measured: 7,363 / 7,476 / 8,713 / 9,261 ms (pass) and 14,737 / 18,723 ms (fail). It passes standalone on a settled machine and fails inside `npm run verify`, where other gates have just run. 40/40 AC and zero dropped every time — only the waiting moves. T3, `docs/HOSTING.md` §3 |
 | G9 a11y | PASS | 32/32. `/admin/awards` is the one surface it does not cover, because that screen still renders the individual board (T7) |
 | G13 problem content | PASS | 20/20 references, 297 test cases, 0 containers leaked |
 | G10 cold start, G11 security | NOT RUN | neither is scriptable from inside the clone |

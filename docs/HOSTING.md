@@ -107,6 +107,10 @@ not — the first three gaps were bugs and were fixed; the last one is the machi
 | Re-run, production build | **283,436 ms** | **40/40** | **0** | host load **32** |
 | Re-run on a QUIET machine | **7,363 ms** | **40/40** | **0** | host load **4.25** — **PASSES** |
 | Same, immediately again | **7,476 ms** | **40/40** | **0** | host load 4.25, reproducible |
+| Standalone, busier | **8,713 ms** | 40/40 | 0 | host load 7.74 — passes, 1.3 s of headroom |
+| Inside `npm run verify` | 9,261 ms | 40/40 | 0 | passes, 0.7 s of headroom |
+| Inside `npm run verify` | **14,737 ms** | 40/40 | 0 | **FAILS** — other gates had just run |
+| Inside `npm run verify` | **18,723 ms** | 40/40 | 0 | **FAILS** |
 | Target | **10,000 ms** | 40/40 | 0 | met at load ~4, missed by 28× at load 32 |
 
 ### G8 is a measurement of the HOST, not of the code
