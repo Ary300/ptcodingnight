@@ -43,3 +43,7 @@ data/testcases/
 # Next's docs say not to edit it; they do not require committing a file that rewrites itself.
 # TypeScript is unaffected because it is regenerated before any build or typecheck that needs it.
 next-env.d.ts
+
+# Reference screenshots of HackerRank and Codeforces, kept locally for design work.
+# Not committed: third-party UI, ~19 MB, and of no use to anyone checking out the repo.
+Hackerrank:CF images for Frontend/
