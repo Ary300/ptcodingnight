@@ -7,6 +7,7 @@ import {
 } from "@/lib/schemas/api";
 
 import { ContestApi, readEnvelope, readOk } from "./helpers/api";
+import { requiredEnv } from "./helpers/env";
 import { closeTestDb, seedE2EContest, testDb, type SeededContest } from "./helpers/seed";
 
 /**
@@ -27,7 +28,7 @@ let seeded: SeededContest;
 let admin: ContestApi;
 let adminContext: APIRequestContext;
 
-const ADMIN_PASSCODE = process.env.ADMIN_PASSCODE ?? "";
+const ADMIN_PASSCODE = requiredEnv("ADMIN_PASSCODE");
 
 /** Team formation closes at `startsAt`, and the fixture starts in the past. */
 async function openFormation(contestId: string): Promise<void> {
@@ -91,7 +92,7 @@ test.beforeAll(async ({ playwright }) => {
   seeded = await seedE2EContest();
   adminContext = await playwright.request.newContext();
   admin = new ContestApi(adminContext, seeded.contestId);
-  if (ADMIN_PASSCODE !== "") await admin.adminLogin(ADMIN_PASSCODE);
+  await admin.adminLogin(ADMIN_PASSCODE);
 });
 
 test.afterAll(async () => {
@@ -230,8 +231,6 @@ test.describe("a late joiner is given a problem set", () => {
 });
 
 test.describe("an organizer moves a participant, and the mean follows", () => {
-  test.skip(ADMIN_PASSCODE === "", "ADMIN_PASSCODE is not set");
-
   test("moving one participant changes BOTH team scores, correctly", async () => {
     await openFormation(seeded.contestId);
 

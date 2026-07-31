@@ -3,6 +3,7 @@ import { expect, test, type APIRequestContext } from "@playwright/test";
 import { SSE_EVENTS, StandingsResponseSchema, VerdictEventSchema } from "@/lib/schemas/api";
 
 import { ContestApi, cookieHeader } from "./helpers/api";
+import { requiredEnv } from "./helpers/env";
 import {
   closeTestDb,
   liveProblem,
@@ -26,7 +27,7 @@ import { collectSse } from "./helpers/sse";
  * so a spectator on the projector's stream must never receive one.
  */
 
-const ADMIN_PASSCODE = process.env.ADMIN_PASSCODE ?? "";
+const ADMIN_PASSCODE = requiredEnv("ADMIN_PASSCODE");
 const STREAM_TIMEOUT_MS = 20_000;
 
 test.describe.configure({ mode: "serial" });
@@ -40,7 +41,6 @@ test.describe("live stream", () => {
   let streamUrl = "";
 
   test.beforeAll(async ({ playwright, baseURL }) => {
-    expect(ADMIN_PASSCODE.length).toBeGreaterThan(0);
     seeded = await seedE2EContest();
     streamUrl = `${baseURL ?? "http://localhost:3000"}/api/contests/${seeded.contestId}/stream`;
 

@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 import { ContestApi, readEnvelope, readOk } from "./helpers/api";
+import { requiredEnv } from "./helpers/env";
 import { closeTestDb, seedE2EContest, type SeededContest } from "./helpers/seed";
 
 /**
@@ -30,7 +31,7 @@ let seeded: SeededContest;
 let anon: ContestApi;
 let admin: ContestApi;
 
-const ADMIN_PASSCODE = process.env.ADMIN_PASSCODE ?? "";
+const ADMIN_PASSCODE = requiredEnv("ADMIN_PASSCODE");
 
 test.beforeAll(async ({ playwright }) => {
   seeded = await seedE2EContest();
@@ -41,7 +42,7 @@ test.beforeAll(async ({ playwright }) => {
   anon = new ContestApi(anonContext, seeded.contestId);
   admin = new ContestApi(adminContext, seeded.contestId);
 
-  if (ADMIN_PASSCODE !== "") await admin.adminLogin(ADMIN_PASSCODE);
+  await admin.adminLogin(ADMIN_PASSCODE);
 });
 
 test.afterAll(async () => {
@@ -237,8 +238,6 @@ test.describe("problem sets are enforced by the API", () => {
 });
 
 test.describe("set assignment is explainable", () => {
-  test.skip(ADMIN_PASSCODE === "", "ADMIN_PASSCODE is not set");
-
   test("re-derives the stored assignment from the stored seed", async () => {
     // The property the whole design exists for: when a student disputes their set, an organizer
     // recomputes it from a seed fixed before anyone knew the rosters (PRD §6.2).
@@ -265,8 +264,6 @@ test.describe("set assignment is explainable", () => {
 });
 
 test.describe("side activities", () => {
-  test.skip(ADMIN_PASSCODE === "", "ADMIN_PASSCODE is not set");
-
   test("an organizer can award points and the team board moves", async () => {
     const teamId = seeded.teamIds.get("cubs");
     expect(teamId).toBeDefined();

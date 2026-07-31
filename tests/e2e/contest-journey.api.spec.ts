@@ -3,6 +3,7 @@ import { expect, test, type APIRequestContext } from "@playwright/test";
 import { LANGUAGE_IDS } from "@/lib/judge/runtimes";
 
 import { ContestApi, readEnvelope } from "./helpers/api";
+import { requiredEnv } from "./helpers/env";
 import {
   closeTestDb,
   draftProblem,
@@ -32,7 +33,7 @@ import {
  * `POST /api/admin/submissions/{id}/override` — both real routes, neither one the judge.
  */
 
-const ADMIN_PASSCODE = process.env.ADMIN_PASSCODE ?? "";
+const ADMIN_PASSCODE = requiredEnv("ADMIN_PASSCODE");
 
 test.describe.configure({ mode: "serial" });
 
@@ -49,11 +50,6 @@ test.describe("contest journey (no judge required)", () => {
   const DISPLAY_NAME = "E2E Journey Competitor";
 
   test.beforeAll(async ({ playwright, baseURL }) => {
-    expect(
-      ADMIN_PASSCODE.length,
-      "ADMIN_PASSCODE must be set (copy .env.example to .env) or no admin step can run",
-    ).toBeGreaterThan(0);
-
     seeded = await seedE2EContest();
 
     competitorContext = await playwright.request.newContext({ baseURL });

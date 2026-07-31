@@ -12,6 +12,13 @@ import { defineConfig, devices } from "@playwright/test";
 export default defineConfig({
   testDir: "./tests/e2e",
   /*
+   * Refuses to start if a required variable is missing, BEFORE the web server is started.
+   *
+   * This replaced four `test.skip(ADMIN_PASSCODE === "", …)` guards. Those made the admin specs
+   * disappear from a run that still reported green — see tests/e2e/helpers/env.ts.
+   */
+  globalSetup: "./tests/e2e/global-setup.ts",
+  /*
    * Serial, and not for want of trying to parallelise it.
    *
    * Every spec seeds the SAME contest fixture into the SAME Postgres, because that is what an

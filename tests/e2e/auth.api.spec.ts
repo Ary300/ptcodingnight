@@ -3,6 +3,7 @@ import { expect, test } from "@playwright/test";
 import { hashPassword } from "@/lib/contest/password";
 
 import { ContestApi, readEnvelope, readOk } from "./helpers/api";
+import { requiredEnv } from "./helpers/env";
 import { closeTestDb, seedE2EContest, testDb, type SeededContest } from "./helpers/seed";
 
 /**
@@ -22,7 +23,7 @@ import { closeTestDb, seedE2EContest, testDb, type SeededContest } from "./helpe
 let seeded: SeededContest;
 let anon: ContestApi;
 
-const ADMIN_PASSCODE = process.env.ADMIN_PASSCODE ?? "";
+const ADMIN_PASSCODE = requiredEnv("ADMIN_PASSCODE");
 
 /** A real organizer account, created directly so the credential path has something to sign in to. */
 const ORGANIZER = {
@@ -206,8 +207,6 @@ test.describe("OAuth start", () => {
 });
 
 test.describe("mid-contest session revocation", () => {
-  test.skip(ADMIN_PASSCODE === "", "ADMIN_PASSCODE is not set");
-
   test("an organizer can cut off a student while the round is running", async ({ playwright }) => {
     // The reason sessions moved into Postgres. With a signed cookie this was impossible: the token
     // stayed valid until it expired no matter what an organizer wanted.
