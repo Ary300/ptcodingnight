@@ -4,6 +4,7 @@ import { z } from "zod";
 
 import { DomainError } from "@/lib/errors";
 import { linkedUserFor, providerLabel } from "@/lib/contest/accounts";
+import { ensureEnrolled } from "@/lib/contest/enrolment";
 import { cookiesAreSecure, oauthConfig } from "@/lib/contest/env";
 import { handle, readParams } from "@/lib/contest/http";
 import {
@@ -27,8 +28,13 @@ import { issueSession } from "@/lib/contest/session-store";
  *  2. `state` must match the hash in our cookie. **Without this check an attacker can complete a
  *     flow in a victim's browser and bind their own provider account to the victim's session.**
  *  3. The code is exchanged server-to-server for an identity.
- *  4. The identity must resolve to an EXISTING account. It never creates one — see
- *     docs/AUTH.md §3.
+ *  4. The identity resolves to an account, CREATING a competitor if there is not one yet, and
+ *     then enrols them in the contest with no team.
+ *
+ * Step 4 used to read "must resolve to an EXISTING account; it never creates one". Students now
+ * sign themselves up — there are no join codes on the front door — so the refusal moved rather
+ * than disappeared: signing in can only ever produce a COMPETITOR, enforced by a literal in
+ * `selfSignUpFromOAuth` and by a CHECK constraint that refuses an ADMIN with no password.
  *
  * On success this redirects rather than returning JSON, because the browser arrived here by
  * following a redirect from the provider and a JSON body would leave the student staring at it.
@@ -93,6 +99,24 @@ export async function GET(
 
     const identity = await identityFromCode(provider, config, code, fetch);
     const user = await linkedUserFor(identity);
+
+    // Signing in enrols a competitor in the contest an organizer is preparing, with NO team.
+    //
+    // Without this a student signs in successfully, sees an empty contest, and the organizer's
+    // roster shows nobody — two screens quietly wrong and no error to explain either. Team
+    // membership is still decided in exactly one place; this only makes the student visible there.
+    //
+    // Competitors only: an organizer is not a contestant, and enrolling them would put them in a
+    // team's divisor. Best-effort, because failing to enrol must not fail the sign-in — the
+    // account exists either way and an organizer can add them by hand.
+    if (user.role === "COMPETITOR") {
+      try {
+        await ensureEnrolled(user.userId, user.displayName);
+      } catch {
+        // Deliberately swallowed, and the only swallowed catch here. A sign-in that worked must
+        // not be reported as broken because a contest row was momentarily unavailable.
+      }
+    }
 
     const session = await issueSession(
       {

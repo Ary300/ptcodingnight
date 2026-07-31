@@ -4,7 +4,6 @@ import { DomainError } from "@/lib/errors";
 import { prisma } from "@/lib/db";
 import { verifyPassword } from "@/lib/contest/password";
 import type { OAuthIdentity, OAuthProvider } from "@/lib/contest/oauth";
-import { emailMayCreateAccount, parseAllowedDomains } from "@/lib/contest/signup-domains";
 
 /**
  * Account resolution for all three sign-in providers.
@@ -119,35 +118,39 @@ export async function linkedUserFor(identity: OAuthIdentity): Promise<Authentica
     };
   }
 
-  // 2. Not linked yet. Match an existing account by VERIFIED email only.
+  // 2. Not linked yet. Only a VERIFIED email may be matched to an EXISTING account.
   //
-  // Requiring verification is the whole security of this step. An unverified email is a claim by
-  // the person signing in rather than by the provider, so matching on it would let anyone who can
-  // set their profile email to an organizer's address take that organizer's account.
-  if (identity.email === null || !identity.emailVerified) {
-    throw new DomainError(
-      "UNAUTHORIZED",
-      `${providerLabel(identity.provider)} did not give us a verified email address, so we cannot ` +
-        "match it to an account. Sign in with your email and password, or use a join code.",
-    );
-  }
+  // The verification requirement is narrow and it is about takeover, not about signup. An
+  // unverified email is a claim by the person signing in rather than by the provider, so matching
+  // on it would let anyone who can type an organizer's address into their GitHub profile walk
+  // into that organizer's account.
+  //
+  // Nothing here refuses a sign-in. Without a verified email we simply do not LOOK for an
+  // existing account, and fall through to creating a new one keyed on the provider's subject id.
+  // That is the case that matters in practice: a GitHub account with no public email is the
+  // normal state of a student's GitHub account, not an edge case.
+  const verifiedEmail =
+    identity.email !== null && identity.emailVerified ? identity.email.toLowerCase() : null;
 
-  const byEmail = await prisma.user.findUnique({
-    where: { email: identity.email.toLowerCase() },
-    select: {
-      id: true,
-      displayName: true,
-      role: true,
-      disabledAt: true,
-      googleSub: true,
-      githubSub: true,
-    },
-  });
+  const byEmail =
+    verifiedEmail === null
+      ? null
+      : await prisma.user.findUnique({
+          where: { email: verifiedEmail },
+          select: {
+            id: true,
+            displayName: true,
+            role: true,
+            disabledAt: true,
+            googleSub: true,
+            githubSub: true,
+          },
+        });
 
   if (byEmail === null) {
-    // No account yet. This is where a student signs themselves up — if, and only if, their
-    // verified email is on the allowlist. See selfSignUpFromOAuth for why the role is a literal.
-    return selfSignUpFromOAuth(identity, subjectField);
+    // No account. Make one, now, with no gate. See selfSignUpFromOAuth for the two things that
+    // stop this ever producing an organizer.
+    return selfSignUpFromOAuth(identity, subjectField, verifiedEmail);
   }
 
   if (byEmail.disabledAt !== null) {
@@ -179,49 +182,47 @@ export async function linkedUserFor(identity: OAuthIdentity): Promise<Authentica
 }
 
 /**
- * Create a COMPETITOR account for a verified email on the allowlist.
+ * Create a COMPETITOR account. No gate: anyone who can complete a Google or GitHub sign-in gets
+ * one, immediately, on their first visit.
  *
- * ## The two things that make this safe, and neither is a check on the caller
+ * ## There was a domain allowlist here and it was the wrong idea
  *
- * **1. The role is a literal.** `role: "COMPETITOR"` is written here and comes from nothing the
- * person signing in can influence — not the email, not a provider claim, not a query parameter,
- * not a mapping table. There is no argument to this function that could make it produce an ADMIN,
- * so no future caller can pass one. The database agrees independently: a CHECK constraint refuses
- * an ADMIN with no password, so even a mistake here fails loudly instead of minting an organizer.
+ * It defaulted to fail-closed, which sounds like the responsible choice and was not. A student's
+ * GitHub account is registered to whatever address they used at thirteen; requiring a school
+ * domain silently broke the GitHub button for most of the people it was meant to serve, and the
+ * failure looked like "that account is not eligible" rather than like a policy decision anybody
+ * had made on purpose. Access control for a school coding night is a roster an organizer curates,
+ * not an email suffix.
  *
- * **2. The allowlist is fail-closed.** Unset means nobody may self-signup and the behaviour is
- * exactly what it was before this existed. `ptcodingnight.com` is on the open internet; an
- * allowlist that defaulted to "anyone with a Google account" would let strangers onto the
- * leaderboard with nothing written to any log.
+ * ## What still holds, and neither is a check a caller has to remember
  *
- * The email is already known to be VERIFIED by the caller — that check is what stops someone
- * setting their provider profile email to a school address and walking in.
+ * **1. The role is a literal.** `role: "COMPETITOR"` comes from nothing the person signing in can
+ * influence — not the email, not a provider claim, not a parameter. There is no argument to this
+ * function that could make it produce an ADMIN.
+ *
+ * **2. The database agrees independently.** A CHECK constraint refuses an ADMIN with no password,
+ * so even a mistake here fails loudly rather than minting an organizer. Signing up cannot produce
+ * one by any route.
+ *
+ * ## Why the email may be null
+ *
+ * Only a VERIFIED email is stored. An unverified one is a claim by the person signing in, and
+ * writing it would let them squat an address they do not own — which matters because the email is
+ * what a later verified sign-in matches against. A null email costs the account nothing: it is
+ * keyed on the provider's subject id, which is stable and cannot be reassigned.
  */
 async function selfSignUpFromOAuth(
   identity: OAuthIdentity,
   subjectField: "googleSub" | "githubSub",
+  verifiedEmail: string | null,
 ): Promise<AuthenticatedUser> {
-  const email = identity.email?.toLowerCase() ?? null;
-  const allowed = parseAllowedDomains(process.env.SIGNUP_ALLOWED_EMAIL_DOMAINS);
-
-  if (email === null || !emailMayCreateAccount(email, allowed)) {
-    // One message for "signup is switched off" and for "your domain is not on the list". The
-    // difference is only interesting to someone probing for which domains are accepted.
-    throw new DomainError(
-      "UNAUTHORIZED",
-      `That ${providerLabel(identity.provider)} account is not eligible to sign up here. ` +
-        "Use your school account, or ask an organizer to create one for you.",
-    );
-  }
-
   const created = await prisma.user.create({
     data: {
-      email,
-      displayName: identity.displayName?.trim() ?? email.slice(0, email.indexOf("@")),
+      email: verifiedEmail,
+      displayName: displayNameFor(identity, verifiedEmail),
       role: "COMPETITOR",
-      // No password. The account is reachable through this provider and through an
-      // organizer-set password later; see the CHECK constraint in the schema for why that is
-      // acceptable for a competitor and refused for an admin.
+      // No password. See the CHECK constraint in the schema for why that is fine for a competitor
+      // and refused for an admin.
       passwordHash: null,
       [subjectField]: identity.subject,
     },
@@ -229,6 +230,28 @@ async function selfSignUpFromOAuth(
   });
 
   return { userId: created.id, displayName: created.displayName, role: "COMPETITOR" };
+}
+
+/**
+ * A name to show on the leaderboard, which must never be empty and must never be an email address.
+ *
+ * Providers are inconsistent: Google usually gives a full name, GitHub gives the login when the
+ * profile name is blank, and either can give nothing. Falling back to the email's local part is
+ * the last resort and it is deliberately the LOCAL part — the projector shows this to a room, and
+ * putting a student's full address on a wall is not a display name.
+ */
+function displayNameFor(identity: OAuthIdentity, verifiedEmail: string | null): string {
+  const given = identity.displayName?.trim();
+  if (given !== undefined && given.length > 0) return given.slice(0, 40);
+
+  if (verifiedEmail !== null) {
+    const local = verifiedEmail.slice(0, verifiedEmail.indexOf("@")).trim();
+    if (local.length > 0) return local.slice(0, 40);
+  }
+
+  // Nothing usable from the provider. An organizer renames them from the roster; an empty string
+  // would violate the contest's unique-name constraint on the second such account.
+  return `${providerLabel(identity.provider)} user`;
 }
 
 export function providerLabel(provider: OAuthProvider): string {
