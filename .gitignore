@@ -47,3 +47,6 @@ next-env.d.ts
 # Reference screenshots of HackerRank and Codeforces, kept locally for design work.
 # Not committed: third-party UI, ~19 MB, and of no use to anyone checking out the repo.
 Hackerrank:CF images for Frontend/
+
+# Output of scripts/measure-host.sh — timestamped, machine-specific, never source.
+measurements/

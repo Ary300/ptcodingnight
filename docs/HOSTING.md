@@ -325,6 +325,22 @@ measurement. **Verify it with §6 before relying on it.**
 
 ## 7. Re-measure on the candidate host — about ten minutes
 
+> **There is a script for this now: `scripts/measure-host.sh`.**
+>
+> ```bash
+> scripts/measure-host.sh            # full run
+> scripts/measure-host.sh --quick    # one rep, one G8 — a smoke test of the script itself
+> ```
+>
+> It runs everything below in the order that keeps the numbers honest — images verified, startup
+> budgets under churn, G4/G5/G13, then **G8 last**, because anything measured in G8's wake is
+> measuring the wake — characterises any `IE`, and prints one report to paste back.
+>
+> Prefer it to the manual steps. **Every number in this document is wrong the moment the host is
+> resized**, and a procedure that has to be reassembled by hand does not get re-run; a single
+> command does. The manual steps below are kept because they explain what is being measured and
+> why, and because they still work if node is not installed on the box.
+
 Do this on the actual machine before committing to it. Steps 1–3 take a few minutes and answer
 the question on their own; step 4 is the real gate.
 
