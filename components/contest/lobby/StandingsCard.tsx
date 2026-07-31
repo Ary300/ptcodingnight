@@ -68,19 +68,25 @@ export function StandingsCard({ standings, participantId }: StandingsCardProps) 
             <thead>
               <tr className="text-paper/50" style={{ fontSize: "var(--text-xs)" }}>
                 <th scope="col" className="w-2" />
-                <th scope="col" className="py-1 text-left font-normal">
+                {/*
+                  `pl-2` on every column after the first, because these headers ran together:
+                  "RankName" and "Move ScorePenalty" rendered as single words. A table cell has no
+                  gap of its own, and three right-aligned numeric columns put their labels flush
+                  against each other — legible in the mock-up, unreadable with real data.
+                */}
+                <th scope="col" className="py-1 pl-2 text-left font-normal">
                   Rank
                 </th>
-                <th scope="col" className="py-1 text-left font-normal">
+                <th scope="col" className="py-1 pl-2 text-left font-normal">
                   Name
                 </th>
-                <th scope="col" className="py-1 text-right font-normal">
+                <th scope="col" className="py-1 pl-3 text-right font-normal">
                   Move
                 </th>
-                <th scope="col" className="py-1 text-right font-normal">
+                <th scope="col" className="py-1 pl-3 text-right font-normal">
                   Score
                 </th>
-                <th scope="col" className="py-1 text-right font-normal">
+                <th scope="col" className="py-1 pl-3 text-right font-normal">
                   Penalty
                 </th>
               </tr>

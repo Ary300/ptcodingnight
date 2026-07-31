@@ -1,17 +1,58 @@
 # HOSTING — choosing the machine that runs Coding Night
 
-Written to support one decision: **what hardware the judge runs on**. Every number here was
-measured on the build machine, and §6 tells you how to re-measure on a candidate host in about
-ten minutes so you are not taking these figures on faith.
+Written to support one decision: **what hardware the judge runs on.**
 
-Short version: **the build laptop misses the throughput target by 11× to 28×, the cause is Docker
-Desktop's VM plus whatever else the machine is doing, and it is not the code.** The range is not
-imprecision — it is the finding. The same code measured 11× at host load ~8 and 28× at load 32, so
-the number depends on what else is running. A modest *dedicated* Linux box with native Docker should
-clear it. Read §5 before buying or borrowing anything.
+## The finding, restated after measuring the real host
 
-Correctness is not the problem: the most recent runs are 40/40 accepted, 40/40 `AC`, zero `IE`, zero
-dropped jobs. It is only latency.
+**Docker Desktop's virtualisation layer was the entire problem, and native Linux fixes it —
+including a scoring error.** That is a different conclusion from the one this document used to
+draw, and the change is worth being precise about.
+
+It used to say: *the build laptop misses the throughput target by 11× to 28×, and a dedicated Linux
+box should clear it.* Both halves were true and the framing was wrong. It read as "this laptop is
+slow", which invites the fix of buying a faster laptop. The measurements on the deployment host say
+something stronger: the gap is not a matter of degree.
+
+Runtime startup, measured through the full judge path on both machines:
+
+| runtime | native Linux (2 vCPU droplet) | macOS, Docker Desktop | ratio |
+|---|---|---|---|
+| `python312` | 51–68 ms | 1006–1651 ms | ~24× |
+| `jdk21` | 117–229 ms | up to 38,473 ms | **~168×** |
+| `gcc14` | 12–26 ms | 1182 ms | ~45× |
+| `node22` | 72–100 ms | 462 ms (3636 direct) | ~5–36× |
+| `go123` | 8–15 ms | 390 ms (845 direct) | ~26–56× |
+
+**The Java row is the one that matters, and it is not a performance story.** A 38.5-second startup
+for a program that adds two integers forced a 45,000 ms budget, and a 45-second allowance on a
+2-second problem does not make Java slow to fail — it makes Java time limits *unenforceable*. The
+same quadratic algorithm passed in Java and failed in Python. That is a **scoring error**: two
+students writing equally bad solutions got different verdicts because of the language they chose.
+
+On the machine that hosts the contest, the same measurement is 229 ms. The budget is now 4000 ms
+across all five runtimes, a 2-second Java problem allows about 8 seconds rather than 49, and Java
+time limits mean something for the first time. **T2 is resolved** — by measurement, not by
+argument.
+
+### What this changes about the recommendation
+
+- **Native Linux is not an optimisation, it is a correctness requirement.** Docker Desktop does not
+  merely make the judge slow; it makes one language's time limits meaningless, and the judge has no
+  way to know that has happened.
+- **Every number in `lib/judge/runtimes.ts` describes native Linux now.** Measured on macOS after
+  the change, G4's Java fixtures still pass — the typical Docker Desktop startup clears a 4000 ms
+  budget; it was the 38.5-second *outlier* that forced 45,000 ms. `JUDGE_STARTUP_BUDGET_SCALE` is
+  insurance for that tail, never a reason to edit the recorded numbers back up.
+- **Re-measure after any host change**, including a resize: `scripts/measure-host.sh`. Every figure
+  in this document is wrong the moment the hardware changes, and the script exists so that is one
+  command rather than a procedure.
+
+Correctness was never the problem on either host: the runs are 40/40 accepted, 40/40 `AC`, zero
+`IE`, zero dropped jobs throughout. What moved is latency — and, in Java's case, whether a time
+limit was a limit at all.
+
+> G8's own numbers on the droplet are pending; §3 and §5 still carry the laptop's figures and are
+> marked where they do.
 
 ---
 
@@ -37,7 +78,7 @@ Since the per-submission container change, judging an interpreted submission is 
 container** (PRD §7.1's wording, singular) — down from one per test case. A compiled submission
 costs two: one to build, one to run. Inside them:
 
-| Step | Cost on the build machine |
+| Step | Cost on the build machine *(macOS, Docker Desktop — not the judging host)* |
 |---|---|
 | Container creation | **2,400 – 15,600 ms** at host load ~8; **7,300 – 16,000 ms** at load 32 — measured, and the floor moves with host load |
 | Compile / syntax check | Python ~300 ms · Java ~3,000 ms (cold `javac`) · C++ ~2,000 ms · Go 2,500 – 11,800 ms *(warm cache; 65,800 ms cold — see §7 step 2)* |
@@ -67,12 +108,20 @@ Java     1010, 1479, 1815, 2374, 3659, 5342 ms               (5.3× spread)
 ```
 
 Those numbers are why `RUNTIMES` in `lib/judge/runtimes.ts` adds a fixed per-runtime startup
-budget instead of multiplying the problem's time limit. On a faster host they should drop
-sharply and should be **re-measured, not guessed** — §6 covers it.
+budget instead of multiplying the problem's time limit.
+
+> **These are the Docker Desktop figures, and they are no longer what the budgets are sized
+> against.** They dropped by 24× to 168× on the deployment host — see the table at the top of this
+> document. They are kept here because the *shape* of the argument still holds (a fixed budget, not
+> a multiplier) and because the size of the gap is the finding.
 
 ---
 
 ## 3. The arithmetic
+
+> **Measured on the build laptop.** The droplet's own G8 numbers are pending; when they land this
+> section gets re-derived rather than annotated, because the conclusion below ("no amount of tuning
+> closes that gap") was about a host we no longer run on.
 
 With one container per submission and a worker concurrency of 4:
 
@@ -195,7 +244,20 @@ says to avoid. That inflates the tail but does not explain the floor.
 
 ---
 
-## 5. Java time limits do not work on this host, and that is a correctness problem
+## 5. Java time limits — RESOLVED (T2)
+
+> **This section described a live correctness problem and now describes a fixed one.** It is kept
+> because the reasoning is the most useful thing in this document: it is the case where a hosting
+> decision silently became a scoring decision.
+>
+> **Resolution:** measured on the deployment host, `jdk21` startup is **117–229 ms** against **up to
+> 38,473 ms** on Docker Desktop — a 168× collapse. The budget went from 45,000 ms to **4,000 ms**, so
+> a 2-second Java problem now allows about 8 seconds rather than about 49. Java time limits are
+> enforceable. The 45,000 ms was never measuring the JVM.
+>
+> Everything below is the original analysis, unchanged.
+
+### The original analysis
 
 This one is different from everything else in this document. **The rest of these numbers are about
 speed. This one is about getting a verdict wrong.**
@@ -284,8 +346,16 @@ Three options, in order of preference:
 
 ## 6. Recommendation
 
-**A dedicated Linux machine with native Docker, 8 cores, 16 GB RAM, SSD.** Not a Mac, and not
-a VM on a Mac.
+**Native Linux with native Docker. Not a Mac, and not a VM on a Mac.**
+
+> **Now confirmed by measurement rather than argued from first principles.** The contest runs on a
+> DigitalOcean droplet, Ubuntu 24.04, currently 2 vCPU / 4 GB, and on it every runtime startup is
+> 8–229 ms against 390–38,473 ms on Docker Desktop. G4, G5 and G13 all pass there.
+>
+> Note what this says about sizing: **the 2 vCPU droplet beat the 8-core laptop by more than an
+> order of magnitude.** Cores were never the variable — virtualisation was. 8 cores and 16 GB is
+> still the right target for headroom under a 40-submission burst, but a small native box beats a
+> large virtualised one and it is not close.
 
 Reasoning, in order of how much each point matters:
 

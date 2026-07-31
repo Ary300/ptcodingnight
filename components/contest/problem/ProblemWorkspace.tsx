@@ -13,6 +13,7 @@ import { useResource } from "../data/useResource";
 import { useVerdictStream } from "../data/useVerdictStream";
 import { CodeEditor } from "../editor/CodeEditor";
 import { LanguagePicker } from "../editor/LanguagePicker";
+import { UploadCode } from "../editor/UploadCode";
 import { LANGUAGE_TEMPLATE } from "../editor/types";
 import { HintPanel } from "../hints/HintPanel";
 import { Markdown } from "../markdown/Markdown";
@@ -143,11 +144,19 @@ export function ProblemWorkspace({ slug }: ProblemWorkspaceProps) {
       </h1>
       <ProblemTabs />
 
-      <div className="mt-6 grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+      {/*
+        Statement across the measure with a metadata rail beside it, and the editor as a full-width
+        panel BELOW — HackerRank's challenge layout, rather than the side-by-side split this had.
+
+        The difference is not cosmetic. A statement in a half-width column wraps at roughly 45
+        characters once the samples' code blocks are in it, and a student reads the problem once
+        and then works in the editor for forty minutes. Giving the prose the full measure and the
+        editor the full width fits what each is actually for. Below `lg` both stack, statement
+        first, which is the order a student needs them in.
+      */}
+      <div className="mt-6 grid gap-8 lg:grid-cols-[minmax(0,1fr)_16rem]">
         {/* ---- statement ---- */}
         <article className="min-w-0">
-          <ProblemMetaRail detail={detail} />
-
           <Markdown
             source={statementWithoutRepeatedTitle(detail.statementMd, detail.title)}
             className="mt-5"
@@ -178,9 +187,21 @@ export function ProblemWorkspace({ slug }: ProblemWorkspaceProps) {
           </section>
         </article>
 
-        {/* ---- work ---- */}
-        <div className="min-w-0 space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
+        {/* ---- metadata rail ---- */}
+        <aside className="min-w-0">
+          <ProblemMetaRail detail={detail} />
+        </aside>
+      </div>
+
+      {/* ---- the editor panel, full width, below the statement ---- */}
+      <section aria-label="Your solution" className="mt-8">
+        <div className="rounded border border-ink/15 bg-paper">
+          {/*
+            The panel's own header bar, holding the language picker — where HackerRank puts its
+            language dropdown. Inside the panel rather than floating above it, so it reads as a
+            property of the editor rather than of the page.
+          */}
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-ink/15 bg-ink/[0.03] px-3 py-2">
             <LanguagePicker
               value={activeLanguage}
               allowed={detail.allowedLanguages}
@@ -204,27 +225,42 @@ export function ProblemWorkspace({ slug }: ProblemWorkspaceProps) {
             label={`Solution for ${detail.title}`}
           />
 
-          <div className="flex flex-wrap items-center gap-3">
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => void runSamples()}
-              disabled={sampleBusy || submitBusy}
-            >
-              {sampleBusy ? "Running…" : "Run samples"}
-            </Button>
-            <Button
-              type="button"
-              onClick={() => void submit()}
-              disabled={submitBusy || sampleBusy || judging}
-            >
-              {submitBusy ? "Submitting…" : "Submit for judging"}
-            </Button>
-            <span className="text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
-              Running samples is free. Submitting counts.
-            </span>
-          </div>
+          {/*
+            The panel's action bar: upload on the LEFT, run and submit on the RIGHT — the
+            arrangement HackerRank uses, and the one that keeps the two destructive-ish actions
+            away from the one a student clicks by accident.
+          */}
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-ink/15 px-3 py-2.5">
+            <UploadCode
+              language={activeLanguage}
+              disabled={submitBusy || sampleBusy}
+              onLoaded={setSource}
+            />
 
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
+                Running samples is free. Submitting counts.
+              </span>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => void runSamples()}
+                disabled={sampleBusy || submitBusy}
+              >
+                {sampleBusy ? "Running…" : "Run samples"}
+              </Button>
+              <Button
+                type="button"
+                onClick={() => void submit()}
+                disabled={submitBusy || sampleBusy || judging}
+              >
+                {submitBusy ? "Submitting…" : "Submit for judging"}
+              </Button>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-4 space-y-4">
           {actionError !== null && (
             <p role="alert" className="text-panther" style={{ fontSize: "var(--text-xs)" }}>
               {actionError}
@@ -255,9 +291,9 @@ export function ProblemWorkspace({ slug }: ProblemWorkspaceProps) {
             />
           )}
 
-            <HintPanel contestProblemId={detail.contestProblemId} problemTitle={detail.title} />
-          </div>
-      </div>
+          <HintPanel contestProblemId={detail.contestProblemId} problemTitle={detail.title} />
+        </div>
+      </section>
     </div>
   );
 }

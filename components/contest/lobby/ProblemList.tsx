@@ -83,7 +83,7 @@ function ProblemCard({ problem }: { problem: ProblemSummary }) {
       // rendered illegible. The state is already carried by the "Locked" badge and the rail,
       // which is what a screen reader gets anyway; dimming it was decoration that cost
       // legibility. Muted-on-paper floor is /60, applied once, never stacked.
-      <li className="flex items-stretch rounded border border-ink/15 bg-ink/[0.03]">
+      <li className="flex items-stretch rounded border border-ink/15 bg-paper/70">
         <Rail state="brand" />
         {body}
         <span
@@ -97,7 +97,7 @@ function ProblemCard({ problem }: { problem: ProblemSummary }) {
   }
 
   return (
-    <li className="flex items-stretch rounded border border-ink/15 transition-colors hover:border-panther/60">
+    <li className="flex items-stretch rounded border border-ink/15 bg-paper transition-colors hover:border-panther/60 hover:shadow-sm">
       <Rail state="brand" />
       <Link
         href={`/contest/${problem.slug}`}

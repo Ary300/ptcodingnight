@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 
 import { ContestApi, readEnvelope, readOk } from "./helpers/api";
 import { requiredEnv } from "./helpers/env";
-import { closeTestDb, seedE2EContest, type SeededContest } from "./helpers/seed";
+import { closeTestDb, seedE2EContest, testDb, type SeededContest } from "./helpers/seed";
 
 /**
  * G7 — team scoring through the HTTP routes, against a real Postgres.
@@ -152,29 +152,77 @@ test.describe("problem sets are enforced by the API", () => {
     const divisionId = seeded.divisionIds.get("intermediate") ?? null;
     expect(divisionId, "fixture has no intermediate division").not.toBeNull();
 
-    await ada.joinOrThrow({
-      joinCode: seeded.joinCode,
+    const probe = await ada.signIn({
       displayName: `E2E SetProbe ${Date.now()}`,
       divisionId,
     });
+
+    // And then get put on a team, because that is what draws the set. Signing in no longer
+    // assigns one — see the spec below, which asserts exactly that. Without this move `ada` has
+    // no set, sees only the group problem, and every assertion in this describe passes for the
+    // wrong reason: "hides both set problems" and "hides the one that isn't yours" look
+    // identical from the outside if the player was never given a set to begin with.
+    const teamId = seeded.teamIds.get("panthers") ?? "";
+    expect(teamId, "fixture has no panthers team").not.toBe("");
+    const placed = await admin.moveParticipantRaw({
+      participantId: probe.participantId,
+      teamId,
+      reason: "Set enforcement can only be measured on a player who has a set",
+    });
+    expect(placed.status(), "the organizer could not place the probe").toBeLessThan(300);
+
+    const withSet = await testDb().participant.findUnique({
+      where: { id: probe.participantId },
+      select: { chosenSetId: true },
+    });
+    expect(withSet?.chosenSetId, "the move did not assign a set").not.toBeNull();
   });
 
   test("tells a joining player which set they were assigned", async ({ playwright }) => {
     const context = await playwright.request.newContext();
     const api = new ContestApi(context, seeded.contestId);
 
-    const joined = await api.joinOrThrow({
-      joinCode: seeded.joinCode,
+    const joined = await api.signIn({
       displayName: `E2E Told ${Date.now()}`,
       divisionId: seeded.divisionIds.get("intermediate") ?? null,
     });
 
-    // Assigned, not chosen. The student is informed; there is no picker, because sets are never
-    // previewed (PRD §6.2).
-    expect(joined.chosenSetLabel).not.toBeNull();
-    expect(["A", "B"]).toContain(joined.chosenSetLabel);
-    // And they are told they have no team, because a teamless player scores for nobody.
-    expect(joined.needsTeam).toBe(true);
+    /*
+      The property survived; the thing that reported it did not.
+
+      This used to read the set off the join response. Sets are now assigned when an ORGANIZER puts
+      a player on a team (`adminMoveParticipant` calls `ensureSetAssigned`), so a freshly signed-in
+      student has no set yet — which is the correct new behaviour and is exactly what is asserted
+      first here. The set arrives with the team, and that is checked against the database because
+      it is a fact about the participant rather than about any one response body.
+    */
+    const beforeTeam = await testDb().participant.findUnique({
+      where: { id: joined.participantId },
+      select: { chosenSetId: true, teamId: true },
+    });
+    expect(beforeTeam?.teamId, "signing in must not put anybody on a team").toBeNull();
+    expect(
+      beforeTeam?.chosenSetId,
+      "a set arrives with the team, because the organizer's move is what assigns it",
+    ).toBeNull();
+
+    const teamId = seeded.teamIds.get("cubs");
+    const moved = await admin.moveParticipantRaw({
+      participantId: joined.participantId,
+      teamId: teamId ?? "",
+      reason: "Assigning a set is what this spec is about",
+    });
+    expect(moved.status()).toBeLessThan(300);
+
+    const afterTeam = await testDb().participant.findUnique({
+      where: { id: joined.participantId },
+      select: { chosenSetId: true },
+    });
+    // Assigned, not chosen. There is no picker, because sets are never previewed (PRD §6.2).
+    expect(
+      afterTeam?.chosenSetId,
+      "being put on a team must assign a set — otherwise the player sees only group problems",
+    ).not.toBeNull();
   });
 
   test("lists only the player's own set, plus the group problem", async () => {

@@ -58,8 +58,7 @@ test.describe("the join-code path", () => {
   test("a student joins and holds a session", async ({ playwright }) => {
     const api = new ContestApi(await playwright.request.newContext(), seeded.contestId);
 
-    const joined = await api.joinOrThrow({
-      joinCode: seeded.joinCode,
+    const joined = await api.signIn({
       displayName: `E2E JoinAuth ${Date.now()}`,
       divisionId: null,
     });
@@ -71,17 +70,15 @@ test.describe("the join-code path", () => {
     expect((session.data as { role: string }).role).toBe("COMPETITOR");
   });
 
-  test("a wrong join code is refused without saying which codes exist", async ({ playwright }) => {
-    const api = new ContestApi(await playwright.request.newContext(), seeded.contestId);
+  /*
+    REMOVED: "a wrong join code is refused without saying which codes exist".
 
-    const envelope = await readEnvelope(
-      await api.join({ joinCode: "E2E-NOT-A-CODE", displayName: "Nobody", divisionId: null }),
-    );
-
-    expect(envelope.status).toBeGreaterThanOrEqual(400);
-    // The same answer a valid code for another contest gives, deliberately: no enumeration.
-    expect(envelope.status).toBeLessThan(500);
-  });
+    It tested `POST /api/contests/{id}/join`, which no longer exists — students sign in with a
+    provider and an organizer puts them on a team. The property it protected (a refusal must not
+    reveal which codes are valid) has no code path left to protect, and the equivalent property on
+    the surviving path — that a failure never says whether an account exists — is asserted by the
+    password specs above.
+  */
 
   test("signing out revokes the session rather than only clearing the cookie", async ({
     playwright,
@@ -89,8 +86,7 @@ test.describe("the join-code path", () => {
     const context = await playwright.request.newContext();
     const api = new ContestApi(context, seeded.contestId);
 
-    await api.joinOrThrow({
-      joinCode: seeded.joinCode,
+    await api.signIn({
       displayName: `E2E SignOut ${Date.now()}`,
       divisionId: null,
     });
@@ -213,8 +209,7 @@ test.describe("mid-contest session revocation", () => {
     const studentContext = await playwright.request.newContext();
     const student = new ContestApi(studentContext, seeded.contestId);
 
-    const joined = await student.joinOrThrow({
-      joinCode: seeded.joinCode,
+    const joined = await student.signIn({
       displayName: `E2E Revoked ${Date.now()}`,
       divisionId: null,
     });

@@ -204,15 +204,19 @@ export function CompetitorChrome({ children }: { children: ReactNode }) {
         card that failed to load rather than as half a screen. Every other competitor route keeps
         the measure, because a statement set in a full-width line is unreadable.
       */}
-      <main
-        id="main"
-        className={
-          pathname === "/join"
-            ? "w-full flex-1"
-            : "mx-auto w-full max-w-6xl flex-1 px-4 py-6"
-        }
-      >
-        {children}
+      {/*
+        A tinted ground under the competitor screens, with the content on paper cards above it.
+
+        This is the single device that separates HackerRank's app screens from a document: nothing
+        about the typography or the spacing changes, but a page whose panels sit ON something reads
+        as built, and one where everything is flush with the background reads as a printout. It
+        costs one background colour.
+
+        `/sign-in` and `/join` are excluded because they are full-bleed split screens that supply
+        their own grounds.
+      */}
+      <main id="main" className="flex-1 bg-ink/[0.035]">
+        <div className="mx-auto w-full max-w-6xl px-4 py-6">{children}</div>
       </main>
     </>
   );

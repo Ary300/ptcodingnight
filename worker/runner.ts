@@ -15,6 +15,7 @@ import {
 import { withHostMaxProcs } from "./host";
 import { BATCH_DRIVER, parseMeta, type BatchTestOutcome } from "@/worker/batch-driver";
 import { removeAsRoot } from "@/worker/docker";
+import { scaledStartupBudgetMs } from "@/worker/host";
 
 /**
  * Judges one submission: prepare a source directory, compile if the language needs it, run
@@ -515,8 +516,11 @@ export async function judge(job: JudgeJob, images?: ImageOverrides): Promise<Jud
   const image = images?.[runtime.id] ?? runtime.image;
 
   const algorithmMs = job.limits.timeLimitMs * runtime.multiplier;
-  const timeLimitMs = algorithmMs + runtime.startupBudgetMs;
-  const wallClockKillMs = algorithmMs * 3 + runtime.startupBudgetMs;
+  // Scaled, not raw. The registry's budgets describe native Linux; a virtualised dev host declares
+  // itself with JUDGE_STARTUP_BUDGET_SCALE rather than having its slowness written into the rules.
+  const startupMs = scaledStartupBudgetMs(runtime.startupBudgetMs);
+  const timeLimitMs = algorithmMs + startupMs;
+  const wallClockKillMs = algorithmMs * 3 + startupMs;
 
   const runLimits = containerLimits(job);
 

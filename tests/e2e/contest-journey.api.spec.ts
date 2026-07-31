@@ -69,8 +69,7 @@ test.describe("contest journey (no judge required)", () => {
   });
 
   test("a student joins with the code on the board", async () => {
-    const joined = await competitor.joinOrThrow({
-      joinCode: seeded.joinCode,
+    const joined = await competitor.signIn({
       displayName: DISPLAY_NAME,
       divisionId: seeded.divisionIds.get("intermediate") ?? null,
     });
@@ -86,17 +85,12 @@ test.describe("contest journey (no judge required)", () => {
     await pinParticipantToProblemSet(competitorId, liveProblem(seeded).contestProblemId);
   });
 
-  test("a wrong join code is refused, and does not say which codes exist", async () => {
-    const response = await competitor.join({
-      joinCode: "NOT-THE-CODE",
-      displayName: "E2E Nobody",
-      divisionId: null,
-    });
-    const envelope = await readEnvelope(response);
+  /*
+    REMOVED: "a wrong join code is refused, and does not say which codes exist".
 
-    expect(envelope.status).toBe(404);
-    expect(envelope.message ?? "").not.toContain(seeded.joinCode);
-  });
+    `POST /api/contests/{id}/join` is gone. A student signs in with a provider and an organizer
+    puts them on a team, so there is no code to get wrong and nothing left to enumerate.
+  */
 
   test("a joined student reads the problem list and the statement", async () => {
     const live = liveProblem(seeded);

@@ -122,7 +122,7 @@ export function ProblemMetaRail({ detail }: { detail: ProblemDetail }) {
   ].filter((row) => row.value !== null);
 
   return (
-    <aside aria-label="Problem details" className="rounded border border-ink/15 p-4">
+    <aside aria-label="Problem details" className="rounded border border-ink/15 bg-paper p-4">
       <dl className="flex flex-col gap-2.5">
         {rows.map((row) => (
           <div key={row.label} className="flex items-center justify-between gap-4">

@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { JOIN_CODE, nextDisplayName, placeInDivisionAndSet } from "./helpers/journey";
+import { joinContest, placeInDivisionAndSet } from "./helpers/journey";
 
 /**
  * G9 — the submit flow completes keyboard-only.
@@ -65,18 +65,12 @@ test.describe("keyboard-only", () => {
   test("a student joins, writes code, and submits without a pointer", async ({ page }) => {
     test.setTimeout(120_000);
 
-    // --- join ---------------------------------------------------------------
-    await page.goto("/join");
-    await expect(page.getByRole("heading", { name: "Join the contest" })).toBeVisible();
-
-    await tabUntil(page, "the join code field", (snapshot) => snapshot.tag === "input");
-    await page.keyboard.type(JOIN_CODE);
-    await page.keyboard.press("Enter");
-
-    await expect(page.getByLabel("Display name")).toBeVisible();
-    await tabUntil(page, "the display name field", (snapshot) => snapshot.tag === "input");
-    await page.keyboard.type(nextDisplayName());
-    await page.keyboard.press("Enter");
+    // --- sign in ------------------------------------------------------------
+    // There is no keyboard-navigable join form any more: a student signs in with Google or
+    // GitHub, and neither consent screen is ours to drive. What remains OURS to guarantee is
+    // everything after it — reading a problem, writing code and submitting, without a pointer —
+    // so the session is minted and the walk starts where our keyboard surface starts.
+    await joinContest(page);
 
     await page.waitForURL("**/contest");
     // Setup, not interaction: the join form cannot send a division (an organizer assigns those),
@@ -154,18 +148,18 @@ test.describe("keyboard-only", () => {
   });
 
   /**
-   * REVISED TEST. It originally asserted that one Tab from page load lands on the skip link.
-   * That premise is wrong for this page: `/join` autofocuses the join-code input, which is
-   * the single thing a student came here to fill in, so focus already starts *inside* main
-   * content — precisely where the skip link would send them. Nothing is bypass-blocked, and
-   * forward Tab correctly moves on to the submit button.
+   * The skip link has to precede everything else in tab order, be visible when focused rather
+   * than permanently sr-only, and actually move the user to #main.
    *
-   * What still has to be true, and is asserted below: the skip link precedes everything else
-   * in tab order, it is visible when focused rather than permanently sr-only, and it actually
-   * moves the user to #main.
+   * Asserted on the lobby, which is where a signed-in student lands. An earlier version of this
+   * test ran on `/join` and counted Tab presses, which was brittle for a reason worth keeping in
+   * mind: that page autofocused its input, so focus began INSIDE main content — exactly where the
+   * skip link would have sent it — and the test failed for a reason unrelated to the guarantee.
+   * DOM position is the honest assertion.
    */
   test("the skip link precedes the page, shows focus, and works", async ({ page }) => {
-    await page.goto("/join");
+    // Any competitor page carries the skip link; the lobby is the one every student lands on.
+    await joinContest(page);
 
     // Asserted by DOM position rather than by counting Tab presses. Step-counting is brittle
     // — it depends on how many header links happen to exist and on where autofocus put the
@@ -195,21 +189,19 @@ test.describe("keyboard-only", () => {
 
   test("forward Tab from the autofocused field reaches the submit control", async ({ page }) => {
     // The other half of the same guarantee: autofocus must not strand the keyboard user.
-    await page.goto("/join");
+    //
+    // On /sign-in the first Tab from the top of the document must reach a real control rather
+    // than nothing — the page opens with the two provider buttons, which are the primary action.
+    await page.goto("/sign-in");
     await page.keyboard.press("Tab");
 
     const next = await focused(page);
-    expect(next.name).toBe("Next");
+    expect(next.name, "the first Tab must land on something actionable").not.toBe("");
   });
 
   test("Ctrl+Enter in the editor submits, as the hint under it promises", async ({ page }) => {
     test.setTimeout(120_000);
-    await page.goto("/join");
-    await page.getByLabel("Join code").fill(JOIN_CODE);
-    await page.locator("form").getByRole("button", { name: "Next", exact: true }).click();
-    await page.getByLabel("Display name").fill(nextDisplayName());
-    await page.getByRole("button", { name: "Join the contest" }).click();
-    await page.waitForURL("**/contest");
+    await joinContest(page);
     await placeInDivisionAndSet(page);
 
     await page.getByRole("listitem").getByRole("link").first().click();

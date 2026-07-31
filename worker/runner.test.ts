@@ -62,28 +62,37 @@ describe("outputCapFor", () => {
 
 describe("runtime startup budgets", () => {
   /**
-   * Worst value observed for each runtime, across BOTH measurement methods.
+   * Worst full-path startup observed on NATIVE LINUX — the machine that hosts the contest.
    *
-   * These are the numbers the budgets are multiples of. Recorded here so lowering a budget below a
-   * value that was actually observed fails the fastest gate rather than surfacing as a correct
-   * solution reported as TLE on contest night.
-   *
-   * Full-path figures come from `scripts/measure-startup-budgets.ts`, which drives the real
-   * `judge()`. Direct figures came from invoking the interpreter alone, which is the baseline
-   * mistake this project made three times — see the doc comment on `startupBudgetMs`.
+   * These are the numbers the budgets must clear. Measured with `scripts/measure-host.sh` on the
+   * deployment host, through the real `judge()`.
    */
-  const WORST_OBSERVED_MS: Readonly<Record<RuntimeId, number>> = {
+  const NATIVE_LINUX_WORST_MS: Readonly<Record<RuntimeId, number>> = {
+    python312: 68,
+    jdk21: 229,
+    gcc14: 26,
+    node22: 100,
+    go123: 15,
+  };
+
+  /**
+   * The same measurements on macOS with Docker Desktop, kept because they are the reason the
+   * budgets were wrong for so long — not because anything is sized against them any more.
+   *
+   * They are 20x to 168x the native figures. Sizing budgets to cover them did not make the judge
+   * safer; for Java it wrote Docker Desktop's virtualisation layer into the contest's scoring
+   * rules, which is what T2 was.
+   */
+  const DOCKER_DESKTOP_WORST_MS: Readonly<Record<RuntimeId, number>> = {
     python312: 1_651,
-    // A tail event, 8x the next-highest of 27 samples. Covering it is why the budget looks absurd.
     jdk21: 38_473,
     gcc14: 1_182,
-    // From the DIRECT method; the full path measured only 462 ms. The larger number wins.
     node22: 3_636,
     go123: 845,
   };
 
-  it("gives every runtime a budget above the worst startup ever observed for it", () => {
-    for (const [runtime, worst] of Object.entries(WORST_OBSERVED_MS) as [RuntimeId, number][]) {
+  it("gives every runtime a budget above the worst startup observed on the judging host", () => {
+    for (const [runtime, worst] of Object.entries(NATIVE_LINUX_WORST_MS) as [RuntimeId, number][]) {
       expect(
         RUNTIMES[runtime].startupBudgetMs,
         `${runtime} budget is below its worst observed startup — this is the exact mistake that ` +
@@ -101,19 +110,45 @@ describe("runtime startup budgets", () => {
       const effective =
         shortProblemMs * RUNTIMES[runtime].multiplier + RUNTIMES[runtime].startupBudgetMs;
       expect(effective, `${runtime} cannot judge a 500ms problem`).toBeGreaterThan(
-        WORST_OBSERVED_MS[runtime],
+        NATIVE_LINUX_WORST_MS[runtime],
       );
     }
   });
 
-  it("admits that Java's time limits are not enforceable on this host", () => {
-    // Not a nice property — a documented one. The budget has to cover a 38.5s outlier, which means
-    // a 2s Java problem effectively allows ~49s, so TLE detection for Java is nearly meaningless
-    // here. That is a Docker Desktop scheduling problem (docs/HOSTING.md §5), not a judge bug — and
-    // §5 explains why it is a CORRECTNESS problem: the same bad algorithm passes in Java and fails
-    // in Python. This test exists so nobody 'fixes' it by quietly shrinking the budget, and
-    // this test exists so nobody "fixes" it by quietly shrinking the budget.
-    expect(RUNTIMES.jdk21.startupBudgetMs).toBeGreaterThan(WORST_OBSERVED_MS.jdk21);
+  /**
+   * T2, RESOLVED — and this test is the inverse of the one it replaces.
+   *
+   * The old test asserted that Java's time limits were NOT enforceable, and existed so nobody
+   * quietly shrank the 45,000 ms budget to hide the problem. The budget is 4000 ms now, and it is
+   * not a shrink: the 38.5-second sample it used to cover was Docker Desktop, and on the judging
+   * host the same measurement is 229 ms.
+   *
+   * A 2-second Java problem now allows about 8 seconds rather than 49. That is the difference
+   * between a time limit and a formality, and it is why T2 was a SCORING error rather than a
+   * performance one — the same quadratic algorithm passed in Java and failed in Python.
+   */
+  it("makes Java's time limits enforceable, which they were not on Docker Desktop", () => {
+    const jdk = RUNTIMES.jdk21;
+    const twoSecondProblem = 2_000;
+    const effective = twoSecondProblem * jdk.multiplier + jdk.startupBudgetMs;
+
+    expect(jdk.startupBudgetMs).toBeGreaterThan(NATIVE_LINUX_WORST_MS.jdk21);
+    expect(
+      effective,
+      "a 2s Java problem must not allow anything like the ~49s the old budget permitted",
+    ).toBeLessThan(10_000);
+  });
+
+  it("does NOT size any budget against the Docker Desktop figures", () => {
+    // The regression this guards: somebody runs the gates on a laptop, sees Java TLE, and raises
+    // the budget until it passes. That is how 45,000 ms happened. The escape hatch for a slow dev
+    // host is JUDGE_STARTUP_BUDGET_SCALE, which changes nothing about the recorded truth.
+    for (const runtime of Object.keys(RUNTIMES) as RuntimeId[]) {
+      expect(
+        RUNTIMES[runtime].startupBudgetMs,
+        `${runtime}'s budget looks like it was sized for Docker Desktop rather than the judging host`,
+      ).toBeLessThan(DOCKER_DESKTOP_WORST_MS[runtime] + 4_000);
+    }
   });
 });
 

@@ -70,9 +70,6 @@ export const API_ROUTES = {
 
   /** Team formation. Contest-scoped like everything else a competitor reaches after joining. */
   myTeam: (contestId: string) => `/api/contests/${encodeURIComponent(contestId)}/teams/mine`,
-  createTeam: (contestId: string) => `/api/contests/${encodeURIComponent(contestId)}/teams`,
-  joinTeam: (contestId: string) => `/api/contests/${encodeURIComponent(contestId)}/teams/join`,
-  leaveTeam: (contestId: string) => `/api/contests/${encodeURIComponent(contestId)}/teams/leave`,
   teamStandings: (contestId: string) =>
     `/api/contests/${encodeURIComponent(contestId)}/team-standings`,
 

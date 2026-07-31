@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 
 import { z } from "zod";
 
-import { DomainError } from "@/lib/errors";
 import { linkedUserFor, providerLabel } from "@/lib/contest/accounts";
 import { ensureEnrolled } from "@/lib/contest/enrolment";
 import { cookiesAreSecure, oauthConfig } from "@/lib/contest/env";
@@ -47,11 +46,21 @@ const ProviderParamsSchema = z.object({
   provider: z.enum(["google", "github"]),
 });
 
-/** Where a signed-in person lands, and where a failure sends them with a readable reason. */
-function destination(request: Request, path: string, error?: string): URL {
-  const url = new URL(path, new URL(request.url).origin);
-  if (error !== undefined) url.searchParams.set("error", error);
-  return url;
+/**
+ * Where a signed-in person lands, and where a failure sends them with a readable reason.
+ *
+ * A RELATIVE Location, deliberately. This used to rebuild an absolute URL from
+ * `new URL(request.url).origin`, which means inventing a scheme and a host — and it invented the
+ * wrong ones: a GitHub sign-in on localhost ended at `https://localhost:3000/contest`, which the
+ * browser cannot open, after a callback that had actually succeeded.
+ *
+ * A relative Location is valid (RFC 7231 §7.1.2) and the browser resolves it against the URL it
+ * is already on, so the scheme and host are whatever the student is genuinely using. There is no
+ * configuration to get wrong and nothing to disagree with a proxy about.
+ */
+function redirectTo(path: string, error?: string): NextResponse {
+  const location = error === undefined ? path : `${path}?error=${encodeURIComponent(error)}`;
+  return new NextResponse(null, { status: 302, headers: { location } });
 }
 
 export async function GET(
@@ -67,15 +76,13 @@ export async function GET(
     if (providerError !== null) {
       // Cancelling at the consent screen is the common case and is not an error worth a stack
       // trace. Send them back to sign-in with something readable.
-      return NextResponse.redirect(
-        destination(request, "/sign-in", `${providerLabel(provider)} sign-in was cancelled`),
-      );
+      return redirectTo("/sign-in", `${providerLabel(provider)} sign-in was cancelled`);
     }
 
     const config = oauthConfig(provider);
     if (config === null) {
-      throw new DomainError(
-        "VALIDATION",
+      return redirectTo(
+        "/sign-in",
         `${providerLabel(provider)} sign-in is not configured on this server`,
       );
     }
@@ -85,15 +92,35 @@ export async function GET(
     const cookieHash = parseCookieHeader(request.headers.get("cookie"))[OAUTH_STATE_COOKIE];
 
     if (code === null || state === null) {
-      throw new DomainError("VALIDATION", "That sign-in link is incomplete. Start again.");
+      return redirectTo("/sign-in", "That sign-in link was incomplete. Try again.");
     }
 
     if (cookieHash === undefined || !oAuthStateMatches(state, cookieHash)) {
-      // Deliberately not "your cookie expired" versus "the state did not match": both mean start
-      // over, and the difference is only interesting to someone probing.
-      throw new DomainError(
-        "FORBIDDEN",
-        "That sign-in could not be verified. Start again from the sign-in page.",
+      /*
+        The student sees one message; the SERVER LOG says which of the two it was.
+
+        Merging them in the response is right — "your cookie expired" versus "the state did not
+        match" is only interesting to someone probing. Merging them in the log was not: the two
+        have completely different causes, and an operator staring at a FORBIDDEN has no way to
+        tell an expired state cookie (the student sat on the consent screen for over ten minutes,
+        or the cookie was never stored) from a genuine mismatch.
+      */
+      console.warn(
+        JSON.stringify({
+          level: "warn",
+          event: "auth.oauth.state_rejected",
+          provider,
+          reason: cookieHash === undefined ? "no state cookie on the callback" : "state mismatch",
+          hint:
+            cookieHash === undefined
+              ? "the cookie is set with path=/api/auth, SameSite=Lax and secure=COOKIE_SECURE — a secure cookie is never stored over plain HTTP"
+              : "the flow was started in a different browser, or restarted in another tab",
+        }),
+      );
+
+      return redirectTo(
+        "/sign-in",
+        "That sign-in could not be verified. Please start again from this page.",
       );
     }
 
@@ -142,9 +169,7 @@ export async function GET(
       now,
     );
 
-    const response = NextResponse.redirect(
-      destination(request, user.role === "ADMIN" ? "/admin" : "/contest"),
-    );
+    const response = redirectTo(user.role === "ADMIN" ? "/admin" : "/contest");
     response.cookies.set(SESSION_COOKIE, session.token, sessionCookieOptions());
     // The state cookie has done its job; leaving it would let a stale value be replayed. The
     // attributes have to match the ones it was set with — `Secure` and `Path` are part of a

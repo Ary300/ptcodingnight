@@ -4,6 +4,7 @@ import path from "node:path";
 import { expect, type Page } from "@playwright/test";
 
 import { testDb } from "../../e2e/helpers/seed";
+import { signInAsCompetitor } from "../../e2e/helpers/session";
 
 /**
  * Getting a browser to each surface G9 audits.
@@ -54,13 +55,21 @@ export async function runningContestId(page: Page): Promise<string> {
   return contestId ?? "";
 }
 
+/**
+ * Sign the page in as a competitor.
+ *
+ * There is no join step any more — a student signs in with Google or GitHub and an organizer puts
+ * them on a team — so this mints the session the OAuth callback would have minted and hands the
+ * cookie to the browser. `signInAsCompetitor` draws the seam where the provider ends and this
+ * application begins: everything after the consent screen is the real path.
+ *
+ * Still named `joinContest` at the call sites it serves, because what a spec wants from it has not
+ * changed: "put this page in the contest".
+ */
 export async function joinContest(page: Page): Promise<void> {
-  await page.goto("/join");
-  await page.getByLabel("Join code").fill(JOIN_CODE);
-  await page.locator("form").getByRole("button", { name: "Next", exact: true }).click();
-  await page.getByLabel("Display name").fill(nextDisplayName());
-  await page.getByRole("button", { name: "Join the contest" }).click();
-  await page.waitForURL("**/contest");
+  const contestId = await runningContestId(page);
+  await signInAsCompetitor(page, contestId, { displayName: nextDisplayName() });
+  await page.goto("/contest");
 }
 
 /**

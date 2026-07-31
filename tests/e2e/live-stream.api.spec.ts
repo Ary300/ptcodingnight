@@ -2,7 +2,7 @@ import { expect, test, type APIRequestContext } from "@playwright/test";
 
 import { SSE_EVENTS, StandingsResponseSchema, VerdictEventSchema } from "@/lib/schemas/api";
 
-import { ContestApi, cookieHeader } from "./helpers/api";
+import { ContestApi } from "./helpers/api";
 import { requiredEnv } from "./helpers/env";
 import {
   closeTestDb,
@@ -49,8 +49,7 @@ test.describe("live stream", () => {
     competitor = new ContestApi(competitorContext, seeded.contestId);
     admin = new ContestApi(adminContext, seeded.contestId);
 
-    const joined = await competitor.joinOrThrow({
-      joinCode: seeded.joinCode,
+    const joined = await competitor.signIn({
       displayName: "E2E Stream Competitor",
       divisionId: seeded.divisionIds.get("intermediate") ?? null,
     });
@@ -103,8 +102,8 @@ test.describe("live stream", () => {
     });
     expect(created.verdict).toBeNull();
 
-    const cookie = await cookieHeader(competitorContext);
-    expect(cookie, "the join route must have set a session cookie").not.toBeNull();
+    const cookie = competitor.sessionCookie();
+    expect(cookie, "signing in must have minted a session cookie").not.toBeNull();
 
     const events = await collectSse({
       url: streamUrl,

@@ -153,7 +153,7 @@ export function TeamStandingsBoard({
       a page that scrolls sideways is a DESIGN.md §7 failure that G9 checks for at 360px — the
       overflow has to be owned by the grid, never by the document.
     */
-    <div className={`w-full overflow-x-auto border ${grid}`}>
+    <div className={`w-full overflow-x-auto border ${grid} ${projector ? "" : "bg-paper"}`}>
       <table
         aria-label="Team standings"
         className="w-full border-collapse"
@@ -275,7 +275,9 @@ export function TeamStandingsBoard({
                       className="mt-0.5 text-panther underline underline-offset-2"
                       style={{ fontSize: "var(--text-xs)" }}
                     >
-                      {isOpen ? "Hide players" : `${String(team.players.length)} players`}
+                      {isOpen
+                        ? "Hide players"
+                        : `${String(team.players.length)} player${team.players.length === 1 ? "" : "s"}`}
                     </button>
                   )}
                 </td>

@@ -142,7 +142,7 @@ test.describe("the projector is the inverse surface", () => {
   });
 
   test("competitor surfaces are the other way round", async ({ page }) => {
-    await page.goto("/join");
+    await page.goto("/sign-in");
     const body = await page.evaluate(() => {
       const style = window.getComputedStyle(document.body);
       return { color: style.color, background: style.backgroundColor };

@@ -61,6 +61,22 @@ export function CodeEditorSurface({
   const lineCount = useMemo(() => value.split("\n").length, [value]);
 
   /**
+   * Where the caret is, as a 1-based line and column.
+   *
+   * Derived from `selectionStart` on every event that can move it — typing, clicking, arrowing,
+   * and the programmatic edits Tab and Enter make. Kept as state rather than read during render
+   * because a textarea's selection is not a React input: nothing re-renders when the caret moves
+   * on its own.
+   */
+  const [caret, setCaret] = useState({ line: 1, column: 1 });
+  const syncCaret = useCallback((element: HTMLTextAreaElement | null) => {
+    if (element === null) return;
+    const upTo = element.value.slice(0, element.selectionStart);
+    const lines = upTo.split("\n");
+    setCaret({ line: lines.length, column: (lines[lines.length - 1]?.length ?? 0) + 1 });
+  }, []);
+
+  /**
    * Where the caret belongs after the pending edit commits.
    *
    * A controlled textarea loses its caret on every re-render, so an edit that rewrites `value` —
@@ -242,17 +258,38 @@ export function CodeEditorSurface({
           autoComplete="off"
           aria-label={`${label} — ${LANGUAGE_LABEL[language]}`}
           aria-describedby={hintId}
+          onSelect={(event) => syncCaret(event.currentTarget)}
+          onKeyUp={(event) => syncCaret(event.currentTarget)}
+          onClick={(event) => syncCaret(event.currentTarget)}
           className="min-h-[18rem] flex-1 resize-y bg-transparent p-3 font-mono text-paper caret-gold outline-none disabled:opacity-60"
           style={{ fontSize: "var(--text-xs)", lineHeight: "1.6", tabSize: 4 }}
         />
       </div>
 
-      <p id={hintId} className="mt-2 text-ink/70" style={{ fontSize: "var(--text-xs)" }}>
-        Tab indents. Press <kbd className="font-mono">Esc</kbd> then{" "}
-        <kbd className="font-mono">Tab</kbd> to move on. <kbd className="font-mono">Ctrl</kbd>
-        {" / "}
-        <kbd className="font-mono">Cmd</kbd> + <kbd className="font-mono">Enter</kbd> submits.
-      </p>
+      {/*
+        The keyboard contract on the left, the caret position on the right — the status strip
+        HackerRank runs under its editor.
+
+        `Line: N Col: M` earns its place on a screen with no syntax highlighting: a compiler error
+        names a line, and without this a student counts rows with a finger. It is `aria-hidden`
+        because it changes on every keystroke, and a live region that announces the column number
+        as you type is actively hostile to a screen-reader user.
+      */}
+      <div className="mt-2 flex flex-wrap items-baseline justify-between gap-3">
+        <p id={hintId} className="text-ink/70" style={{ fontSize: "var(--text-xs)" }}>
+          Tab indents. Press <kbd className="font-mono">Esc</kbd> then{" "}
+          <kbd className="font-mono">Tab</kbd> to move on. <kbd className="font-mono">Ctrl</kbd>
+          {" / "}
+          <kbd className="font-mono">Cmd</kbd> + <kbd className="font-mono">Enter</kbd> submits.
+        </p>
+        <p
+          aria-hidden="true"
+          className="numeric shrink-0 text-ink/60"
+          style={{ fontSize: "var(--text-xs)" }}
+        >
+          Line: {caret.line} Col: {caret.column}
+        </p>
+      </div>
 
       <p aria-live="polite" className="sr-only">
         {tabMovesFocus ? "Tab will now move focus out of the editor." : "Tab will insert an indent."}

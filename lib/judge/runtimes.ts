@@ -204,13 +204,42 @@ export interface Variant {
 /* Runtimes — five images, five measurements                                */
 /* ------------------------------------------------------------------------ */
 
+/**
+ * ## Where these budgets come from, and which machine they describe
+ *
+ * **They describe native Linux — the machine that hosts the contest — and nothing else.**
+ *
+ * Every one of them was re-measured through the full judge path on the deployment host with
+ * `scripts/measure-host.sh`. The earlier figures, kept beside each entry, were taken on macOS with
+ * Docker Desktop, and the two disagree by between 20x and 168x:
+ *
+ *     runtime      native Linux      Docker Desktop
+ *     python312    51-68 ms          1006-1651 ms
+ *     jdk21        117-229 ms        up to 38,473 ms
+ *     gcc14        12-26 ms          1182 ms
+ *     node22       72-100 ms         462 ms (3636 direct)
+ *     go123        8-15 ms           390 ms (845 direct)
+ *
+ * That gap is not noise and it is not the runtimes. It is Docker Desktop's virtualisation layer,
+ * and sizing budgets against it wrote that layer into the contest's rules — see the note on
+ * jdk21, where it produced a genuine scoring error rather than merely a slow judge.
+ *
+ * **What this means for a developer on macOS, measured rather than assumed:** G4's Java fixtures
+ * still PASS on Docker Desktop with these budgets — checked, 16/16 of the Java subset. The typical
+ * startup there is a few seconds, which a 4000 ms budget plus the problem's own allowance clears.
+ *
+ * The risk is the TAIL, not the median. The 38,473 ms sample was one outlier in 27, roughly 8x the
+ * next highest, and if it recurs that fixture reports TLE. So `JUDGE_STARTUP_BUDGET_SCALE` (see
+ * `worker/host.ts`) exists as insurance for a known tail on a virtualised host — not as a routine
+ * requirement, and never as a reason to edit these numbers back up.
+ */
 export const RUNTIMES: Readonly<Record<RuntimeId, Runtime>> = {
   python312: {
     id: "python312",
     image: "python:3.12-slim",
     multiplier: 1,
-    // Worst observed 1651 ms (full path). 6000 ms is 3.6x.
-    startupBudgetMs: 6_000,
+    // NATIVE LINUX (the judging host): 51-68 ms. Docker Desktop: 1006-1651 ms.
+    startupBudgetMs: 4_000,
     compileTimeoutMs: 15_000,
     compilePidsLimit: 64,
     compileTmpfsBytes: 16 * 1024 * 1024,
@@ -222,10 +251,22 @@ export const RUNTIMES: Readonly<Record<RuntimeId, Runtime>> = {
     image: "eclipse-temurin:21-jdk",
     // The JVM is genuinely slower per unit of algorithm, not merely slower to start.
     multiplier: 2,
-    // Worst full-path sample 38,473 ms (see the outlier note on startupBudgetMs). 45,000 ms clears
-    // it with margin. Deliberately generous: failing a correct Java solution is far worse than
-    // letting a slow one pass, and on this host the JVM's spread makes that trade unavoidable.
-    startupBudgetMs: 45_000,
+    /*
+      NATIVE LINUX (the judging host): 117-229 ms. Docker Desktop: up to 38,473 ms.
+
+      This was 45,000 ms, and that number is the single most instructive measurement in the
+      project. It was sized to cover a 38.5-second sample for a program that adds two integers —
+      and a 45-second allowance on a 2-second problem does not merely make Java slow to fail, it
+      makes Java time limits UNENFORCEABLE. The same quadratic algorithm passed in Java and failed
+      in Python, which is a scoring error rather than a performance one (T2).
+
+      On the machine that actually hosts the contest the same measurement is 229 ms. A 168x
+      collapse. The 45,000 ms was never measuring the JVM; it was measuring Docker Desktop's
+      virtualisation layer, and it silently encoded that layer into the contest's rules.
+
+      4000 ms is 17x the worst native observation, and Java time limits mean something again.
+    */
+    startupBudgetMs: 4_000,
     // javac on a cold JVM is slow, and it is not the student's fault.
     compileTimeoutMs: 60_000,
     compilePidsLimit: 256,
@@ -238,7 +279,7 @@ export const RUNTIMES: Readonly<Record<RuntimeId, Runtime>> = {
     image: "gcc:14",
     // Compiled C and C++ are the fastest things here at run time.
     multiplier: 1,
-    // Worst observed 1182 ms (full path). 4000 ms is 3.4x.
+    // NATIVE LINUX (the judging host): 12-26 ms. Docker Desktop: 1182 ms.
     startupBudgetMs: 4_000,
     // g++ with optimisation on a template-heavy file is the slowest build of the five.
     compileTimeoutMs: 60_000,
@@ -251,10 +292,8 @@ export const RUNTIMES: Readonly<Record<RuntimeId, Runtime>> = {
     id: "node22",
     image: "node:22-slim",
     multiplier: 1,
-    // Worst observed 3636 ms — from the DIRECT method; the full path measured only 462 ms. Sized
-    // against the larger of the two, because being wrong toward generosity costs a slow solution
-    // passing and being wrong the other way costs a correct one failing.
-    startupBudgetMs: 10_000,
+    // NATIVE LINUX (the judging host): 72-100 ms. Docker Desktop: 462 ms full path, 3636 direct.
+    startupBudgetMs: 4_000,
     compileTimeoutMs: 15_000,
     compilePidsLimit: 64,
     compileTmpfsBytes: 16 * 1024 * 1024,
@@ -274,7 +313,7 @@ export const RUNTIMES: Readonly<Record<RuntimeId, Runtime>> = {
     // program, which is the worst possible way for this to break.
     image: "ptcn-go:1.23",
     multiplier: 1,
-    // Worst observed 845 ms (direct; full path 390 ms). 4000 ms is 4.7x.
+    // NATIVE LINUX (the judging host): 8-15 ms. Docker Desktop: 390 ms full path, 845 direct.
     startupBudgetMs: 4_000,
     // A warm build is 2.5-11.8 s. The ceiling stays generous because the variance here is host
     // I/O, not the compiler: if the warm cache is ever missed the build takes ~66 s, and a

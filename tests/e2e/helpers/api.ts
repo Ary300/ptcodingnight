@@ -1,16 +1,15 @@
 import type { APIRequestContext, APIResponse } from "@playwright/test";
 import { z } from "zod";
+import { mintCompetitorSession } from "./session";
 
 import {
   ApiErrorSchema,
-  JoinResponseSchema,
   ProblemDetailSchema,
   ProblemSummarySchema,
   RunSamplesResponseSchema,
   StandingsResponseSchema,
   SubmissionViewSchema,
   TeamStandingsResponseSchema,
-  type JoinRequest,
   type ProblemDetail,
   type ProblemSummary,
   type StandingsResponse,
@@ -131,26 +130,100 @@ export async function readOk(
 }
 
 export class ContestApi {
+  /**
+   * Session cookie, once this client has signed in.
+   *
+   * Carried as a per-request HEADER rather than in the context's cookie jar, and that is a
+   * Playwright constraint rather than a preference: an `APIRequestContext`'s cookies cannot be
+   * modified after it is created, and every spec creates its context before it knows who it will
+   * be. Sending the header explicitly is what let the migration off join codes leave each spec's
+   * setup alone.
+   */
+  private cookie: string | null = null;
+
   constructor(
     private readonly request: APIRequestContext,
     readonly contestId: string,
   ) {}
 
-  join(body: JoinRequest): Promise<APIResponse> {
-    return this.request.post(`/api/contests/${this.contestId}/join`, { data: body });
+  /**
+   * The request context, with this client's session attached to every call.
+   *
+   * A wrapper rather than 33 edited call sites. The first attempt rewrote each `this.req().get(…)`
+   * to add a headers option and mangled the multi-line ones — it had to parse arguments to do it,
+   * and parsing TypeScript with a regex is how you end up with `this.req().get(, { … })`. This
+   * needs no parsing: every call site changed by replacing one identifier.
+   */
+  private req() {
+    const cookie = this.cookie;
+    const withAuth = <T extends { headers?: Record<string, string> }>(options?: T) => {
+      if (cookie === null) return options;
+      return {
+        ...(options ?? ({} as T)),
+        headers: { ...(options?.headers ?? {}), cookie },
+      };
+    };
+    return {
+      get: (url: string, options?: Parameters<APIRequestContext["get"]>[1]) =>
+        this.request.get(url, withAuth(options)),
+      post: (url: string, options?: Parameters<APIRequestContext["post"]>[1]) =>
+        this.request.post(url, withAuth(options)),
+      put: (url: string, options?: Parameters<APIRequestContext["put"]>[1]) =>
+        this.request.put(url, withAuth(options)),
+      patch: (url: string, options?: Parameters<APIRequestContext["patch"]>[1]) =>
+        this.request.patch(url, withAuth(options)),
+      delete: (url: string, options?: Parameters<APIRequestContext["delete"]>[1]) =>
+        this.request.delete(url, withAuth(options)),
+    };
   }
 
-  async joinOrThrow(body: JoinRequest): Promise<z.infer<typeof JoinResponseSchema>> {
-    return unwrap(await this.join(body), JoinResponseSchema);
+  /**
+   * Sign in as a competitor in this contest, the way the OAuth callback does.
+   *
+   * Replaces `joinOrThrow`, which POSTed a join code to a route that no longer exists. A student
+   * signs in with a provider now and an organizer puts them on a team, so there is no code to
+   * present — this creates the participant and mints the session directly, which is exactly what
+   * the callback does once the consent screen is behind it.
+   *
+   * `teamId` stays null: team membership is decided in the organizer's roster and nowhere else, so
+   * a spec that wants a team goes through the admin routes like an organizer would.
+   */
+  async signIn(
+    options: { displayName?: string; divisionId?: string | null; chosenSetId?: string | null } = {},
+  ): Promise<{ participantId: string; displayName: string; contestId: string }> {
+    const session = await mintCompetitorSession(this.contestId, options);
+    this.cookie = session.cookie;
+    return {
+      participantId: session.participantId,
+      displayName: session.displayName,
+      contestId: this.contestId,
+    };
+  }
+
+  /** Adopt a session minted elsewhere — for specs that need two clients on one participant. */
+  useSession(cookie: string): void {
+    this.cookie = cookie;
+  }
+
+  /**
+   * This client's session as a `Cookie` header, for a transport that is not this client.
+   *
+   * SSE is the case: `collectSse` opens its own connection with `fetch`, so it needs the header
+   * rather than the client. `cookieHeader(context)` cannot supply it — `signIn` mints the session
+   * directly and holds it here, so it never passes through the request context's cookie jar and
+   * `storageState()` reports nothing.
+   */
+  sessionCookie(): string | null {
+    return this.cookie;
   }
 
   async listProblems(): Promise<ProblemSummary[]> {
-    const response = await this.request.get(`/api/contests/${this.contestId}/problems`);
+    const response = await this.req().get(`/api/contests/${this.contestId}/problems`);
     return unwrap(response, z.array(ProblemSummarySchema));
   }
 
   getProblemRaw(slug: string): Promise<APIResponse> {
-    return this.request.get(
+    return this.req().get(
       `/api/contests/${this.contestId}/problems/${encodeURIComponent(slug)}`,
     );
   }
@@ -160,7 +233,7 @@ export class ContestApi {
   }
 
   runSamplesRaw(body: SubmitRequest): Promise<APIResponse> {
-    return this.request.post("/api/run-samples", { data: body });
+    return this.req().post("/api/run-samples", { data: body });
   }
 
   async runSamples(body: SubmitRequest): Promise<z.infer<typeof RunSamplesResponseSchema>> {
@@ -168,7 +241,7 @@ export class ContestApi {
   }
 
   submitRaw(body: SubmitRequest): Promise<APIResponse> {
-    return this.request.post("/api/submissions", { data: body });
+    return this.req().post("/api/submissions", { data: body });
   }
 
   async submit(body: SubmitRequest): Promise<SubmissionView> {
@@ -176,7 +249,7 @@ export class ContestApi {
   }
 
   getSubmissionRaw(submissionId: string): Promise<APIResponse> {
-    return this.request.get(`/api/submissions/${encodeURIComponent(submissionId)}`);
+    return this.req().get(`/api/submissions/${encodeURIComponent(submissionId)}`);
   }
 
   async getSubmission(submissionId: string): Promise<SubmissionView> {
@@ -184,12 +257,12 @@ export class ContestApi {
   }
 
   async listMySubmissions(): Promise<SubmissionView[]> {
-    const response = await this.request.get("/api/submissions");
+    const response = await this.req().get("/api/submissions");
     return unwrap(response, z.array(SubmissionViewSchema));
   }
 
   standingsRaw(): Promise<APIResponse> {
-    return this.request.get(`/api/contests/${this.contestId}/standings`);
+    return this.req().get(`/api/contests/${this.contestId}/standings`);
   }
 
   async standings(): Promise<StandingsResponse> {
@@ -199,7 +272,7 @@ export class ContestApi {
   // --- team board ----------------------------------------------------------
 
   teamStandingsRaw(): Promise<APIResponse> {
-    return this.request.get(`/api/contests/${this.contestId}/team-standings`);
+    return this.req().get(`/api/contests/${this.contestId}/team-standings`);
   }
 
   async teamStandings(): Promise<TeamStandingsResponse> {
@@ -209,29 +282,29 @@ export class ContestApi {
   // --- teams ---------------------------------------------------------------
 
   createTeamRaw(body: { name: string }): Promise<APIResponse> {
-    return this.request.post(`/api/contests/${this.contestId}/teams`, { data: body });
+    return this.req().post(`/api/contests/${this.contestId}/teams`, { data: body });
   }
 
   joinTeamRaw(body: { code: string }): Promise<APIResponse> {
-    return this.request.post(`/api/contests/${this.contestId}/teams/join`, { data: body });
+    return this.req().post(`/api/contests/${this.contestId}/teams/join`, { data: body });
   }
 
   leaveTeamRaw(): Promise<APIResponse> {
-    return this.request.post(`/api/contests/${this.contestId}/teams/leave`, { data: {} });
+    return this.req().post(`/api/contests/${this.contestId}/teams/leave`, { data: {} });
   }
 
   myTeamRaw(): Promise<APIResponse> {
-    return this.request.get(`/api/contests/${this.contestId}/teams/mine`);
+    return this.req().get(`/api/contests/${this.contestId}/teams/mine`);
   }
 
   // --- admin: roster -------------------------------------------------------
 
   rosterRaw(): Promise<APIResponse> {
-    return this.request.get(`/api/admin/contests/${this.contestId}/roster`);
+    return this.req().get(`/api/admin/contests/${this.contestId}/roster`);
   }
 
   createTeamAsAdminRaw(body: { name: string }): Promise<APIResponse> {
-    return this.request.post(`/api/admin/contests/${this.contestId}/teams`, { data: body });
+    return this.req().post(`/api/admin/contests/${this.contestId}/teams`, { data: body });
   }
 
   moveParticipantRaw(body: {
@@ -239,7 +312,7 @@ export class ContestApi {
     teamId: string | null;
     reason?: string;
   }): Promise<APIResponse> {
-    return this.request.post(`/api/admin/contests/${this.contestId}/roster/move`, { data: body });
+    return this.req().post(`/api/admin/contests/${this.contestId}/roster/move`, { data: body });
   }
 
   reassignSetRaw(body: {
@@ -247,41 +320,41 @@ export class ContestApi {
     setId: string | null;
     reason?: string;
   }): Promise<APIResponse> {
-    return this.request.post(`/api/admin/contests/${this.contestId}/roster/set`, { data: body });
+    return this.req().post(`/api/admin/contests/${this.contestId}/roster/set`, { data: body });
   }
 
   renameTeamRaw(teamId: string, body: { name: string; reason?: string }): Promise<APIResponse> {
-    return this.request.patch(`/api/admin/teams/${encodeURIComponent(teamId)}`, { data: body });
+    return this.req().patch(`/api/admin/teams/${encodeURIComponent(teamId)}`, { data: body });
   }
 
   dissolveTeamRaw(teamId: string, body: { reason?: string }): Promise<APIResponse> {
-    return this.request.delete(`/api/admin/teams/${encodeURIComponent(teamId)}`, { data: body });
+    return this.req().delete(`/api/admin/teams/${encodeURIComponent(teamId)}`, { data: body });
   }
 
   // --- auth ----------------------------------------------------------------
 
   passwordLoginRaw(email: string, password: string): Promise<APIResponse> {
-    return this.request.post("/api/auth/password", { data: { email, password } });
+    return this.req().post("/api/auth/password", { data: { email, password } });
   }
 
   sessionRaw(): Promise<APIResponse> {
-    return this.request.get("/api/auth/session");
+    return this.req().get("/api/auth/session");
   }
 
   signOutRaw(): Promise<APIResponse> {
-    return this.request.delete("/api/auth/session");
+    return this.req().delete("/api/auth/session");
   }
 
   oauthStartRaw(provider: "google" | "github"): Promise<APIResponse> {
     // `maxRedirects: 0` so the redirect itself is the assertion. Following it would send the test
     // to accounts.google.com, which is both slow and not our code.
-    return this.request.get(`/api/auth/${provider}`, { maxRedirects: 0 });
+    return this.req().get(`/api/auth/${provider}`, { maxRedirects: 0 });
   }
 
   // --- admin ---------------------------------------------------------------
 
   liveSessionsRaw(): Promise<APIResponse> {
-    return this.request.get("/api/admin/sessions");
+    return this.req().get("/api/admin/sessions");
   }
 
   revokeSessionRaw(body: {
@@ -289,27 +362,27 @@ export class ContestApi {
     participantId?: string;
     reason: string;
   }): Promise<APIResponse> {
-    return this.request.post("/api/admin/sessions", { data: body });
+    return this.req().post("/api/admin/sessions", { data: body });
   }
 
   assignSetsRaw(body: { reassign?: boolean; seed?: string } = {}): Promise<APIResponse> {
-    return this.request.post(`/api/admin/contests/${this.contestId}/assign-sets`, { data: body });
+    return this.req().post(`/api/admin/contests/${this.contestId}/assign-sets`, { data: body });
   }
 
   reDeriveAssignmentRaw(): Promise<APIResponse> {
-    return this.request.get(`/api/admin/contests/${this.contestId}/assign-sets`);
+    return this.req().get(`/api/admin/contests/${this.contestId}/assign-sets`);
   }
 
   sideActivitiesRaw(teamId: string): Promise<APIResponse> {
-    return this.request.get(`/api/admin/teams/${teamId}/side-activities`);
+    return this.req().get(`/api/admin/teams/${teamId}/side-activities`);
   }
 
   addSideActivityRaw(teamId: string, body: { label: string; points: number }): Promise<APIResponse> {
-    return this.request.post(`/api/admin/teams/${teamId}/side-activities`, { data: body });
+    return this.req().post(`/api/admin/teams/${teamId}/side-activities`, { data: body });
   }
 
   adminLoginRaw(passcode: string): Promise<APIResponse> {
-    return this.request.post("/api/admin/session", { data: { passcode } });
+    return this.req().post("/api/admin/session", { data: { passcode } });
   }
 
   async adminLogin(passcode: string): Promise<void> {
@@ -317,7 +390,7 @@ export class ContestApi {
   }
 
   freezeRaw(frozen: boolean): Promise<APIResponse> {
-    return this.request.post(`/api/admin/contests/${this.contestId}/freeze`, {
+    return this.req().post(`/api/admin/contests/${this.contestId}/freeze`, {
       data: { frozen },
     });
   }
@@ -335,7 +408,7 @@ export class ContestApi {
   }
 
   exportRaw(): Promise<APIResponse> {
-    return this.request.get(`/api/admin/contests/${this.contestId}/export`);
+    return this.req().get(`/api/admin/contests/${this.contestId}/export`);
   }
 
   overrideRaw(body: {
@@ -344,7 +417,7 @@ export class ContestApi {
     score: number;
     reason: string;
   }): Promise<APIResponse> {
-    return this.request.post(`/api/admin/submissions/${encodeURIComponent(body.submissionId)}/override`, {
+    return this.req().post(`/api/admin/submissions/${encodeURIComponent(body.submissionId)}/override`, {
       data: body,
     });
   }

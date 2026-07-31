@@ -15,7 +15,7 @@ and a couple are reachable but wrong on this hardware.
 | # | What | Severity |
 |---|---|---|
 | T1 | Hints — specified and priced, deliberately unimplemented pending organizer-written content | deferred by decision |
-| T2 | Java time limits are unenforceable on a slow host — a *scoring* error, not a speed one | **high** |
+| T2 | Java time limits — **RESOLVED** by measuring the real host: 38,473 ms → 229 ms, budget 45,000 → 4,000 | resolved |
 | T3 | Verdict latency straddles the G8 threshold — 7.4 s to 22.8 s on the same commit | **high**, hardware |
 | T4 | ~~A submission can fill the judge host's disk~~ **fixed** | resolved |
 | T5 | ~~Re-joining re-rolls the problem set, leaking other sets~~ **fixed**; one residual stated | low |
@@ -103,7 +103,38 @@ FAIL until this is resolved.
 
 ---
 
-## T2 — Java time limits are unenforceable on this host **(a correctness problem, not a speed one)**
+## T2 — Java time limits **— RESOLVED**
+
+**Resolved by measurement on the deployment host, not by argument.**
+
+`jdk21` startup through the full judge path:
+
+| host | worst observed |
+|---|---|
+| macOS, Docker Desktop | **up to 38,473 ms** |
+| Ubuntu 24.04, native Docker, 2 vCPU droplet | **117–229 ms** |
+
+A **168× collapse**. The 45,000 ms budget was never measuring the JVM — it was measuring Docker
+Desktop's virtualisation layer, and it had written that layer into the contest's scoring rules.
+
+`RUNTIMES.jdk21.startupBudgetMs` is now **4,000 ms**, which is 17× the worst native observation. A
+2-second Java problem allows about 8 seconds rather than about 49, so **Java time limits are
+enforceable for the first time.** `worker/runner.test.ts` asserts it, and the test that previously
+existed to stop anyone quietly shrinking the budget has been inverted rather than deleted — its new
+job is to stop anyone quietly raising it back after seeing a laptop TLE.
+
+The escape hatch for a developer on macOS is `JUDGE_STARTUP_BUDGET_SCALE`, which changes nothing
+about the recorded numbers. Editing the registry to make a laptop pass is precisely how 45,000 ms
+happened.
+
+**What generalises:** a hosting choice became a scoring decision, silently, and no gate could see
+it — every gate ran on the host that caused it. That is the argument for `scripts/measure-host.sh`
+running on the machine that will actually judge.
+
+<details>
+<summary>The original analysis, kept because the reasoning is the useful part</summary>
+
+### T2 (original) — Java time limits are unenforceable on this host **(a correctness problem, not a speed one)**
 
 **Severity: high**, and it is the one item here that can change who wins.
 
@@ -123,6 +154,8 @@ is right for this host; the host is wrong. Full analysis — what host fixes it,
 contest must run on this one anyway — is `docs/HOSTING.md` §5.
 
 ---
+
+</details>
 
 ## T3 — Verdict latency depends on how busy the host is, and G8 passes only on a quiet one
 

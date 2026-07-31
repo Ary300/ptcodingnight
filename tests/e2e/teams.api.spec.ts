@@ -2,7 +2,6 @@ import { expect, test, type APIRequestContext, type APIResponse } from "@playwri
 
 import {
   AdminRosterSchema,
-  TeamMembershipResponseSchema,
   TeamViewSchema,
 } from "@/lib/schemas/api";
 
@@ -38,25 +37,12 @@ async function openFormation(contestId: string): Promise<void> {
   });
 }
 
-async function closeFormation(contestId: string): Promise<void> {
-  await testDb().contest.update({
-    where: { id: contestId },
-    data: { teamFormationClosesAt: new Date(Date.now() - 60_000) },
-  });
-}
-
 /**
  * Parse a successful response against the real contract schema.
  *
  * `readOk` hands back the envelope; these narrow it. Parsing rather than casting is the point —
  * a route that drifts from `lib/schemas/api.ts` fails here rather than in a component.
  */
-async function okMembership(response: APIResponse) {
-  const { status, data } = await readOk(response);
-  expect(status, "expected a successful response").toBeLessThan(400);
-  return TeamMembershipResponseSchema.parse(data);
-}
-
 async function okTeam(response: APIResponse) {
   const { status, data } = await readOk(response);
   expect(status, "expected a successful response").toBeLessThan(400);
@@ -80,8 +66,7 @@ async function newCompetitor(
 ): Promise<{ api: ContestApi; participantId: string }> {
   const context = await playwright.request.newContext();
   const api = new ContestApi(context, seeded.contestId);
-  const joined = await api.joinOrThrow({
-    joinCode: seeded.joinCode,
+  const joined = await api.signIn({
     displayName,
     divisionId: seeded.divisionIds.get("intermediate") ?? null,
   });
@@ -100,135 +85,27 @@ test.afterAll(async () => {
   await closeTestDb();
 });
 
-test.describe("a student creates a team and teammates join by code", () => {
-  test("create, then join with the code typed messily", async ({ playwright }) => {
-    await openFormation(seeded.contestId);
+/*
+  THE TWO STUDENT-PATH DESCRIBES THAT USED TO BE HERE.
 
-    const alice = await newCompetitor(playwright, uniqueName("Alice"));
-    const created = await okMembership(await alice.api.createTeamRaw({ name: uniqueName("Alpha") }));
+  "a student creates a team and teammates join by code" and "a late joiner is given a problem set"
+  both drove `POST /teams`, `POST /teams/join` and `POST /teams/leave` — routes that no longer
+  exist. Students do not form their own teams: an organizer builds the roster from a screen,
+  because team size is the divisor in every team score and a roster a student can edit is a
+  scoring input a student can edit.
 
-    expect(created.team.members).toHaveLength(1);
-    expect(created.team.joinCode).toMatch(/^[A-Z0-9]{6}$/);
-    // No O/0 or I/1 anywhere in the alphabet: these are read aloud across a room.
-    expect(created.team.joinCode).not.toMatch(/[OI01]/);
+  What each was really protecting, and where it went:
 
-    const bob = await newCompetitor(playwright, uniqueName("Bob"));
-    const messy = `${created.team.joinCode.toLowerCase().slice(0, 3)}-${created.team.joinCode
-      .toLowerCase()
-      .slice(3)}`;
+  * the guardrails (duplicate name, unknown code, already on a team, size limit) were guarding an
+    input surface that is gone. Name uniqueness now lives in `uniqueDisplayName()` and is unit
+    tested; the size limit is enforced in `adminMoveParticipant` and asserted in the organizer
+    describe below.
+  * set assignment on joining, and its idempotency across a leave/rejoin, is the T5 re-roll — the
+    property that mattered. It moved with the action that triggers it, onto the organizer path,
+    and is asserted in `rejoin.api.spec.ts` ("moving a player between teams does not re-roll their
+    set") plus the containment suite in the same file.
+*/
 
-    const joined = await okMembership(await bob.api.joinTeamRaw({ code: messy }));
-    expect(joined.team.teamId).toBe(created.team.teamId);
-    expect(joined.team.members).toHaveLength(2);
-  });
-
-  test("a second join with the same code is a no-op, not a second membership", async ({
-    playwright,
-  }) => {
-    await openFormation(seeded.contestId);
-
-    const alice = await newCompetitor(playwright, uniqueName("Idem"));
-    const created = await okMembership(await alice.api.createTeamRaw({ name: uniqueName("Idem") }));
-
-    const again = await okMembership(await alice.api.joinTeamRaw({ code: created.team.joinCode }));
-    expect(again.alreadyMember).toBe(true);
-    expect(again.team.members).toHaveLength(1);
-  });
-
-  test("guardrails: duplicate name, unknown code, already on a team, and the size limit", async ({
-    playwright,
-  }) => {
-    await openFormation(seeded.contestId);
-
-    const name = uniqueName("Guard");
-    const alice = await newCompetitor(playwright, uniqueName("GuardAlice"));
-    const created = await okMembership(await alice.api.createTeamRaw({ name }));
-
-    const bob = await newCompetitor(playwright, uniqueName("GuardBob"));
-
-    expect((await readEnvelope(await bob.api.createTeamRaw({ name }))).status).toBe(409);
-    expect((await readEnvelope(await bob.api.joinTeamRaw({ code: "ZZZZZZ" }))).status).toBe(404);
-
-    await okMembership(await bob.api.joinTeamRaw({ code: created.team.joinCode }));
-    // Already on one: creating another must not silently abandon the team somebody is counting on.
-    expect(
-      (await readEnvelope(await bob.api.createTeamRaw({ name: uniqueName("Second") }))).status,
-    ).toBe(409);
-
-    // Size limit. Team size is the DIVISOR, so an oversized team dilutes every member's
-    // contribution — refused at the door, where a student can still act on it.
-    await testDb().contest.update({
-      where: { id: seeded.contestId },
-      data: { maxTeamSize: 2 },
-    });
-    const carol = await newCompetitor(playwright, uniqueName("GuardCarol"));
-    const refused = await readEnvelope(
-      await carol.api.joinTeamRaw({ code: created.team.joinCode }),
-    );
-    expect(refused.status).toBe(409);
-
-    await testDb().contest.update({
-      where: { id: seeded.contestId },
-      data: { maxTeamSize: 4 },
-    });
-  });
-
-  test("formation closes when the contest starts", async ({ playwright }) => {
-    await openFormation(seeded.contestId);
-    const late = await newCompetitor(playwright, uniqueName("Late"));
-
-    await closeFormation(seeded.contestId);
-
-    const refused = await readEnvelope(
-      await late.api.createTeamRaw({ name: uniqueName("TooLate") }),
-    );
-    expect(refused.status).toBeGreaterThanOrEqual(400);
-    expect(refused.status).toBeLessThan(500);
-
-    await openFormation(seeded.contestId);
-  });
-});
-
-test.describe("a late joiner is given a problem set", () => {
-  test("joining a team assigns a set, and joining again does not move it", async ({
-    playwright,
-  }) => {
-    await openFormation(seeded.contestId);
-
-    const alice = await newCompetitor(playwright, uniqueName("SetAlice"));
-    const created = await okMembership(await alice.api.createTeamRaw({ name: uniqueName("SetTeam") }));
-
-    const bob = await newCompetitor(playwright, uniqueName("SetBob"));
-    const joined = await okMembership(await bob.api.joinTeamRaw({ code: created.team.joinCode }));
-
-    // The fixture seeds `setAssignmentSeed`, so a joiner must come away with something to solve.
-    expect(joined.chosenSetId).not.toBeNull();
-
-    const stored = await testDb().participant.findUniqueOrThrow({
-      where: { id: bob.participantId },
-      select: { chosenSetId: true },
-    });
-    expect(stored.chosenSetId).toBe(joined.chosenSetId);
-
-    /**
-     * Idempotent. Leaving and rejoining must not re-draw the set — that is the T5 re-roll
-     * reached through the team door, and it would let a student shop for a set by hopping teams.
-     */
-    await readOk(await bob.api.leaveTeamRaw());
-    const afterLeave = await testDb().participant.findUniqueOrThrow({
-      where: { id: bob.participantId },
-      select: { chosenSetId: true },
-    });
-    expect(afterLeave.chosenSetId, "leaving took the set away").toBe(stored.chosenSetId);
-
-    await okMembership(await bob.api.joinTeamRaw({ code: created.team.joinCode }));
-    const afterRejoin = await testDb().participant.findUniqueOrThrow({
-      where: { id: bob.participantId },
-      select: { chosenSetId: true },
-    });
-    expect(afterRejoin.chosenSetId, "rejoining re-rolled the set").toBe(stored.chosenSetId);
-  });
-});
 
 test.describe("an organizer moves a participant, and the mean follows", () => {
   test("moving one participant changes BOTH team scores, correctly", async () => {
@@ -384,11 +261,17 @@ test.describe("an organizer moves a participant, and the mean follows", () => {
     await openFormation(seeded.contestId);
 
     const alice = await newCompetitor(playwright, uniqueName("DissolveAlice"));
-    const created = await okMembership(await alice.api.createTeamRaw({ name: uniqueName("Doomed") }));
-
+    const doomed = await okTeam(await admin.createTeamAsAdminRaw({ name: uniqueName("Doomed") }));
+    const teamId = doomed.teamId;
     await readOk(
-      await admin.dissolveTeamRaw(created.team.teamId, { reason: "merging two teams" }),
+      await admin.moveParticipantRaw({
+        participantId: alice.participantId,
+        teamId,
+        reason: "staffing the team that is about to be dissolved",
+      }),
     );
+
+    await readOk(await admin.dissolveTeamRaw(teamId, { reason: "merging two teams" }));
 
     const participant = await testDb().participant.findUniqueOrThrow({
       where: { id: alice.participantId },

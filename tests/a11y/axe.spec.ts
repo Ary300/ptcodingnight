@@ -6,8 +6,12 @@ import { openLobby, openProblem } from "./helpers/journey";
 /**
  * G9 — axe-core on the three surfaces PRD §12 names: competitor, problem, projector.
  *
- * Also the join screen and the submissions history, because they are on the same walk and a
- * student who cannot get through the join screen never reaches the ones that were audited.
+ * Also the sign-in screen and the submissions history, because they are on the same walk and a
+ * student who cannot get through sign-in never reaches the ones that were audited.
+ *
+ * The `/join` audit is gone with the page: students sign in with a provider now, and team
+ * membership is decided in the organizer's roster. `/sign-in` is audited in its place, including
+ * the `?error=` state the OAuth callback redirects to.
  */
 
 test.describe("axe-core: zero critical or serious", () => {
@@ -21,7 +25,9 @@ test.describe("axe-core: zero critical or serious", () => {
   */
   test("landing", async ({ page }) => {
     await page.goto("/");
-    await expect(page.getByRole("heading", { name: "Coding Night", level: 1 })).toBeVisible();
+    // The h1 is the hero line, not the site name — the site name lives in the bar above it.
+    await expect(page.getByRole("heading", { level: 1, name: /One board/i })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Sign in to compete" })).toBeVisible();
     await auditPage(page, "/");
   });
 
@@ -38,18 +44,6 @@ test.describe("axe-core: zero critical or serious", () => {
     // of this test can tell which one was meant.
     await expect(page.getByText("Google sign-in was cancelled")).toBeVisible();
     await auditPage(page, "/sign-in (provider error)");
-  });
-
-  test("join", async ({ page }) => {
-    await page.goto("/join");
-    await expect(page.getByRole("heading", { name: "Join the contest" })).toBeVisible();
-    await auditPage(page, "/join");
-
-    // Second step of the form is a different DOM and has to be audited as one.
-    await page.getByLabel("Join code").fill("E2E-PANTHER");
-    await page.locator("form").getByRole("button", { name: "Next", exact: true }).click();
-    await expect(page.getByLabel("Display name")).toBeVisible();
-    await auditPage(page, "/join (display name step)");
   });
 
   test("competitor lobby", async ({ page }) => {

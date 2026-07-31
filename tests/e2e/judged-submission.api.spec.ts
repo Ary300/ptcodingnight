@@ -40,8 +40,7 @@ test.describe("judged submission (requires the worker and Docker)", () => {
     competitorContext = await playwright.request.newContext({ baseURL });
     competitor = new ContestApi(competitorContext, seeded.contestId);
 
-    const joined = await competitor.joinOrThrow({
-      joinCode: seeded.joinCode,
+    const joined = await competitor.signIn({
       displayName: "E2E Judged Competitor",
       divisionId: seeded.divisionIds.get("intermediate") ?? null,
     });

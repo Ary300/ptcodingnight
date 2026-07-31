@@ -1,9 +1,9 @@
-import { DomainError, ForbiddenError, NotFoundError, ValidationError } from "@/lib/errors";
+import { DomainError, NotFoundError, ValidationError } from "@/lib/errors";
 import { prisma } from "@/lib/db";
 import { AUDIT_ACTIONS, writeAudit, type Db } from "@/lib/contest/audit";
 import { assignSetForOne } from "@/lib/contest/set-assignment";
 import { invalidateScoringInput } from "@/lib/contest/standings";
-import { newTeamCode, normaliseTeamCode } from "@/lib/contest/team-code";
+import { newTeamCode } from "@/lib/contest/team-code";
 
 /**
  * Team formation.
@@ -94,15 +94,6 @@ export function teamFormationOpen(
   return now < (contest.teamFormationClosesAt ?? contest.startsAt);
 }
 
-function assertFormationOpen(contest: ContestForTeams, now: Date): void {
-  if (!teamFormationOpen(contest, now)) {
-    throw new DomainError(
-      "CONTEST_NOT_RUNNING",
-      "Team sign-up has closed for this contest. Ask an organizer to change your team.",
-    );
-  }
-}
-
 /**
  * Give a participant a set if they do not have one, balanced within their team.
  *
@@ -179,87 +170,6 @@ export interface CreateTeamResult {
   readonly chosenSetId: string | null;
 }
 
-/**
- * A student creates a team and is placed on it.
- *
- * The creator joins their own team, which is the only behaviour that is not surprising: a screen
- * that makes you create a team and then separately join it is a screen people get wrong.
- */
-export async function createTeam(
-  contestId: string,
-  participantId: string,
-  name: string,
-  now: Date,
-): Promise<CreateTeamResult> {
-  const contest = await contestForTeams(contestId);
-  assertFormationOpen(contest, now);
-
-  const participant = await prisma.participant.findFirst({
-    where: { id: participantId, contestId },
-    select: { id: true, displayName: true, teamId: true },
-  });
-  if (participant === null) throw new ForbiddenError("Join the contest first");
-
-  // One team per participant per contest. Leaving is an explicit action, so that "create" cannot
-  // silently abandon the team somebody is already counting on.
-  if (participant.teamId !== null) {
-    throw new DomainError(
-      "CONFLICT",
-      "You are already on a team. Leave it first if you want to start a new one.",
-    );
-  }
-
-  const trimmed = name.trim();
-  const existing = await prisma.team.findFirst({
-    where: { contestId, name: trimmed },
-    select: { id: true },
-  });
-  if (existing !== null) {
-    throw new DomainError("CONFLICT", "A team with that name already exists — pick another");
-  }
-
-  const joinCode = await unusedTeamCode(prisma, contestId);
-
-  const team = await prisma.$transaction(async (tx) => {
-    const created = await tx.team.create({
-      data: {
-        contestId,
-        name: trimmed,
-        joinCode,
-        createdByParticipantId: participantId,
-      },
-      select: { id: true, name: true, joinCode: true },
-    });
-
-    await tx.participant.update({
-      where: { id: participantId },
-      data: { teamId: created.id },
-    });
-
-    await writeAudit(
-      {
-        actor: `participant:${participantId}`,
-        action: AUDIT_ACTIONS.teamCreated,
-        entity: `Team:${created.id}`,
-        after: {
-          contestId,
-          name: created.name,
-          createdBy: participant.displayName,
-          firstMember: participantId,
-        },
-      },
-      tx,
-    );
-
-    return created;
-  });
-
-  const chosenSetId = await ensureSetAssigned(prisma, contest, participantId, team.id);
-  invalidateScoringInput(contestId);
-
-  return { team: await teamViewFor(team.id, contest.maxTeamSize), chosenSetId };
-}
-
 export interface JoinTeamResult {
   readonly team: TeamView;
   readonly chosenSetId: string | null;
@@ -267,138 +177,6 @@ export interface JoinTeamResult {
   readonly alreadyMember: boolean;
 }
 
-/** A student joins an existing team with its code. */
-export async function joinTeamByCode(
-  contestId: string,
-  participantId: string,
-  code: string,
-  now: Date,
-): Promise<JoinTeamResult> {
-  const contest = await contestForTeams(contestId);
-  assertFormationOpen(contest, now);
-
-  const participant = await prisma.participant.findFirst({
-    where: { id: participantId, contestId },
-    select: { id: true, displayName: true, teamId: true },
-  });
-  if (participant === null) throw new ForbiddenError("Join the contest first");
-
-  const team = await prisma.team.findFirst({
-    where: { contestId, joinCode: normaliseTeamCode(code) },
-    select: { id: true, name: true, joinCode: true, _count: { select: { members: true } } },
-  });
-  // Deliberately the same error a well-formed but unknown code gives: no enumeration of which
-  // team codes exist in this contest.
-  if (team === null) throw new NotFoundError("Team");
-
-  if (participant.teamId === team.id) {
-    return {
-      team: await teamViewFor(team.id, contest.maxTeamSize),
-      chosenSetId: null,
-      alreadyMember: true,
-    };
-  }
-
-  if (participant.teamId !== null) {
-    throw new DomainError(
-      "CONFLICT",
-      "You are already on a team. Leave it first if you want to switch.",
-    );
-  }
-
-  /**
-   * The size guardrail, and it is checked HERE rather than at scoring time.
-   *
-   * Team size is the divisor, so an oversized team quietly dilutes every member's contribution.
-   * Refusing at the door is the only place a student can act on it; refusing later would be a
-   * score nobody can explain.
-   */
-  if (team._count.members >= contest.maxTeamSize) {
-    throw new DomainError(
-      "CONFLICT",
-      `${team.name} already has ${String(contest.maxTeamSize)} members, which is the limit for ` +
-        "this contest. Ask an organizer if you think that is wrong.",
-    );
-  }
-
-  await prisma.$transaction(async (tx) => {
-    await tx.participant.update({ where: { id: participantId }, data: { teamId: team.id } });
-    await writeAudit(
-      {
-        actor: `participant:${participantId}`,
-        action: AUDIT_ACTIONS.teamJoined,
-        entity: `Team:${team.id}`,
-        after: {
-          contestId,
-          teamName: team.name,
-          displayName: participant.displayName,
-          // The size AFTER the join. Recorded because it is the divisor, so a dispute about a
-          // score is a dispute about this number at this instant.
-          teamSizeAfter: team._count.members + 1,
-        },
-      },
-      tx,
-    );
-  });
-
-  const chosenSetId = await ensureSetAssigned(prisma, contest, participantId, team.id);
-  invalidateScoringInput(contestId);
-
-  return {
-    team: await teamViewFor(team.id, contest.maxTeamSize),
-    chosenSetId,
-    alreadyMember: false,
-  };
-}
-
-/** A student leaves their team. The set they were assigned is NOT taken away. */
-export async function leaveTeam(
-  contestId: string,
-  participantId: string,
-  now: Date,
-): Promise<void> {
-  const contest = await contestForTeams(contestId);
-  assertFormationOpen(contest, now);
-
-  const participant = await prisma.participant.findFirst({
-    where: { id: participantId, contestId },
-    select: { id: true, displayName: true, teamId: true, team: { select: { name: true } } },
-  });
-  if (participant === null) throw new ForbiddenError("Join the contest first");
-  if (participant.teamId === null) {
-    throw new DomainError("CONFLICT", "You are not on a team");
-  }
-
-  const teamId = participant.teamId;
-
-  await prisma.$transaction(async (tx) => {
-    await tx.participant.update({ where: { id: participantId }, data: { teamId: null } });
-    await writeAudit(
-      {
-        actor: `participant:${participantId}`,
-        action: AUDIT_ACTIONS.teamLeft,
-        entity: `Team:${teamId}`,
-        after: {
-          contestId,
-          teamName: participant.team?.name ?? null,
-          displayName: participant.displayName,
-        },
-      },
-      tx,
-    );
-  });
-
-  /**
-   * The set is deliberately kept.
-   *
-   * Taking it back would let a student clear an unwanted assignment by leaving and rejoining —
-   * the T5 re-roll, reachable through a different door. The assignment is per PARTICIPANT and
-   * survives their roster changing.
-   */
-  invalidateScoringInput(contestId);
-}
-
-/** Everything a competitor may see about one team. */
 export async function teamViewFor(teamId: string, maxTeamSize: number): Promise<TeamView> {
   const team = await prisma.team.findUnique({
     where: { id: teamId },
@@ -562,6 +340,9 @@ export async function adminMoveParticipant(
     throw new DomainError("CONFLICT", "That participant is already on that team");
   }
 
+  // Needed for set assignment below: the seed and the set list live on the contest row.
+  const contest = await contestForTeams(participant.contestId);
+
   // Sizes on BOTH sides, read before the move, so the audit row says what the divisors were.
   const [fromSize, toSize] = await Promise.all([
     participant.teamId === null
@@ -572,6 +353,25 @@ export async function adminMoveParticipant(
 
   await prisma.$transaction(async (tx) => {
     await tx.participant.update({ where: { id: participantId }, data: { teamId } });
+
+    /*
+      Moving somebody ONTO a team assigns their problem set, if they do not have one.
+
+      Students used to acquire a set by joining a team with a code, and `ensureSetAssigned` hung
+      off that path. Team membership is now decided only here, so this is the only place left that
+      can assign one — and without this line an organizer-assigned student has no set at all: no
+      column on the board, and in a real contest (allowReadingUnassignedSets off) nothing visible
+      but the group problems. The removal of the student path would have taken set assignment with
+      it, silently.
+
+      Idempotent: `ensureSetAssigned` returns the existing set if there is one, so re-moving a
+      player between teams never re-rolls their set. That property is the whole of T5 — a re-roll
+      is a way to preview the other sets.
+    */
+    if (teamId !== null) {
+      await ensureSetAssigned(tx, contest, participantId, teamId);
+    }
+
     await writeAudit(
       {
         actor,

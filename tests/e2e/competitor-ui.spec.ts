@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
 import { loadContestFixture, readSolution, testDb } from "./helpers/seed";
+import { signInAsCompetitor } from "./helpers/session";
 
 /**
  * G7 — the journey a student actually walks, in a browser.
@@ -45,37 +46,30 @@ function nextDisplayName(): string {
  * something other than scoping states the scope it needs rather than depending on a coin flip.
  */
 async function join(page: Page): Promise<string> {
-  const displayName = nextDisplayName();
-  await page.goto("/join");
-
-  await expect(page.getByRole("heading", { name: "Join the contest" })).toBeVisible();
-
-  await page.getByLabel("Join code").fill(JOIN_CODE);
-  // Scoped to the form: the dev server injects a "Next.js Dev Tools" button whose accessible
-  // name also starts with "Next", and an ambiguous locator here would look like a UI bug.
-  await page.locator("form").getByRole("button", { name: "Next", exact: true }).click();
-
-  await page.getByLabel("Display name").fill(displayName);
-  await page.getByRole("button", { name: "Join the contest" }).click();
-
-  await page.waitForURL("**/contest");
-
-  const raw = await page.evaluate(() => window.sessionStorage.getItem("ptcn.participant"));
-  const stored = JSON.parse(raw ?? "{}") as { participantId?: string };
-  expect(stored.participantId, "the join did not record a participant").toBeTruthy();
-
+  // The contest and the scope this participant needs, resolved BEFORE the session is minted so
+  // the browser's first paint already has them. Every fixture problem carries a division and a
+  // set, so a participant placed in neither sees an empty problem list — a test about something
+  // other than scoping states the scope it needs rather than depending on a coin flip.
   const db = testDb();
+  const contest = await db.contest.findFirst({
+    where: { joinCode: JOIN_CODE },
+    select: { id: true },
+  });
+  expect(contest, "the E2E fixture contest is missing").not.toBeNull();
+
   const target = await db.contestProblem.findFirst({
     where: { problem: { state: "PUBLISHED" }, contest: { joinCode: JOIN_CODE } },
     select: { divisionId: true, setId: true },
   });
-  await db.participant.update({
-    where: { id: stored.participantId ?? "" },
-    data: { divisionId: target?.divisionId ?? null, chosenSetId: target?.setId ?? null },
+
+  const session = await signInAsCompetitor(page, contest?.id ?? "", {
+    displayName: nextDisplayName(),
+    divisionId: target?.divisionId ?? null,
+    chosenSetId: target?.setId ?? null,
   });
 
-  await page.reload();
-  return displayName;
+  await page.goto("/contest");
+  return session.displayName;
 }
 
 test.describe("the competitor journey in a browser", () => {

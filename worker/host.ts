@@ -95,3 +95,37 @@ export function describeHost(): string {
 export function withHostMaxProcs(command: string): string {
   return command.replace(/GOMAXPROCS=\d+/g, `GOMAXPROCS=${String(hostCpuCount())}`);
 }
+
+
+/**
+ * Multiplier applied to every runtime startup budget. Default 1.
+ *
+ * ## Why this exists, and why its default is 1
+ *
+ * `RUNTIMES` records what each runtime costs on NATIVE LINUX, because that is what hosts the
+ * contest. On Docker Desktop the same measurements are 20x to 168x larger — so the honest budgets
+ * produce spurious TLEs on a developer's macOS laptop, and the container gates fail there for a
+ * reason that has nothing to do with the code under test.
+ *
+ * The wrong fix is to raise the numbers in the registry until the laptop passes, which is exactly
+ * how a 45,000 ms Java budget came to encode Docker Desktop's virtualisation layer into the
+ * contest's scoring rules (T2). The numbers stay true; the host that disagrees with them declares
+ * itself.
+ *
+ * **Never set this on the judging host.** A scale above 1 there does not make anything more
+ * reliable — it makes time limits mean proportionally less, and for Java it is precisely the
+ * mistake that made them mean nothing.
+ */
+export function startupBudgetScale(): number {
+  const raw = process.env.JUDGE_STARTUP_BUDGET_SCALE;
+  if (raw === undefined) return 1;
+  const parsed = Number.parseFloat(raw);
+  // A malformed value must not silently become 0 and fail every correct solution.
+  if (!Number.isFinite(parsed) || parsed < 1) return 1;
+  return parsed;
+}
+
+/** A runtime's startup budget, adjusted for a host that is slower than the one it was measured on. */
+export function scaledStartupBudgetMs(budgetMs: number): number {
+  return Math.round(budgetMs * startupBudgetScale());
+}
