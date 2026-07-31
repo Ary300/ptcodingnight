@@ -40,6 +40,20 @@ export const AUDIT_ACTIONS = {
   setAssignment: "contest.assign_sets",
   setReassignment: "contest.reassign_sets",
   sideActivity: "team.side_activity",
+  /// Team formation. A roster change is a SCORE change with extra steps, because team size is
+  /// the divisor — so every one of these is recorded with an actor, and the organizer ones with
+  /// a reason as well.
+  teamCreated: "team.created",
+  teamJoined: "team.joined",
+  teamLeft: "team.left",
+  teamRenamed: "team.renamed",
+  teamDissolved: "team.dissolved",
+  /// The one that moves TWO divisors at once: the team left shrinks, the team joined grows.
+  teamMemberMoved: "team.member_moved",
+  /// A human overriding the seeded set derivation. After this, reDeriveAssignment reports
+  /// matchesStored: false for the contest, and whoever shows a student "here is why you got set
+  /// C" needs to know that happened.
+  setForceReassigned: "contest.force_reassign_set",
   sessionRevoked: "session.revoked",
 } as const;
 

@@ -68,6 +68,14 @@ export const API_ROUTES = {
   submissions: "/api/submissions",
   submission: (id: string) => `/api/submissions/${encodeURIComponent(id)}`,
 
+  /** Team formation. Contest-scoped like everything else a competitor reaches after joining. */
+  myTeam: (contestId: string) => `/api/contests/${encodeURIComponent(contestId)}/teams/mine`,
+  createTeam: (contestId: string) => `/api/contests/${encodeURIComponent(contestId)}/teams`,
+  joinTeam: (contestId: string) => `/api/contests/${encodeURIComponent(contestId)}/teams/join`,
+  leaveTeam: (contestId: string) => `/api/contests/${encodeURIComponent(contestId)}/teams/leave`,
+  teamStandings: (contestId: string) =>
+    `/api/contests/${encodeURIComponent(contestId)}/team-standings`,
+
   // --- admin ---
   adminSession: "/api/admin/session",
   adminFreeze: (contestId: string) =>
@@ -76,6 +84,16 @@ export const API_ROUTES = {
     `/api/admin/contests/${encodeURIComponent(contestId)}/export`,
   adminOverride: (submissionId: string) =>
     `/api/admin/submissions/${encodeURIComponent(submissionId)}/override`,
+
+  // --- admin: team management ---
+  adminRoster: (contestId: string) =>
+    `/api/admin/contests/${encodeURIComponent(contestId)}/roster`,
+  adminTeams: (contestId: string) => `/api/admin/contests/${encodeURIComponent(contestId)}/teams`,
+  adminTeam: (teamId: string) => `/api/admin/teams/${encodeURIComponent(teamId)}`,
+  adminMoveParticipant: (contestId: string) =>
+    `/api/admin/contests/${encodeURIComponent(contestId)}/roster/move`,
+  adminReassignSet: (contestId: string) =>
+    `/api/admin/contests/${encodeURIComponent(contestId)}/roster/set`,
 } as const;
 
 /**
@@ -168,6 +186,100 @@ export const JoinResponseSchema = z.object({
    * set, which made it a way to preview the other sets before the round (docs/TODO.md T5).
    */
   rejoined: z.boolean(),
+});
+
+// ---------------------------------------------------------------------------
+// Teams
+// ---------------------------------------------------------------------------
+
+/**
+ * A team as a competitor sees it.
+ *
+ * `joinCode` is included, and that is deliberate: it is not a credential. A team's membership is
+ * already public on the leaderboard, and the worst a leaked code does is put somebody on a team
+ * an organizer can move them off. What actually protects the roster is server-side — one team per
+ * participant, a size limit, and formation closing when the contest starts.
+ *
+ * There is no `size` field. **Team size is the divisor in every team score**, so it is derived
+ * from `members` at scoring time and never stored or transmitted as a count — a count is a second
+ * source of truth that drifts from the roster it describes (CLAUDE.md).
+ */
+export const TeamMemberSchema = z.object({
+  participantId: z.string(),
+  displayName: z.string(),
+});
+
+export const TeamViewSchema = z.object({
+  teamId: z.string(),
+  name: z.string(),
+  joinCode: z.string(),
+  maxTeamSize: z.number().int().positive(),
+  members: z.array(TeamMemberSchema),
+});
+export type TeamView = z.infer<typeof TeamViewSchema>;
+
+export const CreateTeamRequestSchema = z.object({
+  name: z.string().trim().min(1, "Name your team").max(40),
+});
+
+export const JoinTeamRequestSchema = z.object({
+  /** Normalised server-side, so `7km-4p2` and `7KM4P2` are the same code. */
+  code: z.string().trim().min(1, "Enter the team code").max(24),
+});
+
+export const TeamMembershipResponseSchema = z.object({
+  team: TeamViewSchema,
+  /** The set this participant holds after joining. Null when the contest assigns none. */
+  chosenSetId: z.string().nullable(),
+  /** True when the call was a no-op because they were already on this team. */
+  alreadyMember: z.boolean(),
+});
+
+/** The organizer's roster view: every team plus everybody on none. */
+export const AdminRosterSchema = z.object({
+  maxTeamSize: z.number().int().positive(),
+  formationOpen: z.boolean(),
+  teams: z.array(TeamViewSchema.extend({ memberCount: z.number().int().nonnegative() })),
+  unassigned: z.array(TeamMemberSchema),
+});
+
+/**
+ * Every organizer mutation carries a reason, and the schema requires it.
+ *
+ * A roster change is a score change with extra steps — moving one participant changes TWO
+ * divisors — so "why" is not optional metadata. Making it a required field means the audit row
+ * cannot be written without one.
+ */
+export const AdminReasonSchema = z.object({
+  /**
+   * The message is on the TYPE as well as the length. `.min(3, msg)` only fires for a value that
+   * is already a string, so omitting the field entirely produced Zod's default "expected string,
+   * received undefined" — which tells an organizer nothing about what the form wants.
+   */
+  reason: z
+    .string({ error: "Give a reason — it goes in the audit log" })
+    .trim()
+    .min(3, "Give a reason — it goes in the audit log")
+    .max(300),
+});
+
+export const AdminCreateTeamRequestSchema = z.object({
+  name: z.string().trim().min(1, "Name the team").max(40),
+});
+
+export const AdminRenameTeamRequestSchema = AdminReasonSchema.extend({
+  name: z.string().trim().min(1, "Name the team").max(40),
+});
+
+export const AdminMoveParticipantRequestSchema = AdminReasonSchema.extend({
+  participantId: z.string().min(1),
+  /** Null moves them off every team without deleting anything. */
+  teamId: z.string().min(1).nullable(),
+});
+
+export const AdminReassignSetRequestSchema = AdminReasonSchema.extend({
+  participantId: z.string().min(1),
+  setId: z.string().min(1).nullable(),
 });
 
 // ---------------------------------------------------------------------------

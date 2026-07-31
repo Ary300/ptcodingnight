@@ -240,7 +240,14 @@ export async function seedE2EContest(options: SeedOptions = {}): Promise<SeededC
           sortOrder: division.sortOrder,
         })),
       },
-      teams: { create: fixture.teams.map((team) => ({ name: team.name })) },
+      // A join code per fixture team, derived from the key so it is stable across reseeds and a
+      // spec can hardcode it. Six characters, matching what the generator produces.
+      teams: {
+        create: fixture.teams.map((team) => ({
+          name: team.name,
+          joinCode: `E2E${team.key.slice(0, 3).toUpperCase().padEnd(3, "X")}`,
+        })),
+      },
       problemSets: { create: fixture.problemSets.map((set) => ({ label: set.label })) },
       // A seed, so the fixture's participants count as already-assigned and the late-joiner path is
       // reachable from a spec. The value is fixed rather than random: an E2E fixture that assigns

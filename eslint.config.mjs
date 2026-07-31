@@ -28,6 +28,17 @@ const eslintConfig = defineConfig([
     // that have nothing to do with our source, which is exactly the kind of spurious red that
     // teaches people to ignore a gate.
     ".judge-tmp/**",
+
+    // Vendored third-party assets: Monaco's `vs/` bundle and KaTeX's fonts and stylesheet.
+    //
+    // These are SELF-HOSTED on purpose — the editor and the maths rendering must not depend on
+    // jsDelivr being reachable mid-contest — but they are somebody else's minified build output,
+    // not our source. Linting 24 MB of Monaco produced 25,599 findings, every one of them about
+    // code we neither wrote nor may edit, and a gate that reports 25,599 problems is a gate
+    // nobody reads.
+    //
+    // `public/` is static assets by definition; nothing under it is compiled with our code.
+    "public/**",
   ]),
 ]);
 

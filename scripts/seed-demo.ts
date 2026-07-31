@@ -268,13 +268,29 @@ async function main(): Promise<void> {
         startsAt,
         endsAt,
         freezeAt: null,
+        /**
+         * Formation stays open for the whole demo window, which is the ONE place this contest
+         * differs from a real one.
+         *
+         * The default rule is that team sign-up closes at `startsAt`: students arrive, form
+         * teams, then compete. A demo has to show both halves at once — a visitor should be able
+         * to make a team AND submit — and `startsAt` is in the past so submissions are accepted.
+         * Overriding the window is exactly what the column exists for.
+         */
+        teamFormationClosesAt: endsAt,
         state: "RUNNING",
         // No divisions and no problem sets — see the header. Both would scope a joining
         // visitor out of every problem on the board.
         setSelection: "PLAYER_CHOOSES",
         allowReadingUnassignedSets: true,
+        // Fixed join codes, unlike the CONTEST code above which is generated. These are not a
+        // credential — a team code only puts you on a team an organizer can move you off — and a
+        // demo whose team codes change on every seed is one nobody can write instructions for.
         teams: {
-          create: [{ name: "Panthers" }, { name: "Cubs" }],
+          create: [
+            { name: "Panthers", joinCode: "PANTH1" },
+            { name: "Cubs", joinCode: "CUBS22" },
+          ],
         },
       },
       select: { id: true, teams: { select: { id: true, name: true } } },

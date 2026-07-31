@@ -253,6 +253,32 @@ model Contest {
   /// UI** — a set a competitor can read is a set they can practise on before their own round.
   allowReadingUnassignedSets Boolean      @default(false)
 
+  /// When students stop being able to form and join teams. Null means "when the contest starts".
+  ///
+  /// The rule is that formation closes at `startsAt`: students arrive, form teams, then compete,
+  /// and after the gun a roster change moves a divisor under a score that already exists. That
+  /// default is what this column is null for.
+  ///
+  /// It is overridable because the default and "the contest is running" are not always the same
+  /// thing — a relaxed session, a rehearsal, or the public demo all want formation open while
+  /// submissions are also accepted. Without this the only way to get that is to edit the
+  /// database, which is the exact problem team management exists to remove.
+  teamFormationClosesAt DateTime?
+
+  /// Largest team a student may join. An organizer's guardrail, not a scoring input.
+  ///
+  /// **Team size is the divisor**, so an oversized team is not merely untidy — it dilutes every
+  /// member's contribution. Enforced when joining; an organizer can still place someone over the
+  /// limit deliberately, because a roster correction on the night must not be blocked by a
+  /// setting.
+  maxTeamSize Int @default(4)
+
+  /// Whether students may still create and join teams.
+  ///
+  /// Derived from `state` rather than stored as a second flag: team formation closes when the
+  /// contest starts, and a stored boolean would be a second source of truth that drifts from the
+  /// thing it describes — the same reason team size is never stored as a count.
+  ///
   /// Seed for problem-set assignment. Stored so any assignment can be RE-DERIVED from the seed
   /// and the participant list: a disputed assignment has to be explainable rather than argued
   /// about (PRD §6.2). Null until Round 1 assignment runs.
@@ -281,6 +307,17 @@ model Team {
   contestId String
   name      String
 
+  /// The code teammates type to join this team.
+  ///
+  /// Scoped to the contest rather than globally unique: two contests may reuse a code without
+  /// colliding, and the lookup is always `(contestId, joinCode)`. Short and unambiguous —
+  /// generated from an alphabet with no O/0 or I/1, because it is read aloud across a room.
+  joinCode String
+
+  /// Who created it. Null for a team an organizer made directly, which is the distinction that
+  /// matters when a roster is disputed: a student-made team has a student who chose the name.
+  createdByParticipantId String?
+
   createdAt DateTime @default(now())
 
   contest        Contest            @relation(fields: [contestId], references: [id], onDelete: Cascade)
@@ -289,6 +326,7 @@ model Team {
   standings      Standing[]
 
   @@unique([contestId, name])
+  @@unique([contestId, joinCode])
   @@index([contestId])
 }
 

@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 
 import { TeamStandingsBoard, useTeamStandings } from "@/components/leaderboard";
 
+import { TeamFormation } from "./TeamFormation";
+
 /**
  * "My team" — PRD §9.1.
  *
@@ -128,6 +130,19 @@ export function MyTeamView() {
           </p>
         )}
       </header>
+
+      {/*
+        Formation sits ABOVE the board, because a student with no team came here to fix that and
+        the board is context rather than the task. It is only rendered once the session is known:
+        the panel is contest-scoped, and rendering it against a null contest would fire a request
+        that can only fail.
+
+        No refresh callback: `useTeamStandings` polls, so the board below picks the change up on
+        its own. Wiring one would be a second refresh path to keep in step with the first.
+      */}
+      {notice === null && session?.contestId != null && (
+        <TeamFormation contestId={session.contestId} />
+      )}
 
       {notice === null && error !== null && (
         <p role="status" className="text-ink/60" style={{ fontSize: "var(--text-xs)" }}>

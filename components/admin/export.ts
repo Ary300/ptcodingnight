@@ -1,4 +1,4 @@
-import type { StandingsResponse } from "@/lib/schemas/api";
+import type { StandingsResponse, TeamStandingsResponse } from "@/lib/schemas/api";
 
 /**
  * Results export (PRD §9.2).
@@ -54,6 +54,84 @@ function csvCell(value: string | number | boolean): string {
   const raw =
     typeof value === "string" ? neutralizeFormula(value) : typeof value === "boolean" ? (value ? "yes" : "no") : String(value);
   return `"${raw.replace(/"/g, '""')}"`;
+}
+
+/**
+ * A sheet as a grid: one header row, then data rows.
+ *
+ * Both exports go through this. The team export is not a second implementation of CSV escaping
+ * and ZIP framing — one of those getting a fix the other did not is how two exports of the same
+ * contest disagree, which is precisely the failure the spreadsheet used to produce.
+ */
+export type Grid = readonly (readonly (string | number)[])[];
+
+export function gridToCsv(grid: Grid): string {
+  return grid.map((row) => row.map((cell) => csvCell(cell)).join(",")).join("\r\n") + "\r\n";
+}
+
+export function gridToXlsx(grid: Grid): Uint8Array<ArrayBuffer> {
+  const encoder = new TextEncoder();
+  return zipStore([
+    { name: "[Content_Types].xml", data: encoder.encode(CONTENT_TYPES) },
+    { name: "_rels/.rels", data: encoder.encode(ROOT_RELS) },
+    { name: "xl/workbook.xml", data: encoder.encode(WORKBOOK) },
+    { name: "xl/_rels/workbook.xml.rels", data: encoder.encode(WORKBOOK_RELS) },
+    { name: "xl/styles.xml", data: encoder.encode(STYLES) },
+    {
+      name: "xl/worksheets/sheet1.xml",
+      data: encoder.encode(sheetXml(grid.map((row) => [...row]))),
+    },
+  ]);
+}
+
+// ---------------------------------------------------------------------------
+// Team results
+// ---------------------------------------------------------------------------
+
+/**
+ * A team row, and it carries every INPUT to the score rather than only the score.
+ *
+ * The team score is a mean, so the number on its own is not checkable. `Player pool`, `Team size`
+ * and `Side activities` are the three things it is computed from, and exporting them means a
+ * disputed result can be recomputed from the file — which is the whole reason this platform
+ * replaced a spreadsheet whose arithmetic nobody could check.
+ */
+export const TEAM_EXPORT_HEADERS = [
+  "Rank",
+  "Tied",
+  "Team",
+  "Score",
+  "Player pool",
+  "Team size",
+  "Group points",
+  "Side activities",
+  "Penalty minutes",
+  "Members",
+] as const;
+
+export function teamStandingsToGrid(standings: TeamStandingsResponse): Grid {
+  return [
+    [...TEAM_EXPORT_HEADERS],
+    ...standings.teams.map((team) => [
+      team.rank,
+      team.isTied ? "yes" : "no",
+      team.name,
+      // Two decimals, because a mean is routinely fractional and `543.75` and `543.8` are
+      // different claims (docs/SCORING.md §3).
+      team.score.toFixed(2),
+      team.playerPoolPoints,
+      team.teamSize,
+      team.groupPoints,
+      team.sideActivityPoints,
+      team.penaltyMinutes,
+      team.players.map((p) => `${p.displayName} (${String(p.score)})`).join("; "),
+    ]),
+  ];
+}
+
+export function teamSafeFilename(contestName: string, extension: string): string {
+  const stem = contestName.trim().replace(/[^A-Za-z0-9]+/g, "-").replace(/^-+|-+$/g, "").toLowerCase();
+  return `${stem === "" ? "team" : stem}-team-results.${extension}`;
 }
 
 export function toCsv(rows: readonly ExportRow[]): string {
