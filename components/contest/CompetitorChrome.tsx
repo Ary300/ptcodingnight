@@ -19,8 +19,14 @@ import { useResource } from "./data/useResource";
  * kind of thing that makes "keyboard-only" technically true and practically useless.
  */
 
+/*
+  `/team` was built, tested and routed, and was reachable only by typing the URL — it was in no
+  nav anywhere. Coding Night ranks TEAMS (PRD §6.1), so the screen showing a student their team's
+  score, and the division that produced it, is not a secondary view to be found by guessing.
+*/
 const NAV = [
   { href: "/contest", label: "Problems" },
+  { href: "/team", label: "My team" },
   { href: "/submissions", label: "My submissions" },
 ] as const;
 

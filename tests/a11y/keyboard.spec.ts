@@ -240,11 +240,32 @@ test.describe("keyboard-only", () => {
     expect(count, "the projector should offer at least one division").toBeGreaterThan(0);
     if (count < 2) return;
 
-    await tabs.first().focus();
-    const firstFocus = await focused(page);
-    expect(firstFocus.outlineStyle, "a projector tab must show focus").not.toBe("none");
+    /*
+      Retried, because the tablist is server-rendered and ArrowRight does nothing until React has
+      attached its handler. The markup is present, focusable and correct before that, so every
+      "wait for it" signal this test could use is already true while the press is still being
+      dropped on the floor.
 
-    await page.keyboard.press("ArrowRight");
-    await expect(tabs.nth(1)).toHaveAttribute("aria-selected", "true");
+      The assertion is unchanged — ArrowRight must still move selection to the second tab. Only
+      the pre-hydration window is tolerated, and this still fails if the key never works.
+    */
+    await expect(async () => {
+      await tabs.first().focus();
+      await page.keyboard.press("ArrowRight");
+      await expect(tabs.nth(1)).toHaveAttribute("aria-selected", "true", { timeout: 1_000 });
+    }).toPass({ timeout: 15_000 });
+
+    /*
+      The focus ring is checked AFTER the keyboard moved focus, and that ordering is the point.
+
+      The ring is `:focus-visible` (globals.css), which Chromium grants based on the last input
+      modality — so a programmatic `.focus()` may or may not match depending on what the browser
+      thinks happened last. Asserting it there was flaky in both directions and tested the wrong
+      moment anyway: `:focus-visible` exists FOR keyboard users, so the state worth asserting is
+      the one a keyboard user actually lands in.
+    */
+    const afterArrow = await focused(page);
+    expect(afterArrow.role, "arrow keys should leave focus on a tab").toBe("tab");
+    expect(afterArrow.outlineStyle, "a projector tab must show focus").not.toBe("none");
   });
 });

@@ -11,6 +11,35 @@ import { openLobby, openProblem } from "./helpers/journey";
  */
 
 test.describe("axe-core: zero critical or serious", () => {
+  /*
+    The two pages a visitor can reach without a session or a code, and the two that had no
+    coverage because until recently one was a placeholder and the other did not exist.
+
+    They matter more than their simplicity suggests: `/` is the root of ptcodingnight.com and
+    `/sign-in` is the only way an organizer gets in. A student who cannot use the front door
+    never reaches the surfaces the rest of this file audits.
+  */
+  test("landing", async ({ page }) => {
+    await page.goto("/");
+    await expect(page.getByRole("heading", { name: "Coding Night", level: 1 })).toBeVisible();
+    await auditPage(page, "/");
+  });
+
+  test("organizer sign-in", async ({ page }) => {
+    await page.goto("/sign-in");
+    await expect(page.getByRole("heading", { name: "Sign in", level: 1 })).toBeVisible();
+    await auditPage(page, "/sign-in");
+
+    // The error state is a different DOM — the OAuth callback redirects here with `?error=`
+    // when a provider reports one, and a live region that fails an audit fails it silently.
+    await page.goto("/sign-in?error=Google%20sign-in%20was%20cancelled");
+    // By text, not by role: Next.js renders its own `role="alert"` route announcer on every
+    // page, so `getByRole("alert")` is two elements here and neither strict mode nor a reader
+    // of this test can tell which one was meant.
+    await expect(page.getByText("Google sign-in was cancelled")).toBeVisible();
+    await auditPage(page, "/sign-in (provider error)");
+  });
+
   test("join", async ({ page }) => {
     await page.goto("/join");
     await expect(page.getByRole("heading", { name: "Join the contest" })).toBeVisible();
