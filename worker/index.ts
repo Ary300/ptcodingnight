@@ -8,6 +8,7 @@ import { JudgeJobSchema, type JudgeResult } from "@/lib/schemas/judge";
 import { JUDGE_QUEUE_NAME, MAX_JOB_ATTEMPTS, STALLED_JOB_GRACE_MS } from "@/lib/judge/queue";
 import { parseServerEnv } from "@/lib/schemas/env";
 import { isDockerAvailable, sweepJudgeContainers } from "@/worker/docker";
+import { defaultJudgeConcurrency, hostCpuCount, hostMemoryMb } from "./host";
 import { RUNTIMES, type RuntimeId } from "@/lib/judge/runtimes";
 import { judge, type ImageOverrides } from "@/worker/runner";
 
@@ -73,9 +74,22 @@ async function main(): Promise<void> {
     jdk21: env.JUDGE_IMAGE_JAVA,
   };
 
+  /*
+    Concurrency follows the box unless somebody has actually chosen a number.
+
+    The schema's default was a flat 4, fitted to a laptop. On the two-vCPU droplet that is four
+    containers competing for two cores, and what degrades is verdict latency — the one number G8
+    exists to measure. An explicit `JUDGE_CONCURRENCY` still wins; this only decides what happens
+    when nobody has thought about it, which is the case that reached production.
+  */
+  const concurrency =
+    process.env.JUDGE_CONCURRENCY === undefined
+      ? defaultJudgeConcurrency()
+      : env.JUDGE_CONCURRENCY;
+
   const worker = new Worker(JUDGE_QUEUE_NAME, (job) => processJob(job, images), {
     connection,
-    concurrency: env.JUDGE_CONCURRENCY,
+    concurrency,
     stalledInterval: STALLED_JOB_GRACE_MS,
   });
 
@@ -122,7 +136,19 @@ async function main(): Promise<void> {
       level: "info",
       event: "judge.started",
       queue: JUDGE_QUEUE_NAME,
-      concurrency: env.JUDGE_CONCURRENCY,
+      concurrency,
+      concurrencySource: process.env.JUDGE_CONCURRENCY === undefined ? "derived from cpu count" : "JUDGE_CONCURRENCY",
+      /*
+        The box, in the first line of the log.
+
+        Every resource limit in the registry was measured on a laptop, and the failure they cause
+        elsewhere is not gradual: Docker REFUSES a `--cpus` above the core count rather than
+        clamping it, so a runtime whose compile asks for 4 is simply unjudgeable on a 2-vCPU host.
+        The limits are clamped at the container boundary now, but the clamp has to be visible —
+        a judge quietly running Go compiles at half the intended parallelism should be a fact
+        somebody can read, not something inferred from timings.
+      */
+      host: { cpus: hostCpuCount(), memoryMb: hostMemoryMb() },
       // Every image the judge will actually use, not just the overridden ones — a startup line that
       // lists two images on a five-runtime judge invites exactly the wrong conclusion.
       images: Object.fromEntries(

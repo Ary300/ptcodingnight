@@ -2,6 +2,8 @@ import { spawn } from "node:child_process";
 import { readdir, stat } from "node:fs/promises";
 import path from "node:path";
 
+import { clampCpus } from "./host";
+
 /**
  * The container boundary. Untrusted student code runs on the other side of this file and
  * nowhere else — never in the web process, never in the worker process, never in a reused
@@ -221,7 +223,17 @@ function isolationArgs(limits: ContainerLimits): string[] {
     `--pids-limit=${limits.pidsLimit}`,
     `--memory=${memory}`,
     `--memory-swap=${memory}`,
-    `--cpus=${limits.cpus}`,
+    /*
+      Clamped to the host, and clamped HERE because this is the only place the flag is built —
+      both the run path and the compile path come through `isolationArgs`, so one clamp covers
+      both and a sixth runtime added later cannot miss it.
+
+      Docker does not clamp `--cpus` itself, it refuses: "range of CPUs is from 0.01 to 2.00, as
+      there are only 2 CPUs available". So a value fitted to a developer laptop (go123 compiles at
+      4) does not make a two-vCPU box slow, it makes Go unjudgeable — found by deploying, because
+      on a machine with enough cores the number is invisible.
+    */
+    `--cpus=${String(clampCpus(limits.cpus))}`,
     // Soft and hard set to the same value. Leaving the hard limit higher would let the program
     // raise its own soft limit back up, which makes the flag decorative.
     `--ulimit=fsize=${limits.fsizeBytes}:${limits.fsizeBytes}`,

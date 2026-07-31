@@ -139,6 +139,22 @@ echo "==> verifying the Go build cache is warm"
 
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
+
+# The compile command is READ FROM THE REGISTRY, never retyped here.
+#
+# This check existed to prove the warm cache is used by the real judge, and it was doing so
+# against a hand-copied approximation of the judge's command. That is not a smaller version of
+# the same test, it is a different test: whatever this script measured, it was not what students
+# get. `scripts/print-compile-command.ts` prints the one string `worker/runner.ts` writes into
+# compile.sh, and worker/runtime-sync.test.ts fails if anyone reintroduces a literal `go build`
+# here.
+GO_COMPILE="$(npx --yes tsx scripts/print-compile-command.ts GO_123 2>/dev/null)" || GO_COMPILE=""
+if [ -z "$GO_COMPILE" ]; then
+  echo "FAIL  could not read the Go compile command from lib/judge/runtimes.ts" >&2
+  echo "      This check must run the judge's own command; it does not carry a copy." >&2
+  exit 1
+fi
+
 cat > "$work/main.go" <<'GO'
 package main
 
@@ -155,17 +171,39 @@ func main() {
 	fmt.Println(a + b)
 }
 GO
+chmod -R a+rX "$work"
 
-# Same flags and same GOCACHE the real judge uses. Measuring with anything else would measure
-# something other than what students get.
+# --cpus follows the HOST. Docker does not clamp this, it refuses: "range of CPUs is from 0.01 to
+# 2.00, as there are only 2 CPUs available". A hardcoded 4 meant this script could not run at all
+# on the 2-vCPU box the contest is hosted on, and the refusal was reported as "did not compile".
+CPUS="$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 1)"
+[ "$CPUS" -lt 1 ] 2>/dev/null && CPUS=1
+
+# The judge writes its artifact to /build, so the check mounts one — again, matching the real
+# path rather than redirecting the output somewhere more convenient.
+mkdir -p "$work/build"
+chmod a+rwx "$work/build"
+
+# stderr is CAPTURED, not discarded. `2>/dev/null` here turned two separate real failures — a
+# refused --cpus and a Go module error — into the same "did not compile at all" with the cause
+# thrown away, which cost two rounds of diagnosis on a live deployment.
+go_stderr="$work/stderr.txt"
 elapsed=$(docker run --rm --network=none --read-only \
   --tmpfs=/tmp:rw,noexec,nosuid,size=256m --user=65534:65534 --cap-drop=ALL \
-  --security-opt=no-new-privileges --pids-limit=512 --memory=1024m --memory-swap=1024m --cpus=4 \
-  --env=HOME=/tmp --env=TMPDIR=/tmp -v "$work:/work:ro" \
-  ptcn-go:1.23 sh -c 'S=$(date +%s%N)
-GOCACHE=/opt/gocache GOTMPDIR=/tmp GOPATH=/tmp/gopath GOMAXPROCS=4 go build -o /tmp/prog /work/main.go || exit 1
-E=$(date +%s%N); echo $(( (E-S)/1000000 ))' 2>/dev/null) || {
-  echo "FAIL  the verification build did not compile at all" >&2
+  --security-opt=no-new-privileges --pids-limit=512 --memory=1024m --memory-swap=1024m \
+  --cpus="$CPUS" \
+  --env=HOME=/tmp --env=TMPDIR=/tmp -v "$work:/work:ro" -v "$work/build:/build:rw" \
+  ptcn-go:1.23 sh -c "S=\$(date +%s%N)
+${GO_COMPILE} || exit 1
+E=\$(date +%s%N); echo \$(( (E-S)/1000000 ))" 2>"$go_stderr") || {
+  echo "FAIL  the verification build did not compile." >&2
+  echo "      Command (from lib/judge/runtimes.ts, GO_123):" >&2
+  echo "        ${GO_COMPILE}" >&2
+  echo "      Host cpus: ${CPUS}" >&2
+  echo "      docker/go stderr:" >&2
+  sed 's/^/        /' "$go_stderr" >&2
+  echo >&2
+  echo "      This is the command the JUDGE runs, so a failure here is a failure students get." >&2
   exit 1
 }
 

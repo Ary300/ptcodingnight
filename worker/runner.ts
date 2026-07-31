@@ -12,6 +12,7 @@ import {
   type ContainerLimits,
   type ContainerRunResult,
 } from "@/worker/docker";
+import { withHostMaxProcs } from "./host";
 import { BATCH_DRIVER, parseMeta, type BatchTestOutcome } from "@/worker/batch-driver";
 
 /**
@@ -564,7 +565,7 @@ export async function judge(job: JudgeJob, images?: ImageOverrides): Promise<Jud
     // problem's. Compiled languages therefore build separately, at the runtime's compile
     // memory limit, and hand /build to the run container read-only.
     if (variant.compileCommand !== undefined && variant.producesArtifacts) {
-      await writeFile(path.join(inputDir, "compile.sh"), `${variant.compileCommand}\n`, "utf8");
+      await writeFile(path.join(inputDir, "compile.sh"), `${withHostMaxProcs(variant.compileCommand)}\n`, "utf8");
 
       const compile = await runInContainer({
         image,
@@ -650,12 +651,12 @@ export async function judge(job: JudgeJob, images?: ImageOverrides): Promise<Jud
     }
 
     await writeFile(path.join(inputDir, "driver.sh"), BATCH_DRIVER, "utf8");
-    await writeFile(path.join(inputDir, "run.sh"), `${variant.runCommand}\n`, "utf8");
+    await writeFile(path.join(inputDir, "run.sh"), `${withHostMaxProcs(variant.runCommand)}\n`, "utf8");
 
     // A parse-only check writes nothing, so it costs nothing to do inside the run container.
     // An artifact-producing build already ran above and its compile.sh must NOT run again.
     if (variant.compileCommand !== undefined && !variant.producesArtifacts) {
-      await writeFile(path.join(inputDir, "compile.sh"), `${variant.compileCommand}\n`, "utf8");
+      await writeFile(path.join(inputDir, "compile.sh"), `${withHostMaxProcs(variant.compileCommand)}\n`, "utf8");
     } else if (variant.producesArtifacts) {
       await rm(path.join(inputDir, "compile.sh"), { force: true });
     }
