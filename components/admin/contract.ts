@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import type { JudgeHealthView } from "@/lib/schemas/api";
 import type { SeedPastStatus, SeedType } from "@/lib/schemas/seed";
 
 /**
@@ -13,8 +14,11 @@ import type { SeedPastStatus, SeedType } from "@/lib/schemas/seed";
  *
  * Everything in this file that is not re-exported from `lib/schemas/` is therefore the
  * admin UI's *proposed* shape for those gaps, kept in one place so it is trivial to delete
- * once the real schemas land. Nothing here is used to talk to a route that exists today —
- * see `stub-data.ts`.
+ * once the real schemas land.
+ *
+ * The submission feed and judge health are no longer among the gaps — `AdminConsoleViewSchema`
+ * describes both, `GET /api/admin/contests/{id}/console` serves them, and the two types below are
+ * re-exports rather than proposals.
  */
 
 // ---------------------------------------------------------------------------
@@ -175,40 +179,29 @@ export function referenceRunFailures(
 // Live console
 // ---------------------------------------------------------------------------
 
-export interface JudgeHealth {
-  readonly queueDepth: number;
-  readonly active: number;
-  readonly failed: number;
-  readonly workersOnline: number;
-  readonly oldestWaitingMs: number | null;
-  readonly lastHeartbeatAgoMs: number | null;
-}
+/**
+ * Re-exported from the wire contract rather than declared here.
+ *
+ * These two shapes used to be hand-written in this file, and they drifted exactly as you would
+ * expect: `AdminSubmissionRow.language` said `"PYTHON_312" | "JAVA_21"` while the judge runs ten
+ * variants, and `JudgeHealth` carried a `lastHeartbeatAgoMs` nothing ever measured. A UI type
+ * that describes the server's response is the server's type — a second copy is a place for a
+ * screen to be confidently wrong about what it was sent.
+ */
+export type { AdminSubmissionRow } from "@/lib/schemas/api";
+export type { JudgeHealthView as JudgeHealth } from "@/lib/schemas/api";
 
 export type JudgeHealthLevel = "ok" | "watch" | "down";
 
 /** One place decides what "the judge is unhealthy" means, so the console cannot disagree with itself. */
-export function judgeHealthLevel(health: JudgeHealth): JudgeHealthLevel {
+export function judgeHealthLevel(health: JudgeHealthView): JudgeHealthLevel {
+  // Redis unreachable outranks everything: with no queue to ask, every other number below is
+  // zero, and a screen reading "0 queued, 0 failed" is the picture of a healthy contest.
+  if (!health.reachable) return "down";
   if (health.workersOnline === 0) return "down";
-  if (health.lastHeartbeatAgoMs !== null && health.lastHeartbeatAgoMs > 30_000) return "down";
   if (health.failed > 0) return "watch";
   if (health.oldestWaitingMs !== null && health.oldestWaitingMs > 60_000) return "watch";
   if (health.queueDepth > 25) return "watch";
   return "ok";
 }
 
-export interface AdminSubmissionRow {
-  readonly submissionId: string;
-  readonly participantId: string;
-  readonly displayName: string;
-  readonly divisionName: string;
-  readonly slotLabel: string;
-  readonly problemTitle: string;
-  readonly language: "PYTHON_312" | "JAVA_21";
-  readonly submittedAt: string;
-  /** null while queued or judging. */
-  readonly verdict: "AC" | "WA" | "TLE" | "MLE" | "RE" | "CE" | "IE" | null;
-  readonly score: number;
-  readonly runtimeMs: number | null;
-  readonly attempt: number;
-  readonly overriddenReason: string | null;
-}

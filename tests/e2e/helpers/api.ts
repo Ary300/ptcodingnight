@@ -407,6 +407,21 @@ export class ContestApi {
     );
   }
 
+  consoleRaw(): Promise<APIResponse> {
+    return this.req().get(`/api/admin/contests/${this.contestId}/console`);
+  }
+
+  rejudgeRaw(submissionId: string, reason: string): Promise<APIResponse> {
+    return this.req().post(
+      `/api/admin/submissions/${encodeURIComponent(submissionId)}/rejudge`,
+      { data: { reason } },
+    );
+  }
+
+  adminContestsRaw(): Promise<APIResponse> {
+    return this.req().get("/api/admin/contests");
+  }
+
   exportRaw(): Promise<APIResponse> {
     return this.req().get(`/api/admin/contests/${this.contestId}/export`);
   }

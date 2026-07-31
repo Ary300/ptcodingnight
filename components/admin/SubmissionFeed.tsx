@@ -132,20 +132,18 @@ export function SubmissionFeed({
                 </td>
                 <td className="py-3 pr-3">
                   <span className="numeric">{submission.slotLabel}</span> {submission.problemTitle}
-                  {submission.overriddenReason !== null && (
-                    <div className="max-w-[36ch] text-panther" style={{ fontSize: "var(--text-xs)" }}>
-                      overridden: {submission.overriddenReason}
-                    </div>
-                  )}
+                  {/*
+                    An "overridden: <reason>" line used to hang under the problem title, and an
+                    "attempt N" line under the verdict, both read from fields the server does not
+                    send — the row shape was a hand-written proposal and those two were invented.
+                    An override IS recorded, in AuditLog with its reason, and that is where it is
+                    authoritative. Putting it back on the row is a real feature and is not this
+                    one: it needs the audit row joined in, not a field made up.
+                  */}
                 </td>
                 <td className="numeric py-3 pr-3">{submission.language}</td>
                 <td className="py-3 pr-3">
                   <VerdictPill verdict={submission.verdict} />
-                  {submission.attempt > 1 && (
-                    <div className="numeric opacity-70" style={{ fontSize: "var(--text-xs)" }}>
-                      attempt {submission.attempt}
-                    </div>
-                  )}
                 </td>
                 <td className="numeric py-3 pr-3 text-right">{submission.score}</td>
                 <td className="numeric py-3 pr-3 text-right whitespace-nowrap">

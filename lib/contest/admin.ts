@@ -12,6 +12,9 @@ import { rankSnapshots } from "@/lib/contest/delta";
 import { adminPasscode } from "@/lib/contest/env";
 import { credentialBackoff } from "@/lib/contest/rate-limit";
 import { getStandings, invalidateScoringInput } from "@/lib/contest/standings";
+import { hostLimits } from "@/lib/contest/host";
+import { buildJudgeJob } from "@/lib/contest/judge-job";
+import { enqueueJudgeJob, removeJob } from "@/lib/contest/queue";
 import { getSubmissionView } from "@/lib/contest/submissions";
 import type { AdminViewer, Viewer } from "@/lib/contest/viewer";
 
@@ -205,4 +208,110 @@ export async function exportStandings(
     csv: standingsToCsv(standings),
     filename: exportFilename(contest.name, standings.asOf),
   };
+}
+
+
+/**
+ * Put a submission back through the judge.
+ *
+ * ## When this is the right button
+ *
+ * A verdict of `IE` is ours, never the student's (PRD §7.2) — the worker requeues once by itself,
+ * and after that an organizer decides. The other case is a judge that was misconfigured for part
+ * of the round: a missing image, a wrong `TEST_DATA_ROOT`, a machine under load. Both produce a
+ * verdict nobody believes, and the fix is to run it again rather than to override it by hand.
+ *
+ * ## Why it is not the competitor submit path
+ *
+ * `createSubmission` resolves its target through `resolveTarget`, which enforces the contest
+ * window, the division and the problem set — correctly, for a student. A rejudge fails every one
+ * of those checks: it happens after the round has ended, on somebody else's behalf. It therefore
+ * reads the submission's own contest problem directly. Nothing about WHAT is judged changes; only
+ * who is allowed to ask.
+ *
+ * ## The three things that have to happen in order
+ *
+ * 1. **Remove the old job.** `enqueueJudgeJob` uses the submission id as the job id so that a
+ *    double-submitted form produces one job rather than two. That same idempotency means a second
+ *    `add` with the same id is silently DROPPED — so without this, "Rejudge" would appear to work
+ *    and nothing would ever run.
+ * 2. **Clear the verdict.** `reconcile` only writes to a submission that is still unjudged (or
+ *    holding an `IE`), which is what keeps a verdict write-once. A rejudge of an `AC` that left
+ *    the verdict in place would run the job and then discard its result.
+ * 3. **Invalidate the standings.** The score is about to change.
+ *
+ * The audit row is written BEFORE the enqueue. If the queue is unreachable the organizer gets an
+ * error and the trail still records that the attempt was made — the opposite order loses the
+ * record of exactly the action that failed.
+ */
+export async function rejudgeSubmission(
+  submissionId: string,
+  reason: string,
+  admin: AdminViewer,
+  now: Date,
+): Promise<SubmissionView> {
+  const submission = await prisma.submission.findUnique({
+    where: { id: submissionId },
+    select: {
+      id: true,
+      language: true,
+      sourceCode: true,
+      verdict: true,
+      score: true,
+      contestProblem: {
+        select: {
+          contestId: true,
+          problem: {
+            select: {
+              timeLimitMs: true,
+              memoryLimitMb: true,
+              testCases: {
+                select: {
+                  id: true,
+                  ordinal: true,
+                  inputPath: true,
+                  expectedOutputPath: true,
+                  isSample: true,
+                  points: true,
+                  group: true,
+                },
+                orderBy: { ordinal: "asc" },
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+  if (submission === null) throw new NotFoundError("Submission");
+
+  const job = buildJudgeJob({
+    submissionId: submission.id,
+    language: submission.language,
+    sourceCode: submission.sourceCode,
+    problem: submission.contestProblem.problem,
+    testCases: submission.contestProblem.problem.testCases,
+    host: hostLimits(),
+  });
+
+  await writeAudit({
+    actor: `admin:${admin.sessionId}`,
+    action: AUDIT_ACTIONS.submissionRejudge,
+    entity: `Submission:${submissionId}`,
+    before: { verdict: submission.verdict, score: submission.score },
+    after: { verdict: null, score: 0 },
+    reason,
+  });
+
+  await prisma.submission.update({
+    where: { id: submissionId },
+    data: { verdict: null, score: 0, runtimeMs: null, memoryKb: null, judgedAt: null },
+  });
+
+  await removeJob(submissionId);
+  await enqueueJudgeJob(job);
+
+  invalidateScoringInput(submission.contestProblem.contestId);
+
+  return getSubmissionView(submissionId, admin, now);
 }

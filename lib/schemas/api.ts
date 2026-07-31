@@ -258,6 +258,65 @@ export const AdminContestListSchema = z.object({
 });
 export type AdminContestList = z.infer<typeof AdminContestListSchema>;
 
+/**
+ * The judge queue as the console draws it.
+ *
+ * `reachable` is a first-class field rather than an error. "Redis is down" is exactly what an
+ * organizer opens this screen to learn, so it has to be something the screen can RENDER — turning
+ * it into a failed request replaces the answer with a spinner at the worst possible moment.
+ */
+export const JudgeHealthViewSchema = z.object({
+  reachable: z.boolean(),
+  queueDepth: z.number().int().nonnegative(),
+  active: z.number().int().nonnegative(),
+  failed: z.number().int().nonnegative(),
+  workersOnline: z.number().int().nonnegative(),
+  oldestWaitingMs: z.number().int().nonnegative().nullable(),
+});
+export type JudgeHealthView = z.infer<typeof JudgeHealthViewSchema>;
+
+/**
+ * One row of the organizer's submission feed.
+ *
+ * `language` is the registry's `LanguageSchema`, not a hand-written union. The admin contract used
+ * to spell out `"PYTHON_312" | "JAVA_21"` — two of the ten variants the judge actually runs — and
+ * a stale language id does not fail to typecheck: it parses as a string and dies at the registry
+ * lookup. That exact mistake has four homes in this codebase and has been found three separate
+ * times (CLAUDE.md). Importing the enum is the only version that cannot drift.
+ */
+export const AdminSubmissionRowSchema = z.object({
+  submissionId: z.string(),
+  participantId: z.string(),
+  displayName: z.string(),
+  divisionName: z.string(),
+  slotLabel: z.string(),
+  problemTitle: z.string(),
+  language: LanguageSchema,
+  submittedAt: z.string(),
+  /** null while queued or judging. */
+  verdict: VerdictSchema.nullable(),
+  score: z.number().int(),
+  runtimeMs: z.number().int().nonnegative().nullable(),
+});
+export type AdminSubmissionRow = z.infer<typeof AdminSubmissionRowSchema>;
+
+/**
+ * Everything the live console reads, in one response.
+ *
+ * `total` travels with a windowed `submissions` so the screen can say "the most recent 200 of
+ * 431" out loud. A feed that silently stops at N reads as "that is all of them", which is how a
+ * stuck submission goes unnoticed for an hour.
+ */
+export const AdminConsoleViewSchema = z.object({
+  contestId: z.string(),
+  contestName: z.string(),
+  frozen: z.boolean(),
+  total: z.number().int().nonnegative(),
+  submissions: z.array(AdminSubmissionRowSchema),
+  health: JudgeHealthViewSchema,
+});
+export type AdminConsoleView = z.infer<typeof AdminConsoleViewSchema>;
+
 /** The organizer's roster view: every team plus everybody on none. */
 export const AdminRosterSchema = z.object({
   maxTeamSize: z.number().int().positive(),

@@ -77,13 +77,24 @@ export function JudgeHealthBar({ health }: { health: JudgeHealth }) {
           alarm={dark && health.workersOnline === 0}
         />
         <Stat value={formatMs(health.oldestWaitingMs)} label="oldest wait" />
-        <Stat value={formatMs(health.lastHeartbeatAgoMs)} label="last heartbeat" />
+        {/*
+          Was "last heartbeat", against a field nothing ever wrote — it rendered a dash on every
+          load and looked like a judge that had never checked in. What is actually knowable is
+          whether the queue answered at all, and that is the distinction an organizer needs:
+          "no workers" means start one, "no queue" means Redis is gone.
+        */}
+        <Stat
+          value={health.reachable ? "yes" : "NO"}
+          label="queue reachable"
+          alarm={!health.reachable}
+        />
       </div>
 
       {level === "down" && (
         <p className="mt-4 max-w-[70ch]" style={{ fontSize: "var(--text-sm)" }}>
-          Nothing is being judged. Submissions are still being accepted and queued, so no
-          student work is lost, but no verdict will land until a worker comes back.
+          {health.reachable
+            ? "Nothing is being judged. Submissions are still being accepted and queued, so no student work is lost, but no verdict will land until a worker comes back."
+            : "The judge queue cannot be reached, so submissions are being REFUSED rather than queued — a student pressing Submit gets an error. Check Redis before anything else; the numbers above are zeros because there was nothing to ask, not because the queue is empty."}
         </p>
       )}
     </section>

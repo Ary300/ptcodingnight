@@ -22,6 +22,10 @@ export const AUDIT_ACTIONS = {
   judgeVerdict: "submission.judged",
   judgeInternalError: "submission.internal_error",
   verdictOverride: "submission.override",
+  /// An organizer sent a submission back through the judge. Carries the verdict it HAD, because
+  /// after the rejudge there is nothing left in the row to say what was replaced — and "the IE
+  /// that was there before" is the whole justification for having pressed the button.
+  submissionRejudge: "submission.rejudge",
   contestFreeze: "contest.freeze",
   contestUnfreeze: "contest.unfreeze",
   participantJoin: "participant.join",

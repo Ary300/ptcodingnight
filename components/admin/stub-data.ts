@@ -2,8 +2,6 @@ import type { StandingsResponse } from "@/lib/schemas/api";
 
 import type {
   AdminProblemSummary,
-  AdminSubmissionRow,
-  JudgeHealth,
   ReferenceCaseOutcome,
   ReferenceRunReport,
   TestCaseDraft,
@@ -329,107 +327,14 @@ export async function stubReferenceRun(
   };
 }
 
-export const STUB_JUDGE_HEALTH: JudgeHealth = {
-  queueDepth: 7,
-  active: 2,
-  failed: 1,
-  workersOnline: 2,
-  oldestWaitingMs: 4_200,
-  lastHeartbeatAgoMs: 1_100,
-};
+/*
+  STUB_JUDGE_HEALTH and STUB_SUBMISSIONS were removed with the mock console.
 
-export const STUB_SUBMISSIONS: readonly AdminSubmissionRow[] = [
-  {
-    submissionId: "s-1041",
-    participantId: "u-avery",
-    displayName: "Avery Lin",
-    divisionName: "Advanced",
-    slotLabel: "A3",
-    problemTitle: "Save Humanity",
-    language: "PYTHON_312",
-    submittedAt: "2026-11-14T19:41:08.000Z",
-    verdict: null,
-    score: 0,
-    runtimeMs: null,
-    attempt: 1,
-    overriddenReason: null,
-  },
-  {
-    submissionId: "s-1040",
-    participantId: "u-jordan",
-    displayName: "Jordan Ruiz",
-    divisionName: "Intermediate",
-    slotLabel: "I2",
-    problemTitle: "A Very Big Sum",
-    language: "JAVA_21",
-    submittedAt: "2026-11-14T19:40:52.000Z",
-    verdict: "IE",
-    score: 0,
-    runtimeMs: null,
-    attempt: 2,
-    overriddenReason: null,
-  },
-  {
-    submissionId: "s-1039",
-    participantId: "u-sam",
-    displayName: "Sam Okafor",
-    divisionName: "Advanced",
-    slotLabel: "A1",
-    problemTitle: "Sequence Equation",
-    language: "PYTHON_312",
-    submittedAt: "2026-11-14T19:39:31.000Z",
-    verdict: "AC",
-    score: 300,
-    runtimeMs: 84,
-    attempt: 1,
-    overriddenReason: null,
-  },
-  {
-    submissionId: "s-1038",
-    participantId: "u-jordan",
-    displayName: "Jordan Ruiz",
-    divisionName: "Intermediate",
-    slotLabel: "I2",
-    problemTitle: "A Very Big Sum",
-    language: "JAVA_21",
-    submittedAt: "2026-11-14T19:37:14.000Z",
-    verdict: "TLE",
-    score: 0,
-    runtimeMs: null,
-    attempt: 1,
-    overriddenReason: null,
-  },
-  {
-    submissionId: "s-1037",
-    participantId: "u-priya",
-    displayName: "Priya Anand",
-    divisionName: "Intermediate",
-    slotLabel: "I1",
-    problemTitle: "Solve Me First",
-    language: "PYTHON_312",
-    submittedAt: "2026-11-14T19:31:02.000Z",
-    verdict: "AC",
-    score: 100,
-    runtimeMs: 41,
-    attempt: 1,
-    overriddenReason: null,
-  },
-  {
-    submissionId: "s-1036",
-    participantId: "u-avery",
-    displayName: "Avery Lin",
-    divisionName: "Advanced",
-    slotLabel: "A2",
-    problemTitle: "Common Child",
-    language: "PYTHON_312",
-    submittedAt: "2026-11-14T19:24:47.000Z",
-    verdict: "WA",
-    score: 120,
-    runtimeMs: 233,
-    attempt: 1,
-    overriddenReason: "Judge host stalled mid-run; rejudged and confirmed by hand.",
-  },
-];
+  `/admin/console` reads `GET /api/admin/contests/{id}/console` now, so a fixture feed would be a
+  second and wrong answer to a question the server answers. What they left behind is worth naming:
+  the fixture rows carried an `attempt` counter and an `overriddenReason`, and the console rendered
+  both — two facts about a submission that no part of this system has ever recorded.
+*/
 
 export const STUB_STANDINGS: StandingsResponse = {
   contestId: "c-2026",
