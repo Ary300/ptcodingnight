@@ -14,7 +14,7 @@ and a couple are reachable but wrong on this hardware.
 
 | # | What | Severity |
 |---|---|---|
-| T1 | Hints have no content — **deferred**, and the UI no longer offers to sell one | blocker for hints only |
+| T1 | Hints — specified and priced, deliberately unimplemented pending organizer-written content | deferred by decision |
 | T2 | Java time limits are unenforceable on a slow host — a *scoring* error, not a speed one | **high** |
 | T3 | Verdict latency straddles the G8 threshold — 8.7 s to 18.7 s on the same commit | **high**, hardware |
 | T4 | ~~A submission can fill the judge host's disk~~ **fixed** | resolved |
@@ -28,11 +28,19 @@ and a couple are reachable but wrong on this hardware.
 
 ---
 
-## T1 — Hints have no content. **DEFERRED, and the UI no longer offers one.**
+## T1 — Hints: specified, priced, and deliberately unimplemented pending content
 
-**Severity: high for the hint feature, and it blocks nothing else.** Deferred deliberately for the
-demo deployment: the contest works without hints, and shipping a purchase that returns nothing is
-worse than shipping no purchase.
+**Severity: high for the hint feature, and it blocks nothing else. Deferred by decision, not by
+oversight** — reviewed and confirmed 2026-08-01.
+
+The recommendation on the table was to build a `Hint` model and wire the flow; the decision was to
+**keep the disabled state and write real hints with the organizer first.** The reasoning is that
+the missing piece is editorial, not technical: somebody has to write two or three hints for every
+group problem, and a hint that says "think about sorting" costs a student 15% of that problem's
+base points for nothing. Shipping the mechanism before the content exists guarantees exactly that
+outcome, because the mechanism is the easy half.
+
+The demo does not need hints. Nothing else depends on them.
 
 **The hint economy is specified and implemented; hint CONTENT is neither.** The ledger, the
 pricing, the balance and the earn rule all work. What does not exist is the thing being bought.
@@ -49,8 +57,16 @@ The API side already refused: `httpContestApi.getHintBalance` and `takeHint` bot
 `NOT_IMPLEMENTED`, and `UNIMPLEMENTED_ROUTES` in `lib/schemas/api.ts` records that no hint route
 exists. So the deferral holds at both layers, not just in the component.
 
-**Restoring it is small** — put the confirm flow back and render the returned text — but the PRD
-decision has to come first. Everything below is what that decision needs to cover.
+**What it will take when the content exists**, in order:
+
+1. Organizer writes the hint text. This is the blocking step and it is not a code task.
+2. The `Hint` model below, keyed on `(problemId, ordinal)` — `HintGrant.hintIndex` was designed
+   against exactly that key, so the ledger already lines up.
+3. `hintText` on the purchase response, and an authoring field in the admin problem editor.
+4. Restore the confirm flow in `HintPanel.tsx` — it was removed intact and the diff is small.
+5. A G7 spec covering earn, price, purchase, and the text coming back.
+
+Steps 2 to 5 are perhaps a day. Step 1 is the reason this is deferred.
 
 This is a hole in `docs/PRD.md`, not just in the implementation.
 
