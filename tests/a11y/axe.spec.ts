@@ -27,9 +27,11 @@ test.describe("axe-core: zero critical or serious", () => {
     await page.goto("/");
     // The h1 is the hero line, not the site name — the site name lives in the bar above it.
     await expect(page.getByRole("heading", { level: 1, name: /One board/i })).toBeVisible();
-    // `.first()`: the same call to action appears in the hero AND in the closing band, on
-    // purpose — a visitor who read to the bottom should not have to scroll back up for it.
-    await expect(page.getByRole("link", { name: "Sign in to compete" }).first()).toBeVisible();
+    // The primary call to action says CREATE, not "sign in". There is no separate sign-up page to
+    // build — the first Google or GitHub sign-in creates the account — but nothing on the page
+    // said so, and a student with no account read "Sign in" as a door that was not for them.
+    // `.first()` because it appears in the bar and again in the hero, on purpose.
+    await expect(page.getByRole("link", { name: "Create your account" }).first()).toBeVisible();
     await auditPage(page, "/");
   });
 

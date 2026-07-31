@@ -187,20 +187,35 @@ export default function Home() {
             </span>
           </span>
 
-          <nav aria-label="Site" className="ml-auto flex items-center gap-3">
+          {/*
+            A quiet text link and one filled button, which is the pair HackerRank puts here
+            ("Log In" beside "Create a free account"). The filled one says CREATE, not "sign in",
+            and that wording is the fix for a real confusion: this site had a Sign in page and no
+            Sign up page, so a student with no account could not tell that the front door was
+            also the way in for the first time. There is no separate sign-up to build — the first
+            Google or GitHub sign-in creates the account — but nothing on the page said so.
+          */}
+          <nav aria-label="Site" className="ml-auto flex items-center gap-1.5 sm:gap-3">
             <Link
               href="/projector"
-              className="rounded px-3 py-1.5 text-ink/75 hover:text-ink"
+              className="rounded px-2 py-1.5 text-ink/75 hover:text-ink sm:px-3"
               style={{ fontSize: "var(--text-xs)" }}
             >
               Live standings
             </Link>
             <Link
               href="/sign-in"
+              className="rounded px-2 py-1.5 text-ink/75 hover:text-ink sm:px-3"
+              style={{ fontSize: "var(--text-xs)" }}
+            >
+              Log in
+            </Link>
+            <Link
+              href="/sign-in"
               className="rounded bg-panther px-3 py-1.5 font-semibold text-paper hover:bg-panther-deep"
               style={{ fontSize: "var(--text-xs)" }}
             >
-              Sign in
+              Create your account
             </Link>
           </nav>
         </div>
