@@ -153,21 +153,37 @@ export async function overrideVerdict(
       id: true,
       verdict: true,
       score: true,
+      judgedAt: true,
       contestProblem: { select: { contestId: true } },
     },
   });
   if (before === null) throw new NotFoundError("Submission");
 
+  /*
+    `judgedAt` IS NOT TOUCHED. An override is not a judge run.
+
+    This used to write `judgedAt: now`, which destroyed the only record of when the judge actually
+    ran — and unlike the verdict and the score, that value was not captured anywhere else, so it
+    was gone. The audit row below carries the before and after of everything this changes, which
+    is what makes an override recoverable; `judgedAt` was the one field that fell outside it, and
+    the fix is to stop changing it rather than to log it as well.
+  */
   await prisma.submission.update({
     where: { id: input.submissionId },
-    data: { verdict: input.verdict, score: input.score, judgedAt: now },
+    data: { verdict: input.verdict, score: input.score },
   });
 
   await writeAudit({
     actor: `admin:${admin.sessionId}`,
     action: AUDIT_ACTIONS.verdictOverride,
     entity: `Submission:${input.submissionId}`,
-    before: { verdict: before.verdict, score: before.score },
+    // The judge's own timestamp travels with the before-values, so "what did the judge say, and
+    // when" survives every override regardless of how many follow it.
+    before: {
+      verdict: before.verdict,
+      score: before.score,
+      judgedAt: before.judgedAt === null ? null : before.judgedAt.toISOString(),
+    },
     after: { verdict: input.verdict, score: input.score },
     reason: input.reason,
   });

@@ -44,11 +44,27 @@ import {
  * implicit "current contest" — hidden state that breaks the moment an organizer opens last
  * year's board. The id arrives in the join response and is stored with the participant.
  */
+/**
+ * How long a cached identity is trusted before the server is asked again.
+ *
+ * The cache used to be trusted forever within a tab, which is wrong across a SIGN-OUT AND BACK IN.
+ * Sign out, sign in as somebody else in the same tab, and the reads still went to the previous
+ * account's contest — the id came from `sessionStorage`, which the new sign-in had not yet
+ * rewritten. The student saw another contest's standings under their own name.
+ *
+ * Five seconds is enough to spare a round trip per read within one page's worth of activity, and
+ * short enough that no realistic sign-out-and-back-in lands inside it.
+ */
+const IDENTITY_CACHE_MS = 5_000;
+let identityCheckedAt = 0;
+
 async function currentContestId(): Promise<string> {
-  // The cache first — it is right on every navigation after the first, and this is on the path of
-  // every read the competitor screens make.
+  // The cache, but only while it is fresh. It is on the path of every read the competitor screens
+  // make, so a round trip per read is not free — but a STALE one serves the wrong contest.
   const cached = readParticipant();
-  if (cached !== null) return cached.contestId;
+  if (cached !== null && Date.now() - identityCheckedAt < IDENTITY_CACHE_MS) {
+    return cached.contestId;
+  }
 
   // Then the server. THIS is the line that was missing: the id used to come only from a
   // `sessionStorage` record written by the join response, and when the join route was deleted
@@ -61,6 +77,7 @@ async function currentContestId(): Promise<string> {
       "You are not signed in to a contest. Sign in with Google or GitHub to compete.",
     );
   }
+  identityCheckedAt = Date.now();
   return session.contestId;
 }
 

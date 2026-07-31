@@ -171,11 +171,14 @@ export function LiveConsole({ contestId }: LiveConsoleProps) {
   );
 
   const onRejudge = useCallback(
-    (submissionId: string): void => {
+    (submissionId: string, reason: string): void => {
+      // The ORGANIZER's words, not a constant. This used to send "Requeued from the live console"
+      // every time, so the audit trail for a score-changing action the student never sees was a
+      // column of identical strings.
       void act(
         `/api/admin/submissions/${submissionId}/rejudge`,
-        { reason: "Requeued from the live console" },
-        `Requeued ${submissionId} for rejudging`,
+        { reason },
+        `Requeued ${submissionId} for rejudging. Reason: ${reason}`,
       );
     },
     [act],

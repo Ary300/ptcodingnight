@@ -560,9 +560,22 @@ model Participant {
 // Submissions and judging
 // ---------------------------------------------------------------------------
 
-/// The raw, append-only log. lib/scoring/ replays this to produce standings; recomputing
-/// twice must be byte-identical. Never mutate a row here to correct a score — record an
-/// override and an AuditLog entry instead.
+/// The submission log. lib/scoring/ replays this to produce standings; recomputing twice must be
+/// byte-identical.
+///
+/// It is append-only for the JUDGE: nothing in the judging path ever rewrites a row, and
+/// `reconcile` only writes to a submission that is still unjudged (or holds a transient `IE`).
+///
+/// It is NOT append-only for an ORGANIZER OVERRIDE, and this comment used to claim otherwise —
+/// "never mutate a row here to correct a score" — while `overrideVerdict` did exactly that. The
+/// comment was the thing that was wrong. An override writes `verdict` and `score` in place so
+/// that scoring has one value to read, and the previous values — including the judge's own
+/// `judgedAt` — are preserved in the `AuditLog` row that every override is required to write.
+/// `judgedAt` itself is never overwritten: an override is not a judge run.
+///
+/// The consequence to know: after an override, `testResults` still describes the JUDGE's run and
+/// will disagree with `verdict`. That is the honest state of affairs — the tests really did do
+/// what they did — and it is why the override is audited rather than silent.
 model Submission {
   id               String   @id @default(cuid())
   participantId    String

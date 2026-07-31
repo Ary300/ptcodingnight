@@ -3,7 +3,6 @@
 import { useState } from "react";
 
 import { Button } from "@/components/ui";
-import { ConfirmButton } from "@/components/admin/ConfirmButton";
 import { OverrideForm } from "@/components/admin/OverrideForm";
 import { VerdictPill } from "@/components/admin/StatusPill";
 import type { AdminSubmissionRow } from "@/components/admin/contract";
@@ -12,8 +11,10 @@ import type { Verdict } from "@/lib/schemas/judge";
 /**
  * The submissions feed, with the two manual actions on it (PRD §9.2).
  *
- * Rejudge is confirmed because it discards a verdict a student has already seen. Override
- * opens a form rather than a menu, because it cannot be applied without a written reason.
+ * BOTH manual actions open a form, because both require a written reason. Rejudge used to arm a
+ * confirmation instead, and the console supplied a constant — so every rejudge in the audit log
+ * said the same nine words, for an action that clears a verdict a student has already been shown.
+ * A confirmation is not a reason.
  *
  * `IE` rows are called out. PRD §7.2 requeues an internal error once and then alerts an
  * admin — this feed is where that alert has to be visible, since the student is deliberately
@@ -29,7 +30,16 @@ export interface OverridePayload {
 
 export interface SubmissionFeedProps {
   submissions: readonly AdminSubmissionRow[];
-  onRejudge: (submissionId: string) => void;
+  /**
+   * A rejudge carries a REASON, like an override does.
+   *
+   * It used to take only the id, and `LiveConsole` supplied the constant "Requeued from the live
+   * console" — so every rejudge ever performed wrote a byte-identical audit row. The route's own
+   * docstring says a reason is required "exactly as it is for an override. Both change a
+   * student's score without the student doing anything." A required field satisfied by a constant
+   * is a required field in name only.
+   */
+  onRejudge: (submissionId: string, reason: string) => void;
   onOverride: (payload: OverridePayload) => void;
   /** Set by the drill-down. Null = everyone. */
   participantFilter: string | null;
@@ -50,6 +60,8 @@ export function SubmissionFeed({
   onParticipantFilter,
 }: SubmissionFeedProps) {
   const [overriding, setOverriding] = useState<string | null>(null);
+  const [rejudging, setRejudging] = useState<string | null>(null);
+  const [rejudgeReason, setRejudgeReason] = useState("");
 
   const visible =
     participantFilter === null
@@ -151,12 +163,18 @@ export function SubmissionFeed({
                 </td>
                 <td className="py-3">
                   <div className="flex flex-wrap gap-2">
-                    <ConfirmButton
-                      label="Rejudge"
-                      confirmLabel="Rejudge this submission"
+                    <Button
+                      type="button"
                       variant="secondary"
-                      onConfirm={() => onRejudge(submission.submissionId)}
-                    />
+                      aria-expanded={rejudging === submission.submissionId}
+                      onClick={() =>
+                        setRejudging((current) =>
+                          current === submission.submissionId ? null : submission.submissionId,
+                        )
+                      }
+                    >
+                      Rejudge
+                    </Button>
                     <Button
                       type="button"
                       variant="danger"
@@ -194,6 +212,65 @@ export function SubmissionFeed({
               onOverride(payload);
             }}
           />
+        ) : null,
+      )}
+
+      {/*
+        The rejudge form, with the reason it always required and never collected.
+
+        A confirmation is not a reason. The old flow armed a ConfirmButton and the console supplied
+        a constant, so every rejudge in the audit log said the same nine words — for an action that
+        clears a verdict a student has already been shown and re-runs their code.
+      */}
+      {visible.map((submission) =>
+        rejudging === submission.submissionId ? (
+          <form
+            key={`rejudge-${submission.submissionId}`}
+            className="rounded border border-ink/20 bg-paper p-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (rejudgeReason.trim() === "") return;
+              onRejudge(submission.submissionId, rejudgeReason.trim());
+              setRejudging(null);
+              setRejudgeReason("");
+            }}
+          >
+            <h3 className="font-display font-bold" style={{ fontSize: "var(--text-md)" }}>
+              Rejudge {submission.displayName}&rsquo;s {submission.slotLabel}
+            </h3>
+            <p className="mt-1 max-w-[70ch] text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
+              This clears the verdict they have already seen and puts the submission back through
+              the judge. The reason goes in the audit log.
+            </p>
+
+            <label className="mt-3 block" style={{ fontSize: "var(--text-sm)" }}>
+              Reason
+              <input
+                value={rejudgeReason}
+                onChange={(event) => setRejudgeReason(event.target.value)}
+                required
+                placeholder="e.g. the judge host was misconfigured for this round"
+                className="mt-1 block w-full rounded border border-ink/25 bg-paper px-3 py-2"
+                style={{ fontSize: "var(--text-sm)" }}
+              />
+            </label>
+
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Button type="submit" variant="secondary" disabled={rejudgeReason.trim() === ""}>
+                Rejudge
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => {
+                  setRejudging(null);
+                  setRejudgeReason("");
+                }}
+              >
+                Cancel
+              </Button>
+            </div>
+          </form>
         ) : null,
       )}
     </div>

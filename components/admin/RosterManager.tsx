@@ -55,6 +55,15 @@ export interface RosterManagerProps {
   contestId: string;
 }
 
+/**
+ * "The organizer has not chosen a destination yet."
+ *
+ * Distinct from `""`, which the submit handler maps to `teamId: null` — a real destination that
+ * means REMOVE THEM FROM THEIR TEAM. Those were the same value, so the move dialog opened already
+ * showing "— no team —" and doing nothing was a removal.
+ */
+const UNCHOSEN = "__unchosen__";
+
 export function RosterManager({ contestId }: RosterManagerProps) {
   const [roster, setRoster] = useState<Roster | null>(null);
   const [attempt, setAttempt] = useState(0);
@@ -156,7 +165,9 @@ export function RosterManager({ contestId }: RosterManagerProps) {
                   disabled={busy}
                   onClick={() => {
                     setMoving(person);
-                    setMoveTarget("");
+                    // Unassigned already: the sentinel below forces a deliberate choice rather
+                    // than letting the form submit the state they are already in.
+                    setMoveTarget(UNCHOSEN);
                   }}
                 >
                   {person.displayName} → assign
@@ -173,6 +184,9 @@ export function RosterManager({ contestId }: RosterManagerProps) {
             className="flex flex-col gap-3"
             onSubmit={(event) => {
               event.preventDefault();
+              // Refused rather than guessed. `UNCHOSEN` means the organizer never touched the
+              // dropdown, and the one thing this form must not do is pick for them.
+              if (moveTarget === UNCHOSEN) return;
               void send(API_ROUTES.adminMoveParticipant(contestId), "POST", {
                 participantId: moving.participantId,
                 teamId: moveTarget === "" ? null : moveTarget,
@@ -188,7 +202,14 @@ export function RosterManager({ contestId }: RosterManagerProps) {
                 className="mt-1 block w-full rounded border border-ink/25 bg-paper px-3 py-2"
                 style={{ fontSize: "var(--text-sm)" }}
               >
-                <option value="">— no team —</option>
+                {/*
+                  A sentinel that is not a valid destination, so "I did not choose" and "remove
+                  them from their team" are different answers. They used to be the same value.
+                */}
+                <option value={UNCHOSEN} disabled>
+                  Choose a team…
+                </option>
+                <option value="">— remove from their team —</option>
                 {roster.teams.map((team) => (
                   <option key={team.teamId} value={team.teamId}>
                     {team.name} ({team.memberCount} members)
@@ -284,8 +305,20 @@ export function RosterManager({ contestId }: RosterManagerProps) {
                         style={{ fontSize: "var(--text-xs)" }}
                         disabled={busy}
                         onClick={() => {
+                          /*
+                            DEFAULT TO THE TEAM THEY ARE ALREADY ON.
+
+                            This used to set "", which the submit handler maps to `teamId: null` —
+                            so the dialog opened showing "— no team —" and an organizer who typed
+                            a reason and pressed Move without touching the dropdown REMOVED the
+                            player from their team. Team size is the divisor in every team score,
+                            so the accidental path was a silent score change for two teams.
+
+                            A destructive action must never be the one that happens when you do
+                            nothing.
+                          */
                           setMoving(member);
-                          setMoveTarget("");
+                          setMoveTarget(team.teamId);
                         }}
                       >
                         {member.displayName} → move

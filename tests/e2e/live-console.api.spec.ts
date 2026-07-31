@@ -202,6 +202,72 @@ test.describe("rejudge", () => {
   });
 });
 
+test.describe("an override preserves what the judge said", () => {
+  test("does not overwrite judgedAt, and carries it into the audit row", async ({ playwright }) => {
+    /*
+      `prisma/schema.prisma` says this log is append-only for the judge and that an override is
+      recorded rather than silent. The override used to write `judgedAt: now`, which destroyed the
+      only record of when the judge actually ran — and unlike the verdict and the score, that value
+      was captured nowhere else, so it was simply gone.
+    */
+    const student = new ContestApi(await playwright.request.newContext(), seeded.contestId);
+    const joined = await student.signIn({
+      displayName: `E2E Overridden ${Date.now()}`,
+      divisionId: seeded.divisionIds.get("intermediate") ?? null,
+    });
+
+    const problem = [...seeded.problems.values()][0];
+    expect(problem).toBeDefined();
+    if (problem === undefined) return;
+
+    const judgedAt = new Date(Date.now() - 60_000);
+    const submission = await testDb().submission.create({
+      data: {
+        participantId: joined.participantId,
+        contestProblemId: problem.contestProblemId,
+        language: "PYTHON_312",
+        sourceCode: "print(1)",
+        verdict: "WA",
+        score: 0,
+        judgedAt,
+      },
+      select: { id: true },
+    });
+
+    const response = await readEnvelope(
+      await admin.overrideRaw({
+        submissionId: submission.id,
+        verdict: "AC",
+        score: 140,
+        reason: "E2E: the judge host was misconfigured for this round",
+      }),
+    );
+    expect(response.status, response.message ?? "override refused").toBe(200);
+
+    const after = await testDb().submission.findUniqueOrThrow({
+      where: { id: submission.id },
+      select: { verdict: true, score: true, judgedAt: true },
+    });
+    expect(after.verdict).toBe("AC");
+    expect(after.score).toBe(140);
+    expect(
+      after.judgedAt?.getTime(),
+      "the override rewrote when the JUDGE ran — an override is not a judge run",
+    ).toBe(judgedAt.getTime());
+
+    const audit = await testDb().auditLog.findFirst({
+      where: { action: "submission.override", entity: `Submission:${submission.id}` },
+      select: { before: true, reason: true },
+    });
+    expect(audit).not.toBeNull();
+    // The judge's verdict, score AND timestamp all survive, so the original run stays answerable
+    // however many overrides follow it.
+    const before = JSON.stringify(audit?.before ?? {});
+    expect(before).toContain("WA");
+    expect(before).toContain("judgedAt");
+  });
+});
+
 test.describe("the contest list behind the pickers", () => {
   test("lists contests with the counts an organizer picks by", async () => {
     const { status, data } = await readOk(await admin.adminContestsRaw());

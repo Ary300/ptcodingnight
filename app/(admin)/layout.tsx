@@ -4,6 +4,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { AdminNav } from "@/components/admin/AdminNav";
+import { OrganizerMenu } from "@/components/admin/OrganizerMenu";
 import { signInErrorLocation } from "@/lib/contest/sign-in-errors";
 import { isAdmin, viewerFromCookies } from "@/lib/contest/viewer";
 
@@ -59,9 +60,11 @@ export const metadata: Metadata = {
 };
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
-  if (!isAdmin(await viewerFromCookies())) {
+  const viewer = await viewerFromCookies();
+  if (!isAdmin(viewer)) {
     redirect(signInErrorLocation("organizer_required"));
   }
+  const displayName = viewer.displayName;
 
   return (
     <div className="flex min-h-full flex-1 flex-col">
@@ -103,13 +106,26 @@ export default async function AdminLayout({ children }: { children: React.ReactN
 
           <AdminNav />
 
-          <Link
-            href="/projector"
-            className="ml-auto rounded border border-paper/30 px-2.5 py-1 font-semibold text-paper/85 hover:border-paper/60 hover:text-paper"
-            style={{ fontSize: "var(--text-xs)" }}
-          >
-            Open projector
-          </Link>
+          <div className="ml-auto flex flex-wrap items-center gap-3">
+            <Link
+              href="/projector"
+              className="rounded border border-paper/30 px-2.5 py-1 font-semibold text-paper/85 hover:border-paper/60 hover:text-paper"
+              style={{ fontSize: "var(--text-xs)" }}
+            >
+              Open projector
+            </Link>
+
+            {/*
+              THERE WAS NO WAY TO SIGN OUT OF THE ORGANIZER CONSOLE. Not on any of its seven
+              screens, and not on the competitor ones either — `CompetitorChrome` renders its
+              account menu only for a joined COMPETITOR, and an organizer is not one.
+
+              The session lasts 12 hours on a `maxAge` cookie, so on the shared projector laptop
+              it survived closing the browser into the next day — fronting freeze, rejudge,
+              verdict override and side-activity points entry.
+            */}
+            <OrganizerMenu displayName={displayName} />
+          </div>
         </div>
       </header>
 

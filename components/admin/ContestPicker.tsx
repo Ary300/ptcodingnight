@@ -8,6 +8,7 @@ import type { AdminContestList } from "@/lib/schemas/api";
 import { AdminContestListSchema } from "@/lib/schemas/api";
 
 import { ContestStatePill } from "./StatusPill";
+import { ContestStateActions } from "./ContestStateActions";
 
 /**
  * Pick the contest a contest-scoped organizer screen acts on.
@@ -154,6 +155,26 @@ export function ContestPicker({ basePath, purpose }: ContestPickerProps) {
                 })}
               </span>
             </Link>
+
+            {/*
+              The lifecycle controls live on the row, OUTSIDE the link.
+
+              `POST /api/admin/contests/{id}/state` existed and nothing in the UI called it, so a
+              contest could be created and never started — and three separate strings promised the
+              step ("students cannot see it until you publish it", "Publish the contest when the
+              line-up is settled"). Every contest a student could actually enter had been written
+              by a seed script.
+
+              Nested inside the `<Link>` they would be a button inside a link, which is invalid
+              and unpredictable to operate with a keyboard.
+            */}
+            <div className="border-t border-ink/10 px-5 py-2.5">
+              <ContestStateActions
+                contestId={contest.contestId}
+                state={contest.state}
+                onChanged={load.reload}
+              />
+            </div>
           </li>
         ))}
       </ul>
