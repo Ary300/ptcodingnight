@@ -34,6 +34,23 @@ export const POLL_INTERVAL_MS = 5_000;
  */
 export const VISIBLE_ROWS = 8;
 
+/**
+ * Rows drawn on the TEAM board, which is the default projector.
+ *
+ * **Measured, not chosen.** A team row is two lines — the name at `--text-proj-md` over the
+ * arithmetic at `--text-proj-sm`, which is the floor — so it stands about 93px tall at
+ * `--proj-scale: 1`, and the stage has roughly 750px under its header once the title, the plate
+ * band and the footnote have taken theirs. Seven fit. Eight do not, and the eighth does not
+ * announce itself: the board simply clips it against a footnote still claiming to show eight.
+ *
+ * One number serves both projector resolutions because the degrade is a uniform scale — 1280×720
+ * is exactly two-thirds of 1920×1080 in both axes, so a row that fits on one fits on the other.
+ *
+ * It caps what is DRAWN, never what is ranked. The footnote always states the true total, so a
+ * team below the cut is never silently absent.
+ */
+export const TEAM_VISIBLE_ROWS = 7;
+
 /** Auto-advance through divisions while the board is live and unattended. */
 export const DIVISION_ROTATE_MS = 20_000;
 

@@ -27,6 +27,24 @@ export interface UseTeamStandingsResult {
   error: string | null;
 }
 
+/**
+ * Where to read the board from.
+ *
+ * **A null id is a request, not a missing argument.** It means "whichever contest is running",
+ * which is the only thing a screen on a wall can mean — nobody types an id into it. This hook
+ * used to return early on null and never fetch at all, so a bare `/projector` sat on an empty
+ * board telling the room to go and edit the URL.
+ *
+ * The literals are here rather than in `API_ROUTES` only because the un-scoped twin is newer than
+ * that table; both belong there, and `tests/e2e/wiring.api.spec.ts` is the check that keeps the
+ * two halves on the same URL.
+ */
+function urlFor(contestId: string | null): string {
+  return contestId === null
+    ? "/api/team-standings"
+    : `/api/contests/${encodeURIComponent(contestId)}/team-standings`;
+}
+
 /** Accepts the API envelope or a bare body, same as the individual board's reader. */
 function parse(body: unknown): TeamStandingsResponse | null {
   const direct = TeamStandingsResponseSchema.safeParse(body);
@@ -40,28 +58,46 @@ function parse(body: unknown): TeamStandingsResponse | null {
   return null;
 }
 
+/**
+ * The API's own sentence for a failed envelope.
+ *
+ * "No contest is running" and "Contest not found" are the two an organizer will actually hit, and
+ * both are actionable. Collapsing them into "the scoreboard sent something this page could not
+ * read" turns a fixable situation into a mystery on the wall.
+ */
+function envelopeError(body: unknown): string | null {
+  if (typeof body !== "object" || body === null || !("error" in body)) return null;
+
+  const error = (body as { error: unknown }).error;
+  if (typeof error !== "object" || error === null || !("message" in error)) return null;
+
+  const message = (error as { message: unknown }).message;
+  return typeof message === "string" && message.length > 0 ? message : null;
+}
+
 export function useTeamStandings(contestId: string | null): UseTeamStandingsResult {
   const [standings, setStandings] = useState<TeamStandingsResponse | null>(null);
   const [source, setSource] = useState<TeamStandingsSource>("pending");
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (contestId === null) return;
-
     let cancelled = false;
+    const url = urlFor(contestId);
 
     const poll = async (): Promise<void> => {
       try {
-        const response = await fetch(`/api/contests/${contestId}/team-standings`, {
+        const response = await fetch(url, {
           cache: "no-store",
+          headers: { accept: "application/json" },
         });
-        const parsed = parse(await response.json());
+        const body: unknown = await response.json();
+        const parsed = parse(body);
 
         if (cancelled) return;
 
         if (parsed === null) {
           setSource("error");
-          setError("The scoreboard sent something this page could not read.");
+          setError(envelopeError(body) ?? "The scoreboard sent something this page could not read.");
           return;
         }
 

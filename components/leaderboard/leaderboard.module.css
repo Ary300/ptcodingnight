@@ -345,6 +345,142 @@
 }
 
 /* ---------------------------------------------------------------------------
+ * The TEAM board's stage — the DEFAULT projector (PRD §6.1).
+ *
+ * It shares `.stage` with the individual board, and that sharing is the point: the team
+ * screen used to be a plain Tailwind page with `p-8` and app-scale type, so it inherited
+ * none of `--proj-scale` and none of the `--fs-*` ladder. Two visible consequences, both on
+ * the one screen the room stares at for an hour — the countdown was reading `var(--fs-xl)`
+ * with nothing defining it and rendered at the browser's default 16px, and nothing on the
+ * board degraded when the projector turned out to be 1280×720.
+ *
+ * The layout is Codeforces' rather than the individual board's two-zone split: a centred
+ * title over a centred grid. That is what a standings table wants — the eye starts at the
+ * title, drops straight into the `#` column, and never travels sideways to find the clock.
+ * ------------------------------------------------------------------------ */
+
+/*
+ * Every value here is spent against the row count. The stage does not scroll, so each pixel of
+ * padding or gap is one pixel fewer for the last team on the board — and a row is ~93px at
+ * `--proj-scale: 1`, so about ten of them decide whether a team is on the wall at all.
+ */
+.teamStage {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  height: 100%;
+  gap: calc(var(--gap) * 0.7);
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  padding: calc(var(--pad) * 0.8);
+}
+
+/*
+ * Three tracks with the title in the middle one, so the title is centred on the CANVAS and
+ * not merely on whatever space the clock left over. `1fr auto 1fr` keeps it there whether
+ * the state pill on the left is two characters or twelve.
+ */
+.teamHead {
+  display: grid;
+  align-items: center;
+  gap: var(--pad);
+  grid-template-columns: 1fr auto 1fr;
+}
+
+.teamHeadLeft {
+  justify-self: start;
+}
+
+.teamHeadRight {
+  justify-self: end;
+  text-align: right;
+}
+
+.teamTitle {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--fs-xl);
+  font-weight: 700;
+  /* Libre Baskerville has long descenders. At 1.04 the `g` of "Coding" landed on top of the
+     line below it — a heading that collides with its own subtitle on the largest type on the
+     largest screen in the building. */
+  line-height: 1.12;
+  text-align: center;
+}
+
+/*
+ * One heading, two lines. The school's name is the display line and "Team standings" is the
+ * qualifier under it, exactly as Codeforces puts "Final standings" under the round name —
+ * but inside the same `<h1>`, so the page has one heading rather than a heading and a
+ * decorative sentence that happens to look like one.
+ */
+.teamTitleSub {
+  display: block;
+  font-size: var(--fs-md);
+  font-weight: 400;
+  letter-spacing: 0.06em;
+  line-height: 1.25;
+  text-transform: uppercase;
+}
+
+.teamSubtitle {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  text-align: center;
+}
+
+/*
+ * The band's height is reserved whether or not the plate is up, so the board does not jump when
+ * the freeze starts — and it is kept tight, because at 1280×720 the row borders do NOT scale with
+ * `--proj-scale` (a 1px rule is 1px on both canvases) and eight of them were enough on their own
+ * to clip the last row off a board that fitted perfectly at 1920×1080.
+ */
+.teamPlateBand {
+  display: flex;
+  height: calc(var(--fs-md) * 1.2);
+  align-items: center;
+  justify-content: center;
+}
+
+/*
+ * The board clips rather than scrolls. A projector has no scrollbar and nobody is holding
+ * its mouse, so a row that does not fit must be counted in the footnote instead — which is
+ * what `maxRows` and the "showing top N of M" line are for.
+ */
+.teamBoard {
+  display: flex;
+  min-height: 0;
+  /* Top-aligned, under the title, the way Codeforces stacks them. Centring it vertically was
+     tried and is worse: with a short field the grid drifts into the middle of the wall and
+     detaches from the heading it belongs to, and with a full field it does not move at all. The
+     empty space belongs at the bottom, where the crest already lives. */
+  align-items: flex-start;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.teamFootnote {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  gap: calc(var(--gap) * 2);
+}
+
+/* The board has lost contact and says so. Gold is 13.44:1 on ink and already means
+   "pay attention to this" everywhere else on this screen. */
+.teamAlert {
+  color: var(--color-gold);
+}
+
+/* An empty board is still a titled screen. Centred in the space the rows would occupy. */
+.teamMessage {
+  align-self: center;
+  font-size: var(--fs-md);
+  text-align: center;
+}
+
+/* ---------------------------------------------------------------------------
  * Clock and division tabs
  * ------------------------------------------------------------------------ */
 

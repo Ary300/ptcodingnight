@@ -139,7 +139,17 @@ export function ProjectorScreen({ contestId }: ProjectorScreenProps) {
               ) : null}
             </span>
             <span>
-              Updated <span className="numeric">{timeOfDay(standings.asOf)}</span>
+              Updated{" "}
+              {/*
+                `suppressHydrationWarning` because the FALLBACK standings stamp themselves at
+                module load (`sample-standings.ts`), and the server bundle loads minutes before
+                the browser does — so the first paint legitimately carries two different times and
+                React throws a hydration error on the projector before the real board arrives.
+                Suppressed on the one element whose text is the timestamp, never on its parent.
+              */}
+              <span className="numeric" suppressHydrationWarning>
+                {timeOfDay(standings.asOf)}
+              </span>
             </span>
             {source === "sample" ? (
               <span className={styles.sampleMarker}>SAMPLE DATA</span>
