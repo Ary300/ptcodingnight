@@ -31,3 +31,15 @@ data/testcases/
 
 # agent worktrees — checkouts of this repo living inside it
 .claude/worktrees/
+
+# Next regenerates this on every dev and every build, and the two write DIFFERENT contents:
+#   next dev   -> import "./.next/dev/types/routes.d.ts"
+#   next build -> import "./.next/types/routes.d.ts"
+#
+# So it flips back and forth depending on which ran last, and G12 (clean tree) can never pass in
+# a workflow that runs both — which `npm run verify` does, every time. It has been showing as
+# modified for the whole of this project's history.
+#
+# Next's docs say not to edit it; they do not require committing a file that rewrites itself.
+# TypeScript is unaffected because it is regenerated before any build or typecheck that needs it.
+next-env.d.ts
