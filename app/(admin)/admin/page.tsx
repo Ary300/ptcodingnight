@@ -1,9 +1,7 @@
 import Link from "next/link";
 
 import { Panel } from "@/components/admin/Panel";
-import { HistoryFlag } from "@/components/admin/HistoryFlag";
-import { draftBlockers } from "@/components/admin/contract";
-import { STUB_CONTEST_NAME, STUB_PROBLEMS } from "@/components/admin/stub-data";
+import { problemBank } from "@/lib/contest/problem-bank";
 
 /**
  * Organiser overview.
@@ -19,11 +17,13 @@ import { STUB_CONTEST_NAME, STUB_PROBLEMS } from "@/components/admin/stub-data";
  * to change a team's score without a submission were the two an organizer could not find from
  * here. They are first now, and grouped as such.
  *
- * ## The counts on this page come from fixtures, and it says so
+ * ## The counts are real now
  *
- * Not a design choice — the problem bank has no read API yet (docs/TODO.md). The banner is not
- * decoration: an organizer who reads "3 still in DRAFT" off invented data and concludes the
- * line-up is ready has been actively misled, which is worse than an empty screen.
+ * They used to come from `components/admin/stub-data.ts` — twelve fixtures — under a banner
+ * admitting as much. That banner was the right thing to do about a wrong situation: an organizer
+ * who reads "3 still in DRAFT" off invented data and concludes the line-up is ready has been
+ * actively misled. `problemBank()` reads the database, so the numbers now describe the contest
+ * about to be run and the banner is gone.
  */
 
 /** The two screens that change a team's score without a submission passing through the judge. */
@@ -63,16 +63,17 @@ const SECTIONS = [
   },
 ] as const;
 
-export default function AdminOverviewPage() {
-  const ready = STUB_PROBLEMS.filter((p) => draftBlockers(p).length === 0);
-  const drafts = STUB_PROBLEMS.filter((p) => p.state === "DRAFT");
-  const neverScored = STUB_PROBLEMS.filter((p) => p.pastStatus === "used-but-zero-points");
+export default async function AdminOverviewPage() {
+  const { problems } = await problemBank();
+  const ready = problems.filter((p) => p.readyBlockers.length === 0);
+  const drafts = problems.filter((p) => p.state === "DRAFT");
+  const neverScored = problems.filter((p) => p.pastStatus === "used-but-zero-points");
 
   return (
     <div className="flex flex-col gap-6">
       <header>
         <h1 className="font-display font-bold" style={{ fontSize: "var(--text-xl)" }}>
-          {STUB_CONTEST_NAME}
+          Coding Night
         </h1>
         <p className="mt-1 max-w-[70ch] text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
           Everything an organizer touches, in the order the night needs it.
@@ -118,20 +119,6 @@ export default function AdminOverviewPage() {
         <h2 className="font-display font-bold" style={{ fontSize: "var(--text-md)" }}>
           Problem bank
         </h2>
-        {/*
-          Announced, not whispered. These three numbers look exactly like live counts and are not,
-          and "is the line-up ready" is precisely the question they appear to answer.
-        */}
-        <p
-          role="status"
-          className="rounded border border-ink/20 bg-paper px-4 py-2.5 text-ink/75"
-          style={{ fontSize: "var(--text-xs)" }}
-        >
-          <span className="font-semibold text-panther">Fixture data.</span> The problem bank has no
-          read API yet, so these three counts describe the sample bank rather than your contest.
-          Do not clear a line-up from this screen.
-        </p>
-
         <div className="grid gap-4 sm:grid-cols-3">
           <Figure value={ready.length} label="problems cleared for a live contest" />
           <Figure value={drafts.length} label="still in DRAFT" />
@@ -155,7 +142,9 @@ export default function AdminOverviewPage() {
                   >
                     {problem.title}
                   </Link>
-                  <HistoryFlag status={problem.pastStatus} />
+                  <span className="text-panther" style={{ fontSize: "var(--text-xs)" }}>
+                    nobody scored
+                  </span>
                 </li>
               ))}
             </ul>
