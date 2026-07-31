@@ -76,15 +76,25 @@ export function CompetitorChrome({ children }: { children: ReactNode }) {
 
       {isStubBackend && <StubBanner />}
 
-      <header className="border-b border-ink/15">
-        <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center gap-x-6 gap-y-3 px-4 py-3">
-          <Link href="/contest" className="flex items-center gap-3">
+      {/*
+        A solid dark bar with the mark at the left and the nav beside it — HackerRank's chrome,
+        which is the shape every student in the room has already used.
+
+        --ink rather than --panther for the bar itself. Red is the ACCENT here: the active-tab
+        underline and the primary buttons. A full-width saturated red bar makes the red mean
+        "chrome" instead of "this is the important thing", and DESIGN.md §2 pins --panther to
+        identity and emphasis rather than to large fills.
+      */}
+      <header className="bg-ink text-paper">
+        <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center gap-x-6 gap-y-3 px-4 py-2.5">
+          <Link href="/contest" className="flex items-center gap-2.5">
             <Image
-              src="/brand/pt-crest-outline.svg"
+              src="/brand/pt-panther.png"
               alt=""
-              width={32}
-              height={32}
+              width={275}
+              height={235}
               aria-hidden="true"
+              className="h-8 w-auto"
             />
             <span className="font-display font-bold" style={{ fontSize: "var(--text-sm)" }}>
               Coding Night
@@ -101,8 +111,8 @@ export function CompetitorChrome({ children }: { children: ReactNode }) {
                   aria-current={active ? "page" : undefined}
                   className={
                     active
-                      ? "border-b-2 border-panther pb-0.5 font-semibold text-ink"
-                      : "border-b-2 border-transparent pb-0.5 text-ink/70 hover:text-ink"
+                      ? "border-b-2 border-panther pb-0.5 font-semibold text-paper"
+                      : "border-b-2 border-transparent pb-0.5 text-paper/75 hover:text-paper"
                   }
                   style={{ fontSize: "var(--text-xs)" }}
                 >
@@ -130,7 +140,7 @@ export function CompetitorChrome({ children }: { children: ReactNode }) {
             {participant.status === "joined" && (
               <div className="flex min-w-0 items-center gap-2">
                 <span
-                  className="min-w-0 truncate text-ink/70"
+                  className="min-w-0 truncate text-paper/75"
                   title={participant.participant.displayName}
                   style={{ fontSize: "var(--text-xs)" }}
                 >
@@ -139,7 +149,7 @@ export function CompetitorChrome({ children }: { children: ReactNode }) {
                 <button
                   type="button"
                   onClick={leave}
-                  className="shrink-0 text-ink/60 underline underline-offset-2 hover:text-panther"
+                  className="shrink-0 text-paper/75 underline underline-offset-2 hover:text-paper"
                   style={{ fontSize: "var(--text-xs)" }}
                 >
                   Leave
@@ -150,7 +160,22 @@ export function CompetitorChrome({ children }: { children: ReactNode }) {
         </div>
       </header>
 
-      <main id="main" className="mx-auto w-full max-w-6xl flex-1 px-4 py-6">
+      {/*
+        `/join` opts out of the centred column.
+
+        It is the split-screen entry page, and HackerRank's equivalent runs edge to edge — a dark
+        brand panel inset inside a 1152px column with 16px of paper showing around it reads as a
+        card that failed to load rather than as half a screen. Every other competitor route keeps
+        the measure, because a statement set in a full-width line is unreadable.
+      */}
+      <main
+        id="main"
+        className={
+          pathname === "/join"
+            ? "w-full flex-1"
+            : "mx-auto w-full max-w-6xl flex-1 px-4 py-6"
+        }
+      >
         {children}
       </main>
     </>

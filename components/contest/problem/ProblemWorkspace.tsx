@@ -5,6 +5,7 @@ import { useCallback, useState } from "react";
 
 import { Button } from "@/components/ui";
 import type { PublicTestResult, SubmissionView } from "@/lib/schemas/api";
+import { statementWithoutRepeatedTitle } from "@/lib/contest/statement";
 import type { Language } from "@/lib/schemas/judge";
 
 import { contestApi, errorMessageOf } from "../data/backend";
@@ -17,6 +18,7 @@ import { HintPanel } from "../hints/HintPanel";
 import { Markdown } from "../markdown/Markdown";
 import { rememberSource } from "../submissions/source-cache";
 import { VerdictPanel } from "../verdict/VerdictPanel";
+import { ProblemBreadcrumb, ProblemMetaRail, ProblemTabs } from "./ProblemMeta";
 import { SampleIO } from "./SampleIO";
 import { useDraft } from "./useDraft";
 
@@ -128,126 +130,133 @@ export function ProblemWorkspace({ slug }: ProblemWorkspaceProps) {
   const judging = stream.status === "waiting";
 
   return (
-    <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-      {/* ---- statement ---- */}
-      <article className="min-w-0">
-        <header>
-          <p className="numeric text-panther" style={{ fontSize: "var(--text-sm)" }}>
-            {detail.slotLabel}
-          </p>
-          <h1 className="font-display font-bold" style={{ fontSize: "var(--text-lg)" }}>
-            {detail.title}
-          </h1>
-          <p className="numeric mt-1 text-ink/65" style={{ fontSize: "var(--text-xs)" }}>
-            {detail.basePoints} pts · {detail.timeLimitMs} ms · {detail.memoryLimitMb} MB
-          </p>
-        </header>
+    <div>
+      {/*
+        Breadcrumb, title, tabs — HackerRank's header, spanning the full width above the split.
+        The limits line that used to live under the title has moved into the right-hand rail,
+        where HackerRank puts Difficulty and Max Score, so the title area carries the name and
+        nothing else.
+      */}
+      <ProblemBreadcrumb slotLabel={detail.slotLabel} title={detail.title} />
+      <h1 className="mt-2 font-display font-bold" style={{ fontSize: "var(--text-lg)" }}>
+        {detail.title}
+      </h1>
+      <ProblemTabs />
 
-        <Markdown source={detail.statementMd} className="mt-5" />
+      <div className="mt-6 grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        {/* ---- statement ---- */}
+        <article className="min-w-0">
+          <ProblemMetaRail detail={detail} />
 
-        <section className="mt-8">
-          <h2 className="font-display font-bold" style={{ fontSize: "var(--text-md)" }}>
-            Input
-          </h2>
-          <Markdown source={detail.inputSpec} className="mt-1" />
-
-          <h2 className="mt-6 font-display font-bold" style={{ fontSize: "var(--text-md)" }}>
-            Output
-          </h2>
-          <Markdown source={detail.outputSpec} className="mt-1" />
-
-          <h2 className="mt-6 font-display font-bold" style={{ fontSize: "var(--text-md)" }}>
-            Constraints
-          </h2>
-          <Markdown source={detail.constraints} className="mt-1" />
-        </section>
-
-        <section className="mt-8">
-          <h2 className="mb-3 font-display font-bold" style={{ fontSize: "var(--text-md)" }}>
-            Samples
-          </h2>
-          <SampleIO samples={detail.samples} />
-        </section>
-      </article>
-
-      {/* ---- work ---- */}
-      <div className="min-w-0 space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <LanguagePicker
-            value={activeLanguage}
-            allowed={detail.allowedLanguages}
-            onChange={setChosenLanguage}
-            disabled={submitBusy || judging}
+          <Markdown
+            source={statementWithoutRepeatedTitle(detail.statementMd, detail.title)}
+            className="mt-5"
           />
-          {/* 60%, not 55%: ink at 55% over paper composites to #7f7373, which measures
-              4.34:1 and fails AA's 4.5:1 at this size. 57% is the minimum that clears it;
-              60% gives 5.16:1 so a later token tweak does not silently drop it back under. */}
-          <span className="text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
-            Your work is kept in this tab until you close it.
-          </span>
-        </div>
 
-        <CodeEditor
-          value={source}
-          onChange={setSource}
-          language={activeLanguage}
-          disabled={submitBusy}
-          onSubmitShortcut={() => void submit()}
-          label={`Solution for ${detail.title}`}
-        />
+          <section className="mt-8">
+            <h2 className="font-display font-bold" style={{ fontSize: "var(--text-md)" }}>
+              Input
+            </h2>
+            <Markdown source={detail.inputSpec} className="mt-1" />
 
-        <div className="flex flex-wrap items-center gap-3">
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={() => void runSamples()}
-            disabled={sampleBusy || submitBusy}
-          >
-            {sampleBusy ? "Running…" : "Run samples"}
-          </Button>
-          <Button
-            type="button"
-            onClick={() => void submit()}
-            disabled={submitBusy || sampleBusy || judging}
-          >
-            {submitBusy ? "Submitting…" : "Submit for judging"}
-          </Button>
-          <span className="text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
-            Running samples is free. Submitting counts.
-          </span>
-        </div>
+            <h2 className="mt-6 font-display font-bold" style={{ fontSize: "var(--text-md)" }}>
+              Output
+            </h2>
+            <Markdown source={detail.outputSpec} className="mt-1" />
 
-        {actionError !== null && (
-          <p role="alert" className="text-panther" style={{ fontSize: "var(--text-xs)" }}>
-            {actionError}
-          </p>
-        )}
+            <h2 className="mt-6 font-display font-bold" style={{ fontSize: "var(--text-md)" }}>
+              Constraints
+            </h2>
+            <Markdown source={detail.constraints} className="mt-1" />
+          </section>
 
-        {lastAction === "samples" && (
-          <VerdictPanel
-            mode="samples"
-            verdict={null}
-            score={null}
-            results={sampleResults}
-            compileError={null}
-            busy={sampleBusy}
+          <section className="mt-8">
+            <h2 className="mb-3 font-display font-bold" style={{ fontSize: "var(--text-md)" }}>
+              Samples
+            </h2>
+            <SampleIO samples={detail.samples} />
+          </section>
+        </article>
+
+        {/* ---- work ---- */}
+        <div className="min-w-0 space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <LanguagePicker
+              value={activeLanguage}
+              allowed={detail.allowedLanguages}
+              onChange={setChosenLanguage}
+              disabled={submitBusy || judging}
+            />
+            {/* 60%, not 55%: ink at 55% over paper composites to #7f7373, which measures
+                4.34:1 and fails AA's 4.5:1 at this size. 57% is the minimum that clears it;
+                60% gives 5.16:1 so a later token tweak does not silently drop it back under. */}
+            <span className="text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
+              Your work is kept in this tab until you close it.
+            </span>
+          </div>
+
+          <CodeEditor
+            value={source}
+            onChange={setSource}
+            language={activeLanguage}
+            disabled={submitBusy}
+            onSubmitShortcut={() => void submit()}
+            label={`Solution for ${detail.title}`}
           />
-        )}
 
-        {lastAction === "judged" && (
-          <VerdictPanel
-            mode="judged"
-            verdict={stream.submission?.verdict ?? null}
-            score={stream.submission?.score ?? null}
-            results={stream.submission?.testResults ?? []}
-            compileError={stream.submission?.compileError ?? null}
-            busy={submitBusy || judging}
-            transport={stream.transport}
-            error={stream.error}
-          />
-        )}
+          <div className="flex flex-wrap items-center gap-3">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => void runSamples()}
+              disabled={sampleBusy || submitBusy}
+            >
+              {sampleBusy ? "Running…" : "Run samples"}
+            </Button>
+            <Button
+              type="button"
+              onClick={() => void submit()}
+              disabled={submitBusy || sampleBusy || judging}
+            >
+              {submitBusy ? "Submitting…" : "Submit for judging"}
+            </Button>
+            <span className="text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
+              Running samples is free. Submitting counts.
+            </span>
+          </div>
 
-        <HintPanel contestProblemId={detail.contestProblemId} problemTitle={detail.title} />
+          {actionError !== null && (
+            <p role="alert" className="text-panther" style={{ fontSize: "var(--text-xs)" }}>
+              {actionError}
+            </p>
+          )}
+
+          {lastAction === "samples" && (
+            <VerdictPanel
+              mode="samples"
+              verdict={null}
+              score={null}
+              results={sampleResults}
+              compileError={null}
+              busy={sampleBusy}
+            />
+          )}
+
+          {lastAction === "judged" && (
+            <VerdictPanel
+              mode="judged"
+              verdict={stream.submission?.verdict ?? null}
+              score={stream.submission?.score ?? null}
+              results={stream.submission?.testResults ?? []}
+              compileError={stream.submission?.compileError ?? null}
+              busy={submitBusy || judging}
+              transport={stream.transport}
+              error={stream.error}
+            />
+          )}
+
+            <HintPanel contestProblemId={detail.contestProblemId} problemTitle={detail.title} />
+          </div>
       </div>
     </div>
   );

@@ -84,7 +84,11 @@ test.describe("the competitor journey in a browser", () => {
 
     // --- lobby ---------------------------------------------------------------
     await expect(page.getByRole("heading", { name: "Problems", level: 1 })).toBeVisible();
-    await expect(page.getByText(displayName)).toBeVisible();
+    // Scoped to the banner, because the intent is "the chrome shows who you are signed in as".
+    // Unscoped, this raced the standings poll: once the student's own row lands in the
+    // leaderboard the same name is on the page twice and strict mode — correctly — refuses to
+    // guess which one was meant. The header is the one this assertion is about.
+    await expect(page.getByRole("banner").getByText(displayName)).toBeVisible();
 
     const problemLinks = page.getByRole("listitem").getByRole("link");
     await expect(problemLinks.first()).toBeVisible();

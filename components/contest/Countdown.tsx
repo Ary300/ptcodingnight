@@ -62,8 +62,14 @@ export function Countdown({ endsAt, label = "Time remaining" }: CountdownProps) 
   const urgent = remaining !== null && remaining > 0 && remaining <= URGENT_MS;
 
   return (
-    <div className="inline-flex items-center gap-3 rounded bg-ink px-3 py-1.5">
-      <span className="text-paper/60 uppercase" style={{ fontSize: "var(--text-xs)", letterSpacing: "0.08em" }}>
+    /*
+      Outlined rather than filled. This pill used to be `bg-ink` on a white header; the header is
+      now `bg-ink` itself (HackerRank's dark chrome), and an ink pill on an ink bar is an
+      invisible pill. A hairline and a barely-lifted surface keep it readable as a distinct
+      object without introducing a third colour into the bar.
+    */
+    <div className="inline-flex items-center gap-3 rounded border border-paper/25 bg-paper/10 px-3 py-1.5">
+      <span className="text-paper/75 uppercase" style={{ fontSize: "var(--text-xs)", letterSpacing: "0.08em" }}>
         {over ? "Finished" : label}
       </span>
       <span
