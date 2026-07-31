@@ -8,9 +8,11 @@
 # correct; this proves THIS BOX is serving it — certificate, proxy, database, queue, judge.
 # Those are different failures and the second kind only exists after a deploy.
 #
-# Read-only except for one thing: it joins the contest as a smoke-test participant and submits
-# one solution, because "a submission is judged end to end" cannot be checked any other way.
-# The participant is named so an organizer can see what it is, and `--cleanup` removes it.
+# Read-only. It used to create a smoke-test participant with a join code and submit one solution,
+# so that "a submission is judged end to end" was covered; the join route is gone and a competitor
+# session now needs a real OAuth round trip, which cannot be curled. That check therefore reports
+# that it could not run rather than passing vacuously — and DEPLOY.md §14.5 lists the two minutes
+# of clicking that covers it instead.
 #
 # Exit code is 0 only if every check passed. Nothing is skipped silently: a check that cannot
 # run says so and fails.
@@ -38,6 +40,31 @@ note() { printf '       %s\n' "$1"; }
 section() { printf '\n\033[1m%s\033[0m\n' "$1"; }
 
 printf '\033[1mSmoke test: %s\033[0m\n' "$BASE_URL"
+
+# ---------------------------------------------------------------------------
+# 0. Wait for the deployment to come up before testing it.
+# ---------------------------------------------------------------------------
+# Run straight after `docker compose up -d --build`, every check below fails with 502: Caddy is
+# up, the web container is still starting, and there is nothing to proxy to. That is a healthy
+# deploy reported as fourteen failures, which is worse than useless — it sends you debugging a
+# working system. So wait first, and say plainly which of the two situations you are in.
+#
+# 90s: the web container's own healthcheck has a start period, and this box builds on 2 vCPU.
+WAIT_SECS="${SMOKE_WAIT_SECS:-90}"
+waited=0
+until curl -fsS --max-time 10 "$BASE_URL/api/health" >/dev/null 2>&1; do
+  if [ "$waited" -ge "$WAIT_SECS" ]; then
+    printf '  \033[31mFAIL\033[0m the site did not answer /api/health within %ss\n' "$WAIT_SECS"
+    printf '       Not a startup race, then. Check: docker compose -f docker-compose.prod.yml logs --tail=100 web\n'
+    exit 1
+  fi
+  if [ "$waited" -eq 0 ]; then
+    printf '       waiting for the deployment to answer (up to %ss)…\n' "$WAIT_SECS"
+  fi
+  sleep 3
+  waited=$((waited + 3))
+done
+[ "$waited" -gt 0 ] && printf '       up after %ss\n' "$waited"
 
 # ---------------------------------------------------------------------------
 section "1. HTTPS"
@@ -112,37 +139,17 @@ section "3. Sign-in paths"
 # All three, because they fail independently and the join code is the one that has to work when
 # the others do not (docs/AUTH.md §6).
 
-# --- 3a. join code ---
-JOIN_CODE="${SMOKE_JOIN_CODE:-}"
-if [ -z "$JOIN_CODE" ]; then
-  bad "SMOKE_JOIN_CODE is not set — cannot test the join path, which is the primary one"
-  note "export SMOKE_JOIN_CODE=<the contest's join code> and re-run"
-else
-  NAME="smoke-test-$(date +%s)"
-  join="$(curl -sS --max-time 30 -c "$JAR" -X POST "$BASE_URL/api/join" \
-            -H 'content-type: application/json' \
-            -d "{\"joinCode\":\"$JOIN_CODE\",\"displayName\":\"$NAME\",\"divisionId\":null}" 2>/dev/null || true)"
-  if printf '%s' "$join" | grep -q '"success":true'; then
-    JOINED=1
-    ok "join code accepted, session issued"
-  else
-    bad "join failed"
-    note "${join:-<no response>}"
-  fi
-
-  # The cookie the rest of this section depends on. Checked explicitly so a later failure is
-  # not blamed on the wrong thing.
-  if grep -q 'ptcn_session' "$JAR"; then
-    ok "session cookie set"
-    if grep -qi 'TRUE.*ptcn_session' "$JAR" && grep 'ptcn_session' "$JAR" | awk '{print $4}' | grep -qi 'TRUE'; then
-      ok "session cookie is Secure"
-    else
-      bad "session cookie is NOT Secure on an HTTPS deployment"
-    fi
-  else
-    bad "no session cookie in the response"
-  fi
-fi
+# --- 3a. a competitor session ---
+#
+# There is no join code any more: a student signs in with a provider and an organizer puts them
+# on a team. This used to POST /api/join with SMOKE_JOIN_CODE, and that route is gone — so the
+# check failed on every run for a reason that had nothing to do with the deployment.
+#
+# What is checkable from outside without a browser and a Google consent screen is the ORGANIZER
+# path (3b) and the shape of the provider redirects (3c). The competitor journey needs a real
+# provider round trip, so it is a thing to click, not a thing to curl — §14.5 of docs/DEPLOY.md
+# says so, and section 4 below reports honestly that it cannot run rather than pretending.
+note "competitor sign-in is OAuth-only and needs a browser — press the buttons yourself (DEPLOY.md §14.5)"
 
 # --- 3b. organizer passcode ---
 if [ -z "${SMOKE_ADMIN_PASSCODE:-}" ]; then
@@ -183,71 +190,52 @@ for provider in google github; do
       ;;
   esac
 done
-
 # ---------------------------------------------------------------------------
-section "4. A submission is judged, end to end"
+section "4. There is a contest a student can actually enter, right now"
 # ---------------------------------------------------------------------------
-# The one check that exercises Redis, the worker, the Docker socket, the runtime images and the
-# scratch mount at once. If the JUDGE_HOST_ROOT paths are wrong, this is where it shows.
+# THE CHECK THAT WOULD HAVE SAVED AN EVENING.
+#
+# A deployment can pass every check above — certificate, health, database, both providers — and
+# still be dead to a student, because the seeded contest's window closed hours ago. The site then
+# does exactly what a working site does, except nothing can be submitted. It reads as "the
+# platform is broken" and it is a one-line fix, so it is worth failing loudly and specifically.
+#
+# `/api/standings` is public, which is what makes this checkable without a session.
 
-if [ -z "$JOIN_CODE" ]; then
-  bad "skipped — no join code, see above"
+standings="$(curl -fsS --max-time 20 "$BASE_URL/api/standings" 2>/dev/null || true)"
+if ! printf '%s' "$standings" | grep -q '"success":true'; then
+  bad "no contest is being served — /api/standings did not answer"
+  note "${standings:-<no response>}"
+  note "seed one: docker compose -f docker-compose.prod.yml exec web npx tsx scripts/seed-demo.ts"
 else
-  problems="$(curl -sS --max-time 30 -b "$JAR" "$BASE_URL/api/contests/self/problems" 2>/dev/null || true)"
-  # `self` is not a route; read the contest id out of the join response instead.
-  contest_id="$(printf '%s' "$join" | sed -n 's/.*"contestId":"\([^"]*\)".*/\1/p')"
-  if [ -z "$contest_id" ]; then
-    bad "could not read a contestId from the join response"
+  ok "a contest is published and its standings are being served"
+
+  ends_at="$(printf '%s' "$standings" | sed -n 's/.*"endsAt":"\([^"]*\)".*/\1/p')"
+  now="$(date -u +%Y-%m-%dT%H:%M:%S)"
+  if [ -z "$ends_at" ]; then
+    bad "the standings carry no endsAt — cannot tell whether the contest is open"
+  elif [ "${ends_at%%.*}" \> "$now" ]; then
+    ok "the contest window is OPEN (ends $ends_at, now ${now}Z)"
   else
-    problems="$(curl -sS --max-time 30 -b "$JAR" "$BASE_URL/api/contests/$contest_id/problems" 2>/dev/null || true)"
-    cp_id="$(printf '%s' "$problems" | sed -n 's/.*"contestProblemId":"\([^"]*\)".*/\1/p' | head -1)"
-
-    if [ -z "$cp_id" ]; then
-      bad "the problem list is empty — a student would see nothing to solve"
-      note "a participant with no division sees no divisioned problems; check the contest setup"
-    else
-      ok "problem list has at least one problem"
-
-      sub="$(curl -sS --max-time 60 -b "$JAR" -X POST "$BASE_URL/api/submissions" \
-               -H 'content-type: application/json' \
-               -d "{\"contestProblemId\":\"$cp_id\",\"language\":\"PYTHON_312\",\"sourceCode\":\"import sys\\nprint(sum(int(x) for x in sys.stdin.read().split()))\"}" 2>/dev/null || true)"
-      sub_id="$(printf '%s' "$sub" | sed -n 's/.*"submissionId":"\([^"]*\)".*/\1/p' | head -1)"
-
-      if [ -z "$sub_id" ]; then
-        bad "submission was not accepted"
-        note "${sub:-<no response>}"
-      else
-        ok "submission accepted ($sub_id)"
-
-        # Generous: this box is slower than the target and G8 is a known FAIL on it. What is
-        # being tested is that a verdict ARRIVES, not how fast.
-        verdict=""
-        for _ in $(seq 1 60); do
-          view="$(curl -sS --max-time 20 -b "$JAR" "$BASE_URL/api/submissions/$sub_id" 2>/dev/null || true)"
-          verdict="$(printf '%s' "$view" | sed -n 's/.*"verdict":"\([^"]*\)".*/\1/p' | head -1)"
-          case "$verdict" in
-            AC|WA|TLE|MLE|RE|CE) break ;;
-            IE) break ;;
-          esac
-          sleep 5
-        done
-
-        case "$verdict" in
-          AC|WA|TLE|MLE|RE|CE)
-            ok "the judge returned a verdict: $verdict"
-            note "any real verdict proves the path; AC additionally proves the test data"
-            ;;
-          IE)
-            bad "verdict IE — the judge could not run this. Check the worker log and JUDGE_HOST_ROOT"
-            ;;
-          *)
-            bad "no verdict after 5 minutes — the worker or Docker is not doing its job"
-            ;;
-        esac
-      fi
-    fi
+    bad "the contest window CLOSED at $ends_at — a student signing in now cannot submit anything"
+    note "now is ${now}Z. The site will look completely broken to them and nothing is wrong with it."
+    note "re-seed with a fresh window: docker compose -f docker-compose.prod.yml exec web npx tsx scripts/seed-demo.ts"
   fi
 fi
+
+# ---------------------------------------------------------------------------
+section "4b. A submission judged end to end — NOT COVERED HERE"
+# ---------------------------------------------------------------------------
+# Stated rather than skipped silently. This used to run: join with a code, submit, poll for a
+# verdict — the one check that exercises Redis, the worker, the Docker socket, the runtime images
+# and the scratch mount together. The join route is gone and a competitor session now requires a
+# real OAuth round trip, which a shell script cannot perform.
+#
+# It is not replaced by anything here, and pretending otherwise would be the worst outcome. Two
+# minutes of clicking covers it, and DEPLOY.md §14.5 lists the steps.
+note "sign in as a student in a browser and submit one solution — this script cannot, and that gap is real"
+note "if JUDGE_HOST_ROOT or the runtime images are wrong, THAT is the check that would have caught it"
+
 
 # ---------------------------------------------------------------------------
 section "5. The screens render"
@@ -264,7 +252,11 @@ check_page() {
   fi
 }
 
-check_page "/join" "Join the contest" "the join screen renders"
+# `/join` was deleted with the join route; this checked for a screen that cannot exist and so
+# failed on every run. `/sign-in` is the front door now, and the landing page is what a visitor
+# following a link actually gets.
+check_page "/" "Coding Night" "the landing page renders"
+check_page "/sign-in" "Continue with Google" "the sign-in screen offers the providers"
 check_page "/projector" "Team standings" "the projector renders the team board"
 
 # The banner that says a screen is showing invented data. On a live deployment it must be ABSENT
@@ -275,10 +267,10 @@ check_page "/projector" "Team standings" "the projector renders the team board"
 # never is in an empty body, so it reported "the UI is wired to the real API" against a host that
 # was refusing connections. A smoke test that passes when the site is down is worse than no smoke
 # test, because it is the one check someone trusts at 8pm.
-join_body="$(curl -fsS --max-time 30 "$BASE_URL/join" 2>/dev/null || true)"
-if ! printf '%s' "$join_body" | grep -q "Join the contest"; then
-  bad "cannot check for the demo-data banner: /join did not load"
-elif printf '%s' "$join_body" | grep -q "not a live contest"; then
+front_body="$(curl -fsS --max-time 30 "$BASE_URL/sign-in" 2>/dev/null || true)"
+if ! printf '%s' "$front_body" | grep -q "Continue with Google"; then
+  bad "cannot check for the demo-data banner: /sign-in did not load"
+elif printf '%s' "$front_body" | grep -q "not a live contest"; then
   bad "the DEMO DATA banner is showing — this deployment is wired to the stub backend"
 else
   ok "no demo-data banner: the UI is wired to the real API"
@@ -289,9 +281,7 @@ printf '\n\033[1m=== %d passed, %d failed ===\033[0m\n' "$PASS" "$FAIL"
 
 # Only when one actually exists. Saying "a participant was created" after the join failed sends
 # an organizer looking through the roster for a row that is not there.
-if [ "$JOINED" = "1" ]; then
-  printf '\nA smoke-test participant was created (%s). Remove it from the admin roster when done.\n' \
-    "$NAME"
-fi
+# The trailer that used to name the smoke-test participant is gone with the participant — this
+# script no longer creates one, so there is nothing to clean up and nothing to announce.
 
 [ "$FAIL" -eq 0 ]

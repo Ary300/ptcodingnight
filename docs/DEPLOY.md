@@ -745,14 +745,46 @@ that is every student's submission history.
 
 A pull that failed silently and a rebuild that used a cached layer both look exactly like success.
 
+**Wait for the web container to be healthy before testing anything.** `up -d --build` returns as
+soon as the containers are *started*, and a Next.js server takes a few more seconds to serve. Run
+a smoke test into that gap and every check fails with 502 — Caddy is up and has nothing to proxy
+to. That is a healthy deployment reported as fourteen failures, which is worse than no test at
+all: it sends you debugging a working system.
+
 ```bash
 git log --oneline -1                                   # the commit you expected
-docker compose -f docker-compose.prod.yml ps           # web and worker "Up", not "Restarting"
-./scripts/smoke-prod.sh https://ptcodingnight.com
+
+# Healthy, not merely "Up". The healthcheck is what knows the difference.
+docker compose -f docker-compose.prod.yml ps
+
+# Then, and only then:
+export SMOKE_ADMIN_PASSCODE='<the console passcode>'   # or section 3b fails, correctly
+./scripts/smoke-prod.sh
 ```
 
-Then open the site and press something that changed. A green smoke test proves the stack is
-serving; it does not prove the screen you rewrote does what you rewrote it to do.
+`smoke-prod.sh` now waits up to 90s for `/api/health` before its first check and says which
+situation you are in, so running it early is no longer a trap. `SMOKE_WAIT_SECS` overrides.
+
+**Then re-seed if the contest window has closed.** Section 4 of the smoke test checks this and it
+is the failure most likely to be mistaken for a broken platform: a deployment can pass every other
+check and still be dead to a student, because the seeded contest ended hours ago. Nothing looks
+wrong — the site loads, the board renders, sign-in works — and nothing can be submitted.
+
+```bash
+docker compose -f docker-compose.prod.yml exec web npx tsx scripts/seed-demo.ts
+```
+
+**Then open the site and press something that changed.** A green smoke test proves this box is
+serving; it cannot prove the screen you rewrote does what you rewrote it to do, and it can no
+longer test the competitor journey at all — that needs a real provider round trip. Two minutes:
+
+- `/` renders, `/sign-in` offers both providers
+- sign in with Google or GitHub as yourself, land on `/contest`, open a problem, **submit one
+  solution and wait for the verdict.** This is the only check that exercises Redis, the worker,
+  the Docker socket, the runtime images and the scratch mount together. If `JUDGE_HOST_ROOT` is
+  wrong, every submission comes back `IE` and this is where you find out.
+- `/sign-in` → "Organizer passcode" → the console → freeze the board, watch `/projector` stop,
+  unfreeze
 
 ### 14.6 If the new containers will not start
 
