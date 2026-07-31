@@ -12,6 +12,7 @@ import { assertCanSubmit, assertProblemIsLive, assertUnlocked } from "@/lib/cont
 import { hostLimits } from "@/lib/contest/host";
 import { canReadSet } from "@/lib/contest/set-assignment";
 import { buildJudgeJob, type TestCaseInput } from "@/lib/contest/judge-job";
+import { runtimeFor } from "@/lib/judge/runtimes";
 import { readCompileError, writeJudgeLog } from "@/lib/contest/judge-log";
 import { enqueueJudgeJob, jobOutcome, runJobAndWait } from "@/lib/contest/queue";
 import { runSamplesLimiter, submitLimiter } from "@/lib/contest/rate-limit";
@@ -37,7 +38,27 @@ import { canReadSubmission, type CompetitorViewer, type Viewer } from "@/lib/con
 const ORPHAN_GRACE_MS = 10 * 60 * 1000;
 
 /** Ceiling on a synchronous "run samples" wait, whatever the problem's limits say. */
-const RUN_SAMPLES_TIMEOUT_CEILING_MS = 60_000;
+/**
+ * The ceiling on how long "Run samples" may block a request.
+ *
+ * 150 s, up from 60 s. Go's compile budget alone is 90 s, so a 60 s ceiling could not contain the
+ * work the judge was permitted to do — the request gave up while the compile it had asked for was
+ * still legitimately running.
+ *
+ * It is still a ceiling rather than "however long it takes", because this path holds an HTTP
+ * request open. A student pressing Run and waiting two and a half minutes has learned something is
+ * wrong; one waiting indefinitely has not.
+ */
+const RUN_SAMPLES_TIMEOUT_CEILING_MS = 150_000;
+
+/**
+ * Creating and tearing down a container, on top of compiling and running.
+ *
+ * Measured at 2.4–15.6 s on the development Mac and charged to nobody's time limit (CLAUDE.md:
+ * never time a submission by timing `docker run`). It has to be in the WAIT, though, because the
+ * wait is wall-clock and the container creation is part of the wall clock.
+ */
+const CONTAINER_SLACK_MS = 20_000;
 
 interface SubmissionTarget {
   readonly contestProblemId: string;
@@ -437,9 +458,27 @@ export async function runSamples(
     samplesOnly: true,
   });
 
+  /*
+    THE COMPILE HAS TO BE IN THIS BUDGET, AND IT WAS NOT.
+
+    This used to be `min(60s, wallClockKillMs * tests + 15s)` — run limits only. For a 2,000 ms
+    problem with two samples that is 27 s, while `gcc14.compileTimeoutMs` is 60 s and
+    `go123.compileTimeoutMs` is 90 s. **The wait was structurally smaller than the compile the
+    judge itself permits**, so any compile over about 15 s was a guaranteed 500 no matter how
+    healthy the host was, and the student read "The judge is busy right now."
+
+    Measured on a loaded host: Python 4.6 s ok, Java 12.5 s ok, C 20.0 s ok, C++11 28.1 s FAIL,
+    C++17 29.6 s FAIL, JavaScript 17.2 s ok, Go 30.2 s FAIL. On a quiet host the same three
+    passed — a load-dependent boundary sitting on a formula that was wrong in principle.
+
+    The ceiling rises with it. Capping the total at 60 s while allowing a 90 s compile is the same
+    mistake one level up: the cap has to be able to contain what it is capping.
+  */
+  const compileBudgetMs = runtimeFor(input.language).compileTimeoutMs;
+  const runBudgetMs = job.limits.wallClockKillMs * job.testCases.length;
   const timeoutMs = Math.min(
     RUN_SAMPLES_TIMEOUT_CEILING_MS,
-    job.limits.wallClockKillMs * job.testCases.length + 15_000,
+    compileBudgetMs + runBudgetMs + CONTAINER_SLACK_MS,
   );
   const result = await runJobAndWait(job, timeoutMs);
 

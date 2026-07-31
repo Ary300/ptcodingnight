@@ -1,4 +1,4 @@
-import { chmod, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { aggregate } from "@/lib/judge/aggregate";
@@ -315,11 +315,48 @@ async function feedInputs(options: {
 
     const next = inputByOrdinal.get(ordinal + 1);
     if (next !== undefined) {
-      await writeFile(path.join(inputDir, `${String(ordinal + 1)}.in`), next, "utf8").catch(
-        () => undefined,
-      );
+      await placeInput(inputDir, ordinal + 1, next).catch(() => undefined);
     }
   }
+}
+
+/**
+ * Place a test's input where the container is waiting for it — ATOMICALLY.
+ *
+ * ## The bug this exists to prevent
+ *
+ * `worker/batch-driver.ts` waits for the input with `[ ! -f "/in/$i.in" ]` and then immediately
+ * redirects stdin from it. `-f` becomes true the instant the file is CREATED, which with a plain
+ * `writeFile` is before any of its bytes have been written. A program that starts fast enough
+ * reads a truncated or empty stdin and produces a wrong answer from correct source.
+ *
+ * Measured: byte-identical correct C++17 returned **5 AC and 3 WA across 8 runs**, and a probe
+ * that exits 42 when it reads fewer tokens than promised returned `RE` — direct proof of a short
+ * read rather than an inference from a wrong answer. Python was 6 for 6, because interpreter
+ * startup is long enough for the write to land.
+ *
+ * **So the failure hits the FAST languages hardest — C, C++, Go — which is exactly backwards**,
+ * and it is intermittent, which is worse. A student sees a wrong answer for code that is right,
+ * resubmits, and it passes.
+ *
+ * G4 and G13 do not catch it: their fixture inputs are small, so the window between create and
+ * complete is narrow enough to usually win.
+ *
+ * ## Why rename, and why the temporary name starts with a dot
+ *
+ * `rename(2)` within one directory is atomic — the name either does not resolve or resolves to the
+ * complete file, with no state in between. Writing to `.<n>.in.partial` first keeps the partial
+ * file out of the `<n>.in` name the driver polls for; a temp name that also ended in `.in` would
+ * reintroduce the same race under a different spelling.
+ *
+ * The temporary must live in the SAME directory: rename is only atomic within a filesystem, and
+ * this directory is a bind mount.
+ */
+async function placeInput(inputDir: string, ordinal: number, contents: string): Promise<void> {
+  const finalPath = path.join(inputDir, `${String(ordinal)}.in`);
+  const partialPath = path.join(inputDir, `.${String(ordinal)}.in.partial`);
+  await writeFile(partialPath, contents, "utf8");
+  await rename(partialPath, finalPath);
 }
 
 export function outputCapFor(expectedBytes: number): number {
@@ -408,7 +445,7 @@ async function runSingleTest(options: {
     // The feeder is not running for a retry, so this test's input has to be placed directly — and
     // only this one. The sequential feed removed it when its original attempt finished.
     const retryInput = options.inputText;
-    await writeFile(path.join(inputDir, `${String(ordinal)}.in`), retryInput, "utf8");
+    await placeInput(inputDir, ordinal, retryInput);
 
     await runInContainer({
       image,
@@ -680,7 +717,9 @@ export async function judge(job: JudgeJob, images?: ImageOverrides): Promise<Jud
     // client; this was a way for it to.
     const firstInput = inputByOrdinal.get(1);
     if (firstInput !== undefined) {
-      await writeFile(path.join(inputDir, "1.in"), firstInput, "utf8");
+      // Written before the container starts, so this one was never racy — but it goes through the
+      // same door so that there is exactly one way an input is placed.
+      await placeInput(inputDir, 1, firstInput);
     }
 
     await writeFile(path.join(inputDir, "driver.sh"), BATCH_DRIVER, "utf8");
