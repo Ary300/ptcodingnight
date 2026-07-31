@@ -9,4 +9,5 @@
 
 export { Button, type ButtonProps, type ButtonVariant } from "@/components/ui/Button";
 export { Delta, type DeltaProps } from "@/components/ui/Delta";
+export { TabStrip, Crumbs, type TabStripProps, type TabStripItem, type CrumbsProps } from "@/components/ui/TabStrip";
 export { Rail, railStateForDelta, type RailProps, type RailState } from "@/components/ui/Rail";
