@@ -113,6 +113,18 @@ command -v npm  >/dev/null 2>&1 || fail "npm is not installed"
 
 [ -d node_modules ] || fail "node_modules is missing. Run: npm ci"
 [ -d node_modules/.bin ] || fail "node_modules looks incomplete. Run: npm ci"
+
+# `npm ci` is NOT enough. The Prisma client is generated, not shipped, so a fresh clone has
+# node_modules and no `.prisma/client` — and the first thing that notices is G8, which fails with
+# "Cannot find module '.prisma/client/default'" several minutes into the run.
+#
+# `prisma generate` also insists on DATABASE_URL even though it never connects: it reads the URL
+# from prisma.config.ts to pick a provider. So the variable must be SET, not reachable.
+if [ ! -d node_modules/.prisma/client ]; then
+  echo "    generating the Prisma client (npm ci does not do this)"
+  [ -n "${DATABASE_URL:-}" ] || fail "DATABASE_URL must be set for 'prisma generate' (it does not connect, but it is read)"
+  npx prisma generate >/dev/null 2>&1 || fail "prisma generate failed"
+fi
 [ -f "$COMPOSE_FILE" ] || fail "$COMPOSE_FILE not found (pass --compose <file>)"
 [ -f .env ] || fail ".env not found — this script reads POSTGRES_PASSWORD from it"
 
@@ -132,6 +144,19 @@ set -a; . ./.env; set +a
 
 BASE_URL="${BASE_URL:-https://ptcodingnight.com}"
 
+# ONE scratch root, not two.
+#
+# The deployment sets JUDGE_HOST_ROOT and the worker judges into $JUDGE_HOST_ROOT/scratch. The
+# gates run on the host and, left alone, default to ./.judge-tmp — so the configured root sat
+# empty while the gates measured a different filesystem, with different ownership, in a different
+# place. Two scratch roots and only one of them under test is precisely how a permissions bug
+# reaches production having passed every gate.
+if [ -n "${JUDGE_HOST_ROOT:-}" ]; then
+  export JUDGE_SCRATCH_ROOT="${JUDGE_SCRATCH_ROOT:-${JUDGE_HOST_ROOT}/scratch}"
+  mkdir -p "$JUDGE_SCRATCH_ROOT"
+fi
+SCRATCH_ROOT_IN_USE="${JUDGE_SCRATCH_ROOT:-$PWD/.judge-tmp}"
+
 say "Park Tudor Coding Night — host measurement"
 say "timestamp        : ${STAMP}"
 say "host             : $(uname -s) $(uname -r) $(uname -m)"
@@ -141,6 +166,7 @@ say "docker           : $(docker version --format '{{.Server.Version}}' 2>/dev/n
 say "cgroup           : $(stat -fc %T /sys/fs/cgroup 2>/dev/null || echo unknown)"
 say "commit           : $(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
 say "base url         : ${BASE_URL}"
+say "judge scratch    : ${SCRATCH_ROOT_IN_USE}"
 say "reps / churn     : ${REPS} / ${CHURN}"
 say "g8 runs          : ${G8_RUNS}"
 rule
@@ -159,6 +185,15 @@ rule
 # answers the open question about Go on this host: the check now runs the REGISTRY'S compile
 # command, so if Go compiles here, students' Go submissions compile here.
 # --------------------------------------------------------------------------------------------
+step "1a. Preflight: can the judge container write its build directory?"
+if bash scripts/check-judge-scratch.sh "$SCRATCH_ROOT_IN_USE" 2>&1 | tee "${OUT}/scratch-preflight.log"; then
+  SCRATCH_OK="PASS"
+else
+  SCRATCH_OK="FAIL"
+fi
+say "judge scratch    : ${SCRATCH_OK}"
+[ "$SCRATCH_OK" = "PASS" ] || fail "every compiled language would report CE; fix this before measuring anything"
+
 step "1. Judge images (build + verify)"
 if bash scripts/build-judge-images.sh --verify 2>&1 | tee "${OUT}/images.log"; then
   IMAGES_OK="PASS"
@@ -290,6 +325,7 @@ say "SUMMARY — paste this back"
 rule
 say "host             : ${CORES} cores, $(free -m 2>/dev/null | awk '/^Mem:/{print $2" MB"}' || echo '? MB'), docker $(docker version --format '{{.Server.Version}}' 2>/dev/null || echo '?')"
 say "commit           : $(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
+say "judge scratch    : ${SCRATCH_OK}"
 say "judge images     : ${IMAGES_OK}"
 say "startup budgets  : ${BUDGETS_OK}"
 say "G4 / G5 / G13    : ${G4_OK} / ${G5_OK} / ${G13_OK}"

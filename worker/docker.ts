@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { readdir, stat } from "node:fs/promises";
+import { readdir, rm, stat } from "node:fs/promises";
 import path from "node:path";
 
 import { clampCpus } from "./host";
@@ -511,6 +511,44 @@ async function exceedsWritableBudget(
       if (total > limits.maxBytes) return true;
     }
     return false;
+  } catch {
+    return false;
+  }
+}
+
+
+/**
+ * Delete a host directory tree from a throwaway container running as root.
+ *
+ * The escape hatch for scratch the worker cannot remove itself: a judge container runs as uid
+ * 65534 and creates its own subdirectories inside the writable mounts, leaving directories the
+ * worker has no write permission on. The daemon that created them can remove them.
+ *
+ * Deliberately narrow. It mounts ONE directory, deletes that directory's contents, and takes no
+ * argument that a submission can influence — the path is composed by the worker from its own
+ * scratch root and a `mkdtemp` suffix.
+ */
+export async function removeAsRoot(directory: string): Promise<boolean> {
+  const { code } = await runDocker([
+    "run",
+    "--rm",
+    "--network=none",
+    "--user=0:0",
+    // The tree is mounted one level in, so the container deletes CONTENTS and the worker removes
+    // the now-empty directory itself. A container that could unlink its own mount point would be
+    // a stranger thing to reason about.
+    "-v",
+    `${directory}:/scratch`,
+    "alpine:3",
+    "sh",
+    "-c",
+    "rm -rf /scratch/* /scratch/.[!.]* 2>/dev/null; exit 0",
+  ]);
+  if (code !== 0) return false;
+
+  try {
+    await rm(directory, { recursive: true, force: true });
+    return true;
   } catch {
     return false;
   }

@@ -125,6 +125,20 @@ else
 fi
 
 # --- Gates -----------------------------------------------------------------
+# Judge scratch must be writable by the container uid BEFORE any gate that compiles anything.
+#
+# A build directory the container cannot write reports CE on correct code for every compiled
+# language and passes for the interpreted ones — a language-shaped symptom with a permissions
+# cause. G4 would fail with five red fixtures and no explanation; this fails first, and says why.
+if [ "$DOCKER_UP" = "1" ]; then
+  echo
+  echo "=== preflight: judge scratch ==="
+  if ! bash scripts/check-judge-scratch.sh; then
+    echo "FAIL  judge scratch is not writable by the container uid; not running the gates" >&2
+    exit 1
+  fi
+fi
+
 run_gate G0 "build          " "npm run build"
 run_gate G1 "typecheck      " "npm run typecheck"
 run_gate G2 "lint           " "npm run lint"
