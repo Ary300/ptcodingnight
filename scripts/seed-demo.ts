@@ -18,11 +18,22 @@
  * including the one that cost a student a point in the spreadsheet this replaced
  * (docs/SCORING.md §2.1). Different sizes make the divisor visible on the screen.
  *
- * **No divisions, and no problem sets.** Both are real features with real coverage, and both
- * SCOPE what a participant may see: a player with no division sees no divisioned problem, and a
- * player is assigned exactly one set. On a public demo, a visitor who joins with the code has
- * neither, so either feature turns "join the demo" into "see an empty list". The demo contest is
- * therefore flat, and the scoping features are exercised by G7 instead.
+ * **Two problem sets and two group problems. No divisions.**
+ *
+ * Sets are the format (PRD §6.2) and they are what the team board's set columns are built from —
+ * a flat contest degrades that grid to rank/name/score and shows none of the structure a visitor
+ * came to look at. Each seeded student is assigned a set and sees four problems: their own two,
+ * plus the two group problems everyone shares.
+ *
+ * This used to say sets were off because they SCOPE what a participant may see, and a visitor
+ * joining with the code has none — turning "join the demo" into "see an empty list". That
+ * reasoning was sound and the conclusion was wrong, because `allowReadingUnassignedSets` already
+ * answers it: `canReadSet` consults that flag on the read path AND the submit path, so an
+ * unassigned visitor can still open and submit everything. Sets scope the seeded students; they
+ * scope nobody out.
+ *
+ * Divisions stay off. They have no such escape hatch, and a divisionless visitor really would
+ * see nothing.
  *
  * **Submissions carry a verdict but no judge run.** These rows are written directly rather than
  * pushed through the queue: seeding must not depend on Docker, and a demo that takes twenty
@@ -75,6 +86,28 @@ const PROBLEM_COUNT = 6;
 
 /** Points per problem. Flat, because the demo is about the team formula rather than weighting. */
 const BASE_POINTS = 100;
+
+/**
+ * How the six problems divide: two per set, two shared by everyone.
+ *
+ * Module scope because it decides TWO things in two different places, and they must agree:
+ *
+ *   - `ContestProblem.setId` — which set a problem belongs to, `null` meaning every player sees it.
+ *   - `Problem.round` — whether the scoring engine counts it as GROUP points.
+ *
+ * Those are not the same field and getting only the first right is the mistake this shape exists
+ * to prevent: a problem with `setId: null` is visible to everyone and still scores to the
+ * individual pool, so the board's Group column stays empty while the problems look shared. Group
+ * detection reads `Problem.round`, and nothing else.
+ */
+const LAYOUT: readonly { readonly set: "A" | "B" | null; readonly slot: string }[] = [
+  { set: "A", slot: "A1" },
+  { set: "A", slot: "A2" },
+  { set: "B", slot: "B1" },
+  { set: "B", slot: "B2" },
+  { set: null, slot: "G1" },
+  { set: null, slot: "G2" },
+];
 
 interface ProblemManifest {
   readonly slug: string;
@@ -195,7 +228,7 @@ async function main(): Promise<void> {
     const problemIds = new Map<string, string>();
     const testCounts = new Map<string, number>();
 
-    for (const manifest of manifests) {
+    for (const [index, manifest] of manifests.entries()) {
       const statementPath = path.join(CONTENT, manifest.slug, "statement.md");
       const statement = existsSync(statementPath) ? readFileSync(statementPath, "utf8") : "";
       const cases = testCasesFor(manifest.slug, manifest.sampleCount, env.TEST_DATA_ROOT);
@@ -226,7 +259,7 @@ async function main(): Promise<void> {
           difficulty: manifest.difficulty,
           state: "PUBLISHED",
           type: "ALGORITHM",
-          round: "INDIVIDUAL",
+          round: LAYOUT[index]?.set === null ? "GROUP" : "INDIVIDUAL",
           timeLimitMs: manifest.timeLimitMs,
           memoryLimitMb: manifest.memoryLimitMb,
           allowedLanguages: [...manifest.allowedLanguages],
@@ -238,6 +271,10 @@ async function main(): Promise<void> {
           statementMd: statement,
           difficulty: manifest.difficulty,
           state: "PUBLISHED",
+          // Set on UPDATE as well as on create. Without this a re-seed leaves a row that was
+          // INDIVIDUAL the first time exactly as it was, and the Group column is empty on every
+          // run after the first — with the seed reporting success.
+          round: LAYOUT[index]?.set === null ? "GROUP" : "INDIVIDUAL",
           timeLimitMs: manifest.timeLimitMs,
           memoryLimitMb: manifest.memoryLimitMb,
           allowedLanguages: [...manifest.allowedLanguages],
@@ -254,7 +291,19 @@ async function main(): Promise<void> {
     // --- the contest -------------------------------------------------------
     // Deleted by join code and rebuilt. Cascades take its participants, teams, submissions and
     // ContestProblem rows with it; the PROBLEMS survive, because they are shared with the bank.
-    await prisma.contest.deleteMany({ where: { joinCode: JOIN_CODE } });
+    /*
+      Deleted by NAME, not by join code.
+      
+      The join code is generated per run unless SEED_JOIN_CODE pins it, so keying the cleanup on
+      it made "idempotent" false in the normal case: every run left the previous demo contest
+      behind. Six had accumulated locally before anyone noticed, because nothing surfaces a stale
+      contest — until now. Signing in enrols a competitor into the most recent enrollable contest
+      (lib/contest/enrolment.ts), so a pile of demo contests is not clutter any more, it is a
+      student landing in the wrong one.
+      
+      Name is the right key because the name is what identifies THIS seed's contest across runs.
+    */
+    await prisma.contest.deleteMany({ where: { name: CONTEST_NAME } });
 
     const now = new Date();
     const startsAt = new Date(now.getTime() - 45 * 60_000);
@@ -279,10 +328,38 @@ async function main(): Promise<void> {
          */
         teamFormationClosesAt: endsAt,
         state: "RUNNING",
-        // No divisions and no problem sets — see the header. Both would scope a joining
-        // visitor out of every problem on the board.
-        setSelection: "PLAYER_CHOOSES",
+        /**
+         * Two problem sets, and no divisions.
+         *
+         * Sets are the format (PRD §6.2) and the team board's set columns are the whole point of
+         * that grid — without them the board degrades to rank/name/score and shows none of the
+         * structure a visitor came to see. Two sets and two group problems is the smallest
+         * arrangement that demonstrates it: every team ends up with players in both columns.
+         *
+         * `allowReadingUnassignedSets` is what makes this safe for a DEMO specifically. It is the
+         * flag `canReadSet` consults on BOTH the read path and the submit path, so a visitor who
+         * joins with the code and has no set yet can still open and submit every problem. The
+         * seeded students are assigned; a passer-by is not scoped out of anything.
+         *
+         * A real contest leaves that flag false, which is its default — reading another set is a
+         * fairness problem and scoring on one is a correctness problem.
+         */
+        setSelection: "RANDOM_ASSIGNED",
+        /*
+          A fixed seed, so the demo assigns sets and does so REPRODUCIBLY.
+
+          `ensureSetAssigned` is a no-op unless the contest is RANDOM_ASSIGNED and carries a seed —
+          so under the previous PLAYER_CHOOSES a visitor who joined a team got no set at all and
+          never appeared in a set column. The grid worked for seeded students and silently did not
+          work for anyone who actually used the demo.
+
+          The seed is pinned rather than generated because assignment must be re-derivable: an
+          organizer settles "why am I in set B" by recomputing it, which is the whole reason the
+          column exists on the Contest row.
+        */
+        setAssignmentSeed: "demo-set-seed-2026",
         allowReadingUnassignedSets: true,
+        problemSets: { create: [{ label: "A" }, { label: "B" }] },
         // Fixed join codes, unlike the CONTEST code above which is generated. These are not a
         // credential — a team code only puts you on a team an organizer can move you off — and a
         // demo whose team codes change on every seed is one nobody can write instructions for.
@@ -293,26 +370,32 @@ async function main(): Promise<void> {
           ],
         },
       },
-      select: { id: true, teams: { select: { id: true, name: true } } },
+      select: {
+        id: true,
+        teams: { select: { id: true, name: true } },
+        problemSets: { select: { id: true, label: true } },
+      },
     });
 
     const teamId = new Map(contest.teams.map((team) => [team.name, team.id]));
+    const setId = new Map(contest.problemSets.map((set) => [set.label, set.id]));
 
     const contestProblems = await Promise.all(
-      [...problemIds.values()].map((problemId, index) =>
-        prisma.contestProblem.create({
+      [...problemIds.values()].map((problemId, index) => {
+        const layout = LAYOUT[index];
+        return prisma.contestProblem.create({
           data: {
             contestId: contest.id,
             problemId,
-            setId: null,
+            setId: layout?.set === undefined || layout.set === null ? null : (setId.get(layout.set) ?? null),
             divisionId: null,
-            slotLabel: String.fromCharCode(65 + index),
+            slotLabel: layout?.slot ?? String.fromCharCode(65 + index),
             basePoints: BASE_POINTS,
             unlockAt: null,
           },
           select: { id: true, problem: { select: { slug: true } } },
-        }),
-      ),
+        });
+      }),
     );
 
     const contestProblemId = new Map(
@@ -321,12 +404,21 @@ async function main(): Promise<void> {
 
     // --- rosters -----------------------------------------------------------
     // THREE and TWO. The team score is a mean, so equal sizes would hide every divisor bug.
-    const roster: readonly { name: string; team: string }[] = [
-      { name: "Ada", team: "Panthers" },
-      { name: "Grace", team: "Panthers" },
-      { name: "Alan", team: "Panthers" },
-      { name: "Katherine", team: "Cubs" },
-      { name: "Dorothy", team: "Cubs" },
+    /**
+     * Sets are mixed WITHIN each team on purpose.
+     *
+     * The board's set columns only demonstrate anything if both teams have somebody in both, and
+     * a roster where one team is all-A and the other all-B produces a grid full of em-dashes that
+     * looks broken rather than sparse. Panthers field two in A and one in B; Cubs one of each —
+     * which also puts two names in a single cell, so the "more than one player in a set" case is
+     * visible rather than theoretical.
+     */
+    const roster: readonly { name: string; team: string; set: "A" | "B" }[] = [
+      { name: "Ada", team: "Panthers", set: "A" },
+      { name: "Grace", team: "Panthers", set: "B" },
+      { name: "Alan", team: "Panthers", set: "A" },
+      { name: "Katherine", team: "Cubs", set: "B" },
+      { name: "Dorothy", team: "Cubs", set: "A" },
     ];
 
     const participantId = new Map<string, string>();
@@ -337,7 +429,7 @@ async function main(): Promise<void> {
           displayName: member.name,
           teamId: teamId.get(member.team) ?? null,
           divisionId: null,
-          chosenSetId: null,
+          chosenSetId: setId.get(member.set) ?? null,
           joinedAt: new Date(startsAt.getTime() + index * 30_000),
         },
         select: { id: true },
@@ -349,20 +441,36 @@ async function main(): Promise<void> {
     // Enough that the board is populated and the two teams differ, with a WA in it so the
     // penalty column is not uniformly zero and the rank order is not simply the roster order.
     const slugs = [...problemIds.keys()];
+
+    /**
+     * Every entry is on the submitter's OWN set, or on a group problem.
+     *
+     * Not tidiness — coherence. `canReadSet` guards the submit path, so a student submitting to
+     * another set's problem is something the API would refuse. Seeding it anyway writes rows the
+     * running system could never have produced, and a demo whose data contradicts its own rules
+     * is worse than a demo with less data: the first person to notice cannot tell whether they
+     * have found a seeding shortcut or a hole in the set gate.
+     *
+     * Indices follow LAYOUT above: 0,1 are set A; 2,3 are set B; 4,5 are group.
+     */
     const history: readonly { who: string; slugIndex: number; verdict: "AC" | "WA" }[] = [
+      // Ada (A) — a WA before the AC, so penalty minutes are not uniformly zero.
       { who: "Ada", slugIndex: 0, verdict: "AC" },
+      { who: "Ada", slugIndex: 1, verdict: "WA" },
       { who: "Ada", slugIndex: 1, verdict: "AC" },
-      { who: "Ada", slugIndex: 2, verdict: "WA" },
-      { who: "Ada", slugIndex: 2, verdict: "AC" },
-      { who: "Grace", slugIndex: 0, verdict: "AC" },
+      // Grace (B)
+      { who: "Grace", slugIndex: 2, verdict: "AC" },
       { who: "Grace", slugIndex: 3, verdict: "AC" },
-      { who: "Alan", slugIndex: 1, verdict: "WA" },
+      // Alan (A) — plus a group problem, which scores for the TEAM rather than the player.
+      { who: "Alan", slugIndex: 0, verdict: "AC" },
       { who: "Alan", slugIndex: 4, verdict: "AC" },
-      { who: "Katherine", slugIndex: 0, verdict: "AC" },
-      { who: "Katherine", slugIndex: 1, verdict: "AC" },
+      // Katherine (B)
       { who: "Katherine", slugIndex: 2, verdict: "AC" },
-      { who: "Dorothy", slugIndex: 3, verdict: "AC" },
-      { who: "Dorothy", slugIndex: 4, verdict: "WA" },
+      { who: "Katherine", slugIndex: 3, verdict: "AC" },
+      // Dorothy (A) — and the other group problem, so both teams have one.
+      { who: "Dorothy", slugIndex: 1, verdict: "AC" },
+      { who: "Dorothy", slugIndex: 5, verdict: "WA" },
+      { who: "Dorothy", slugIndex: 5, verdict: "AC" },
     ];
 
     let minute = 4;
