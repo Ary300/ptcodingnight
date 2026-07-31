@@ -2,7 +2,6 @@ import type { NextResponse } from "next/server";
 
 import { prisma } from "@/lib/db";
 import { NO_STORE, handle, jsonOk } from "@/lib/contest/http";
-import { JOIN_CLAIM_COOKIE, joinClaimCookieOptions } from "@/lib/contest/join-claim";
 import {
   SESSION_COOKIE,
   clearedSessionCookieOptions,
@@ -92,20 +91,6 @@ export async function DELETE(request: Request): Promise<NextResponse> {
     const response = jsonOk({ signedIn: false as const }, NO_STORE);
     response.cookies.set(SESSION_COOKIE, "", clearedSessionCookieOptions());
 
-    /**
-     * The join claim goes too, and this is the only place it is cleared.
-     *
-     * It exists to make re-joining idempotent (T5), which means it deliberately outlives the
-     * session — a student whose cookie was dropped has to be able to get back to *their own*
-     * participant. But a shared classroom laptop is a real case: one student finishes, the next
-     * sits down. Sign-out is the explicit "I am done with this browser" action, so it is the
-     * right and the only place to release the claim.
-     *
-     * This does mean sign-out-then-join is a way to draw a second set. It is a deliberate trade
-     * against locking the next student out of a shared machine, it is one more audit row rather
-     * than none, and the residual is recorded in docs/TODO.md T5.
-     */
-    response.cookies.set(JOIN_CLAIM_COOKIE, "", { ...joinClaimCookieOptions(), maxAge: 0 });
     return response;
   });
 }

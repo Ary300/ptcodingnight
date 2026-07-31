@@ -11,13 +11,40 @@ import { STUB_CONTEST_NAME, STUB_PROBLEMS } from "@/components/admin/stub-data";
  * Deliberately not a dashboard of charts. It answers the three questions an organiser has
  * on the week of the event: is the line-up ready, what is still DRAFT, and which problems
  * are we about to repeat that nobody has ever scored on.
+ *
+ * ## The section list is the nav, and it was missing two of the six
+ *
+ * Teams and Side activities were absent — the two screens that write SCORING INPUTS. Team size is
+ * the divisor in every team score and side-activity points are added to it, so the only two ways
+ * to change a team's score without a submission were the two an organizer could not find from
+ * here. They are first now, and grouped as such.
+ *
+ * ## The counts on this page come from fixtures, and it says so
+ *
+ * Not a design choice — the problem bank has no read API yet (docs/TODO.md). The banner is not
+ * decoration: an organizer who reads "3 still in DRAFT" off invented data and concludes the
+ * line-up is ready has been actively misled, which is worse than an empty screen.
  */
+
+/** The two screens that change a team's score without a submission passing through the judge. */
+const SCORING_SECTIONS = [
+  {
+    href: "/admin/teams",
+    title: "Teams",
+    body: "Build the roster. Team size is the divisor in every team score, so a move here is a score change — and is audited as one.",
+  },
+  {
+    href: "/admin/side-activities",
+    title: "Side activities",
+    body: "The metal puzzle, train tracks, Connections. The only points with no submission behind them.",
+  },
+] as const;
 
 const SECTIONS = [
   {
     href: "/admin/contest",
     title: "Contest builder",
-    body: "Name, window, divisions, scoring preset, join code, freeze time.",
+    body: "Name, window, divisions, scoring preset, freeze time.",
   },
   {
     href: "/admin/problems",
@@ -32,7 +59,7 @@ const SECTIONS = [
   {
     href: "/admin/awards",
     title: "Awards",
-    body: "Final standings per division, podium, CSV and XLSX export.",
+    body: "Final standings, podium, CSV and XLSX export.",
   },
 ] as const;
 
@@ -44,66 +71,108 @@ export default function AdminOverviewPage() {
   return (
     <div className="flex flex-col gap-6">
       <header>
-        <h1 style={{ fontFamily: "var(--font-display)", fontSize: "var(--text-xl)" }}>
+        <h1 className="font-display font-bold" style={{ fontSize: "var(--text-xl)" }}>
           {STUB_CONTEST_NAME}
         </h1>
-        <p className="mt-1 max-w-[70ch] opacity-75" style={{ fontSize: "var(--text-sm)" }}>
-          Everything on these screens is rendered from fixtures. The admin API routes belong
-          to another agent&rsquo;s partition and are not in this worktree yet.
+        <p className="mt-1 max-w-[70ch] text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
+          Everything an organizer touches, in the order the night needs it.
         </p>
       </header>
 
-      <div className="grid gap-4 sm:grid-cols-3">
-        <Figure value={ready.length} label="problems cleared for a live contest" />
-        <Figure value={drafts.length} label="still in DRAFT" />
-        <Figure value={neverScored.length} label="were used and scored nothing" />
+      {/* The scoring-input screens, set apart and above the rest. */}
+      <div className="grid gap-4 sm:grid-cols-2">
+        {SCORING_SECTIONS.map((section) => (
+          <Link
+            key={section.href}
+            href={section.href}
+            className="rounded border border-ink/15 border-l-2 border-l-panther bg-paper p-5 hover:border-ink/35"
+          >
+            <h2 className="font-display font-bold" style={{ fontSize: "var(--text-md)" }}>
+              {section.title}
+            </h2>
+            <p className="mt-1 text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
+              {section.body}
+            </p>
+          </Link>
+        ))}
       </div>
-
-      {neverScored.length > 0 && (
-        <Panel
-          title="Do not repeat these by accident"
-          description="Used in a past contest, zero points from anybody. The single most useful thing the old spreadsheet remembered."
-        >
-          <ul className="flex flex-col gap-2" style={{ fontSize: "var(--text-sm)" }}>
-            {neverScored.map((problem) => (
-              <li key={problem.problemId} className="flex flex-wrap items-center gap-3 border-b border-ink/10 pb-2">
-                <Link href={`/admin/problems/${problem.slug}`} className="underline underline-offset-4">
-                  {problem.title}
-                </Link>
-                <HistoryFlag status={problem.pastStatus} />
-              </li>
-            ))}
-          </ul>
-        </Panel>
-      )}
 
       <div className="grid gap-4 sm:grid-cols-2">
         {SECTIONS.map((section) => (
           <Link
             key={section.href}
             href={section.href}
-            className="rounded border border-ink/15 p-5 hover:border-panther"
+            className="rounded border border-ink/15 bg-paper p-5 hover:border-panther"
           >
-            <h2 style={{ fontFamily: "var(--font-display)", fontSize: "var(--text-md)" }}>
+            <h2 className="font-display font-bold" style={{ fontSize: "var(--text-md)" }}>
               {section.title}
             </h2>
-            <p className="mt-1 opacity-75" style={{ fontSize: "var(--text-sm)" }}>
+            <p className="mt-1 text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
               {section.body}
             </p>
           </Link>
         ))}
       </div>
+
+      <section aria-label="Problem bank readiness" className="flex flex-col gap-4">
+        <h2 className="font-display font-bold" style={{ fontSize: "var(--text-md)" }}>
+          Problem bank
+        </h2>
+        {/*
+          Announced, not whispered. These three numbers look exactly like live counts and are not,
+          and "is the line-up ready" is precisely the question they appear to answer.
+        */}
+        <p
+          role="status"
+          className="rounded border border-ink/20 bg-paper px-4 py-2.5 text-ink/75"
+          style={{ fontSize: "var(--text-xs)" }}
+        >
+          <span className="font-semibold text-panther">Fixture data.</span> The problem bank has no
+          read API yet, so these three counts describe the sample bank rather than your contest.
+          Do not clear a line-up from this screen.
+        </p>
+
+        <div className="grid gap-4 sm:grid-cols-3">
+          <Figure value={ready.length} label="problems cleared for a live contest" />
+          <Figure value={drafts.length} label="still in DRAFT" />
+          <Figure value={neverScored.length} label="were used and scored nothing" />
+        </div>
+
+        {neverScored.length > 0 && (
+          <Panel
+            title="Do not repeat these by accident"
+            description="Used in a past contest, zero points from anybody. The single most useful thing the old spreadsheet remembered."
+          >
+            <ul className="flex flex-col gap-2" style={{ fontSize: "var(--text-sm)" }}>
+              {neverScored.map((problem) => (
+                <li
+                  key={problem.problemId}
+                  className="flex flex-wrap items-center gap-3 border-b border-ink/10 pb-2"
+                >
+                  <Link
+                    href={`/admin/problems/${problem.slug}`}
+                    className="underline underline-offset-4"
+                  >
+                    {problem.title}
+                  </Link>
+                  <HistoryFlag status={problem.pastStatus} />
+                </li>
+              ))}
+            </ul>
+          </Panel>
+        )}
+      </section>
     </div>
   );
 }
 
 function Figure({ value, label }: { value: number; label: string }) {
   return (
-    <div className="rounded border border-ink/15 p-5">
+    <div className="rounded border border-ink/15 bg-paper p-5">
       <div className="numeric leading-none font-semibold" style={{ fontSize: "var(--text-2xl)" }}>
         {value}
       </div>
-      <div className="mt-2 opacity-75" style={{ fontSize: "var(--text-xs)" }}>
+      <div className="mt-2 text-ink/70" style={{ fontSize: "var(--text-xs)" }}>
         {label}
       </div>
     </div>

@@ -256,9 +256,14 @@ export function oauthConfig(
 
   if (clientId === undefined || clientSecret === undefined) return null;
 
-  // Defaulting the origin rather than requiring it: on the contest LAN the app is reached at a
-  // fixed host:port, and forcing PUBLIC_ORIGIN into .env for local development would be one more
-  // thing to get wrong before anything works.
+  // Defaulted rather than required, and defaulted to **http** on purpose.
+  //
+  // This is the `redirect_uri` handed to Google and GitHub, so it has to match what is registered
+  // with them character for character. In production the schema above refuses to boot without a
+  // PUBLIC_ORIGIN and refuses one that is not https, so the only case reaching this line is local
+  // development — where the dev server speaks plain http. Guessing https here is what sends a
+  // developer to `https://localhost:3000`, which nothing is listening on, and the browser reports
+  // it as "Safari can't open the page" with no hint that OAuth was involved.
   const origin = env.PUBLIC_ORIGIN ?? "http://localhost:3000";
 
   return {

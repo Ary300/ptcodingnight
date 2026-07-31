@@ -1,5 +1,4 @@
 import type {
-  JoinRequest,
   ProblemDetail,
   ProblemSummary,
   StandingsResponse,
@@ -7,7 +6,7 @@ import type {
   SubmitRequest,
 } from "@/lib/schemas/api";
 
-import type { HintBalance, JoinResponse, RunSamplesResponse } from "./contract";
+import type { HintBalance, RunSamplesResponse } from "./contract";
 
 /**
  * The one seam between the competitor UI and the server.
@@ -24,8 +23,6 @@ export interface ContestApi {
   /** A human label for the active backend, rendered in the UI so a stub is never mistaken
    *  for the real thing. */
   readonly label: string;
-
-  join(request: JoinRequest): Promise<JoinResponse>;
 
   listProblems(): Promise<ProblemSummary[]>;
   getProblem(slug: string): Promise<ProblemDetail>;

@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
 import { auditPage } from "./helpers/audit";
-import { joinContest } from "./helpers/journey";
+import { joinContest, signInAsOrganizer } from "./helpers/journey";
 
 /**
  * G9 — axe on every team-mode surface.
@@ -170,6 +170,7 @@ test.describe("axe-core: team-mode screens", () => {
   });
 
   test("admin side-activity entry", async ({ page }) => {
+    await signInAsOrganizer(page);
     // Every control here is a labelled form field, which is exactly the shape axe is best at
     // catching mistakes in — and an unlabelled points field on the one screen that awards
     // unverifiable points is a bad place to have one.
@@ -180,8 +181,13 @@ test.describe("axe-core: team-mode screens", () => {
   });
 
   test("admin side-activity entry with no contest pinned", async ({ page }) => {
+    await signInAsOrganizer(page);
     await page.goto("/admin/side-activities");
     await expect(page.getByRole("heading", { name: /side activities/i })).toBeVisible();
+
+    // The contest PICKER is what renders here now, and it is a list of links an organizer has to
+    // be able to operate. It replaced a paragraph telling them to edit the URL by hand.
+    await expect(page.getByRole("region", { name: /choose a contest/i })).toBeVisible();
 
     await auditPage(page, "/admin/side-activities (no contest)");
   });

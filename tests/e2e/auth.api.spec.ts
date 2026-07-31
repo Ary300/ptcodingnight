@@ -174,9 +174,11 @@ test.describe("OAuth start", () => {
     const api = new ContestApi(await playwright.request.newContext(), seeded.contestId);
     const response = await api.oauthStartRaw("google");
 
-    if (response.status() === 302 || response.status() === 307) {
-      const location = response.headers().location ?? "";
-      expect(location).toContain("accounts.google.com");
+    // Configured or not, the answer is a 302. What differs is WHERE to.
+    expect([302, 307]).toContain(response.status());
+    const location = response.headers().location ?? "";
+
+    if (location.includes("accounts.google.com")) {
       // Without state, an attacker can complete a flow in a victim's browser and bind their own
       // provider account to the victim's session.
       expect(location).toContain("state=");
@@ -188,17 +190,60 @@ test.describe("OAuth start", () => {
       return;
     }
 
-    // Not configured on this host is a legitimate outcome and must be reported as an operator
-    // problem, not as a failed sign-in the student caused.
-    const envelope = await readEnvelope(response);
-    expect(envelope.status).toBeGreaterThanOrEqual(400);
-    expect((envelope.message ?? "").toLowerCase()).toContain("not configured");
+    // Not configured on this host is a legitimate outcome, and is still a redirect — this URL is
+    // the href of a button and a browser is doing the navigating. See the spec below.
+    expect(location).toContain("/sign-in?error=");
+    expect(decodeURIComponent(location).toLowerCase()).toContain("not set up on this server");
   });
 
-  test("rejects an unknown provider", async ({ playwright }) => {
+  test("a provider failure lands on a PAGE, never on a JSON envelope", async ({ playwright }) => {
+    /*
+      The bug this pins: `/api/auth/{provider}` lives under `/api`, so it was written like an API
+      route and ran through `handle()`. It is not one — it is what a student's browser navigates
+      to when they press "Continue with Google". Every non-redirect exit painted
+
+          {"ok":false,"error":{"code":"FORBIDDEN","message":"…"}}
+
+      across the whole window: nothing to click, nothing that names the other provider, and a
+      student with no way to tell "the server has no Google set up" from "you are not allowed".
+
+      Asserted for BOTH providers and without following redirects, because the failure is a status
+      code and a `location`, and a client that follows them cannot see either.
+    */
+    for (const provider of ["google", "github"] as const) {
+      const api = new ContestApi(await playwright.request.newContext(), seeded.contestId);
+      const response = await api.oauthStartRaw(provider);
+
+      expect(
+        [302, 307],
+        `${provider} answered ${response.status()} — a browser navigation must redirect`,
+      ).toContain(response.status());
+
+      const body = await response.text();
+      expect(body, `${provider} put an API envelope in front of a student`).not.toContain('"ok"');
+      expect(body).not.toContain('"error"');
+
+      // If it is our redirect rather than the provider's, it must carry a reason the page renders.
+      const location = response.headers().location ?? "";
+      if (location.startsWith("/sign-in")) {
+        expect(location).toContain("error=");
+      }
+    }
+  });
+
+  test("rejects an unknown provider without leaving the site", async ({ playwright }) => {
     const context = await playwright.request.newContext();
     const response = await context.get("/api/auth/facebook", { maxRedirects: 0 });
-    expect(response.status()).toBeGreaterThanOrEqual(400);
+
+    // Refused, not 4xx. The whole route redirects now, so the assertion that matters is where to:
+    // an unknown provider must land back on our own sign-in page and must never produce an
+    // outbound redirect, which is how a path parameter turns into an open redirect.
+    expect([302, 307, 404]).toContain(response.status());
+    const location = response.headers().location ?? "";
+    if (location !== "") {
+      expect(location, "an unknown provider sent the browser off-site").toMatch(/^\/sign-in/);
+    }
+    expect(await response.text()).not.toContain("ptcn_oauth_state");
   });
 });
 

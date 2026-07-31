@@ -144,3 +144,29 @@ export async function openProblem(page: Page): Promise<void> {
   await page.waitForURL(/\/contest\/[^/]+$/);
   await expect(page.getByRole("textbox", { name: /^Solution for / })).toBeVisible();
 }
+
+/**
+ * Put an ORGANIZER session in the browser, for the admin surfaces G9 audits.
+ *
+ * Needed because `/admin/**` is gated in the layout now, not only in its API routes: an
+ * unauthenticated visit redirects to `/sign-in`, so an audit that just navigated to an admin URL
+ * was auditing the sign-in page and reporting it as the admin one.
+ *
+ * Goes through the real passcode route rather than minting a session directly. It is one request,
+ * and it means a change to how organizers authenticate breaks this loudly instead of leaving G9
+ * auditing a screen no organizer can reach.
+ */
+export async function signInAsOrganizer(page: Page): Promise<void> {
+  const passcode = process.env.ADMIN_PASSCODE ?? "";
+  if (passcode === "") {
+    throw new Error(
+      "ADMIN_PASSCODE is required for the admin a11y specs. Set it in .env — a missing value is a " +
+        "hard failure here rather than a skip, because a skipped admin audit reads as a passing one.",
+    );
+  }
+
+  const response = await page.request.post("/api/admin/session", {
+    data: { passcode },
+  });
+  expect(response.status(), await response.text()).toBeLessThan(300);
+}

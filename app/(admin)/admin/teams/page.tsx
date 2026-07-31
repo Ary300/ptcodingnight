@@ -1,3 +1,4 @@
+import { ContestPicker } from "@/components/admin/ContestPicker";
 import { RosterManager } from "@/components/admin/RosterManager";
 
 /**
@@ -6,6 +7,10 @@ import { RosterManager } from "@/components/admin/RosterManager";
  * Contest pinned by query string, exactly as `/admin/side-activities` is: there is no implicit
  * "current contest" anywhere in this application, because that is hidden state which breaks the
  * moment two contests exist or somebody opens last year's board.
+ *
+ * With no contest in the URL this used to print "Add ?contest=<id> to this URL" — an id an
+ * organizer could only get out of `psql`, which made the roster screen unreachable by clicking.
+ * It now renders the picker. The rule did not need an exception; it needed a list.
  */
 export default async function AdminTeamsPage({
   searchParams,
@@ -27,9 +32,7 @@ export default async function AdminTeamsPage({
       </header>
 
       {contestId === null ? (
-        <p role="status" className="text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
-          Add <code>?contest=&lt;id&gt;</code> to this URL to manage a contest&rsquo;s teams.
-        </p>
+        <ContestPicker basePath="/admin/teams" purpose="managing teams" />
       ) : (
         <RosterManager contestId={contestId} />
       )}

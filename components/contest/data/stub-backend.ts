@@ -1,5 +1,4 @@
 import type {
-  JoinRequest,
   ProblemDetail,
   ProblemSummary,
   PublicTestResult,
@@ -10,7 +9,7 @@ import type {
 import type { Verdict } from "@/lib/schemas/judge";
 
 import { ContestApiError, type ContestApi } from "./contest-api";
-import type { HintBalance, JoinResponse, RunSamplesResponse } from "./contract";
+import type { HintBalance, RunSamplesResponse } from "./contract";
 
 /**
  * ============================ STUB BACKEND — NOT REAL ============================
@@ -362,26 +361,6 @@ const STUB_STANDINGS: StandingsResponse = {
 
 export const stubContestApi: ContestApi = {
   label: "stub data",
-
-  async join(request: JoinRequest): Promise<JoinResponse> {
-    await sleep(STUB_LATENCY_MS);
-    if (request.joinCode.trim().toUpperCase() === "WRONG") {
-      throw new ContestApiError("INVALID_JOIN_CODE", "That join code is not right. Check the board.");
-    }
-    return {
-      participantId: "stub-participant",
-      contestId: "stub-contest",
-      displayName: request.displayName,
-      divisionId: request.divisionId ?? "div-intermediate",
-      chosenSetId: "stub-set-a",
-      chosenSetLabel: "A",
-      // The stub has no cookie jar, so every stub join is a first join.
-      rejoined: false,
-      // The stub deliberately reports a team, so the "you have no team" path is exercised by
-      // pointing at the real backend rather than being the default everyone sees.
-      needsTeam: false,
-    };
-  },
 
   async listProblems(): Promise<ProblemSummary[]> {
     await sleep(STUB_LATENCY_MS);

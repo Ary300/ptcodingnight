@@ -60,7 +60,6 @@ function isApiEnvelope(body: string): boolean {
  * "does a handler live here", not "does this row exist", so a 404 envelope is a pass.
  */
 const PROBES: { name: string; probe: string; method: "GET" | "POST" }[] = [
-  { name: "join", probe: API_ROUTES.join, method: "POST" },
   { name: "problems", probe: API_ROUTES.problems("no-such-contest"), method: "GET" },
   { name: "problem", probe: API_ROUTES.problem("no-such-contest", "no-such-slug"), method: "GET" },
   { name: "standings", probe: API_ROUTES.standings("no-such-contest"), method: "GET" },

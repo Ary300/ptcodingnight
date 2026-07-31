@@ -38,6 +38,43 @@ export function ProblemStatePill({ state }: { state: ProblemState }) {
   );
 }
 
+/**
+ * A contest's lifecycle state, for lists where several contests sit next to each other.
+ *
+ * `RUNNING` and `FROZEN` are the emphatic ones, and for opposite reasons: one means students are
+ * submitting right now, the other means the public board has stopped moving while the admin views
+ * have not. Both are states where an organizer editing a roster is editing a live score, so they
+ * are the two an organizer must not mistake for a contest that has finished.
+ *
+ * The state's own word carries the meaning — the border is a second channel, never the only one.
+ */
+const CONTEST_STATE_HINT: Record<string, string> = {
+  DRAFT: "Not published. Students cannot see it.",
+  SCHEDULED: "Published, not started.",
+  RUNNING: "Live. Students are submitting now.",
+  FROZEN: "Live, and the public board has stopped updating.",
+  ENDED: "Over. Standings are final.",
+  ARCHIVED: "Retired.",
+};
+
+export function ContestStatePill({ state }: { state: string }) {
+  const emphatic = state === "RUNNING" || state === "FROZEN";
+  const hint = CONTEST_STATE_HINT[state] ?? "";
+
+  return (
+    <span
+      className={`inline-flex items-center rounded px-2 py-0.5 font-semibold whitespace-nowrap ${
+        emphatic ? "border border-panther text-panther" : "border border-ink/25 text-ink/75"
+      }`}
+      style={{ fontSize: "var(--text-xs)" }}
+      title={hint}
+    >
+      {state}
+      {hint !== "" && <span className="sr-only">. {hint}</span>}
+    </span>
+  );
+}
+
 const VERDICT_NAME: Record<Verdict, string> = {
   AC: "Accepted",
   WA: "Wrong answer",

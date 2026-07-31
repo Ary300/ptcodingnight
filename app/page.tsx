@@ -47,6 +47,27 @@ const HOW = [
   },
 ] as const;
 
+/**
+ * The board in the hero.
+ *
+ * Static, and deliberately so — it is a picture of the product, not a live read. It renders the
+ * one thing that is not HackerRank: teams ranked by a mean, with each player's set as its own
+ * column, so a visitor sees the arithmetic before they have signed in to anything.
+ *
+ * The numbers are internally consistent (each total is the sum of the sets, and each score is that
+ * total over the team size plus side points) because somebody will check, and a hero image that
+ * does not add up is a claim about the scoring engine that the scoring engine did not make.
+ */
+const BOARD_PREVIEW = [
+  // 1155 / 3 = 385, + 40 side = 425.00
+  { rank: 1, team: "Panthers", sets: [420, 385, 350], side: 40, score: "425.00" },
+  // Two players, not three. A smaller team divides by a smaller number, which is the whole reason
+  // team size is derived from the roster and never stored: 760 / 2 = 380, + 25 = 405.00.
+  { rank: 2, team: "Cubs", sets: [400, 360], side: 25, score: "405.00" },
+  // 865 / 3 = 288.33 (half away from zero, at the one rounding site), + 10 = 298.33
+  { rank: 3, team: "Night Owls", sets: [300, 290, 275], side: 10, score: "298.33" },
+] as const;
+
 const GUARANTEES = [
   {
     title: "Every submission runs in its own sandbox",
@@ -61,6 +82,89 @@ const GUARANTEES = [
     body: "Standings recompute from the raw submission log to byte-identical output. A disputed result gets shown rather than argued about.",
   },
 ] as const;
+
+/**
+ * The hero's product panel: the team board, as a real table.
+ *
+ * A table rather than a grid of divs, because it IS one — and because the projector and the
+ * competitor board are both tables, so a visitor recognises the screen when they get to it.
+ *
+ * `aria-hidden` is deliberately NOT set: this is content, not decoration. The caption says out
+ * loud that the numbers are an example, so a screen reader is never told a placing that does not
+ * exist.
+ */
+function BoardPreview() {
+  const widest = Math.max(...BOARD_PREVIEW.map((row) => row.sets.length));
+
+  return (
+    <div className="overflow-hidden rounded-lg border border-ink/15 bg-paper shadow-[0_1px_2px_rgba(26,6,6,0.06),0_8px_24px_-12px_rgba(26,6,6,0.25)]">
+      <div className="flex items-center justify-between border-b border-ink/12 bg-ink px-4 py-2.5 text-paper">
+        <span className="font-display font-bold" style={{ fontSize: "var(--text-sm)" }}>
+          Team standings
+        </span>
+        {/* The live dot, and the word beside it. Colour is never the only channel (DESIGN.md §3). */}
+        <span className="flex items-center gap-1.5 text-paper/85" style={{ fontSize: "var(--text-xs)" }}>
+          <span
+            aria-hidden="true"
+            className="inline-block h-1.5 w-1.5 rounded-full"
+            style={{ background: "var(--color-gold)" }}
+          />
+          Live
+        </span>
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="w-full border-collapse" style={{ fontSize: "var(--text-xs)" }}>
+          <caption className="px-4 pt-3 text-left text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
+            An example board. Score is the team&rsquo;s points divided by its size, plus side
+            activities.
+          </caption>
+          <thead>
+            <tr className="border-b border-ink/12 text-ink/60">
+              <th scope="col" className="px-3 py-2 text-left font-semibold">
+                #
+              </th>
+              <th scope="col" className="w-full px-3 py-2 text-left font-semibold">
+                Team
+              </th>
+              {Array.from({ length: widest }, (_, index) => (
+                <th
+                  key={index}
+                  scope="col"
+                  className="px-3 py-2 text-right font-semibold whitespace-nowrap"
+                >
+                  Set {String.fromCharCode(65 + index)}
+                </th>
+              ))}
+              <th scope="col" className="px-3 py-2 text-right font-semibold whitespace-nowrap">
+                Side
+              </th>
+              <th scope="col" className="px-3 py-2 text-right font-semibold whitespace-nowrap">
+                Score
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {BOARD_PREVIEW.map((row) => (
+              <tr key={row.team} className="border-b border-ink/8 last:border-b-0">
+                <td className="numeric px-3 py-2.5 text-ink/70">{row.rank}</td>
+                <td className="px-3 py-2.5 font-semibold whitespace-nowrap">{row.team}</td>
+                {Array.from({ length: widest }, (_, index) => (
+                  <td key={index} className="numeric px-3 py-2.5 text-right text-ink/75">
+                    {/* An em dash, not a zero: this team has no player in that set. */}
+                    {row.sets[index] ?? <span className="text-ink/40">&mdash;</span>}
+                  </td>
+                ))}
+                <td className="numeric px-3 py-2.5 text-right text-ink/75">{row.side}</td>
+                <td className="numeric px-3 py-2.5 text-right font-bold">{row.score}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
 
 export default function Home() {
   return (
@@ -120,52 +224,73 @@ export default function Home() {
           className="pointer-events-none absolute -top-8 -right-24 hidden w-[34rem] max-w-none opacity-[0.055] md:block"
         />
 
-        <div className="relative mx-auto w-full max-w-3xl px-4 py-16 text-center sm:py-24">
-          <p
-            className="text-ink/60 uppercase"
-            style={{ fontSize: "var(--text-xs)", letterSpacing: "0.14em" }}
-          >
-            Park Tudor School
-          </p>
+        {/*
+          Left-aligned copy with the product beside it, rather than a centred column with a
+          watermark behind it.
 
-          <h1
-            className="mt-4 font-display font-bold"
-            style={{ fontSize: "clamp(2.2rem, 6vw, 3.4rem)", lineHeight: 1.1, textWrap: "balance" }}
-          >
-            Ninety minutes.
-            <br />
-            <span className="text-panther">One board.</span>
-          </h1>
+          This is the change that separates a product page from a brochure, and it is the shape
+          HackerRank uses: their hero runs copy on the left and a screenshot on the right, because
+          what a visitor most wants to know is what the thing LOOKS like. The panel on the right is
+          not a screenshot — it is the real team board, in markup, showing the arithmetic. That is
+          also the honest choice of visual: teams ranked by a mean is the one thing here that is
+          not HackerRank.
 
-          <p
-            className="mx-auto mt-5 max-w-xl text-ink/75"
-            style={{ fontSize: "var(--text-md)", textWrap: "balance" }}
-          >
-            Coding Night is Park Tudor&rsquo;s programming contest. Teams solve problems against a
-            live judge, and the room watches the standings move.
-          </p>
-
-          {/* Two actions, one obviously primary. */}
-          <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
-            <Link
-              href="/sign-in"
-              className="rounded bg-panther px-5 py-2.5 font-semibold text-paper hover:bg-panther-deep"
-              style={{ fontSize: "var(--text-sm)" }}
+          Stacks below `lg`, copy first.
+        */}
+        <div className="relative mx-auto grid w-full max-w-6xl items-center gap-10 px-4 py-14 sm:py-20 lg:grid-cols-[minmax(0,1fr)_minmax(0,26rem)]">
+          <div>
+            <p
+              className="text-ink/60 uppercase"
+              style={{ fontSize: "var(--text-xs)", letterSpacing: "0.14em" }}
             >
-              Sign in to compete
-            </Link>
-            <Link
-              href="/projector"
-              className="rounded border border-ink/25 px-5 py-2.5 font-semibold hover:border-ink/50 hover:bg-ink/[0.03]"
-              style={{ fontSize: "var(--text-sm)" }}
+              Park Tudor School
+            </p>
+
+            <h1
+              className="mt-4 font-display font-bold"
+              style={{
+                fontSize: "clamp(2.2rem, 5.5vw, 3.4rem)",
+                lineHeight: 1.08,
+                textWrap: "balance",
+              }}
             >
-              Watch the board
-            </Link>
+              Ninety minutes.
+              <br />
+              <span className="text-panther">One board.</span>
+            </h1>
+
+            <p
+              className="mt-5 max-w-xl text-ink/75"
+              style={{ fontSize: "var(--text-md)", textWrap: "pretty" }}
+            >
+              Coding Night is Park Tudor&rsquo;s programming contest. Teams solve problems against a
+              live judge, and the room watches the standings move.
+            </p>
+
+            {/* Two actions, one obviously primary. */}
+            <div className="mt-8 flex flex-wrap items-center gap-3">
+              <Link
+                href="/sign-in"
+                className="rounded bg-panther px-5 py-2.5 font-semibold text-paper hover:bg-panther-deep"
+                style={{ fontSize: "var(--text-sm)" }}
+              >
+                Sign in to compete
+              </Link>
+              <Link
+                href="/projector"
+                className="rounded border border-ink/25 px-5 py-2.5 font-semibold hover:border-ink/50 hover:bg-ink/[0.03]"
+                style={{ fontSize: "var(--text-sm)" }}
+              >
+                Watch the board
+              </Link>
+            </div>
+
+            <p className="mt-4 text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
+              Google or GitHub. No code to type, nothing to install.
+            </p>
           </div>
 
-          <p className="mt-4 text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
-            Google or GitHub. No code to type, nothing to install.
-          </p>
+          <BoardPreview />
         </div>
       </section>
 
@@ -223,6 +348,34 @@ export default function Home() {
               </div>
             ))}
           </div>
+        </div>
+      </section>
+
+      {/* --- the closing band ------------------------------------------------ */}
+      {/*
+        One dark band before the footer, carrying the same action as the hero.
+
+        A visitor who read the whole page is at the bottom of it with nothing to press, and
+        scrolling back up to a button they have already passed is friction for no reason. Dark
+        rather than another paper section so the page ends on a stop rather than trailing off.
+      */}
+      <section className="bg-ink text-paper">
+        <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-6 px-4 py-12">
+          <div>
+            <h2 className="font-display font-bold" style={{ fontSize: "var(--text-lg)" }}>
+              The room is already scoring.
+            </h2>
+            <p className="mt-1.5 text-paper/80" style={{ fontSize: "var(--text-sm)" }}>
+              Sign in with your school account. An organizer puts you on a team when you arrive.
+            </p>
+          </div>
+          <Link
+            href="/sign-in"
+            className="rounded bg-panther px-5 py-2.5 font-semibold text-paper hover:bg-panther-deep"
+            style={{ fontSize: "var(--text-sm)" }}
+          >
+            Sign in to compete
+          </Link>
         </div>
       </section>
 

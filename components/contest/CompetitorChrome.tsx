@@ -99,9 +99,30 @@ export function CompetitorChrome({ children }: { children: ReactNode }) {
     };
   }, [joined]);
 
+  /**
+   * Sign out on the SERVER, then clear the tab, then leave.
+   *
+   * This used to be `clearParticipant()` plus a navigation, which forgot the participant in
+   * sessionStorage and left the session row in Postgres untouched — so the cookie kept working and
+   * the next person on a shared library machine got the previous student's contest back by typing
+   * `/contest`. Sessions live in Postgres precisely so that they can be revoked (docs/AUTH.md §3);
+   * a sign-out that never tells the server is the one case where that buys nothing.
+   *
+   * `/sign-in`, not `/join`: the join page was deleted with the join route, so the old destination
+   * is a 404 — signing out landed a student on a broken page.
+   */
   const leave = useCallback(() => {
-    clearParticipant();
-    window.location.assign("/join");
+    void (async () => {
+      try {
+        await fetch("/api/auth/session", { method: "DELETE" });
+      } catch {
+        // Best effort, and the navigation happens either way. A student who has decided to leave a
+        // shared machine must not be held on the page by a failed request.
+      } finally {
+        clearParticipant();
+        window.location.assign("/sign-in");
+      }
+    })();
   }, []);
 
   return (

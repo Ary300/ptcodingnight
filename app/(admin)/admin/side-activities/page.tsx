@@ -1,3 +1,4 @@
+import { ContestPicker } from "@/components/admin/ContestPicker";
 import { SideActivityEntry } from "@/components/admin/SideActivityEntry";
 
 /**
@@ -29,9 +30,7 @@ export default async function SideActivitiesPage({
       </header>
 
       {contestId === null ? (
-        <p role="status" className="text-ink/60" style={{ fontSize: "var(--text-sm)" }}>
-          Add <code>?contest=&lt;id&gt;</code> to this URL to choose the contest.
-        </p>
+        <ContestPicker basePath="/admin/side-activities" purpose="awarding side-activity points" />
       ) : (
         <SideActivityEntry contestId={contestId} />
       )}

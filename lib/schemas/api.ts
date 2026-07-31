@@ -45,7 +45,6 @@ export const API_ROUTES = {
    * joining. Every route below is scoped because by then the client knows which contest it
    * is in; this one is how it finds out.
    */
-  join: "/api/join",
   problems: (contestId: string) => `/api/contests/${encodeURIComponent(contestId)}/problems`,
   problem: (contestId: string, slug: string) =>
     `/api/contests/${encodeURIComponent(contestId)}/problems/${encodeURIComponent(slug)}`,
@@ -231,6 +230,33 @@ export const TeamMembershipResponseSchema = z.object({
   /** True when the call was a no-op because they were already on this team. */
   alreadyMember: z.boolean(),
 });
+
+/**
+ * One contest as an organizer sees it in a list — enough to pick the right one and no more.
+ *
+ * `participantCount` is here because it is the sanity check an organizer actually makes before
+ * touching a roster: "is this the contest with 42 people in it, or last year's". `joinCode` is
+ * deliberately absent — there is no join code path any more, and a field nothing can be done with
+ * is a field somebody will try to do something with.
+ */
+export const AdminContestSummarySchema = z.object({
+  contestId: z.string(),
+  name: z.string(),
+  // The Prisma enum verbatim. Spelling it out rather than importing keeps the wire contract a
+  // thing this file owns — but it must MATCH, so it is asserted against the enum in a unit test.
+  state: z.enum(["DRAFT", "SCHEDULED", "RUNNING", "FROZEN", "ENDED", "ARCHIVED"]),
+  startsAt: z.string(),
+  endsAt: z.string(),
+  participantCount: z.number().int().nonnegative(),
+  teamCount: z.number().int().nonnegative(),
+});
+export type AdminContestSummary = z.infer<typeof AdminContestSummarySchema>;
+
+/** Newest first, and sorted in the engine rather than by whatever order Postgres returns. */
+export const AdminContestListSchema = z.object({
+  contests: z.array(AdminContestSummarySchema),
+});
+export type AdminContestList = z.infer<typeof AdminContestListSchema>;
 
 /** The organizer's roster view: every team plus everybody on none. */
 export const AdminRosterSchema = z.object({

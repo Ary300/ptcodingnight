@@ -83,6 +83,32 @@ export async function viewerFromRequest(
   return viewerFromSession(session);
 }
 
+/**
+ * Resolve the caller inside a SERVER COMPONENT, where there is no `Request` to read.
+ *
+ * Same session lookup, different door. `viewerFromRequest` takes the header off a route handler's
+ * request; a layout or a page gets its cookies from `next/headers` instead. Both end at
+ * `loadSession`, so a revoked session is refused on the next render exactly as it is on the next
+ * API call — the point of keeping sessions in Postgres.
+ *
+ * This exists because the organizer console had no server-side gate at all. Its API routes each
+ * called `requireAdmin`, so no data leaked, but the SCREENS rendered for anybody who typed
+ * `/admin`: the full nav, the section cards, and the fixture problem titles. What a visitor saw
+ * was an organizer console with one failed panel on it, which is both a bad first impression and
+ * an invitation to keep pulling at the door.
+ */
+export async function viewerFromCookies(now: Date = new Date()): Promise<Viewer> {
+  const { cookies } = await import("next/headers");
+  const token = (await cookies()).get(SESSION_COOKIE)?.value;
+  if (token === undefined) return ANONYMOUS;
+
+  const session = await loadSession(token, now);
+  if (session === null) return ANONYMOUS;
+
+  touchSession(session.id, now);
+  return viewerFromSession(session);
+}
+
 export function isAdmin(viewer: Viewer): viewer is AdminViewer {
   return viewer.kind === "admin";
 }

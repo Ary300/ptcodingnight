@@ -2,13 +2,11 @@ import { z } from "zod";
 
 import {
   API_ROUTES,
-  JoinResponseSchema,
   ProblemDetailSchema,
   ProblemSummarySchema,
   RunSamplesResponseSchema,
   StandingsResponseSchema,
   SubmissionViewSchema,
-  type JoinRequest,
   type ProblemDetail,
   type ProblemSummary,
   type StandingsResponse,
@@ -22,7 +20,6 @@ import {
   ApiEnvelopeSchema,
   SubmissionListSchema,
   type HintBalance,
-  type JoinResponse,
   type RunSamplesResponse,
 } from "./contract";
 
@@ -40,7 +37,7 @@ import {
 /**
  * Resolve the contest this client is in.
  *
- * Every route below `/api/join` is contest-scoped (see `API_ROUTES` in lib/schemas/api.ts),
+ * Every route is contest-scoped (see `API_ROUTES` in lib/schemas/api.ts),
  * because `Contest` is a first-class entity with history and a flat path would need an
  * implicit "current contest" — hidden state that breaks the moment an organizer opens last
  * year's board. The id arrives in the join response and is stored with the participant.
@@ -108,10 +105,6 @@ function post<T extends z.ZodType>(path: string, schema: T, payload: unknown) {
 
 export const httpContestApi: ContestApi = {
   label: "live server",
-
-  join(request_: JoinRequest): Promise<JoinResponse> {
-    return post(API_ROUTES.join, JoinResponseSchema, request_);
-  },
 
   /**
    * `async`, and that keyword is load-bearing on every method that calls `currentContestId()`.
