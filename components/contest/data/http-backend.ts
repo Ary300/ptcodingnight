@@ -15,7 +15,7 @@ import {
 } from "@/lib/schemas/api";
 
 import { ContestApiError, type ContestApi } from "./contest-api";
-import { readParticipant } from "./participant";
+import { fetchParticipant, readParticipant } from "./participant";
 import {
   ApiEnvelopeSchema,
   SubmissionListSchema,
@@ -25,9 +25,11 @@ import {
 
 /**
  * The real backend, written against the frozen contract so the swap in `contest-api.ts` is
- * one line. **It has never been run** — `app/api/**` is owned by another agent and does not
- * exist in this worktree. Treat the route paths below as the UI's half of the contract, to
- * be reconciled at merge.
+ * one line.
+ *
+ * (This docstring used to end "**It has never been run** — `app/api/**` is owned by another agent
+ * and does not exist in this worktree." Both halves stopped being true a long time ago, and the
+ * note outliving them is part of why nobody checked whether the client could reach the server.)
  *
  * Every response is parsed, never cast. The contract's whole point is that a hidden-test
  * leak is not expressible in `PublicTestResultSchema`; parsing rather than casting is what
@@ -42,15 +44,24 @@ import {
  * implicit "current contest" — hidden state that breaks the moment an organizer opens last
  * year's board. The id arrives in the join response and is stored with the participant.
  */
-function currentContestId(): string {
-  const participant = readParticipant();
-  if (participant === null) {
+async function currentContestId(): Promise<string> {
+  // The cache first — it is right on every navigation after the first, and this is on the path of
+  // every read the competitor screens make.
+  const cached = readParticipant();
+  if (cached !== null) return cached.contestId;
+
+  // Then the server. THIS is the line that was missing: the id used to come only from a
+  // `sessionStorage` record written by the join response, and when the join route was deleted
+  // nothing wrote it — so a student with a perfectly valid session cookie was told they were not
+  // in a contest, on every screen, forever. The cookie always knew. Nothing asked it.
+  const session = await fetchParticipant();
+  if (session === null) {
     throw new ContestApiError(
       "NOT_JOINED",
-      "You are not in a contest yet. Join with the code from the board.",
+      "You are not signed in to a contest. Sign in with Google or GitHub to compete.",
     );
   }
-  return participant.contestId;
+  return session.contestId;
 }
 
 async function request<T extends z.ZodType>(
@@ -122,11 +133,11 @@ export const httpContestApi: ContestApi = {
    * A contract method must reject, never throw.
    */
   async listProblems(): Promise<ProblemSummary[]> {
-    return request(API_ROUTES.problems(currentContestId()), z.array(ProblemSummarySchema));
+    return request(API_ROUTES.problems(await currentContestId()), z.array(ProblemSummarySchema));
   },
 
   async getProblem(slug: string): Promise<ProblemDetail> {
-    return request(API_ROUTES.problem(currentContestId(), slug), ProblemDetailSchema);
+    return request(API_ROUTES.problem(await currentContestId(), slug), ProblemDetailSchema);
   },
 
   runSamples(request_: SubmitRequest): Promise<RunSamplesResponse> {
@@ -146,7 +157,7 @@ export const httpContestApi: ContestApi = {
   },
 
   async getStandings(): Promise<StandingsResponse> {
-    return request(API_ROUTES.standings(currentContestId()), StandingsResponseSchema);
+    return request(API_ROUTES.standings(await currentContestId()), StandingsResponseSchema);
   },
 
   // No hint route exists, by design rather than omission. docs/TODO.md T1: the PRD prices
@@ -176,7 +187,11 @@ export const httpContestApi: ContestApi = {
     // it is a crashed tree. The contract already allows null, and the caller already reads it as
     // "fall back to polling", which is the correct behaviour for a client that cannot open a
     // stream.
-    if (readParticipant() === null) return null;
-    return API_ROUTES.stream(currentContestId());
+    // Cache-only, deliberately, because this is sync. By the time a component wants a verdict
+    // stream it has already loaded a problem, so `fetchParticipant()` has run and populated the
+    // cache. Null here means "poll instead", which is a supported path rather than a failure.
+    const participant = readParticipant();
+    if (participant === null) return null;
+    return API_ROUTES.stream(participant.contestId);
   },
 };

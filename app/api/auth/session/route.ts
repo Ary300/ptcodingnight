@@ -39,6 +39,9 @@ export async function GET(request: Request): Promise<NextResponse> {
           contestId: null,
           teamId: null,
           teamName: null,
+          divisionId: null,
+          chosenSetId: null,
+          chosenSetLabel: null,
         },
         NO_STORE,
       );
@@ -54,16 +57,36 @@ export async function GET(request: Request): Promise<NextResponse> {
           contestId: null,
           teamId: null,
           teamName: null,
+          divisionId: null,
+          chosenSetId: null,
+          chosenSetLabel: null,
         },
         NO_STORE,
       );
     }
 
-    // A competitor's own team, so "my team" does not need a second round trip to find itself.
-    // Strictly the caller's own data: no other participant's id, name or score appears here.
+    /*
+      A competitor's own team, division and problem set.
+
+      Strictly the caller's own data — no other participant's id, name or score appears here.
+
+      `divisionId`, `chosenSetId` and `chosenSetLabel` are on this response because THIS ROUTE IS
+      HOW THE CLIENT LEARNS WHO IT IS. It used to learn that from the join response and keep it in
+      `sessionStorage`; the join route is gone, so the only thing that knows is the session, and a
+      client that cannot name its own contest cannot call a single contest-scoped route.
+
+      `chosenSetLabel` in particular is not decoration: a student needs to be told which set they
+      are on, and sets are assigned rather than chosen (PRD §6.2).
+    */
     const participant = await prisma.participant.findUnique({
       where: { id: viewer.participantId },
-      select: { teamId: true, team: { select: { name: true } } },
+      select: {
+        teamId: true,
+        divisionId: true,
+        chosenSetId: true,
+        team: { select: { name: true } },
+        chosenSet: { select: { label: true } },
+      },
     });
 
     return jsonOk(
@@ -75,6 +98,9 @@ export async function GET(request: Request): Promise<NextResponse> {
         contestId: viewer.contestId,
         teamId: participant?.teamId ?? null,
         teamName: participant?.team?.name ?? null,
+        divisionId: participant?.divisionId ?? null,
+        chosenSetId: participant?.chosenSetId ?? null,
+        chosenSetLabel: participant?.chosenSet?.label ?? null,
       },
       NO_STORE,
     );
