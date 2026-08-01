@@ -1,6 +1,8 @@
 import Image from "next/image";
 import Link from "next/link";
 
+import { viewerFromCookies } from "@/lib/contest/viewer";
+
 /**
  * The front door — `https://ptcodingnight.com/`.
  *
@@ -179,7 +181,24 @@ function BoardPreview() {
   );
 }
 
-export default function Home() {
+export default async function Home() {
+  /*
+    THE FRONT DOOR KNOWS WHO IS STANDING AT IT, which it did not for one full audit cycle.
+
+    A signed-in student who wandered back to `/` was shown the stranger's page: "Log in",
+    "Create your account", "Sign in to compete" - and `/sign-in` does not bounce a live session,
+    so the loop was `/` -> Log in -> sign-in form -> "Back to the home page" -> `/`. The only way
+    into the contest was typing `/contest` by hand. Found once, reported fixed, and found open
+    again by the navigation audit, because the fix had gone into the header and not the hero.
+
+    One read of the session cookie decides every call to action on the page at once. The
+    marketing copy stays for everyone; what changes is where the buttons point.
+  */
+  const viewer = await viewerFromCookies();
+  const destination = viewer.kind === "admin" ? "/admin" : "/contest";
+  const enterLabel = viewer.kind === "admin" ? "Open the organizer console" : "Open the contest";
+  const signedIn = viewer.kind !== "anonymous";
+
   return (
     <div className="flex min-h-full flex-col bg-ink/[0.035]">
       {/* --- slim bar, the shape HackerRank uses above its hero ------------- */}
@@ -216,20 +235,32 @@ export default function Home() {
             >
               Live standings
             </Link>
-            <Link
-              href="/sign-in"
-              className="rounded px-2 py-1.5 text-ink/75 hover:text-ink sm:px-3"
-              style={{ fontSize: "var(--text-xs)" }}
-            >
-              Log in
-            </Link>
-            <Link
-              href="/sign-in"
-              className="rounded bg-panther px-3 py-1.5 font-semibold text-paper hover:bg-panther-deep"
-              style={{ fontSize: "var(--text-xs)" }}
-            >
-              Create your account
-            </Link>
+            {signedIn ? (
+              <Link
+                href={destination}
+                className="rounded bg-panther px-3 py-1.5 font-semibold text-paper hover:bg-panther-deep"
+                style={{ fontSize: "var(--text-xs)" }}
+              >
+                {enterLabel}
+              </Link>
+            ) : (
+              <>
+                <Link
+                  href="/sign-in"
+                  className="rounded px-2 py-1.5 text-ink/75 hover:text-ink sm:px-3"
+                  style={{ fontSize: "var(--text-xs)" }}
+                >
+                  Log in
+                </Link>
+                <Link
+                  href="/sign-in"
+                  className="rounded bg-panther px-3 py-1.5 font-semibold text-paper hover:bg-panther-deep"
+                  style={{ fontSize: "var(--text-xs)" }}
+                >
+                  Create your account
+                </Link>
+              </>
+            )}
           </nav>
         </div>
       </header>
@@ -298,11 +329,11 @@ export default function Home() {
             {/* Two actions, one obviously primary. */}
             <div className="mt-8 flex flex-wrap items-center gap-3">
               <Link
-                href="/sign-in"
+                href={signedIn ? destination : "/sign-in"}
                 className="rounded bg-panther px-5 py-2.5 font-semibold text-paper hover:bg-panther-deep"
                 style={{ fontSize: "var(--text-sm)" }}
               >
-                Sign in to compete
+                {signedIn ? enterLabel : "Sign in to compete"}
               </Link>
               <Link
                 href="/projector"
@@ -313,9 +344,11 @@ export default function Home() {
               </Link>
             </div>
 
-            <p className="mt-4 text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
-              Google or GitHub. No code to type, nothing to install.
-            </p>
+            {!signedIn && (
+              <p className="mt-4 text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
+                Google or GitHub. No code to type, nothing to install.
+              </p>
+            )}
           </div>
 
           <BoardPreview />
@@ -398,11 +431,11 @@ export default function Home() {
             </p>
           </div>
           <Link
-            href="/sign-in"
+            href={signedIn ? destination : "/sign-in"}
             className="rounded bg-panther px-5 py-2.5 font-semibold text-paper hover:bg-panther-deep"
             style={{ fontSize: "var(--text-sm)" }}
           >
-            Sign in to compete
+            {signedIn ? enterLabel : "Sign in to compete"}
           </Link>
         </div>
       </section>
