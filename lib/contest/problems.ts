@@ -230,7 +230,10 @@ export async function getProblemDetail(
           timeLimitMs: true,
           memoryLimitMb: true,
           allowedLanguages: true,
-          signature: true,
+          // signature is read SEPARATELY, below, in a query that degrades to null on error. A
+          // problem statement must never fail to render because an optional starter-code column
+          // is absent - which is exactly what a deploy that ran the code but not the migration
+          // produces. Selecting it here would 500 the whole page; there it just omits starters.
         },
       },
     },
@@ -252,13 +255,14 @@ export async function getProblemDetail(
     assertUnlocked(contestProblem.unlockAt, now, contestProblem.problem.slug);
   }
 
-  const [samples, scores, solvedIds, hintsTaken] = await Promise.all([
+  const [samples, scores, solvedIds, hintsTaken, signature] = await Promise.all([
     loadSamples(contestProblem.problem.id),
     scope.participantId === null
       ? Promise.resolve(new Map<string, { score: number; hintsTaken: number }>())
       : problemStandingsFor(contestId, scope.participantId, now),
     solvedProblemIds(scope.participantId),
     countHints(scope.participantId, contestProblem.id),
+    readProblemSignature(contestProblem.problem.id),
   ]);
 
   return ProblemDetailSchema.parse({
@@ -283,7 +287,7 @@ export async function getProblemDetail(
     hintsTaken,
     hintCost: hintCostFor(contestProblem.basePoints),
     starters: startersFromStoredSignature(
-      contestProblem.problem.signature,
+      signature,
       contestProblem.problem.allowedLanguages,
       contestProblem.problem.slug,
     ),
@@ -328,6 +332,39 @@ function startersFromStoredSignature(
   }
 
   return startersFor(parsed.data, allowedLanguages);
+}
+
+/**
+ * Read a problem's stored signature, degrading to `null` on ANY database error.
+ *
+ * Kept out of the main problem select and given its own error boundary for one reason: a problem
+ * STATEMENT must render even when the starter-code column cannot be read. The failure this guards
+ * against is concrete and has already happened once in this session as a 500 on every problem
+ * page: the code that selects `signature` shipped, but `prisma migrate deploy` did not run, so the
+ * column did not exist and the whole query threw "Unknown field signature". Starters are a
+ * convenience; the statement is the contest. Losing the convenience must not lose the contest.
+ *
+ * A caught error logs and returns null, which `startersFromStoredSignature` reads as "no
+ * signature" - the same clean absence as a problem that never had one.
+ */
+async function readProblemSignature(problemId: string): Promise<unknown> {
+  try {
+    const row = await prisma.problem.findUnique({
+      where: { id: problemId },
+      select: { signature: true },
+    });
+    return row?.signature ?? null;
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        level: "error",
+        event: "problem.signature_unreadable",
+        problemId,
+        message: error instanceof Error ? error.message : String(error),
+      }),
+    );
+    return null;
+  }
 }
 
 async function countHints(participantId: string | null, contestProblemId: string): Promise<number> {
