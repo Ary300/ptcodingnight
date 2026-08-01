@@ -32,6 +32,14 @@ import { ProblemStatePill } from "@/components/admin/StatusPill";
  * the distinction the whole Coding Night format rests on, so it is spelled out on screen rather
  * than implied by a naming convention.
  *
+ * ## It opens showing what is ALREADY in the contest
+ *
+ * `PUT /api/admin/contests/{id}/problems` replaces the whole line-up and there is no GET beside
+ * it, so this used to mount with an empty basket every time. The Problems tab of a contest holding
+ * six problems therefore read "Nothing chosen yet", and the only button on the screen — Save —
+ * deleted all six. The server component that renders this reads the stored slots and passes them
+ * as `initial`, so Save means "save what I can see".
+ *
  * ## Why a problem can be picked even when it is not ready
  *
  * `readyBlockers` comes from the server and is shown, but it does not disable the row. An
@@ -42,6 +50,13 @@ import { ProblemStatePill } from "@/components/admin/StatusPill";
 
 export interface ContestLineupProps {
   readonly contestId: string;
+  /**
+   * The line-up as it is stored right now, so the basket starts full rather than empty.
+   *
+   * Read on the server by the page, because there is no GET route for a contest's problems — only
+   * the PUT that replaces them. Optional so the component still works where no line-up is known.
+   */
+  readonly initial?: readonly Slot[];
 }
 
 interface Slot {
@@ -51,6 +66,9 @@ interface Slot {
   basePoints: number;
   setLabel: string;
 }
+
+/** DRAFT problems are 121 of the 130 in the bank, and none of them may go in a live contest. */
+type BankFilter = "ready" | "all";
 
 async function loadBank(): Promise<readonly AdminProblemRow[]> {
   const response = await fetch("/api/admin/problems", { cache: "no-store" });
@@ -69,11 +87,12 @@ async function loadBank(): Promise<readonly AdminProblemRow[]> {
   return AdminProblemBankSchema.parse(data).problems;
 }
 
-export function ContestLineup({ contestId }: ContestLineupProps) {
+export function ContestLineup({ contestId, initial = [] }: ContestLineupProps) {
   const bank = useResource(useCallback(() => loadBank(), []));
 
-  const [slots, setSlots] = useState<readonly Slot[]>([]);
+  const [slots, setSlots] = useState<readonly Slot[]>(initial);
   const [filter, setFilter] = useState("");
+  const [bankFilter, setBankFilter] = useState<BankFilter>("ready");
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -143,26 +162,35 @@ export function ContestLineup({ contestId }: ContestLineupProps) {
     }
   };
 
-  if (bank.status === "loading") {
-    return (
-      <p role="status" className="text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
-        Loading the problem bank…
-      </p>
-    );
-  }
-  if (bank.status === "error" || bank.data === null) {
-    return (
-      <AlertPlate tone="alarm" title="The problem bank could not be loaded">
-        {bank.error ?? "Unknown error."}
-      </AlertPlate>
-    );
-  }
+  /*
+    THE LINE-UP IS NOT GATED ON THE BANK, and it used to be.
+
+    These two early returns stood in front of the WHOLE component, so a slow `GET
+    /api/admin/problems` blanked the line-up table as well — even though that table needs no
+    network at all: the server component hands it down as `initial`. Measured: the Problems tab
+    read "Loading the problem bank" for 145 SECONDS, with the line-up rows arriving 4ms after the
+    bank rows, which is what proved they were gated together.
+
+    That was the real answer to "very confusing how to add problems and where all that is". It was
+    not confusing. The organizer was looking at an empty panel.
+
+    (The 145s itself is fixed too — `lib/contest/problem-bank.ts` was selecting every problem's
+    full statement to ask whether it was empty. That route now answers in ~30ms. Both halves
+    mattered: a fast query still should not be able to hide a panel that does not depend on it.)
+
+    So the bank's loading and error states are rendered INSIDE its own panel, below, and the
+    line-up renders immediately.
+  */
+  // Empty until the bank arrives. The line-up below does not consult it.
+  const bankRows = bank.data ?? [];
 
   const chosen = new Set(slots.map((s) => s.problemId));
   const needle = filter.trim().toLowerCase();
-  const available = bank.data.filter(
+  const readyCount = bankRows.filter((p) => p.readyBlockers.length === 0).length;
+  const available = bankRows.filter(
     (p) =>
       !chosen.has(p.problemId) &&
+      (bankFilter === "all" || p.readyBlockers.length === 0) &&
       (needle === "" || p.title.toLowerCase().includes(needle) || p.slug.includes(needle)),
   );
 
@@ -185,7 +213,7 @@ export function ContestLineup({ contestId }: ContestLineupProps) {
           <div className="overflow-x-auto">
             <table className="w-full border-collapse" style={{ fontSize: "var(--text-sm)" }}>
               <thead>
-                <tr className="border-b border-ink/15 text-ink/70" style={{ fontSize: "var(--text-xs)" }}>
+                <tr className="border-b border-rule-edge text-ink/70" style={{ fontSize: "var(--text-xs)" }}>
                   <th scope="col" className="w-full py-2 pr-3 text-left font-semibold">Problem</th>
                   <th scope="col" className="py-2 pr-3 text-left font-semibold">Slot</th>
                   <th scope="col" className="py-2 pr-3 text-left font-semibold">Points</th>
@@ -197,14 +225,14 @@ export function ContestLineup({ contestId }: ContestLineupProps) {
               </thead>
               <tbody>
                 {slots.map((slot) => (
-                  <tr key={slot.problemId} className="border-b border-ink/10">
+                  <tr key={slot.problemId} className="border-b border-rule-hair">
                     <td className="py-2 pr-3">{slot.title}</td>
                     <td className="py-2 pr-3">
                       <input
                         aria-label={`Slot label for ${slot.title}`}
                         value={slot.slotLabel}
                         onChange={(e) => patch(slot.problemId, { slotLabel: e.target.value })}
-                        className="numeric w-24 rounded border border-ink/25 bg-paper px-2 py-1"
+                        className="numeric w-24 rounded border border-rule-edge bg-paper px-2 py-1"
                         style={{ fontSize: "var(--text-sm)" }}
                       />
                     </td>
@@ -217,7 +245,7 @@ export function ContestLineup({ contestId }: ContestLineupProps) {
                         onChange={(e) =>
                           patch(slot.problemId, { basePoints: Number(e.target.value) || 0 })
                         }
-                        className="numeric w-24 rounded border border-ink/25 bg-paper px-2 py-1"
+                        className="numeric w-24 rounded border border-rule-edge bg-paper px-2 py-1"
                         style={{ fontSize: "var(--text-sm)" }}
                       />
                     </td>
@@ -227,7 +255,7 @@ export function ContestLineup({ contestId }: ContestLineupProps) {
                         value={slot.setLabel}
                         placeholder="group"
                         onChange={(e) => patch(slot.problemId, { setLabel: e.target.value })}
-                        className="numeric w-20 rounded border border-ink/25 bg-paper px-2 py-1"
+                        className="numeric w-20 rounded border border-rule-edge bg-paper px-2 py-1"
                         style={{ fontSize: "var(--text-sm)" }}
                       />
                     </td>
@@ -260,7 +288,7 @@ export function ContestLineup({ contestId }: ContestLineupProps) {
           </Button>
           {saved && (
             <span role="status" className="font-semibold" style={{ fontSize: "var(--text-sm)" }}>
-              Saved. Publish the contest when the line-up is settled.
+              Saved. Publish it from the Setup tab when the line-up is settled.
             </span>
           )}
         </div>
@@ -269,28 +297,86 @@ export function ContestLineup({ contestId }: ContestLineupProps) {
       <Panel
         title="Problem bank"
         aside={
+          // Counted against the POOL THE FILTER IS SHOWING, not against the whole bank. "6 of 130"
+          // under a Ready-only filter reads as "124 problems are hidden from you" when the true
+          // statement is "6 of the 9 ready ones are not already in this contest".
           <span className="numeric text-ink/70" style={{ fontSize: "var(--text-xs)" }}>
-            {available.length} of {bank.data.length}
+            {available.length} of {bankFilter === "ready" ? readyCount : bankRows.length}{" "}
+            {bankFilter === "ready" ? "ready" : "in the bank"}
           </span>
         }
-        description="Every problem in the database. A problem that is not ready can still be slotted now — the API refuses a DRAFT in a live contest, and the reasons are shown so the refusal is never a surprise."
+        description="A problem that is not ready can still be slotted now — the API refuses a DRAFT in a live contest, and the reasons are shown so the refusal is never a surprise."
       >
-        <label className="flex flex-col gap-1" style={{ fontSize: "var(--text-sm)" }}>
-          Search
-          <input
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-            placeholder="title or slug"
-            className="max-w-sm rounded border border-ink/25 bg-paper px-3 py-2"
-            style={{ fontSize: "var(--text-sm)" }}
-          />
-        </label>
+        {/*
+          The bank's own loading and error states live HERE, inside the bank's panel, rather than
+          in front of the whole component. That placement is the fix: the line-up above does not
+          depend on this fetch and must never be hidden by it.
+        */}
+        {bank.status === "loading" && (
+          <p role="status" className="text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
+            Loading the problem bank…
+          </p>
+        )}
+
+        {bank.status === "error" && (
+          <AlertPlate tone="alarm" title="The problem bank could not be loaded">
+            {bank.error ?? "Unknown error."}
+          </AlertPlate>
+        )}
+
+        <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
+          <label className="flex flex-col gap-1" style={{ fontSize: "var(--text-sm)" }}>
+            Search
+            <input
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+              placeholder="title or slug"
+              className="w-64 max-w-full rounded border border-rule-edge bg-paper px-3 py-2"
+              style={{ fontSize: "var(--text-sm)" }}
+            />
+          </label>
+
+          {/*
+            Filtering by readiness, defaulting to READY.
+
+            The bank is 130 problems of which about 121 are DRAFT and unusable in a live contest,
+            and the only filter was a text box over title and slug — so finding the nine you can
+            actually run required already knowing their names, among a list capped at 60 drawn
+            rows. DRAFT stays one click away, because assembling next week's line-up out of
+            problems still being written is a real thing to want.
+          */}
+          <fieldset className="flex flex-col gap-1">
+            <legend className="mb-1" style={{ fontSize: "var(--text-sm)" }}>
+              Show
+            </legend>
+            <div className="flex gap-4" style={{ fontSize: "var(--text-sm)" }}>
+              <label className="flex items-center gap-1.5">
+                <input
+                  type="radio"
+                  name="bank-filter"
+                  checked={bankFilter === "ready"}
+                  onChange={() => setBankFilter("ready")}
+                />
+                Ready ({readyCount})
+              </label>
+              <label className="flex items-center gap-1.5">
+                <input
+                  type="radio"
+                  name="bank-filter"
+                  checked={bankFilter === "all"}
+                  onChange={() => setBankFilter("all")}
+                />
+                Everything ({bankRows.length})
+              </label>
+            </div>
+          </fieldset>
+        </div>
 
         <ul className="mt-4 flex flex-col">
           {available.slice(0, 60).map((problem) => (
             <li
               key={problem.problemId}
-              className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-ink/10 py-2.5"
+              className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-rule-hair py-2.5"
             >
               <span className="font-semibold" style={{ fontSize: "var(--text-sm)" }}>
                 {problem.title}
@@ -319,6 +405,14 @@ export function ContestLineup({ contestId }: ContestLineupProps) {
             </li>
           ))}
         </ul>
+
+        {available.length === 0 && (
+          <p className="mt-3 text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
+            {bankFilter === "ready"
+              ? "Nothing in the bank is both ready and unused here. Switch to Everything to slot a problem that is still being written — the API will refuse it in a live contest, and will say why."
+              : "No problem in the bank matches that search."}
+          </p>
+        )}
 
         {available.length > 60 && (
           <p className="mt-3 text-ink/70" style={{ fontSize: "var(--text-xs)" }}>
