@@ -43,16 +43,23 @@ export default async function ProblemBankPage({
 
   return (
     <div className="flex flex-col gap-6">
-      <header>
-        <h1 className="font-display font-bold" style={{ fontSize: "var(--text-xl)" }}>
-          Problem bank
-        </h1>
-        <p className="mt-1 max-w-[70ch] text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
-          Statements and test data are written in this repository under{" "}
-          <code>content/problems/</code> and loaded by the seed, never copied from anywhere. A
-          problem only becomes part of a contest on that contest&apos;s <strong>Problems</strong>{" "}
-          tab.
-        </p>
+      <header className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="font-display font-bold" style={{ fontSize: "var(--text-xl)" }}>
+            Problem bank
+          </h1>
+          <p className="mt-1 max-w-[62ch] text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
+            Write a new question here, or use one already in the bank. A problem only becomes part
+            of a contest on that contest&apos;s <strong>Problems</strong> tab.
+          </p>
+        </div>
+        <Link
+          href="/admin/problems/new"
+          className="shrink-0 rounded bg-panther px-4 py-2 font-semibold text-paper hover:bg-panther-deep"
+          style={{ fontSize: "var(--text-sm)" }}
+        >
+          New question
+        </Link>
       </header>
 
       <div className="grid gap-4 sm:grid-cols-3">

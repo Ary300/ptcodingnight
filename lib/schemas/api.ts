@@ -83,6 +83,8 @@ export const API_ROUTES = {
 
   // --- admin ---
   adminSession: "/api/admin/session",
+  /** The problem bank: `GET` lists it, `POST` creates a coding question. */
+  adminProblems: "/api/admin/problems",
   adminFreeze: (contestId: string) =>
     `/api/admin/contests/${encodeURIComponent(contestId)}/freeze`,
   adminExport: (contestId: string) =>
@@ -926,3 +928,60 @@ export const RenameAccountResponseSchema = z.object({
   adjustedOnABoard: z.boolean(),
 });
 export type RenameAccountResponse = z.infer<typeof RenameAccountResponseSchema>;
+
+// ---------------------------------------------------------------------------
+// Authoring a coding question (organizer)
+// ---------------------------------------------------------------------------
+
+/** The six types a starter-code parameter or return may take. Mirrors SignatureTypeSchema. */
+export const AuthoredSignatureTypeSchema = z.enum([
+  "int",
+  "long",
+  "string",
+  "int[]",
+  "long[]",
+  "string[]",
+]);
+
+export const AuthoredSignatureParamSchema = z.object({
+  name: z.string().min(1),
+  type: AuthoredSignatureTypeSchema,
+});
+
+/** The optional starter-code signature, in the simple flat form the builder collects. */
+export const AuthoredSignatureSchema = z.object({
+  name: z.string().min(1),
+  returns: AuthoredSignatureTypeSchema,
+  params: z.array(AuthoredSignatureParamSchema),
+});
+
+export const AuthoredTestCaseSchema = z.object({
+  input: z.string(),
+  expectedOutput: z.string(),
+  isSample: z.boolean(),
+});
+
+/**
+ * The request that creates a coding question. No question type (all coding) and no language list
+ * (all six, always), by design: those are the two HackerRank steps this flow deliberately omits.
+ */
+export const CreateProblemRequestSchema = z.object({
+  title: z.string().trim().min(1, "Give the question a title.").max(120),
+  statementMd: z.string().min(1, "Write the problem statement."),
+  inputSpec: z.string().optional(),
+  outputSpec: z.string().optional(),
+  constraints: z.string().optional(),
+  difficulty: z.enum(["E", "M", "H"]),
+  timeLimitMs: z.number().int().min(500).max(10_000).optional(),
+  memoryLimitMb: z.number().int().min(64).max(1024).optional(),
+  signature: AuthoredSignatureSchema.nullable().optional(),
+  testCases: z.array(AuthoredTestCaseSchema).min(1, "Add at least one test case."),
+});
+export type CreateProblemRequest = z.infer<typeof CreateProblemRequestSchema>;
+
+export const CreateProblemResponseSchema = z.object({
+  problemId: z.string(),
+  slug: z.string(),
+  title: z.string(),
+});
+export type CreateProblemResponse = z.infer<typeof CreateProblemResponseSchema>;
