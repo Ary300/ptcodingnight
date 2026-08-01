@@ -33,7 +33,7 @@ const RevokeSchema = z
     sessionId: z.string().min(1).optional(),
     /** Revokes every live session for this participant, not just one device. */
     participantId: z.string().min(1).optional(),
-    reason: z.string().trim().min(3, "Give a reason — it goes in the audit log").max(500),
+    reason: z.string().trim().min(3, "Give a reason. It goes in the audit log").max(500),
   })
   .refine(
     (v) => (v.sessionId === undefined) !== (v.participantId === undefined),

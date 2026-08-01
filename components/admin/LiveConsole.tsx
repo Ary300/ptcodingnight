@@ -144,12 +144,12 @@ export function LiveConsole({ contestId }: LiveConsoleProps) {
           body: JSON.stringify(payload),
         });
         if (!response.ok) {
-          record(`${describe} — REFUSED: ${await messageOf(response)}`, true);
+          record(`${describe}. REFUSED: ${await messageOf(response)}`, true);
           return;
         }
         record(describe);
       } catch {
-        record(`${describe} — could not reach the server`, true);
+        record(`${describe}. Could not reach the server`, true);
       } finally {
         busyRef.current = false;
         setBusy(false);

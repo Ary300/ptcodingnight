@@ -45,7 +45,7 @@ export default function DesignSpecimen() {
         <Image src="/brand/pt-crest-color.svg" alt="Park Tudor crest" width={56} height={56} priority />
         <div>
           <h1 style={{ fontFamily: "var(--font-display)", fontSize: "var(--text-xl)" }}>
-            Coding Night — design tokens
+            Coding Night design tokens
           </h1>
           <p style={{ fontSize: "var(--text-sm)", opacity: 0.7 }}>
             Specimen for <code className="numeric">docs/DESIGN.md</code>. Five of six colours
@@ -87,14 +87,14 @@ export default function DesignSpecimen() {
         <h2 style={{ fontFamily: "var(--font-display)", fontSize: "var(--text-lg)" }}>Type</h2>
         <div className="mt-4 space-y-3">
           <p style={{ fontFamily: "var(--font-display)", fontSize: "var(--text-2xl)" }}>
-            Libre Baskerville — display
+            Libre Baskerville (display)
           </p>
           <p style={{ fontFamily: "var(--font-body)", fontSize: "var(--text-md)" }}>
-            Open Sans — body. Both are the school&rsquo;s own faces, self-hosted; no CDN,
+            Open Sans (body). Both are the school&rsquo;s own faces, self-hosted; no CDN,
             because the night has no internet.
           </p>
           <p className="numeric" style={{ fontSize: "var(--text-md)" }}>
-            JetBrains Mono — 0O 1lI 5S 8B {"↑"}3 {"↓"}2 {"−"}
+            JetBrains Mono: 0O 1lI 5S 8B {"↑"}3 {"↓"}2 {"−"}
           </p>
         </div>
       </section>

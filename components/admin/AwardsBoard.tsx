@@ -129,7 +129,7 @@ export function AwardsBoard({ standings, contestName }: AwardsBoardProps) {
       <Panel
         title="Export"
         level="framed"
-        description="An output, never an input. Nothing in this platform reads a spreadsheet back in — that is the manual reconciliation this replaced."
+        description="An output, never an input. Nothing in this platform reads a spreadsheet back in; that is the manual reconciliation this replaced."
       >
         <div className="flex flex-wrap gap-3">
           <Button type="button" onClick={exportCsv}>

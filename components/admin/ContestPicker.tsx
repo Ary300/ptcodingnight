@@ -115,7 +115,7 @@ export function ContestPicker({ tab = "", purpose, variant = "picker" }: Contest
     return (
       <div className="rounded border border-rule-edge bg-paper p-5">
         <p style={{ fontSize: "var(--text-sm)" }}>
-          There are no contests yet. Make one first — {purpose} needs a contest to act on.
+          There are no contests yet. Make one first: {purpose} needs a contest to act on.
         </p>
         <Link
           href="/admin/contests/new"

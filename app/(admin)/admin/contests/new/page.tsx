@@ -24,8 +24,8 @@ export default function NewContestPage() {
         </h1>
         <p className="max-w-[70ch] text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
           Set the window, the divisions, the preset and the freeze before the night, so nothing here
-          is being decided while students are waiting. Everything else — the problems, the roster,
-          the side activities — is a tab of the contest once it exists.
+          is being decided while students are waiting. Everything else (the problems, the roster,
+          the side activities) is a tab of the contest once it exists.
         </p>
       </header>
 

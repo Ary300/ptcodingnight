@@ -203,7 +203,7 @@ export function ContestLineup({ contestId, initial = [] }: ContestLineupProps) {
             {slots.length} {slots.length === 1 ? "problem" : "problems"}
           </span>
         }
-        description="Saving REPLACES the whole line-up. Leave the set blank to make a problem a GROUP problem — every team works it, whichever set a player was assigned."
+        description="Saving REPLACES the whole line-up. Leave the set blank to make a problem a GROUP problem: every team works it, whichever set a player was assigned."
       >
         {slots.length === 0 ? (
           <p className="text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
@@ -251,7 +251,7 @@ export function ContestLineup({ contestId, initial = [] }: ContestLineupProps) {
                     </td>
                     <td className="py-2 pr-3">
                       <input
-                        aria-label={`Set for ${slot.title} — blank for a group problem`}
+                        aria-label={`Set for ${slot.title}. Blank for a group problem`}
                         value={slot.setLabel}
                         placeholder="group"
                         onChange={(e) => patch(slot.problemId, { setLabel: e.target.value })}
@@ -305,7 +305,7 @@ export function ContestLineup({ contestId, initial = [] }: ContestLineupProps) {
             {bankFilter === "ready" ? "ready" : "in the bank"}
           </span>
         }
-        description="A problem that is not ready can still be slotted now — the API refuses a DRAFT in a live contest, and the reasons are shown so the refusal is never a surprise."
+        description="A problem that is not ready can still be slotted now. The API refuses a DRAFT in a live contest, and the reasons are shown so the refusal is never a surprise."
       >
         {/*
           The bank's own loading and error states live HERE, inside the bank's panel, rather than
@@ -409,14 +409,14 @@ export function ContestLineup({ contestId, initial = [] }: ContestLineupProps) {
         {available.length === 0 && (
           <p className="mt-3 text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
             {bankFilter === "ready"
-              ? "Nothing in the bank is both ready and unused here. Switch to Everything to slot a problem that is still being written — the API will refuse it in a live contest, and will say why."
+              ? "Nothing in the bank is both ready and unused here. Switch to Everything to slot a problem that is still being written. The API will refuse it in a live contest, and will say why."
               : "No problem in the bank matches that search."}
           </p>
         )}
 
         {available.length > 60 && (
           <p className="mt-3 text-ink/70" style={{ fontSize: "var(--text-xs)" }}>
-            Showing the first 60 of {available.length}. Narrow the search rather than scrolling —
+            Showing the first 60 of {available.length}. Narrow the search rather than scrolling,
             and note this is a cap on what is DRAWN, not on what exists.
           </p>
         )}

@@ -189,7 +189,7 @@ export function SideActivityEntry({ contestId }: SideActivityEntryProps) {
       refused = true;
     }
     if (label.trim() === "") {
-      setLabelError("Name the activity — it appears on the team's breakdown.");
+      setLabelError("Name the activity. It appears on the team's breakdown.");
       refused = true;
     }
     if (points.trim() === "" || !Number.isInteger(parsed) || Math.abs(parsed) > MAX_POINTS) {
@@ -305,7 +305,7 @@ export function SideActivityEntry({ contestId }: SideActivityEntryProps) {
             step={1}
             hint={
               <>
-                Added <strong>flat</strong> to the team total — not divided by team size, so a typo
+                Added <strong>flat</strong> to the team total, not divided by team size, so a typo
                 is not softened the way a problem score would be. Negative values are allowed and
                 are how you correct an over-award; nothing is ever edited or deleted.
               </>
@@ -342,7 +342,7 @@ export function SideActivityEntry({ contestId }: SideActivityEntryProps) {
 
       {selected !== undefined && (
         <Panel
-          title={`${selected.name} — awarded so far`}
+          title={`${selected.name}: awarded so far`}
           level="bare"
           aside={
             <span className="numeric text-ink/60" style={{ fontSize: "var(--text-sm)" }}>

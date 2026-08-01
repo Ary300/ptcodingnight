@@ -124,7 +124,7 @@ export function JudgeHealthBar({ health }: { health: JudgeHealth }) {
         <p className="mt-group max-w-[70ch]" style={{ fontSize: "var(--text-sm)" }}>
           {health.reachable
             ? "Nothing is being judged. Submissions are still being accepted and queued, so no student work is lost, but no verdict will land until a worker comes back."
-            : "The judge queue cannot be reached, so submissions are being REFUSED rather than queued — a student pressing Submit gets an error. Check Redis before anything else; the numbers above are zeros because there was nothing to ask, not because the queue is empty."}
+            : "The judge queue cannot be reached, so submissions are being REFUSED rather than queued: a student pressing Submit gets an error. Check Redis before anything else; the numbers above are zeros because there was nothing to ask, not because the queue is empty."}
         </p>
       )}
     </section>

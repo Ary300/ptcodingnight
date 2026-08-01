@@ -42,7 +42,7 @@ import { recallSource } from "./source-cache";
 
 function formatTime(iso: string): string {
   const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return "—";
+  if (Number.isNaN(date.getTime())) return "-";
   return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
 
@@ -183,7 +183,7 @@ export function SubmissionHistory() {
   const titleById = useMemo(() => {
     const map = new Map<string, string>();
     for (const problem of problems.data ?? ([] as ProblemSummary[])) {
-      map.set(problem.contestProblemId, `${problem.slotLabel} — ${problem.title}`);
+      map.set(problem.contestProblemId, `${problem.slotLabel}: ${problem.title}`);
     }
     return map;
   }, [problems.data]);
@@ -233,7 +233,7 @@ export function SubmissionHistory() {
         className="rounded border border-ink/15 bg-paper p-4 text-ink/70"
         style={{ fontSize: "var(--text-sm)" }}
       >
-        You have not submitted anything yet. Running samples does not appear here — it is free
+        You have not submitted anything yet. Running samples does not appear here, because it is free
         and unjudged.
       </p>
     );

@@ -35,7 +35,7 @@ export const VERDICT_DISPLAY: Readonly<Record<Verdict, VerdictPresentation>> = {
   CE: { label: "Did not compile", detail: "The compiler output is below.", tone: "compile" },
   IE: {
     label: "Rechecking",
-    detail: "Something went wrong on our side, not in your code. It is being run again — an organizer has been alerted.",
+    detail: "Something went wrong on our side, not in your code. It is being run again, and an organizer has been alerted.",
     tone: "internal",
   },
 };
@@ -51,7 +51,7 @@ export const TONE_COLOR: Readonly<Record<VerdictTone, string>> = {
 /** A student's problem status, worded the way PRD §9.1 asks for it. */
 export function problemStatusLabel(solved: boolean, bestScore: number | null): string {
   if (solved) return "Solved";
-  if (bestScore !== null && bestScore > 0) return `Partial — ${bestScore} pts`;
+  if (bestScore !== null && bestScore > 0) return `Partial: ${bestScore} pts`;
   if (bestScore !== null) return "Attempted";
   return "Unsolved";
 }

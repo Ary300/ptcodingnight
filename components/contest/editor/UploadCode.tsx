@@ -93,7 +93,7 @@ export function UploadCode({ language, onLoaded, disabled = false }: UploadCodeP
         ? { kind: "ok", text: `Loaded ${file.name}.` }
         : {
             kind: "warn",
-            text: `Loaded ${file.name}, but ${LANGUAGE_LABEL[language]} is selected. Change the language if that is wrong — the file's contents are what gets judged.`,
+            text: `Loaded ${file.name}, but ${LANGUAGE_LABEL[language]} is selected. Change the language if that is wrong; the file's contents are what gets judged.`,
           },
     );
   };

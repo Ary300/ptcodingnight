@@ -111,7 +111,7 @@ export function HintPanel({ contestProblemId, problemTitle }: HintPanelProps) {
         feature, it is taking a student's points for nothing.
       */}
       <p className="mt-3 text-ink/70" style={{ fontSize: "var(--text-xs)" }}>
-        Hints cannot be taken in this contest yet — ask an organizer if you are stuck. Your earned
+        Hints cannot be taken in this contest yet. Ask an organizer if you are stuck. Your earned
         balance is shown above and is not lost.
       </p>
     </section>

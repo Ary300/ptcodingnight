@@ -364,7 +364,7 @@ export function CodeEditorSurface({
             autoCorrect="off"
             autoComplete="off"
             wrap="off"
-            aria-label={`${label} — ${LANGUAGE_LABEL[language]}`}
+            aria-label={`${label}, ${LANGUAGE_LABEL[language]}`}
             aria-describedby={hintId}
             onSelect={(event) => syncCaret(event.currentTarget)}
             onKeyUp={(event) => syncCaret(event.currentTarget)}

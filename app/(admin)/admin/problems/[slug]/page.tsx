@@ -86,7 +86,7 @@ export default async function ProblemPage({ params }: { params: Promise<{ slug: 
         </p>
         <p className="mt-3 text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
           This screen used to offer a statement editor and a &ldquo;run the reference&rdquo; button.
-          Neither saved anything, and the reference check never executed any code — it inspected the
+          Neither saved anything, and the reference check never executed any code: it inspected the
           expected output and guessed. A green result that proves nothing is the most expensive kind
           of wrong, so it is gone rather than half-fixed.
         </p>
@@ -95,7 +95,7 @@ export default async function ProblemPage({ params }: { params: Promise<{ slug: 
       <Panel title="As the judge has it">
         <dl className="grid gap-x-8 gap-y-3 sm:grid-cols-2" style={{ fontSize: "var(--text-sm)" }}>
           <Row label="Round">{problem.round}</Row>
-          <Row label="Difficulty">{problem.difficulty ?? "—"}</Row>
+          <Row label="Difficulty">{problem.difficulty ?? "-"}</Row>
           <Row label="Time limit">
             <span className="numeric">{problem.timeLimitMs} ms</span>
           </Row>

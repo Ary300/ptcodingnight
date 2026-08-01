@@ -23,7 +23,7 @@ export default async function ContestSideActivitiesPage({
         </h2>
         <p className="mt-1 max-w-[70ch] text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
           The metal puzzle, train tracks, Connections. These are the only points with no submission
-          behind them, so this screen is the only record that they happened — every entry is kept,
+          behind them, so this screen is the only record that they happened: every entry is kept,
           with who entered it.
         </p>
       </header>

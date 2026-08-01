@@ -91,7 +91,7 @@ export default async function ContestSetupPage({
 
       <Panel
         title="Lifecycle"
-        description="A contest is born DRAFT and students cannot see it. Publishing is a separate, deliberate act — and ending one, with a room still submitting, cannot be undone."
+        description="A contest is born DRAFT and students cannot see it. Publishing is a separate, deliberate act, and ending one, with a room still submitting, cannot be undone."
       >
         <ContestStateActions contestId={setup.contestId} state={setup.state} />
 
@@ -219,7 +219,7 @@ function stepsFor(setup: ContestSetup): readonly Step[] {
       detail:
         setup.teamCount === 0
           ? "No teams yet. A team score is a mean over its roster, so a contest with no teams has no board."
-          : `${String(setup.teamCount)} ${setup.teamCount === 1 ? "team" : "teams"}, ${String(setup.participantCount)} signed in${setup.unassignedCount === 0 ? "" : `, ${String(setup.unassignedCount)} on no team — their points are in nobody's pool`}.`,
+          : `${String(setup.teamCount)} ${setup.teamCount === 1 ? "team" : "teams"}, ${String(setup.participantCount)} signed in${setup.unassignedCount === 0 ? "" : `, ${String(setup.unassignedCount)} on no team (their points are in nobody's pool)`}.`,
       state: setup.teamCount > 0 && setup.unassignedCount === 0 ? "done" : "todo",
       action: <TabLink href={`${base}/teams`} label="Teams" />,
     },

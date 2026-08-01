@@ -74,7 +74,7 @@ export default async function ProblemBankPage({
           <p className="text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
             Nothing is cleared yet. A problem leaves DRAFT once it has an original statement and its
             own test data, and <code>npm run test:content</code> is what proves it survives the real
-            judge — passing locally is not the same claim.
+            judge. Passing locally is not the same claim.
           </p>
         ) : (
           <ul className="flex flex-col" style={{ fontSize: "var(--text-sm)" }}>

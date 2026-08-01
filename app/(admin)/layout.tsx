@@ -55,7 +55,7 @@ import { isAdmin, viewerFromCookies } from "@/lib/contest/viewer";
  */
 
 export const metadata: Metadata = {
-  title: "Organiser — Park Tudor Coding Night",
+  title: "Organiser | Park Tudor Coding Night",
   description: "Contest builder, problem authoring, live console, teams, and awards.",
 };
 

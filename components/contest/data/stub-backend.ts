@@ -60,7 +60,7 @@ const PROBLEMS: readonly StubProblem[] = [
     statementMd: [
       "The hallway has $n$ lockers, numbered $1$ through $n$, and every one of them starts closed.",
       "",
-      "A student walks the hallway $n$ times. On pass $k$ they toggle every locker whose number is a multiple of $k$ — a closed locker opens, an open locker closes.",
+      "A student walks the hallway $n$ times. On pass $k$ they toggle every locker whose number is a multiple of $k$: a closed locker opens, an open locker closes.",
       "",
       "After all $n$ passes, report how many lockers are left **open**.",
       "",
@@ -293,7 +293,7 @@ function progress(record: StubSubmission): SubmissionView {
       score: 0,
       testResults: [],
       compileError:
-        "  File \"solution.py\", line 1\n    <stub compiler output — not a real compiler>\nSyntaxError: unexpected EOF while parsing",
+        "  File \"solution.py\", line 1\n    <stub compiler output, not a real compiler>\nSyntaxError: unexpected EOF while parsing",
     };
   }
 

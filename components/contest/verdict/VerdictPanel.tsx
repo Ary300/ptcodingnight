@@ -90,7 +90,7 @@ function TestRow({ result }: { result: PublicTestResult }) {
           {presentation.label}
         </span>
         <span className="numeric ml-auto text-paper/55" style={{ fontSize: "var(--text-xs)" }}>
-          {result.runtimeMs === null ? "—" : `${result.runtimeMs} ms`}
+          {result.runtimeMs === null ? "-" : `${result.runtimeMs} ms`}
         </span>
       </div>
 
@@ -151,7 +151,7 @@ export function VerdictPanel({
           <span className="text-paper/60" style={{ fontSize: "var(--text-xs)" }}>
             {totalCases === null
               ? "Judging…"
-              : `Judging — ${safeResults.length} of ${totalCases} tests`}
+              : `Judging ${safeResults.length} of ${totalCases} tests`}
           </span>
         )}
       </header>
@@ -199,7 +199,7 @@ export function VerdictPanel({
         >
           The server sent detail for {leakedOrdinals.length} hidden{" "}
           {leakedOrdinals.length === 1 ? "test" : "tests"}. It has been withheld. Please tell
-          an organizer — this is a platform bug, not something you did.
+          an organizer. This is a platform bug, not something you did.
         </p>
       )}
 
@@ -225,7 +225,7 @@ export function VerdictPanel({
 
       {hasHidden && (
         <p className="mt-3 border-t border-paper/10 pt-3 text-paper/50" style={{ fontSize: "var(--text-xs)" }}>
-          Hidden tests report pass/fail and timing only — never their input or expected
+          Hidden tests report pass/fail and timing only, never their input or expected
           output. That is the same for everyone.
         </p>
       )}

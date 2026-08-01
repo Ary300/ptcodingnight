@@ -178,7 +178,7 @@ export async function GET(
           reason: cookieHash === undefined ? "no state cookie on the callback" : "state mismatch",
           hint:
             cookieHash === undefined
-              ? "the cookie is set with path=/api/auth, SameSite=Lax and secure=COOKIE_SECURE — a secure cookie is never stored over plain HTTP"
+              ? "the cookie is set with path=/api/auth, SameSite=Lax and secure=COOKIE_SECURE; a secure cookie is never stored over plain HTTP"
               : "the flow was started in a different browser, or restarted in another tab",
         }),
       );
@@ -240,7 +240,7 @@ export async function GET(
             event: "auth.no_enrollable_contest",
             provider,
             userId: user.userId,
-            hint: "no contest in DRAFT, SCHEDULED or RUNNING — create one, or reopen the one that ended",
+            hint: "no contest in DRAFT, SCHEDULED or RUNNING. Create one, or reopen the one that ended",
           }),
         );
         return toSignIn("no_contest", provider);

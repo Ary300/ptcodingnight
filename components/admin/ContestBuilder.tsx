@@ -180,7 +180,7 @@ export function ContestBuilder({ initial = EMPTY_DRAFT }: ContestBuilderProps) {
     <form onSubmit={(event) => void onSubmit(event)} noValidate className="flex flex-col gap-6">
       <Panel
         title="Contest"
-        description="The window, the divisions, the preset and the freeze are what nobody wants to be deciding at 6:55pm. Set them now. A contest is created as a DRAFT — students cannot see it until you publish it."
+        description="The window, the divisions, the preset and the freeze are what nobody wants to be deciding at 6:55pm. Set them now. A contest is created as a DRAFT, and students cannot see it until you publish it."
       >
         <div className="grid gap-5 sm:grid-cols-2">
           <TextInput
@@ -242,7 +242,7 @@ export function ContestBuilder({ initial = EMPTY_DRAFT }: ContestBuilderProps) {
 
       <Panel
         title="Divisions"
-        description="Divisions rank independently — there is an Intermediate winner and an Advanced winner (PRD §6.1)."
+        description="Divisions rank independently: there is an Intermediate winner and an Advanced winner (PRD §6.1)."
         aside={
           <span className="numeric opacity-70" style={{ fontSize: "var(--text-xs)" }}>
             {draft.divisions.length} division{draft.divisions.length === 1 ? "" : "s"}
@@ -316,7 +316,7 @@ export function ContestBuilder({ initial = EMPTY_DRAFT }: ContestBuilderProps) {
       */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-rule-edge pt-4">
         <p className="max-w-[60ch] text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
-          Created as a <strong>DRAFT</strong> — students cannot see it. You will land on the
+          Created as a <strong>DRAFT</strong>. Students cannot see it. You will land on the
           contest, with its problems, roster and side activities as tabs.
         </p>
 
