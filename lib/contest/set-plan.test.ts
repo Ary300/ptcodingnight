@@ -7,7 +7,6 @@ import {
   setSize,
   type AvailableProblem,
   type Difficulty,
-  type PlanTeam,
   type SetComposition,
 } from "@/lib/contest/set-plan";
 
@@ -27,13 +26,6 @@ function pool(spec: Partial<Record<Difficulty, number>>): AvailableProblem[] {
   return problems;
 }
 
-function teams(count: number): PlanTeam[] {
-  return Array.from({ length: count }, (_, index) => ({
-    teamId: `team-${String(index + 1)}`,
-    name: `Team ${String(index + 1)}`,
-  }));
-}
-
 /** The historical Coding Night recipe: one Easy, one Medium, one Hard. */
 const CLASSIC: SetComposition = [
   { difficulty: "E", count: 1 },
@@ -42,10 +34,10 @@ const CLASSIC: SetComposition = [
 ];
 
 describe("planSets", () => {
-  it("gives every team its own set of the right shape", () => {
+  it("builds the requested number of sets, each matching the recipe", () => {
     const result = planSets({
       seed: "seed-1",
-      teams: teams(2),
+      setCount: 2,
       composition: CLASSIC,
       pool: pool({ E: 4, M: 4, H: 4 }),
     });
@@ -62,7 +54,7 @@ describe("planSets", () => {
     expect(result.sets.map((set) => set.label)).toEqual(["A", "B"]);
   });
 
-  it("NEVER hands the same problem to two teams", () => {
+  it("NEVER puts the same problem in two sets", () => {
     /*
       The property the whole feature exists for. Structural rather than incidental: each
       difficulty is shuffled once and dealt without replacement, so a repeat is unrepresentable.
@@ -70,7 +62,7 @@ describe("planSets", () => {
     */
     const result = planSets({
       seed: "seed-tight",
-      teams: teams(4),
+      setCount: 4,
       composition: CLASSIC,
       pool: pool({ E: 4, M: 4, H: 4 }),
     });
@@ -80,7 +72,7 @@ describe("planSets", () => {
 
     const used = result.sets.flatMap((set) => set.problems.map((problem) => problem.problemId));
     expect(used).toHaveLength(12);
-    expect(new Set(used).size, "a problem was dealt to more than one team").toBe(12);
+    expect(new Set(used).size, "a problem was dealt into more than one set").toBe(12);
   });
 
   it("is deterministic: the same seed re-derives the same split byte for byte", () => {
@@ -88,7 +80,7 @@ describe("planSets", () => {
     // before anyone knew who was on which team (PRD §6.2).
     const input = {
       seed: "fixed-seed",
-      teams: teams(3),
+      setCount: 3,
       composition: CLASSIC,
       pool: pool({ E: 6, M: 6, H: 6 }),
     };
@@ -96,7 +88,7 @@ describe("planSets", () => {
   });
 
   it("a different seed generally deals differently", () => {
-    const base = { teams: teams(3), composition: CLASSIC, pool: pool({ E: 9, M: 9, H: 9 }) };
+    const base = { setCount: 3, composition: CLASSIC, pool: pool({ E: 9, M: 9, H: 9 }) };
     const first = planSets({ ...base, seed: "seed-a" });
     const second = planSets({ ...base, seed: "seed-b" });
     expect(JSON.stringify(first)).not.toBe(JSON.stringify(second));
@@ -110,7 +102,7 @@ describe("planSets", () => {
     ];
     const result = planSets({
       seed: "seed-2",
-      teams: teams(3),
+      setCount: 3,
       composition,
       pool: pool({ E: 6, M: 99, H: 3 }),
     });
@@ -128,7 +120,7 @@ describe("planSets", () => {
   it("refuses when the bank is short, and says exactly how short", () => {
     const result = planSets({
       seed: "seed-3",
-      teams: teams(4),
+      setCount: 4,
       composition: CLASSIC,
       pool: pool({ E: 10, M: 10, H: 2 }),
     });
@@ -139,7 +131,7 @@ describe("planSets", () => {
     expect(result.shortfalls).toEqual([{ difficulty: "H", needed: 4, available: 2 }]);
     // The arithmetic is in the sentence, because "not enough problems" sends an organizer
     // hunting for which kind and how many.
-    expect(result.message).toContain("4 Hard problems are needed for 4 teams");
+    expect(result.message).toContain("4 Hard problems are needed for 4 sets");
     expect(result.message).toContain("the bank has 2");
     expect(result.message).toContain("2 more Hard problems are required");
   });
@@ -147,7 +139,7 @@ describe("planSets", () => {
   it("reports EVERY shortfall, not just the first", () => {
     const result = planSets({
       seed: "seed-4",
-      teams: teams(5),
+      setCount: 5,
       composition: CLASSIC,
       pool: pool({ E: 1, M: 5, H: 0 }),
     });
@@ -167,7 +159,7 @@ describe("planSets", () => {
     };
     const result = planSets({
       seed: "seed-5",
-      teams: teams(1),
+      setCount: 1,
       composition: [{ difficulty: "E", count: 1 }],
       pool: [...pool({ E: 1 }), unrated],
     });
@@ -177,19 +169,19 @@ describe("planSets", () => {
     expect(result.sets[0]!.problems.map((problem) => problem.problemId)).toEqual(["E1"]);
   });
 
-  it("refuses an empty roster and an empty recipe, in words an organizer can act on", () => {
-    const noTeams = planSets({
+  it("refuses a zero set count and an empty recipe, in words an organizer can act on", () => {
+    const noSets = planSets({
       seed: "s",
-      teams: [],
+      setCount: 0,
       composition: CLASSIC,
       pool: pool({ E: 9, M: 9, H: 9 }),
     });
-    expect(noTeams.ok).toBe(false);
-    if (!noTeams.ok) expect(noTeams.message).toContain("no teams yet");
+    expect(noSets.ok).toBe(false);
+    if (!noSets.ok) expect(noSets.message).toContain("how many sets");
 
     const noRecipe = planSets({
       seed: "s",
-      teams: teams(2),
+      setCount: 2,
       composition: [],
       pool: pool({ E: 9, M: 9, H: 9 }),
     });
@@ -200,7 +192,7 @@ describe("planSets", () => {
   it("treats a zero-count recipe line as absent rather than as a constraint", () => {
     const result = planSets({
       seed: "seed-6",
-      teams: teams(2),
+      setCount: 2,
       composition: [
         { difficulty: "E", count: 1 },
         { difficulty: "H", count: 0 },
@@ -224,7 +216,7 @@ describe("checkFeasibility", () => {
 });
 
 describe("setSize and setLabelAt", () => {
-  it("counts the problems one team receives", () => {
+  it("counts the problems one set holds", () => {
     expect(setSize(CLASSIC)).toBe(3);
     expect(setSize([{ difficulty: "E", count: 2 }, { difficulty: "H", count: 3 }])).toBe(5);
   });

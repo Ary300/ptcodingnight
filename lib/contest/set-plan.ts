@@ -1,34 +1,43 @@
 import { createHash } from "node:crypto";
 
 /**
- * Building one problem set per TEAM, to a difficulty recipe the organizer chooses.
+ * Building the contest's problem SETS, to a difficulty recipe the organizer chooses.
  *
- * ## The format this implements, which is the inverse of the old one
+ * ## The format this implements
  *
- * `lib/contest/set-assignment.ts` assigns a set per PLAYER and deliberately balances *within* a
- * team so that teammates get DIFFERENT sets. That was built for a format this contest does not
- * run. The real format, from the organizer:
+ * From the organizer's own sheet: the columns are sets and the rows are teams.
  *
- *   - a set is a property of a TEAM, not of a player;
- *   - every member of a team gets the WHOLE set and each of them tries to solve all of it;
- *   - different teams get DIFFERENT questions;
- *   - a set is composed to a difficulty recipe, historically one Easy, one Medium and one Hard,
- *     but the recipe is an organizer input rather than a constant.
+ *     Questions │  A    │  B       │  C     │  D
+ *     Group 1   │ John  │ Peter    │ Paul   │ Simon
+ *     Group 2   │ Mark  │ Anthony  │ David  │ Bryan
  *
- * The anti-collusion property the old comment argued for is not lost, it moves: sharing inside a
- * team is the team working together, which is what a team score measures; sharing BETWEEN teams is
- * what distinct sets prevent, and that is what this file guarantees by construction.
+ * So:
+ *   - a SET is a column: a fixed bundle of problems, here four of them, A to D;
+ *   - **every member of a team gets a DIFFERENT set**, which is what
+ *     `lib/contest/set-assignment.ts` already arranges by balancing within a team;
+ *   - **a set is the same questions for everybody who holds it**, across teams: John and Mark
+ *     both work set A;
+ *   - sets differ FROM EACH OTHER, so A, B, C and D are twelve distinct problems under a
+ *     one-of-each recipe;
+ *   - GROUP problems sit outside this entirely: the whole team works them together and every team
+ *     gets the same ones (`ContestProblem.setId = null`, `ProblemRound.GROUP`).
+ *
+ * This file's job is only the first and fourth points: build N sets whose problems do not overlap,
+ * to a recipe. Who holds which set is `set-assignment.ts`, unchanged and still correct.
+ *
+ * The recipe is historically one Easy, one Medium and one Hard, but it is an input rather than a
+ * constant because the format has changed between years.
  *
  * ## Pure, seeded, and re-derivable
  *
- * No I/O, no `Date.now()`, no `Math.random()`. Same seed, same teams, same pool, same plan, byte
- * for byte. **A disputed set has to be explainable rather than argued about** (PRD §6.2): with the
- * seed stored, an organizer can re-derive the whole split in front of a room and show it was fixed
- * before anyone knew which team was which.
+ * No I/O, no `Date.now()`, no `Math.random()`. Same seed, same pool, same plan, byte for byte.
+ * **A disputed set has to be explainable rather than argued about** (PRD §6.2): with the seed
+ * stored, an organizer can re-derive the whole split in front of a room and show it was fixed
+ * before anyone knew who would be holding which column.
  *
  * ## Feasibility is answered BEFORE anything is written
  *
- * Four teams needing one Hard each is four distinct Hard problems. A bank with two cannot do it,
+ * Four sets needing one Hard each is four distinct Hard problems. A bank with two cannot do it,
  * and the useful moment to say so is while the organizer is still choosing the recipe, not after
  * half the sets exist. `planSets` therefore returns a refusal carrying the exact arithmetic rather
  * than throwing something vague.
@@ -62,15 +71,8 @@ export interface AvailableProblem {
   readonly difficulty: Difficulty | null;
 }
 
-export interface PlanTeam {
-  readonly teamId: string;
-  readonly name: string;
-}
-
 export interface PlannedSet {
-  readonly teamId: string;
-  readonly teamName: string;
-  /** "A", "B", "C", … in the deal order, which is `teamId` order. */
+  /** "A", "B", "C", … in deal order. The column heading on the organizer's sheet. */
   readonly label: string;
   readonly problems: readonly AvailableProblem[];
 }
@@ -78,7 +80,7 @@ export interface PlannedSet {
 /** One recipe line the pool cannot satisfy, with the arithmetic that says why. */
 export interface Shortfall {
   readonly difficulty: Difficulty;
-  /** `count × teams` — how many distinct problems of this difficulty the recipe needs. */
+  /** `count × setCount` — how many distinct problems of this difficulty the recipe needs. */
   readonly needed: number;
   /** How many the pool actually holds. */
   readonly available: number;
@@ -86,7 +88,14 @@ export interface Shortfall {
 
 export interface SetPlanInput {
   readonly seed: string;
-  readonly teams: readonly PlanTeam[];
+  /**
+   * How many sets to build: the number of columns on the sheet.
+   *
+   * In practice this is the size of the largest team, because every member of a team holds a
+   * different set. Four members means four sets, and a fifth member would have to repeat a
+   * column, which is why the UI derives the default from the roster and says so.
+   */
+  readonly setCount: number;
   readonly composition: SetComposition;
   readonly pool: readonly AvailableProblem[];
 }
@@ -144,12 +153,12 @@ export function setSize(composition: SetComposition): number {
 export function checkFeasibility(
   composition: SetComposition,
   pool: readonly AvailableProblem[],
-  teamCount: number,
+  setCount: number,
 ): Shortfall[] {
   const shortfalls: Shortfall[] = [];
   for (const entry of composition) {
     if (entry.count <= 0) continue;
-    const needed = entry.count * teamCount;
+    const needed = entry.count * setCount;
     const available = pool.filter((problem) => problem.difficulty === entry.difficulty).length;
     if (available < needed) shortfalls.push({ difficulty: entry.difficulty, needed, available });
   }
@@ -157,12 +166,12 @@ export function checkFeasibility(
 }
 
 /** The sentence an organizer reads when a recipe cannot be built. Names the exact arithmetic. */
-export function shortfallMessage(shortfalls: readonly Shortfall[], teamCount: number): string {
+export function shortfallMessage(shortfalls: readonly Shortfall[], setCount: number): string {
   const parts = shortfalls.map((shortfall) => {
     const label = DIFFICULTY_LABEL[shortfall.difficulty];
     const short = shortfall.needed - shortfall.available;
     return (
-      `${String(shortfall.needed)} ${label} problems are needed for ${String(teamCount)} teams ` +
+      `${String(shortfall.needed)} ${label} problems are needed for ${String(setCount)} sets ` +
       `and the bank has ${String(shortfall.available)}, so ${String(short)} more ` +
       `${label} ${short === 1 ? "problem is" : "problems are"} required`
     );
@@ -171,24 +180,24 @@ export function shortfallMessage(shortfalls: readonly Shortfall[], teamCount: nu
 }
 
 /**
- * Build one set per team from the pool, to the recipe.
+ * Build the contest's sets from the pool, to the recipe.
  *
- * Every problem is used at most once across the whole contest, so no two teams ever share a
- * question. That is guaranteed structurally: each difficulty's candidates are shuffled once and
- * then DEALT without replacement, so a repeat is not merely unlikely, it is unrepresentable.
+ * Every problem is used at most once across all sets, so no two SETS ever share a question, and
+ * therefore no two members of a team are ever handed the same problem. That is guaranteed
+ * structurally: each difficulty's candidates are shuffled once and then DEALT without replacement,
+ * so a repeat is not merely unlikely, it is unrepresentable.
  *
- * Teams are dealt in `teamId` order so the plan is byte-identical run to run and can be diffed
- * against a previous one. Within a set, problems are ordered as the recipe lists them, which is
- * how the organizer wrote it and therefore how they will read it back.
+ * Within a set, problems are ordered as the recipe lists them, which is how the organizer wrote it
+ * and therefore how they will read it back.
  */
 export function planSets(input: SetPlanInput): SetPlanResult {
-  const { seed, teams, composition, pool } = input;
+  const { seed, setCount, composition, pool } = input;
 
-  if (teams.length === 0) {
+  if (setCount <= 0) {
     return {
       ok: false,
       shortfalls: [],
-      message: "There are no teams yet. Put students on teams before building the sets.",
+      message: "Say how many sets to build. One per member of the largest team is the usual answer.",
     };
   }
 
@@ -197,13 +206,13 @@ export function planSets(input: SetPlanInput): SetPlanResult {
     return {
       ok: false,
       shortfalls: [],
-      message: "The set is empty. Say how many problems of each difficulty a team should get.",
+      message: "The set is empty. Say how many problems of each difficulty a set should hold.",
     };
   }
 
-  const shortfalls = checkFeasibility(effective, pool, teams.length);
+  const shortfalls = checkFeasibility(effective, pool, setCount);
   if (shortfalls.length > 0) {
-    return { ok: false, shortfalls, message: shortfallMessage(shortfalls, teams.length) };
+    return { ok: false, shortfalls, message: shortfallMessage(shortfalls, setCount) };
   }
 
   // Shuffle each difficulty's candidates ONCE, then deal. Dealing from a per-difficulty queue is
@@ -218,9 +227,7 @@ export function planSets(input: SetPlanInput): SetPlanResult {
     );
   }
 
-  const orderedTeams = [...teams].sort((a, b) => (a.teamId < b.teamId ? -1 : a.teamId > b.teamId ? 1 : 0));
-
-  const sets: PlannedSet[] = orderedTeams.map((team, index) => {
+  const sets: PlannedSet[] = Array.from({ length: setCount }, (_unused, index) => {
     const problems: AvailableProblem[] = [];
     for (const entry of effective) {
       const queue = queues.get(entry.difficulty)!;
@@ -229,12 +236,7 @@ export function planSets(input: SetPlanInput): SetPlanResult {
         problems.push(queue.shift()!);
       }
     }
-    return {
-      teamId: team.teamId,
-      teamName: team.name,
-      label: setLabelAt(index),
-      problems,
-    };
+    return { label: setLabelAt(index), problems };
   });
 
   return { ok: true, sets };
