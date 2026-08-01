@@ -33,14 +33,30 @@
   --gap: calc(var(--fs-sm) * 0.5);
   --pad: calc(var(--fs-sm) * 1.2);
 
-  /* Secondary text. A mix, not a new colour, and kept well above AA on --ink. */
-  --muted: color-mix(in srgb, var(--color-paper) 72%, var(--color-ink));
+  /*
+    Secondary text on a PAPER ground. A mix, not a new colour.
+
+    Ink at 72% of the way from paper composites well above the 57% floor DESIGN.md §7 sets for ink
+    on paper — the floor exists because 55% measures 4.34:1 and misses AA at this size.
+  */
+  --muted: color-mix(in srgb, var(--color-ink) 72%, var(--color-paper));
 
   position: fixed;
   inset: 0;
   overflow: hidden;
-  background: var(--color-ink);
-  color: var(--color-paper);
+  /*
+    WHITE, like Codeforces. This was --ink on --paper and the room said it looked wrong.
+
+    The dark stage was chosen because --gold, --rise and --fall all clear AAA on ink and all fail
+    AA on paper (1.39:1, 2.02:1 and 1.94:1). That reasoning was sound and its conclusion was still
+    wrong: it optimised for keeping three accent colours that a standings board does not need.
+    Codeforces uses one ground, one rule weight and ONE accent, and reads perfectly across a room.
+
+    So the ground is paper and the accent is --panther, which measures 5.08:1 here and is the
+    school's colour. Everything gold or green on this screen becomes red or weight.
+  */
+  background: var(--color-paper);
+  color: var(--color-ink);
   font-family: var(--font-body);
 }
 
@@ -77,7 +93,7 @@
   min-width: 0;
   flex-direction: column;
   gap: calc(var(--gap) * 2);
-  border-left: 2px solid color-mix(in srgb, var(--color-paper) 16%, transparent);
+  border-left: 2px solid color-mix(in srgb, var(--color-ink) 18%, transparent);
   padding-left: var(--pad);
 }
 
@@ -111,8 +127,9 @@
   display: flex;
   align-items: baseline;
   border-radius: 4px;
-  background: var(--color-gold);
-  color: var(--color-ink); /* 13.44:1 — docs/DESIGN.md §2 */
+  /* Was --color-gold, which is 1.39:1 on paper. --panther is 5.08:1 and carries paper at AA. */
+  background: var(--color-panther);
+  color: var(--color-ink);
   gap: var(--gap);
   padding: calc(var(--gap) * 0.9) calc(var(--gap) * 2.2);
 }
@@ -155,7 +172,7 @@
 .columns {
   display: grid;
   align-items: end;
-  border-bottom: 2px solid color-mix(in srgb, var(--color-paper) 16%, transparent);
+  border-bottom: 2px solid color-mix(in srgb, var(--color-ink) 18%, transparent);
   color: var(--muted);
   column-gap: calc(var(--num-fs) * 0.4);
   font-size: var(--fs-sm);
@@ -201,7 +218,7 @@
   width: 100%;
   height: var(--row-h);
   align-items: center;
-  border-bottom: 1px solid color-mix(in srgb, var(--color-paper) 10%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--color-ink) 12%, transparent);
   column-gap: calc(var(--num-fs) * 0.4);
   font-size: var(--fs-lg);
   grid-template-columns:
@@ -339,7 +356,7 @@
 }
 
 .sampleMarker {
-  color: var(--color-gold);
+  color: var(--color-panther);
   font-weight: 700;
   letter-spacing: 0.1em;
 }
@@ -470,7 +487,7 @@
 /* The board has lost contact and says so. Gold is 13.44:1 on ink and already means
    "pay attention to this" everywhere else on this screen. */
 .teamAlert {
-  color: var(--color-gold);
+  color: var(--color-panther);
 }
 
 /* An empty board is still a titled screen. Centred in the space the rows would occupy. */
@@ -498,7 +515,7 @@
 }
 
 .clockUrgent {
-  color: var(--color-gold);
+  color: var(--color-panther);
 }
 
 .tabs {
@@ -527,14 +544,14 @@
 }
 
 .tab:hover {
-  color: var(--color-paper);
+  color: var(--color-ink);
 }
 
 .tabActive {
   /* --panther as chrome only: the rail marks the selection, the label stays --paper.
      DESIGN.md §2 — panther is 3.67 on ink and never carries small text. */
   border-left-color: var(--color-panther);
-  color: var(--color-paper);
+  color: var(--color-ink);
 }
 
 .tabCount {
@@ -560,11 +577,11 @@
 }
 
 .stateLive {
-  color: var(--color-rise);
+  color: var(--color-panther);
 }
 
 .stateFrozen {
-  color: var(--color-gold);
+  color: var(--color-panther);
 }
 
 /* ---------------------------------------------------------------------------
@@ -627,7 +644,7 @@
 
 .crestRing {
   position: absolute;
-  border: calc(var(--fs-sm) * 0.32) solid var(--color-gold);
+  border: calc(var(--fs-sm) * 0.32) solid var(--color-panther);
   border-radius: 50%;
   inset: 4%;
   opacity: 0;

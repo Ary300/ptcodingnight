@@ -4,6 +4,7 @@ import { useState } from "react";
 
 import type { TeamStandingRow, TeamPlayerRow } from "@/lib/schemas/api";
 
+import { TeamPlayerLine } from "./TeamPlayerDetail";
 import styles from "./leaderboard.module.css";
 
 /**
@@ -38,19 +39,31 @@ import styles from "./leaderboard.module.css";
  * `=` column is the score; the row under the team name is how it was reached; and the expander
  * opens every input. Someone who can see how the number was reached does not have to trust it.
  *
+ * That expander has **two levels**. Level one is the roster and the arithmetic, and it is public on
+ * every team, because it is the same class of fact the projector already shows. Level two is per
+ * player, per problem — `components/leaderboard/TeamPlayerDetail.tsx` — and it is **entitled**: it
+ * arrives `null` unless the viewer is an organizer or is asking about their own team. The decision
+ * is taken in `getTeamStandings`, not here, because both routes behind this board are
+ * unauthenticated and a component gate would leave the data sitting in the network tab.
+ *
  * This is also where the imitation stops. A CF row is a name and a total, because an individual's
  * score is a sum anyone can add up. A mean is not, so the divisor stays on the row. A board that
  * looked more like Codeforces by dropping it would be a worse board.
  *
- * ## Deliberately not copied
+ * ## Deliberately not copied ON THE TEAM ROW
  *
- * - **A point value under each column letter.** CF prints what the problem is worth. A *set* has
- *   no single worth, and the contract this board reads (`TeamStandingsResponse`) carries no such
- *   number, so any figure printed there would be invented. The sub-label says what the column is
- *   instead.
- * - **The red `-2` failed-attempt count.** Attempts are not in the contract either. The nearest
- *   true statement is "a player is in this set and has not scored", and that is what an unscored
- *   cell shows: a real `0`, which reads as "attempted, nothing yet" without needing the colour.
+ * Two of these were once absolute and are now true only of the row. `TeamPlayerProblem` put
+ * `basePoints` and `rejectedCount` into the contract for the level-two panel, so a comment still
+ * claiming the contract has no such number would read as a live constraint and be wrong.
+ *
+ * - **A point value under each column letter.** CF prints what the problem is worth. A *set* still
+ *   has no single worth — it is several problems, and different players hold different ones — so
+ *   the column keeps its sub-label rather than an invented total. `basePoints` exists per problem
+ *   now, and per problem is where it stays.
+ * - **The red `−2` failed-attempt count, on a team row.** The count exists now, and it is in the
+ *   per-player panel. It is not on this row and must not be: a team row aggregates several players
+ *   across a whole set, and a rejection count summed over that means nothing anybody would want.
+ *   An unscored cell still shows a real `0` — "in this set, nothing yet".
  * - **Colour as the carrier of meaning.** CF leans on green-for-solved. Here `0` versus `420`,
  *   weight, and the em-dash for "nobody in this set" each read correctly in greyscale, which they
  *   have to: the board spends part of the night desaturated behind the freeze, and roughly 1 in 12
@@ -164,19 +177,27 @@ export function TeamStandingsBoard({
   };
 
   /**
-   * The board renders on two grounds, and the DESIGN.md §7 contrast floors are stated per ground:
-   * `text-ink/N` on `--paper` has a floor of 57%, `text-paper/N` on `--ink` has a floor of 47%.
-   * The same class is therefore not merely a different colour on the projector, it is a different
-   * *measurement* — muted ink text on the ink ground is unreadable rather than subtle.
+   * ONE GROUND NOW, so these no longer branch.
    *
-   * Named here rather than repeated inline so a new cell cannot pick one and forget the other.
+   * The projector used to be an `--ink` stage, and DESIGN.md §7 states the contrast floors per
+   * ground — 57% for ink on paper, 47% for paper on ink — so the same class was not merely a
+   * different colour there, it was a different *measurement*. The stage is paper now (Codeforces
+   * uses a white ground and so do we), which collapses the pair.
+   *
+   * They are kept as named constants rather than inlined for the reason they existed: a new cell
+   * cannot pick a tone and forget that it has a floor. And they are kept as VARIABLES rather than
+   * folded into the JSX so that the day somebody adds a second ground back, there is one place to
+   * branch instead of forty.
+   *
+   * The projector still differs — in SIZE, through `--text-proj-*`, which is what a room actually
+   * needs — so `projector` is still a meaningful prop.
    */
-  const muted = projector ? "text-paper/75" : "text-ink/65";
-  const dim = projector ? "text-paper/70" : "text-ink/60";
-  const grid = projector ? "border-paper/25" : "border-ink/20";
-  const headBg = projector ? "bg-paper/10" : "bg-ink/5";
-  /** Panther red is chrome on the ink ground, never body text — DESIGN.md §2. */
-  const accent = projector ? "text-gold" : "text-panther";
+  const muted = "text-ink/70";
+  const dim = "text-ink/60";
+  const grid = "border-ink/20";
+  const headBg = "bg-ink/5";
+  /** One accent on one ground. `--color-gold` is 1.39:1 on paper and cannot appear here. */
+  const accent = "text-panther";
 
   /**
    * Codeforces prints a solved cell green and a failed one red. Both are available on the
@@ -376,11 +397,9 @@ export function TeamStandingsBoard({
                        rail-width wider than its neighbours. */
                       borderLeftWidth: "var(--rail-width)",
                       borderLeftStyle: "solid",
-                      borderLeftColor: mine
-                        ? projector
-                          ? "var(--color-gold)"
-                          : "var(--color-panther)"
-                        : "transparent",
+                      // Gold was the projector's marker while the stage was dark; it measures
+                      // 1.39:1 on paper. One accent, both grounds.
+                      borderLeftColor: mine ? "var(--color-panther)" : "transparent",
                     }}
                   >
                     {team.rank}
@@ -546,25 +565,15 @@ export function TeamStandingsBoard({
                       className={`border ${grid} ${cellPad}`}
                       colSpan={3 + columns.length}
                     >
+                      {/* Level one, unchanged and public: who is on the team, on which set, for
+                        how many points. Each line carries its own level-two disclosure when the
+                        payload entitled this viewer to it — see TeamPlayerDetail. */}
                       <ul className="space-y-1">
                         {team.players.map((player) => (
-                          <li
+                          <TeamPlayerLine
                             key={player.participantId}
-                            className="grid grid-cols-[1fr_auto_auto] items-baseline gap-3"
-                            style={{ fontSize: "var(--text-xs)" }}
-                          >
-                            <span className="truncate">
-                              {player.displayName}
-                            </span>
-                            <span className="numeric text-ink/65">
-                              {player.chosenSetLabel === null
-                                ? "no set"
-                                : `set ${player.chosenSetLabel}`}
-                            </span>
-                            <span className="numeric text-right font-bold">
-                              {player.score}
-                            </span>
-                          </li>
+                            player={player}
+                          />
                         ))}
                       </ul>
 
