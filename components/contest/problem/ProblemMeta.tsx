@@ -183,7 +183,11 @@ export function ProblemMetaRail({ detail }: { detail: ProblemDetail }) {
       label: "Your best",
       value:
         detail.bestScore === null ? (
-          <span className="text-ink/60">—</span>
+          // U+2212 MINUS SIGN as the "nothing here yet" mark, matching `Delta`'s no-change glyph.
+          // It was an em dash: banned from anything a person using this site can read, and per
+          // `components/ui/Delta.tsx` an em dash is outside the Latin subset of the vendored woff2
+          // files anyway, so it fell back to whatever font the machine happened to have.
+          <span className="text-ink/60">&#8722;</span>
         ) : (
           <span className="numeric">{detail.bestScore}</span>
         ),

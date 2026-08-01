@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 
 import { BrandPanel } from "@/components/contest/join/BrandPanel";
 import { SignInForm } from "@/components/contest/join/SignInForm";
 import { signInErrorMessage } from "@/lib/contest/sign-in-errors";
 
 export const metadata: Metadata = {
-  title: "Sign in — Coding Night",
+  title: "Sign in | Coding Night",
 };
 
 /**
@@ -67,6 +68,44 @@ export default async function SignInPage({
       */}
       <main className="flex flex-col justify-center px-4 py-10 lg:px-14">
         <div className="w-full max-w-sm">
+          {/*
+            The way out.
+
+            Reported by an organizer using the site: "when I am at this page there is no way to go
+            back to the main page". It was exactly right. This is a full-bleed split screen outside
+            the competitor route group, so it inherits no chrome, no nav and no footer, and the
+            brand panel beside it is a `<div>` with a picture in it rather than a link. Every route
+            into this page is a one-way trip: the header links on `/`, both hero buttons, the
+            closing band, the sign-out in `CompetitorChrome`, and every `?error=` redirect out of
+            OAuth. A student who pressed "Sign in to compete" to see what it was had the browser's
+            back button and nothing else, and on a phone opened from a shared link there may not
+            even be a history entry behind this one.
+
+            First in the main landmark, so it is also the first thing Tab reaches after the skip
+            target. Text as well as an arrow, because a lone glyph is not a label and colour and
+            shape are never the only channel (DESIGN.md §3).
+          */}
+          <Link
+            href="/"
+            className="mb-6 inline-flex items-center gap-1.5 rounded text-ink/70 underline-offset-4 hover:text-ink hover:underline"
+            style={{ fontSize: "var(--text-xs)" }}
+          >
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 16 16"
+              width="12"
+              height="12"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M10 3 5 8l5 5" />
+            </svg>
+            Back to the home page
+          </Link>
+
           <h1 className="font-display font-bold" style={{ fontSize: "var(--text-xl)" }}>
             Sign in
           </h1>

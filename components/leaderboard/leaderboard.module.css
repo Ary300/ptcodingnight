@@ -127,9 +127,16 @@
   display: flex;
   align-items: baseline;
   border-radius: 4px;
-  /* Was --color-gold, which is 1.39:1 on paper. --panther is 5.08:1 and carries paper at AA. */
+  /*
+    Was --color-gold, which is 1.39:1 on paper. --panther is 5.08:1 and carries PAPER at AA.
+    That last word is the fix: the plate said so and then set `color: var(--color-ink)`, which is
+    3.67:1 on --panther. 3.67 clears AA for large text, so at `--proj-scale: 1` the note (24px,
+    600) passed and nobody saw it. At 1280×720 the same note is 16px, which is not large text any
+    more, and axe reports it serious. A pairing that is legal at one scale and illegal at the
+    other, on the ONE message the room must not miss, is not a pairing to keep.
+  */
   background: var(--color-panther);
-  color: var(--color-ink);
+  color: var(--color-paper);
   gap: var(--gap);
   padding: calc(var(--gap) * 0.9) calc(var(--gap) * 2.2);
 }
@@ -446,6 +453,20 @@
 }
 
 /*
+ * The subtitle is where live-or-frozen is stated now that the corner pill is gone, so the frozen
+ * case gets weight and the accent rather than the muted tone every other subtitle has. Full
+ * strength `--panther`: 5.08:1 on paper, and any alpha on it fails AA (DESIGN.md §7).
+ *
+ * Colour is not the channel here, the WORD is. This only makes the word harder to skim past.
+ */
+.teamSubtitleFrozen {
+  color: var(--color-panther);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/*
  * The band's height is reserved whether or not the plate is up, so the board does not jump when
  * the freeze starts — and it is kept tight, because at 1280×720 the row borders do NOT scale with
  * `--proj-scale` (a 1px rule is 1px on both canvases) and eight of them were enough on their own
@@ -495,6 +516,78 @@
   align-self: center;
   font-size: var(--fs-md);
   text-align: center;
+}
+
+/* ---------------------------------------------------------------------------
+ * The open team's roster strip (TeamRosterStrip).
+ *
+ * A LINE, not a column. Every player of the open team sits on one wrapping band under that team's
+ * row, because the alternative — the competitor board's vertical list — is one line per player at
+ * the projector's floor size, and the demo contest already has a nine-player team. Nine lines is
+ * most of the board.
+ *
+ * Everything here is at `--fs-sm`, the floor of the projector scale. That is deliberate: the strip
+ * is paid for out of the row budget (`TEAM_EXPANDED_ROW_COST`), so every step up the ladder costs a
+ * whole team its place on the wall.
+ * ------------------------------------------------------------------------ */
+
+.roster {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: calc(var(--pad) * 0.9);
+  font-size: var(--fs-sm);
+  row-gap: calc(var(--gap) * 0.6);
+}
+
+/*
+ * `--panther` at FULL strength. It measures 5.08:1 on paper, which passes AA here; any alpha on it
+ * does not, so this label is never faded to suggest it is secondary (DESIGN.md §7).
+ */
+.rosterLabel {
+  color: var(--color-panther);
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.rosterList {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: calc(var(--pad) * 1.1);
+  row-gap: calc(var(--gap) * 0.6);
+}
+
+/*
+ * One player never breaks across two lines: a name on one line and its points on the next is a
+ * number the room cannot attribute. The whole entry wraps as a unit instead.
+ */
+.rosterPlayer {
+  display: flex;
+  align-items: baseline;
+  gap: calc(var(--gap) * 0.8);
+  white-space: nowrap;
+}
+
+.rosterName {
+  font-weight: 700;
+}
+
+.rosterSet {
+  color: var(--muted);
+}
+
+.rosterScore {
+  font-weight: 700;
+}
+
+.rosterNote {
+  color: var(--muted);
 }
 
 /* ---------------------------------------------------------------------------

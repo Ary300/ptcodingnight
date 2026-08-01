@@ -2,7 +2,7 @@
 
 The Panther robotics team has taped a numbered strip down the length of the science hallway
 and parked two hopping rovers on it. Every time the timer beeps, both rovers hop forward by
-their own fixed jump length — always toward larger numbers, never backward. The team wants
+their own fixed jump length, always toward larger numbers, never backward. The team wants
 to know whether the two rovers ever share a mark on the same beep, because that is exactly
 the moment their bumpers clack together and somebody has to go pick up a servo horn.
 

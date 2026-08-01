@@ -107,16 +107,16 @@ export function AssignmentNotice({
           You are not on a team yet
         </h2>
         <p className="mt-1" style={{ fontSize: "var(--text-sm)" }}>
-          An organizer will put you on a team — there is nothing for you to do. Your problem set is
+          An organizer will put you on a team, and there is nothing for you to do. Your problem set is
           assigned along with your team, so until then{" "}
           {visibleProblemCount === 0
             ? "there is nothing for you to open yet."
             : groupOnly
               ? `the only problems you can open are the ${groupPhrase(groupProblemCount)} below, which everyone can open.`
-              : `you can open and submit to every problem listed below — all ${String(visibleProblemCount)} of them, not just the ${groupPhrase(groupProblemCount)}.`}
+              : `you can open and submit to every problem listed below: all ${String(visibleProblemCount)} of them, not just the ${groupPhrase(groupProblemCount)}.`}
         </p>
         <p className="mt-1 text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
-          Points you score before you are added still count — they join your team&apos;s total the
+          Points you score before you are added still count. They join your team&apos;s total the
           moment you are on it.{" "}
           <Link href="/team" className="text-panther underline underline-offset-2">
             More about team scoring
@@ -136,7 +136,7 @@ export function AssignmentNotice({
           You are on a team, but an organizer has not assigned your set.{" "}
           {groupOnly
             ? "The group problems below are open to everyone in the meantime."
-            : "Everything listed below is open to you in the meantime — you can submit to any of it."}
+            : "Everything listed below is open to you in the meantime, and you can submit to any of it."}
         </p>
       </Panel>
     );
@@ -158,7 +158,7 @@ export function AssignmentNotice({
         Sets are assigned by an organizer, never chosen, so this is fixed for the round.{" "}
         {groupOnly
           ? "Your set and the rows marked group are what you see below."
-          : "Every problem listed below is one you can open and submit to, including the other sets — they are all yours to score on."}
+          : "Every problem listed below is one you can open and submit to, including the other sets. They are all yours to score on."}
       </p>
     </Panel>
   );

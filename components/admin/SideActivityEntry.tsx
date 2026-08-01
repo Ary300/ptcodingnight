@@ -21,6 +21,14 @@ import { Panel } from "@/components/admin/Panel";
  * - Points are added **flat** to the team total, not divided by team size, so a typo is not diluted
  *   the way a problem score would be. The field is bounded and the screen says so.
  *
+ * ## The entry is read back three times
+ *
+ * A wrong number here silently changes a team score, so the form narrates itself: an echo under
+ * the points field states the team and the signed amount BEFORE the button is pressed, the button
+ * itself names the team, and the confirmation afterwards restates team, label, signed points and
+ * the team's new side-activity total. Points render as signed integers everywhere; a float here
+ * would claim a precision hand-entered whole points do not have.
+ *
  * ## The history was not a record of anything
  *
  * It claimed to show "who entered each one" in its own `<caption>` and printed `enteredBy`
@@ -66,6 +74,19 @@ export interface SideActivityEntryProps {
 /** Matches the API's bound. Stated here so the form can refuse before a round trip. */
 const MAX_POINTS = 1000;
 
+/**
+ * Awards always render signed and always as integers. The sign is the whole meaning of a
+ * correction, and a float here would imply a precision this screen does not have: side-activity
+ * points are whole points, entered by hand, added flat.
+ */
+function signedPoints(value: number): string {
+  return value > 0 ? `+${String(value)}` : String(value);
+}
+
+function pointsWord(value: number): string {
+  return Math.abs(value) === 1 ? "point" : "points";
+}
+
 function unwrap(body: unknown): unknown {
   return typeof body === "object" && body !== null && "data" in body
     ? (body as { data: unknown }).data
@@ -105,6 +126,7 @@ export function SideActivityEntry({ contestId }: SideActivityEntryProps) {
   const [label, setLabel] = useState("");
   const [points, setPoints] = useState("");
   const [activities, setActivities] = useState<readonly ActivityRow[]>([]);
+  const [historyFailed, setHistoryFailed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [confirmation, setConfirmation] = useState<string | null>(null);
@@ -162,11 +184,18 @@ export function SideActivityEntry({ contestId }: SideActivityEntryProps) {
     void (async () => {
       try {
         const loaded = await fetchActivities(teamId);
-        if (!cancelled) setActivities(loaded);
+        if (!cancelled) {
+          setActivities(loaded);
+          setHistoryFailed(false);
+        }
       } catch {
         // A failed history load is not worth an alert: the award form still works, and the
-        // history is context rather than the task.
-        if (!cancelled) setActivities([]);
+        // history is context rather than the task. But it must not masquerade as an empty
+        // history — "Nothing awarded yet" beside a nonzero total is a claim, and a wrong one.
+        if (!cancelled) {
+          setActivities([]);
+          setHistoryFailed(true);
+        }
       }
     })();
 
@@ -220,18 +249,39 @@ export function SideActivityEntry({ contestId }: SideActivityEntryProps) {
         return;
       }
 
+      /*
+        The confirmation names the team, the label and the signed points, because this entry is
+        the only record the award happened and the organizer's read-back of this line IS the
+        verification step. It is set before the refresh: from here on the award is recorded, and
+        a refresh failure must not be reported as "not recorded" (which is what this code used
+        to do, with both fetches inside the same try).
+      */
       const team = teams.find((candidate) => candidate.teamId === teamId);
-      setConfirmation(
-        `Awarded ${String(parsed)} ${Math.abs(parsed) === 1 ? "point" : "points"} to ${team?.name ?? "the team"} for ${label.trim()}.`,
-      );
+      const recorded = `${signedPoints(parsed)} ${pointsWord(parsed)} to ${team?.name ?? "the team"} for ${label.trim()}.`;
+      setConfirmation(recorded);
       setLabel("");
       setPoints("");
-      const [refreshedTeams, refreshedActivities] = await Promise.all([
-        fetchTeams(),
-        fetchActivities(teamId),
-      ]);
-      setTeams(refreshedTeams);
-      setActivities(refreshedActivities);
+      try {
+        const [refreshedTeams, refreshedActivities] = await Promise.all([
+          fetchTeams(),
+          fetchActivities(teamId),
+        ]);
+        setTeams(refreshedTeams);
+        setActivities(refreshedActivities);
+        const total = refreshedTeams.find(
+          (candidate) => candidate.teamId === teamId,
+        )?.sideActivityPoints;
+        // The new total closes the loop: the organizer can check the arithmetic without
+        // finding the history table, and a double-entry shows up as a total that grew twice.
+        if (total !== undefined) {
+          setConfirmation(
+            `${recorded} Their side-activity total is now ${String(total)} ${pointsWord(total)}.`,
+          );
+        }
+      } catch {
+        // Only the refresh failed. The award is recorded and the confirmation already says so;
+        // the history table will catch up on the next team change.
+      }
     } catch {
       setFormError("Could not reach the server. The award was not recorded.");
     } finally {
@@ -240,6 +290,18 @@ export function SideActivityEntry({ contestId }: SideActivityEntryProps) {
   }, [teamId, label, points, teams, fetchTeams, fetchActivities]);
 
   const selected = teams.find((team) => team.teamId === teamId);
+
+  /*
+    The live echo under the points field. A wrong number here silently changes a team score, so
+    the form reads the entry back in a full sentence BEFORE the button is pressed: which team,
+    how many points, which direction. `previewValue` is null until the field holds an integer the
+    API would accept, so the echo can never show a float or an out-of-bounds number.
+  */
+  const parsedPreview = Number(points);
+  const previewValue =
+    points.trim() !== "" && Number.isInteger(parsedPreview) && Math.abs(parsedPreview) <= MAX_POINTS
+      ? parsedPreview
+      : null;
 
   return (
     <div className="flex flex-col gap-section">
@@ -317,6 +379,38 @@ export function SideActivityEntry({ contestId }: SideActivityEntryProps) {
           />
 
           {/*
+            The team echoed next to the number it will change. Not announced live: it updates on
+            every keystroke, and a screen reader user hears the same facts once, from the
+            confirmation, after submitting.
+          */}
+          {selected !== undefined && (
+            <p
+              className="rounded-chip border border-rule-edge bg-ink/[0.02] px-3 py-2"
+              style={{ fontSize: "var(--text-sm)" }}
+            >
+              {previewValue === null ? (
+                <>
+                  Points entered here go to <strong>{selected.name}</strong> ({selected.teamSize}{" "}
+                  {selected.teamSize === 1 ? "player" : "players"}).
+                </>
+              ) : previewValue < 0 ? (
+                <>
+                  This will remove{" "}
+                  <strong className="numeric">{String(Math.abs(previewValue))}</strong>{" "}
+                  {pointsWord(previewValue)} from <strong>{selected.name}</strong>
+                  {label.trim() === "" ? "." : <> for {label.trim()}.</>}
+                </>
+              ) : (
+                <>
+                  This will add <strong className="numeric">{signedPoints(previewValue)}</strong>{" "}
+                  {pointsWord(previewValue)} to <strong>{selected.name}</strong>
+                  {label.trim() === "" ? "." : <> for {label.trim()}.</>}
+                </>
+              )}
+            </p>
+          )}
+
+          {/*
             A refusal from the SERVER, or the network. Field-level problems are answered at their
             field above; this slot is for the ones that belong to the form as a whole.
           */}
@@ -326,15 +420,32 @@ export function SideActivityEntry({ contestId }: SideActivityEntryProps) {
             </p>
           )}
 
+          {/*
+            The receipt. Bordered so it cannot be mistaken for a hint, on paper ground so it
+            cannot be mistaken for an alarm: `AlertPlate`'s dark plate is for things going wrong,
+            and this is the one message on the screen that means everything went right.
+          */}
           {confirmation !== null && (
-            <p role="status" style={{ fontSize: "var(--text-sm)" }}>
-              {confirmation}
+            <p
+              role="status"
+              className="rounded-chip border border-rule-firm bg-ink/[0.04] px-3 py-2"
+              style={{ fontSize: "var(--text-sm)" }}
+            >
+              <strong>Recorded:</strong> {confirmation}
             </p>
           )}
 
           <div>
+            {/*
+              The button repeats the team, so the last thing read before committing is the thing
+              a typo here would hurt.
+            */}
             <Button type="submit" disabled={busy}>
-              {busy ? "Recording…" : "Award points"}
+              {busy
+                ? "Recording…"
+                : selected === undefined
+                  ? "Award points"
+                  : `Award points to ${selected.name}`}
             </Button>
           </div>
         </form>
@@ -346,13 +457,15 @@ export function SideActivityEntry({ contestId }: SideActivityEntryProps) {
           level="bare"
           aside={
             <span className="numeric text-ink/60" style={{ fontSize: "var(--text-sm)" }}>
-              {selected.sideActivityPoints} points
+              {selected.sideActivityPoints} points total
             </span>
           }
         >
           {activities.length === 0 ? (
             <p className="text-ink/60" style={{ fontSize: "var(--text-sm)" }}>
-              Nothing awarded yet.
+              {historyFailed
+                ? "The history could not be loaded. The award form above still works."
+                : "Nothing awarded yet."}
             </p>
           ) : (
             <div className="relative w-full min-w-0 overflow-x-auto">

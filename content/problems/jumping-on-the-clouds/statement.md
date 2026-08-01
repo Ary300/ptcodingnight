@@ -34,7 +34,7 @@ Print a single integer: the minimum number of moves needed to travel from panel 
 4
 ```
 
-Panels $3$ and $6$ are taped. One optimal route is $1 \to 2 \to 4 \to 5 \to 7$, which is four moves; the hop from $5$ to $7$ clears the taped panel $6$. No three-move route exists, because three moves cover at most six panels of distance and the end is six panels away only if every move is a hop — but that route would land on panel $3$.
+Panels $3$ and $6$ are taped. One optimal route is $1 \to 2 \to 4 \to 5 \to 7$, which is four moves; the hop from $5$ to $7$ clears the taped panel $6$. No three-move route exists, because three moves cover at most six panels of distance and the end is six panels away only if every move is a hop, but that route would land on panel $3$.
 
 **Input**
 

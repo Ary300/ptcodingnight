@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useCallback } from "react";
 
 import { useResource } from "@/components/contest/data/useResource";
-import type { AdminContestList } from "@/lib/schemas/api";
+import type { AdminContestList, AdminContestSummary } from "@/lib/schemas/api";
 import { AdminContestListSchema } from "@/lib/schemas/api";
 
 import { ContestStatePill } from "./StatusPill";
@@ -79,6 +79,29 @@ async function loadContests(): Promise<AdminContestList> {
   );
 }
 
+/**
+ * Live first, then soonest-to-matter. The API returns newest-created first, which on the real
+ * database put the one RUNNING contest fifth, under four draft experiments — and the running
+ * contest is what an organizer opening this list mid-event is looking for. Within a state,
+ * newest start date first, then name, so two same-day contests always list in the same order.
+ */
+const STATE_ORDER: Record<AdminContestSummary["state"], number> = {
+  RUNNING: 0,
+  FROZEN: 1,
+  SCHEDULED: 2,
+  DRAFT: 3,
+  ENDED: 4,
+  ARCHIVED: 5,
+};
+
+function byLiveness(a: AdminContestSummary, b: AdminContestSummary): number {
+  const rank = STATE_ORDER[a.state] - STATE_ORDER[b.state];
+  if (rank !== 0) return rank;
+  const start = Date.parse(b.startsAt) - Date.parse(a.startsAt);
+  if (start !== 0) return start;
+  return a.name.localeCompare(b.name);
+}
+
 export function ContestPicker({ tab = "", purpose, variant = "picker" }: ContestPickerProps) {
   // Wrapped in an inline arrow because `useResource` requires a stable callback and the lint
   // rule requires the argument to `useCallback` be an inline function expression. Both are
@@ -129,6 +152,7 @@ export function ContestPicker({ tab = "", purpose, variant = "picker" }: Contest
   }
 
   const heading = variant === "list" ? "All contests" : "Which contest?";
+  const contests = [...load.data.contests].sort(byLiveness);
 
   return (
     <section
@@ -137,15 +161,31 @@ export function ContestPicker({ tab = "", purpose, variant = "picker" }: Contest
       aria-label={variant === "list" ? "All contests" : "Choose a contest"}
       className="rounded border border-rule-edge bg-paper"
     >
-      <h2
-        className="border-b border-rule-edge px-5 py-3 font-display font-bold"
-        style={{ fontSize: "var(--text-md)" }}
-      >
-        {heading}
-      </h2>
+      <div className="flex flex-wrap items-center justify-between gap-x-4 border-b border-rule-edge px-5 py-3">
+        <h2 className="font-display font-bold" style={{ fontSize: "var(--text-md)" }}>
+          {heading}
+          <span className="numeric ml-2 font-normal text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
+            {contests.length}
+          </span>
+        </h2>
+        {/*
+          The flat legacy routes render this picker as their whole body, and had NO way back to
+          the admin home — the organizer's reported bug. The link lives here rather than on each
+          of those four pages so a fifth legacy route cannot forget it.
+        */}
+        {variant === "picker" && (
+          <Link
+            href="/admin"
+            className="font-semibold text-panther hover:underline underline-offset-2"
+            style={{ fontSize: "var(--text-xs)" }}
+          >
+            ‹ All contests
+          </Link>
+        )}
+      </div>
 
       <ul>
-        {load.data.contests.map((contest) => (
+        {contests.map((contest) => (
           <li key={contest.contestId} className="border-b border-rule-hair last:border-b-0">
             <Link
               href={`/admin/contests/${encodeURIComponent(contest.contestId)}${tab}`}
@@ -174,6 +214,10 @@ export function ContestPicker({ tab = "", purpose, variant = "picker" }: Contest
                   month: "short",
                   day: "numeric",
                 })}
+              </span>
+              {/* The whole row is a link; the chevron says so before the hover tint does. */}
+              <span aria-hidden="true" className="text-ink/40">
+                ›
               </span>
             </Link>
           </li>

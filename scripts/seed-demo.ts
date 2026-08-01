@@ -52,10 +52,11 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { PrismaPg } from "@prisma/adapter-pg";
-import { PrismaClient, type Language, type Prisma } from "@prisma/client";
+import { Prisma, PrismaClient } from "@prisma/client";
 
 import { resolveTestDataPath } from "@/lib/contest/judge-job";
 import { parseServerEnv } from "@/lib/schemas/env";
+import { parseProblemManifest, type ProblemManifest } from "@/lib/schemas/seed";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const CONTENT = path.join(ROOT, "content", "problems");
@@ -73,7 +74,16 @@ const CONTENT = path.join(ROOT, "content", "problems");
  * the end, and DEPLOY.md tells the operator to write it down.
  */
 const JOIN_CODE = process.env.SEED_JOIN_CODE ?? randomBytes(4).toString("hex").toUpperCase();
-const CONTEST_NAME = "Park Tudor Coding Night — Demo";
+/**
+ * A colon, not an em dash. The organizer asked for no em dash in anything a user can read, and a
+ * contest name is rendered on the lobby, the projector and every board.
+ *
+ * `PREVIOUS_CONTEST_NAMES` keeps the rename from breaking idempotency: the cleanup below deletes
+ * by NAME, so a box that was seeded before the rename would otherwise keep its old demo contest
+ * forever, and signing in enrols a competitor into the most recent enrollable contest.
+ */
+const CONTEST_NAME = "Park Tudor Coding Night: Demo";
+const PREVIOUS_CONTEST_NAMES = ["Park Tudor Coding Night — Demo"];
 
 /**
  * How many authored problems the demo carries.
@@ -109,17 +119,6 @@ const LAYOUT: readonly { readonly set: "A" | "B" | null; readonly slot: string }
   { set: null, slot: "G2" },
 ];
 
-interface ProblemManifest {
-  readonly slug: string;
-  readonly title: string;
-  readonly difficulty: "E" | "M" | "H";
-  readonly timeLimitMs: number;
-  readonly memoryLimitMb: number;
-  readonly allowedLanguages: readonly Language[];
-  readonly sampleCount: number;
-  readonly originAttribution?: string;
-}
-
 function authoredProblems(): ProblemManifest[] {
   if (!existsSync(CONTENT)) {
     throw new Error(
@@ -136,11 +135,13 @@ function authoredProblems(): ProblemManifest[] {
     // mine" impossible to check.
     .sort();
 
+  // Parsed, not cast. `JSON.parse(...) as ProblemManifest` accepts anything: a mistyped
+  // `timeLimtMs` reads as undefined, silently takes a default, and publishes a problem with a
+  // time limit nobody chose. These files are hand-edited, so this is a trust boundary like any
+  // other and it now refuses to seed rather than seeding something wrong.
   return slugs.slice(0, PROBLEM_COUNT).map((slug) => {
-    const manifest = JSON.parse(
-      readFileSync(path.join(CONTENT, slug, "problem.json"), "utf8"),
-    ) as ProblemManifest;
-    return manifest;
+    const file = path.join(CONTENT, slug, "problem.json");
+    return parseProblemManifest(JSON.parse(readFileSync(file, "utf8")), file);
   });
 }
 
@@ -264,6 +265,15 @@ async function main(): Promise<void> {
           memoryLimitMb: manifest.memoryLimitMb,
           allowedLanguages: [...manifest.allowedLanguages],
           originAttribution: manifest.originAttribution ?? null,
+          /**
+           * `Prisma.DbNull`, never a bare `null`.
+           *
+           * A nullable Json column has two nulls in Postgres — the SQL NULL and the JSON value
+           * `null` — and Prisma makes you say which. `JsonNull` would store a JSON null, which
+           * `SignatureSchema` would then be handed and reject. DbNull is the empty column, which
+           * is what "this problem declares no signature" means.
+           */
+          signature: manifest.signature ?? Prisma.DbNull,
           testCases: { create: cases },
         },
         update: {
@@ -278,6 +288,10 @@ async function main(): Promise<void> {
           timeLimitMs: manifest.timeLimitMs,
           memoryLimitMb: manifest.memoryLimitMb,
           allowedLanguages: [...manifest.allowedLanguages],
+          // Set on UPDATE as well, for the same reason `round` is: a re-seed of a row that
+          // predates the manifest's signature would otherwise keep an empty editor forever,
+          // with the seed reporting success.
+          signature: manifest.signature ?? Prisma.DbNull,
           testCases: { create: cases },
         },
         select: { id: true },
@@ -303,7 +317,9 @@ async function main(): Promise<void> {
       
       Name is the right key because the name is what identifies THIS seed's contest across runs.
     */
-    await prisma.contest.deleteMany({ where: { name: CONTEST_NAME } });
+    await prisma.contest.deleteMany({
+      where: { name: { in: [CONTEST_NAME, ...PREVIOUS_CONTEST_NAMES] } },
+    });
 
     const now = new Date();
     const startsAt = new Date(now.getTime() - 45 * 60_000);

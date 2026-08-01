@@ -1,6 +1,6 @@
 # Apple and Orange
 
-Between rounds at Coding Night, the Panthers robotics crew drags two spring launchers into the gym: one loaded with apple slices, one loaded with orange wedges. The custodian, who has seen this before, unrolls a long tarp down the middle of the floor and says the club can keep launching as long as the fruit lands on the tarp. Every launch is logged as a signed offset from the launcher that fired it — positive means it flew to the right, negative means it flew to the left. Your job is to count the fruit that actually hit the tarp.
+Between rounds at Coding Night, the Panthers robotics crew drags two spring launchers into the gym: one loaded with apple slices, one loaded with orange wedges. The custodian, who has seen this before, unrolls a long tarp down the middle of the floor and says the club can keep launching as long as the fruit lands on the tarp. Every launch is logged as a signed offset from the launcher that fired it: positive means it flew to the right, negative means it flew to the left. Your job is to count the fruit that actually hit the tarp.
 
 The gym floor is a number line. The tarp covers every point from $s$ to $t$, inclusive. The apple launcher sits at point $a$, the orange launcher sits at point $b$. An apple logged with offset $d$ lands at $a + d$; an orange logged with offset $e$ lands at $b + e$. A piece of fruit counts as on the tarp if its landing point is at least $s$ and at most $t$.
 

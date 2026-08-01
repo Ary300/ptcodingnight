@@ -43,4 +43,4 @@ Output:
 9
 ```
 
-Every one-digit ticket reverses to itself, so the difference is $0$ — and $0$ is a multiple of every $k$. All nine screenings are beautiful.
+Every one-digit ticket reverses to itself, so the difference is $0$, and $0$ is a multiple of every $k$. All nine screenings are beautiful.

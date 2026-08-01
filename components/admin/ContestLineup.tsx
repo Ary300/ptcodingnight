@@ -1,11 +1,25 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useId, useState, type ReactNode } from "react";
 
-import { Button } from "@/components/ui";
+import {
+  Button,
+  CONTROL_FONT_SIZE,
+  CONTROL_LEADING,
+  CONTROL_PAD,
+  CONTROL_SURFACE,
+  Stacked,
+  Table,
+  TBody,
+  TD,
+  TH,
+  THead,
+  TR,
+} from "@/components/ui";
 import { useResource } from "@/components/contest/data/useResource";
 import { AdminProblemBankSchema, type AdminProblemRow } from "@/lib/schemas/api";
 
+import { TextInput } from "@/components/admin/Field";
 import { AlertPlate, Panel } from "@/components/admin/Panel";
 import { ProblemStatePill } from "@/components/admin/StatusPill";
 
@@ -21,6 +35,17 @@ import { ProblemStatePill } from "@/components/admin/StatusPill";
  *
  * So this reads `GET /api/admin/problems` and writes `PUT /api/admin/contests/{id}/problems`.
  *
+ * ## The furniture is HackerRank's Challenges tab, deliberately
+ *
+ * Measured off the reference screenshot of a contest's admin (the "Contest Challenges" screen):
+ * the pool you pick from is a real bordered table with a tinted header row, not a list of loose
+ * rows; the pick affordance is a bordered secondary button; and the empty state is a bordered box
+ * with centred muted text INSIDE the section it describes ("No challenges have been added yet."),
+ * never a replacement for the screen. Both tables here come from `components/ui/DataTable`, which
+ * is that grammar extracted once, and the inputs share their box with every other admin control
+ * via `CONTROL_SURFACE` — the complaint this rework answers was four screens each drawing their
+ * own control chrome.
+ *
  * ## Slot, points and set are chosen HERE, not later
  *
  * The old flow deferred them to "the contest screen once the line-up is settled", and that screen
@@ -31,6 +56,23 @@ import { ProblemStatePill } from "@/components/admin/StatusPill";
  * A blank set label means a GROUP problem — every team works it regardless of assignment. That is
  * the distinction the whole Coding Night format rests on, so it is spelled out on screen rather
  * than implied by a naming convention.
+ *
+ * ## Add and Remove edit a draft, and the screen says so
+ *
+ * `PUT` replaces the whole line-up in one shot, so Add and Remove write NOTHING until Save is
+ * pressed. That is the right transactional shape — an organizer half-way through a reshuffle must
+ * not have a projector board reflecting the half — but it used to be a secret: the buttons looked
+ * like they acted, and closing the tab threw the work away silently. The draft state is now named
+ * on screen ("Not saved yet") from the first edit until the save lands, and the header count
+ * carries the same flag so it is visible even with the footer scrolled away.
+ *
+ * ## Duplicate slot labels are rejected here, not just downstream
+ *
+ * The slot label is the board's ordering key, so two problems sharing one breaks deterministic
+ * ordering — the standings replay guarantee, not a cosmetic nit. The offending inputs are marked
+ * and the message names the duplicated label, because "something is wrong somewhere in this
+ * table" is exactly the kind of refusal the organizer called confusing. Save stays disabled until
+ * every problem has its own label.
  *
  * ## It opens showing what is ALREADY in the contest
  *
@@ -62,13 +104,76 @@ export interface ContestLineupProps {
 interface Slot {
   readonly problemId: string;
   readonly title: string;
-  slotLabel: string;
-  basePoints: number;
-  setLabel: string;
+  readonly slotLabel: string;
+  readonly basePoints: number;
+  readonly setLabel: string;
 }
 
 /** DRAFT problems are 121 of the 130 in the bank, and none of them may go in a live contest. */
 type BankFilter = "ready" | "all";
+
+/**
+ * The in-row control box: the same surface every admin input and select stands on, at the `sm`
+ * metrics the editor's toolbar uses, because a table row is dense chrome. Copying the class
+ * string instead of importing it is how the four-different-dropdowns complaint happened.
+ */
+const ROW_CONTROL = `${CONTROL_SURFACE} ${CONTROL_PAD.sm} ${CONTROL_LEADING.sm} numeric placeholder:text-ink/60`;
+
+function rowControlBorder(invalid: boolean): string {
+  // Either/or, never both: two border-color utilities on one element resolve by emission
+  // order, not class-list order, the same trap components/ui/Select.tsx documents.
+  return invalid ? "border-panther" : "border-rule-edge hover:border-rule-firm";
+}
+
+/**
+ * HackerRank's empty state, copied: a bordered box with centred muted text sitting INSIDE the
+ * section it describes. Never a whole-screen replacement — that is the bug the bank's loading
+ * state used to be, and the placement is the fix.
+ */
+function PanelNote({ status, children }: { status?: boolean; children: ReactNode }) {
+  return (
+    <div
+      role={status === true ? "status" : undefined}
+      className="rounded-panel border border-rule-edge px-4 py-8 text-center text-ink/70"
+      style={{ fontSize: "var(--text-sm)" }}
+    >
+      {children}
+    </div>
+  );
+}
+
+/** Labels that appear on more than one problem, trimmed, blanks excluded (they get their own message). */
+function duplicateSlotLabels(slots: readonly Slot[]): readonly string[] {
+  const seen = new Set<string>();
+  const dupes = new Set<string>();
+  for (const slot of slots) {
+    const label = slot.slotLabel.trim();
+    if (label === "") continue;
+    if (seen.has(label)) {
+      dupes.add(label);
+    } else {
+      seen.add(label);
+    }
+  }
+  return [...dupes];
+}
+
+/** Order matters: the PUT replaces the list as given, so a reorder is a real change. */
+function sameLineup(a: readonly Slot[], b: readonly Slot[]): boolean {
+  return (
+    a.length === b.length &&
+    a.every((slot, i) => {
+      const other = b[i];
+      return (
+        other !== undefined &&
+        slot.problemId === other.problemId &&
+        slot.slotLabel === other.slotLabel &&
+        slot.basePoints === other.basePoints &&
+        slot.setLabel === other.setLabel
+      );
+    })
+  );
+}
 
 async function loadBank(): Promise<readonly AdminProblemRow[]> {
   const response = await fetch("/api/admin/problems", { cache: "no-store" });
@@ -91,11 +196,16 @@ export function ContestLineup({ contestId, initial = [] }: ContestLineupProps) {
   const bank = useResource(useCallback(() => loadBank(), []));
 
   const [slots, setSlots] = useState<readonly Slot[]>(initial);
+  // What the server currently holds, as far as this screen knows. `slots` differing from it is
+  // the definition of "unsaved changes", which bug (b) requires the screen to name.
+  const [savedSlots, setSavedSlots] = useState<readonly Slot[]>(initial);
   const [filter, setFilter] = useState("");
   const [bankFilter, setBankFilter] = useState<BankFilter>("ready");
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const slotErrorId = useId();
 
   const add = (problem: AdminProblemRow): void => {
     setSaved(false);
@@ -155,6 +265,7 @@ export function ContestLineup({ contestId, initial = [] }: ContestLineupProps) {
         return;
       }
       setSaved(true);
+      setSavedSlots(slots);
     } catch {
       setError("Could not reach the server.");
     } finally {
@@ -194,6 +305,16 @@ export function ContestLineup({ contestId, initial = [] }: ContestLineupProps) {
       (needle === "" || p.title.toLowerCase().includes(needle) || p.slug.includes(needle)),
   );
 
+  const duplicates = duplicateSlotLabels(slots);
+  const blankCount = slots.filter((slot) => slot.slotLabel.trim() === "").length;
+  const lineupBlocked = duplicates.length > 0 || blankCount > 0;
+  const dirty = !sameLineup(slots, savedSlots);
+
+  const slotInvalid = (slot: Slot): boolean => {
+    const label = slot.slotLabel.trim();
+    return label === "" || duplicates.includes(label);
+  };
+
   return (
     <div className="flex flex-col gap-6">
       <Panel
@@ -201,79 +322,115 @@ export function ContestLineup({ contestId, initial = [] }: ContestLineupProps) {
         aside={
           <span className="numeric text-ink/70" style={{ fontSize: "var(--text-xs)" }}>
             {slots.length} {slots.length === 1 ? "problem" : "problems"}
+            {/* The draft flag rides with the count so it stays visible when the Save row has
+                scrolled away under a long table. Words, not colour: DESIGN.md §3. */}
+            {dirty ? " (not saved yet)" : ""}
           </span>
         }
         description="Saving REPLACES the whole line-up. Leave the set blank to make a problem a GROUP problem: every team works it, whichever set a player was assigned."
       >
         {slots.length === 0 ? (
-          <p className="text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
-            Nothing chosen yet. Pick from the bank below.
-          </p>
+          <PanelNote>Nothing chosen yet. Pick from the bank below.</PanelNote>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse" style={{ fontSize: "var(--text-sm)" }}>
-              <thead>
-                <tr className="border-b border-rule-edge text-ink/70" style={{ fontSize: "var(--text-xs)" }}>
-                  <th scope="col" className="w-full py-2 pr-3 text-left font-semibold">Problem</th>
-                  <th scope="col" className="py-2 pr-3 text-left font-semibold">Slot</th>
-                  <th scope="col" className="py-2 pr-3 text-left font-semibold">Points</th>
-                  <th scope="col" className="py-2 pr-3 text-left font-semibold">Set</th>
-                  <th scope="col" className="py-2 text-right font-semibold">
+          <div className="min-w-0 overflow-x-auto">
+            <Table caption="Problems in this contest" className="min-w-[36rem]">
+              <THead>
+                <TR>
+                  <TH className="w-full">Problem</TH>
+                  <TH>Slot</TH>
+                  <TH>Points</TH>
+                  <TH>Set</TH>
+                  <TH>
                     <span className="sr-only">Remove</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {slots.map((slot) => (
-                  <tr key={slot.problemId} className="border-b border-rule-hair">
-                    <td className="py-2 pr-3">{slot.title}</td>
-                    <td className="py-2 pr-3">
-                      <input
-                        aria-label={`Slot label for ${slot.title}`}
-                        value={slot.slotLabel}
-                        onChange={(e) => patch(slot.problemId, { slotLabel: e.target.value })}
-                        className="numeric w-24 rounded border border-rule-edge bg-paper px-2 py-1"
-                        style={{ fontSize: "var(--text-sm)" }}
-                      />
-                    </td>
-                    <td className="py-2 pr-3">
-                      <input
-                        aria-label={`Base points for ${slot.title}`}
-                        type="number"
-                        min={0}
-                        value={slot.basePoints}
-                        onChange={(e) =>
-                          patch(slot.problemId, { basePoints: Number(e.target.value) || 0 })
-                        }
-                        className="numeric w-24 rounded border border-rule-edge bg-paper px-2 py-1"
-                        style={{ fontSize: "var(--text-sm)" }}
-                      />
-                    </td>
-                    <td className="py-2 pr-3">
-                      <input
-                        aria-label={`Set for ${slot.title}. Blank for a group problem`}
-                        value={slot.setLabel}
-                        placeholder="group"
-                        onChange={(e) => patch(slot.problemId, { setLabel: e.target.value })}
-                        className="numeric w-20 rounded border border-rule-edge bg-paper px-2 py-1"
-                        style={{ fontSize: "var(--text-sm)" }}
-                      />
-                    </td>
-                    <td className="py-2 text-right">
-                      <button
-                        type="button"
-                        onClick={() => remove(slot.problemId)}
-                        className="text-panther underline underline-offset-2"
-                        style={{ fontSize: "var(--text-xs)" }}
-                      >
-                        Remove
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                  </TH>
+                </TR>
+              </THead>
+              <TBody>
+                {slots.map((slot) => {
+                  const invalid = slotInvalid(slot);
+                  return (
+                    <TR key={slot.problemId}>
+                      <TD className="font-semibold">{slot.title}</TD>
+                      {/* Widths live on a wrapper: CONTROL_SURFACE already says `w-full`, and
+                          two width utilities on one element resolve by emission order. */}
+                      <TD>
+                        <span className="inline-block w-20 align-middle">
+                          <input
+                            aria-label={`Slot label for ${slot.title}`}
+                            aria-invalid={invalid || undefined}
+                            aria-describedby={invalid ? slotErrorId : undefined}
+                            value={slot.slotLabel}
+                            onChange={(e) => patch(slot.problemId, { slotLabel: e.target.value })}
+                            className={`${ROW_CONTROL} ${rowControlBorder(invalid)}`}
+                            style={{ fontSize: CONTROL_FONT_SIZE.sm }}
+                          />
+                        </span>
+                      </TD>
+                      <TD>
+                        <span className="inline-block w-24 align-middle">
+                          <input
+                            aria-label={`Base points for ${slot.title}`}
+                            type="number"
+                            min={0}
+                            value={slot.basePoints}
+                            onChange={(e) =>
+                              patch(slot.problemId, { basePoints: Number(e.target.value) || 0 })
+                            }
+                            className={`${ROW_CONTROL} ${rowControlBorder(false)}`}
+                            style={{ fontSize: CONTROL_FONT_SIZE.sm }}
+                          />
+                        </span>
+                      </TD>
+                      <TD>
+                        <span className="inline-block w-20 align-middle">
+                          <input
+                            aria-label={`Set for ${slot.title}. Blank for a group problem`}
+                            value={slot.setLabel}
+                            placeholder="group"
+                            onChange={(e) => patch(slot.problemId, { setLabel: e.target.value })}
+                            className={`${ROW_CONTROL} ${rowControlBorder(false)}`}
+                            style={{ fontSize: CONTROL_FONT_SIZE.sm }}
+                          />
+                        </span>
+                      </TD>
+                      <TD align="end">
+                        {/* Text, not a box: an in-row action never competes with the page's one
+                            primary action (components/ui/Button.tsx). */}
+                        <Button
+                          type="button"
+                          variant="quiet"
+                          size="sm"
+                          onClick={() => remove(slot.problemId)}
+                        >
+                          Remove
+                        </Button>
+                      </TD>
+                    </TR>
+                  );
+                })}
+              </TBody>
+            </Table>
           </div>
+        )}
+
+        {lineupBlocked && (
+          // One message for every offending input, wired by aria-describedby from each. It names
+          // the duplicate because "fix something somewhere in this table" is the confusion this
+          // screen is being reworked to end.
+          <p
+            id={slotErrorId}
+            role="alert"
+            className="mt-4 font-semibold text-panther"
+            style={{ fontSize: "var(--text-sm)" }}
+          >
+            {duplicates.length > 0 &&
+              `${duplicates.length === 1 ? "Duplicate slot label" : "Duplicate slot labels"}: ${duplicates
+                .map((label) => `"${label}"`)
+                .join(", ")}. Two problems cannot share a slot, or the board cannot order them. `}
+            {blankCount > 0 &&
+              `${String(blankCount)} ${blankCount === 1 ? "problem has" : "problems have"} no slot label. `}
+            Give every problem its own slot label to save.
+          </p>
         )}
 
         {error !== null && (
@@ -283,10 +440,20 @@ export function ContestLineup({ contestId, initial = [] }: ContestLineupProps) {
         )}
 
         <div className="mt-4 flex flex-wrap items-center gap-3">
-          <Button type="button" onClick={() => void save()} disabled={busy}>
+          <Button type="button" onClick={() => void save()} disabled={busy || lineupBlocked}>
             {busy ? "Saving…" : "Save this line-up"}
           </Button>
-          {saved && (
+          {/*
+            Bug (b): Add and Remove write nothing until Save, and nothing on screen said so. The
+            draft state is now named the moment the list differs from what the server holds, and
+            the message says what is at stake rather than just waving a flag.
+          */}
+          {dirty && !busy && (
+            <span role="status" className="font-semibold" style={{ fontSize: "var(--text-sm)" }}>
+              Not saved yet. Add, Remove and edits change only this list until you press Save.
+            </span>
+          )}
+          {!dirty && saved && (
             <span role="status" className="font-semibold" style={{ fontSize: "var(--text-sm)" }}>
               Saved. Publish it from the Setup tab when the line-up is settled.
             </span>
@@ -307,34 +474,15 @@ export function ContestLineup({ contestId, initial = [] }: ContestLineupProps) {
         }
         description="A problem that is not ready can still be slotted now. The API refuses a DRAFT in a live contest, and the reasons are shown so the refusal is never a surprise."
       >
-        {/*
-          The bank's own loading and error states live HERE, inside the bank's panel, rather than
-          in front of the whole component. That placement is the fix: the line-up above does not
-          depend on this fetch and must never be hidden by it.
-        */}
-        {bank.status === "loading" && (
-          <p role="status" className="text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
-            Loading the problem bank…
-          </p>
-        )}
-
-        {bank.status === "error" && (
-          <AlertPlate tone="alarm" title="The problem bank could not be loaded">
-            {bank.error ?? "Unknown error."}
-          </AlertPlate>
-        )}
-
         <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
-          <label className="flex flex-col gap-1" style={{ fontSize: "var(--text-sm)" }}>
-            Search
-            <input
+          <div className="w-64 max-w-full">
+            <TextInput
+              label="Search"
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
               placeholder="title or slug"
-              className="w-64 max-w-full rounded border border-rule-edge bg-paper px-3 py-2"
-              style={{ fontSize: "var(--text-sm)" }}
             />
-          </label>
+          </div>
 
           {/*
             Filtering by readiness, defaulting to READY.
@@ -346,10 +494,10 @@ export function ContestLineup({ contestId, initial = [] }: ContestLineupProps) {
             problems still being written is a real thing to want.
           */}
           <fieldset className="flex flex-col gap-1">
-            <legend className="mb-1" style={{ fontSize: "var(--text-sm)" }}>
+            <legend className="mb-1 font-semibold" style={{ fontSize: "var(--text-sm)" }}>
               Show
             </legend>
-            <div className="flex gap-4" style={{ fontSize: "var(--text-sm)" }}>
+            <div className="flex gap-4 pb-2" style={{ fontSize: "var(--text-sm)" }}>
               <label className="flex items-center gap-1.5">
                 <input
                   type="radio"
@@ -372,47 +520,92 @@ export function ContestLineup({ contestId, initial = [] }: ContestLineupProps) {
           </fieldset>
         </div>
 
-        <ul className="mt-4 flex flex-col">
-          {available.slice(0, 60).map((problem) => (
-            <li
-              key={problem.problemId}
-              className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-rule-hair py-2.5"
-            >
-              <span className="font-semibold" style={{ fontSize: "var(--text-sm)" }}>
-                {problem.title}
-              </span>
-              <ProblemStatePill state={problem.state} />
-              {problem.difficulty !== null && (
-                <span className="numeric text-ink/70" style={{ fontSize: "var(--text-xs)" }}>
-                  {problem.difficulty}
-                </span>
-              )}
-              <span className="numeric text-ink/70" style={{ fontSize: "var(--text-xs)" }}>
-                {problem.testCaseCount} tests · {problem.sampleCaseCount} sample
-              </span>
+        {/*
+          The bank's own loading and error states live HERE, inside the bank's panel, rather than
+          in front of the whole component. That placement is the fix: the line-up above does not
+          depend on this fetch and must never be hidden by it.
+        */}
+        <div className="mt-4">
+          {bank.status === "loading" && <PanelNote status>Loading the problem bank…</PanelNote>}
 
-              {problem.readyBlockers.length > 0 && (
-                <span className="text-panther" style={{ fontSize: "var(--text-xs)" }}>
-                  {problem.readyBlockers.join("; ")}
-                </span>
-              )}
+          {bank.status === "error" && (
+            <AlertPlate tone="alarm" title="The problem bank could not be loaded">
+              {bank.error ?? "Unknown error."}
+            </AlertPlate>
+          )}
 
-              <span className="ml-auto">
-                <Button type="button" variant="secondary" onClick={() => add(problem)}>
-                  Add
-                </Button>
-              </span>
-            </li>
-          ))}
-        </ul>
+          {bank.status === "ready" && available.length === 0 && (
+            <PanelNote>
+              {bankFilter === "ready"
+                ? "Nothing in the bank is both ready and unused here. Switch to Everything to slot a problem that is still being written. The API will refuse it in a live contest, and will say why."
+                : "No problem in the bank matches that search."}
+            </PanelNote>
+          )}
 
-        {available.length === 0 && (
-          <p className="mt-3 text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
-            {bankFilter === "ready"
-              ? "Nothing in the bank is both ready and unused here. Switch to Everything to slot a problem that is still being written. The API will refuse it in a live contest, and will say why."
-              : "No problem in the bank matches that search."}
-          </p>
-        )}
+          {bank.status === "ready" && available.length > 0 && (
+            <div className="min-w-0 overflow-x-auto">
+              {/* The hover tint rides on the CELLS so it can never lose a specificity fight with
+                  the body's zebra, which is painted on the rows. 4% ink is the header's own
+                  ground; every text alpha in these cells is measured against more than that
+                  (components/ui/DataTable.tsx). */}
+              <Table caption="Problem bank" className="min-w-[36rem]">
+                <THead>
+                  <TR>
+                    <TH className="w-full">Problem</TH>
+                    <TH>State</TH>
+                    <TH>Difficulty</TH>
+                    <TH numeric>Tests</TH>
+                    <TH>
+                      <span className="sr-only">Add to contest</span>
+                    </TH>
+                  </TR>
+                </THead>
+                <TBody className="[&>tr:hover>td]:bg-ink/[0.04]">
+                  {available.slice(0, 60).map((problem) => (
+                    <TR key={problem.problemId}>
+                      <TD>
+                        <span className="font-semibold">{problem.title}</span>
+                        {problem.readyBlockers.length > 0 && (
+                          <span
+                            className="mt-0.5 block text-panther"
+                            style={{ fontSize: "var(--text-xs)" }}
+                          >
+                            {problem.readyBlockers.join("; ")}
+                          </span>
+                        )}
+                      </TD>
+                      <TD>
+                        <ProblemStatePill state={problem.state} />
+                      </TD>
+                      <TD className="whitespace-nowrap text-ink/70">{problem.difficulty ?? ""}</TD>
+                      <TD numeric>
+                        <Stacked
+                          className="items-end"
+                          value={problem.testCaseCount}
+                          detail={
+                            <span className="whitespace-nowrap">
+                              {problem.sampleCaseCount} sample
+                            </span>
+                          }
+                        />
+                      </TD>
+                      <TD align="end">
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => add(problem)}
+                        >
+                          Add
+                        </Button>
+                      </TD>
+                    </TR>
+                  ))}
+                </TBody>
+              </Table>
+            </div>
+          )}
+        </div>
 
         {available.length > 60 && (
           <p className="mt-3 text-ink/70" style={{ fontSize: "var(--text-xs)" }}>

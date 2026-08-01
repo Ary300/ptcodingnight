@@ -14,7 +14,7 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Park Tudor Coding Night",
   description:
-    "Contest platform for Park Tudor's Coding Night — live judging, scoring, and leaderboard.",
+    "Contest platform for Park Tudor's Coding Night: live judging, scoring, and leaderboard.",
 };
 
 export default function RootLayout({

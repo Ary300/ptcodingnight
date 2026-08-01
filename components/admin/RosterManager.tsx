@@ -5,10 +5,22 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui";
 import { Panel } from "@/components/admin/Panel";
 import { Select, TextInput } from "@/components/admin/Field";
-import { API_ROUTES } from "@/lib/schemas/api";
+import { API_ROUTES, type AddableUser, type AdminRoster, type RosterMember } from "@/lib/schemas/api";
 
 /**
  * The organizer's roster: every team, every member, and everybody on no team at all.
+ *
+ * ## Why "add a student" is on this screen at all
+ *
+ * A `Participant` row belongs to exactly one contest, and until recently the only thing that ever
+ * created one was a student signing in. So a contest created this morning contained nobody, and
+ * this screen could not add anybody to it. The report was: "I could not add any of the people who
+ * participated in the Demo to Test2 ... I could only add people if they signed up or signed in
+ * AFTER the contest had started."
+ *
+ * The search below lists known accounts with no participant row in THIS contest and creates one.
+ * It works while the contest is DRAFT or SCHEDULED, because building a roster before the start is
+ * the normal case rather than an exception.
  *
  * ## Why "unassigned" is the first thing on the screen
  *
@@ -16,13 +28,16 @@ import { API_ROUTES } from "@/lib/schemas/api";
  * organizer actually has is "who is not being counted yet", and that is a list — not something to
  * work out by comparing this screen with the leaderboard.
  *
- * ## Why every action asks for a reason
+ * ## Why every action asks for a reason, except adding
  *
  * **Team size is the divisor.** Moving one person changes TWO team scores: the team they left
  * gets a smaller divisor and the team they joined a larger one, and neither team submitted
  * anything. "Why did our score change" gets asked at 9pm, and the only acceptable answer is the
  * audit row rather than somebody's recollection. The API requires the reason; this form collects
  * it rather than letting the request fail.
+ *
+ * Adding somebody is the exception, and deliberately: a new participant has no team, so they are
+ * in nobody's divisor and no score can move. There is nothing yet to explain.
  *
  * ## Why the two `window.prompt` dialogs are gone
  *
@@ -38,21 +53,16 @@ import { API_ROUTES } from "@/lib/schemas/api";
  * same disabled-until-valid rule and the same audit-log sentence.
  */
 
-interface RosterTeam {
-  teamId: string;
-  name: string;
-  joinCode: string;
-  maxTeamSize: number;
-  memberCount: number;
-  members: { participantId: string; displayName: string }[];
-}
-
-interface Roster {
-  maxTeamSize: number;
-  formationOpen: boolean;
-  teams: RosterTeam[];
-  unassigned: { participantId: string; displayName: string }[];
-}
+/**
+ * The roster shape is the SERVER's, imported rather than restated.
+ *
+ * It used to be a hand-written `interface Roster` here. That is the drift `components/admin/
+ * contract.ts` was already caught by — a UI type describing a server response is the server's
+ * type — and it would have gone wrong again the moment the roster grew `submissionCount`, which
+ * the removal form below depends on being real.
+ */
+type Roster = AdminRoster;
+type RosterTeam = Roster["teams"][number];
 
 function errorFrom(body: unknown): string {
   if (typeof body === "object" && body !== null && "error" in body) {
@@ -81,6 +91,14 @@ const UNCHOSEN = "__unchosen__";
 /** The API's floor for an audit reason. Stated here so the form refuses before a round trip. */
 const MIN_REASON = 3;
 
+/**
+ * How long the search waits after a keystroke.
+ *
+ * Long enough that typing a full name is one query rather than eleven, short enough that it does
+ * not feel like the box is ignoring you. The organizer is typing a name they already know.
+ */
+const SEARCH_DEBOUNCE_MS = 250;
+
 /** Which team-level form is open, if any. Only ever one, so a stray Enter cannot hit the other. */
 type TeamForm = { kind: "dissolve" | "rename"; teamId: string } | null;
 
@@ -99,10 +117,32 @@ export function RosterManager({ contestId }: RosterManagerProps) {
   const [teamFormName, setTeamFormName] = useState("");
   const [teamFormReason, setTeamFormReason] = useState("");
 
+  const [search, setSearch] = useState("");
+  const [candidates, setCandidates] = useState<AddableUser[] | null>(null);
+  const [candidatesTruncated, setCandidatesTruncated] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+
+  const [removing, setRemoving] = useState<RosterMember | null>(null);
+  const [removeReason, setRemoveReason] = useState("");
+  const [removeConfirmed, setRemoveConfirmed] = useState(false);
+
   const closeTeamForm = (): void => {
     setTeamForm(null);
     setTeamFormName("");
     setTeamFormReason("");
+  };
+
+  const closeRemoveForm = (): void => {
+    setRemoving(null);
+    setRemoveReason("");
+    setRemoveConfirmed(false);
+  };
+
+  /** Only ever one form open, so a stray Enter cannot reach a different person's action. */
+  const closeEveryForm = (): void => {
+    setMoving(null);
+    closeTeamForm();
+    closeRemoveForm();
   };
 
   useEffect(() => {
@@ -128,6 +168,50 @@ export function RosterManager({ contestId }: RosterManagerProps) {
     };
   }, [contestId, attempt]);
 
+  /*
+    The list of people who could be added.
+
+    Re-run on `attempt` as well as on the query, because adding somebody must take them OUT of
+    this list: leaving them in produces a second click that appears to work, does nothing (the API
+    is idempotent on the account), and teaches an organizer that the button is unreliable.
+
+    `cancelled` is not just tidiness here. Typing "ale" fires three requests and they can land out
+    of order, so without it the results for "al" can overwrite the results for "ale" and the list
+    ends up showing people who do not match what is in the box.
+  */
+  useEffect(() => {
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      void (async () => {
+        try {
+          const response = await fetch(API_ROUTES.adminAddableUsers(contestId, search), {
+            cache: "no-store",
+          });
+          const body: unknown = await response.json();
+          if (cancelled) return;
+          if (!response.ok) {
+            setSearchError(errorFrom(body));
+            setCandidates([]);
+            return;
+          }
+          const data = (body as { data: { users: AddableUser[]; truncated: boolean } }).data;
+          setCandidates(data.users);
+          setCandidatesTruncated(data.truncated);
+          setSearchError(null);
+        } catch {
+          if (cancelled) return;
+          setSearchError("Could not reach the server.");
+          setCandidates([]);
+        }
+      })();
+    }, SEARCH_DEBOUNCE_MS);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [contestId, search, attempt]);
+
   const send = async (url: string, method: string, payload: unknown): Promise<void> => {
     setBusy(true);
     setError(null);
@@ -143,11 +227,10 @@ export function RosterManager({ contestId }: RosterManagerProps) {
         return;
       }
       setAttempt((n) => n + 1);
-      setMoving(null);
       setReason("");
       setMoveTarget("");
       setNewTeamName("");
-      closeTeamForm();
+      closeEveryForm();
     } catch {
       setError("Could not reach the server.");
     } finally {
@@ -174,8 +257,245 @@ export function RosterManager({ contestId }: RosterManagerProps) {
     );
   }
 
+  /**
+   * One person on the roster, with the two things an organizer does to them.
+   *
+   * Shared between the unassigned list and each team's member list so the two cannot drift — the
+   * remove action in particular has to carry the same submission warning wherever it appears.
+   */
+  const personRow = (person: RosterMember, moveVerb: "assign" | "move", onMove: () => void) => (
+    <li key={person.participantId} className="flex min-w-0 flex-col gap-1">
+      <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
+        {/*
+          `justify-start text-left` because `Button` centres its content, and a student whose
+          display name is long enough to wrap — "Walkthrough Student 1785555824834" does at 360px —
+          got a second line centred under the first, which reads as two separate entries rather
+          than one name.
+        */}
+        <Button
+          type="button"
+          variant="quiet"
+          className="justify-start text-left"
+          disabled={busy}
+          onClick={() => {
+            closeEveryForm();
+            onMove();
+          }}
+        >
+          {/*
+            "assign" for somebody on no team and "move" for somebody on one. The same word for
+            both read as a no-op on the list whose whole purpose is that it should empty.
+          */}
+          {person.displayName} → {moveVerb}
+        </Button>
+        <Button
+          type="button"
+          variant="quiet"
+          className="justify-start text-left"
+          aria-expanded={removing?.participantId === person.participantId}
+          disabled={busy}
+          onClick={() => {
+            const alreadyOpen = removing?.participantId === person.participantId;
+            closeEveryForm();
+            if (!alreadyOpen) setRemoving(person);
+          }}
+        >
+          Remove from contest
+        </Button>
+      </div>
+
+      {/*
+        Email, when there is one. Two students really do share a name — the participant table is
+        unique on (contest, display name), so the second Alex Chen is stored as "Alex Chen (2)" —
+        and the organizer removing one of them needs to know which.
+      */}
+      {person.email !== null && (
+        <span className="text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
+          {person.email}
+        </span>
+      )}
+
+      {removing !== null && removing.participantId === person.participantId && (
+        <form
+          className="mt-tight flex flex-col gap-group border-t border-rule-hair pt-3"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (removeReason.trim().length < MIN_REASON) return;
+            if (person.submissionCount > 0 && !removeConfirmed) return;
+            void send(API_ROUTES.adminContestParticipants(contestId), "DELETE", {
+              participantId: person.participantId,
+              reason: removeReason.trim(),
+              deleteSubmissions: removeConfirmed,
+            });
+          }}
+        >
+          <p role="alert" className="font-semibold" style={{ fontSize: "var(--text-sm)" }}>
+            {person.submissionCount === 0 ? (
+              <>
+                {person.displayName} has made no submissions, so removing them from this contest
+                takes nothing else with it. They can be added again from the search above.
+              </>
+            ) : (
+              <>
+                {person.displayName} has{" "}
+                <span className="numeric">{person.submissionCount}</span> judged submission
+                {person.submissionCount === 1 ? "" : "s"}. Removing them from this contest deletes
+                those submissions too, and the standings are recomputed from them, so every score
+                they contributed to changes. To keep the record instead, move them to &ldquo;no
+                team&rdquo;: that takes them out of every divisor and leaves their work in place.
+              </>
+            )}
+          </p>
+
+          {person.submissionCount > 0 && (
+            <label className="flex items-start gap-2" style={{ fontSize: "var(--text-sm)" }}>
+              <input
+                type="checkbox"
+                className="mt-1 accent-panther"
+                checked={removeConfirmed}
+                onChange={(event) => setRemoveConfirmed(event.target.checked)}
+              />
+              <span>
+                Yes, delete their {person.submissionCount} submission
+                {person.submissionCount === 1 ? "" : "s"} as well. This cannot be undone.
+              </span>
+            </label>
+          )}
+
+          <TextInput
+            label="Reason"
+            required
+            value={removeReason}
+            placeholder="Why this person is being removed"
+            hint="Goes in the audit log, along with how many submissions went with them."
+            onChange={(event) => setRemoveReason(event.target.value)}
+          />
+
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="submit"
+              variant="danger"
+              disabled={
+                busy ||
+                removeReason.trim().length < MIN_REASON ||
+                (person.submissionCount > 0 && !removeConfirmed)
+              }
+            >
+              {busy ? "Removing…" : "Remove from contest"}
+            </Button>
+            <Button type="button" variant="quiet" onClick={closeRemoveForm} disabled={busy}>
+              Cancel
+            </Button>
+          </div>
+        </form>
+      )}
+    </li>
+  );
+
   return (
     <div className="flex min-w-0 flex-col gap-section">
+      <Panel
+        title="Add a student"
+        level="framed"
+        description={
+          <>
+            Anybody with an account can be put on this contest, whether or not they have signed
+            into it. That includes everyone from previous contests. Adding somebody creates their
+            place in this contest with no team, so no score moves.
+          </>
+        }
+      >
+        <div className="flex flex-col gap-group">
+          <TextInput
+            label="Search by name or email"
+            type="search"
+            value={search}
+            placeholder="Start typing a name"
+            hint="Only accounts that are not already in this contest are listed."
+            onChange={(event) => setSearch(event.target.value)}
+          />
+
+          {searchError !== null && (
+            <p
+              role="alert"
+              className="font-semibold text-panther"
+              style={{ fontSize: "var(--text-sm)" }}
+            >
+              {searchError}
+            </p>
+          )}
+
+          {candidates === null ? (
+            <p role="status" className="text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
+              Loading accounts…
+            </p>
+          ) : candidates.length === 0 ? (
+            <p className="text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
+              {search.trim() === ""
+                ? "Everybody with an account is already in this contest."
+                : "No account outside this contest matches that."}
+            </p>
+          ) : (
+            <ul className="flex flex-col gap-tight">
+              {candidates.map((candidate) => (
+                <li
+                  key={candidate.userId}
+                  className="flex min-w-0 flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b border-rule-hair pb-2"
+                >
+                  <div className="flex min-w-0 flex-col">
+                    <span className="font-semibold" style={{ fontSize: "var(--text-sm)" }}>
+                      {candidate.displayName}
+                      {candidate.role === "ADMIN" && (
+                        // Said in words, never by colour alone. An organizer added as a competitor
+                        // lands in a team's divisor, which is a scoring change, so the screen has
+                        // to say which kind of account this is before the click.
+                        <span className="ml-2 font-normal text-ink/70" style={{ fontSize: "var(--text-xs)" }}>
+                          (organizer account)
+                        </span>
+                      )}
+                    </span>
+                    {/*
+                      Enough to tell two students apart, which is the whole job of this list. A
+                      name alone is not enough: the participant table has to invent a "(2)" suffix
+                      precisely because two people share one.
+                    */}
+                    <span className="text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
+                      {[
+                        candidate.email,
+                        candidate.gradYear === null ? null : `class of ${String(candidate.gradYear)}`,
+                        candidate.pastContests.length === 0
+                          ? "no previous contests"
+                          : `was in ${candidate.pastContests.slice(0, 2).join(", ")}`,
+                      ]
+                        .filter((part) => part !== null)
+                        .join(" · ")}
+                    </span>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    disabled={busy}
+                    onClick={() => {
+                      void send(API_ROUTES.adminContestParticipants(contestId), "POST", {
+                        userId: candidate.userId,
+                      });
+                    }}
+                  >
+                    Add
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {candidatesTruncated && (
+            <p className="text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
+              More accounts match than are shown. Type more of the name to narrow it down.
+            </p>
+          )}
+        </div>
+      </Panel>
+
       <Panel
         title="Not on a team"
         level="bare"
@@ -203,32 +523,15 @@ export function RosterManager({ contestId }: RosterManagerProps) {
             Everyone is on a team.
           </p>
         ) : (
-          <ul className="flex flex-wrap gap-x-4 gap-y-tight">
-            {roster.unassigned.map((person) => (
-              <li key={person.participantId}>
-                {/*
-                  `justify-start text-left` because `Button` centres its content, and a student
-                  whose display name is long enough to wrap — "Walkthrough Student 1785555824834"
-                  does at 360px — got a second line centred under the first, which reads as two
-                  separate entries rather than one name.
-                */}
-                <Button
-                  type="button"
-                  variant="quiet"
-                  className="justify-start text-left"
-                  disabled={busy}
-                  onClick={() => {
-                    closeTeamForm();
-                    setMoving(person);
-                    // Unassigned already: the sentinel below forces a deliberate choice rather
-                    // than letting the form submit the state they are already in.
-                    setMoveTarget(UNCHOSEN);
-                  }}
-                >
-                  {person.displayName} → assign
-                </Button>
-              </li>
-            ))}
+          <ul className="flex flex-col gap-tight">
+            {roster.unassigned.map((person) =>
+              personRow(person, "assign", () => {
+                setMoving(person);
+                // Unassigned already: the sentinel below forces a deliberate choice rather
+                // than letting the form submit the state they are already in.
+                setMoveTarget(UNCHOSEN);
+              }),
+            )}
           </ul>
         )}
       </Panel>
@@ -262,8 +565,9 @@ export function RosterManager({ contestId }: RosterManagerProps) {
               <option value={UNCHOSEN} disabled>
                 Choose a team…
               </option>
-              <option value="">— remove from their team —</option>
-              {roster.teams.map((team) => (
+              {/* Brackets rather than dashes: no em dash may appear in text a user reads. */}
+              <option value="">(remove from their team)</option>
+              {roster.teams.map((team: RosterTeam) => (
                 <option key={team.teamId} value={team.teamId}>
                   {team.name} ({team.memberCount} members)
                 </option>
@@ -330,7 +634,7 @@ export function RosterManager({ contestId }: RosterManagerProps) {
           </p>
         ) : (
           <ul className="flex flex-col gap-group">
-            {roster.teams.map((team) => (
+            {roster.teams.map((team: RosterTeam) => (
               <li
                 key={team.teamId}
                 className="rounded-panel border border-rule-edge p-4"
@@ -350,39 +654,28 @@ export function RosterManager({ contestId }: RosterManagerProps) {
                   </span>
                 </div>
 
-                <ul className="mt-tight flex flex-wrap gap-x-4 gap-y-1">
-                  {team.members.map((member) => (
-                    <li key={member.participantId}>
-                      <Button
-                        type="button"
-                        variant="quiet"
-                        className="justify-start text-left"
-                        disabled={busy}
-                        onClick={() => {
-                          /*
-                            DEFAULT TO THE TEAM THEY ARE ALREADY ON.
+                <ul className="mt-tight flex flex-col gap-tight">
+                  {team.members.map((member: RosterMember) =>
+                    personRow(member, "move", () => {
+                      /*
+                        DEFAULT TO THE TEAM THEY ARE ALREADY ON.
 
-                            This used to set "", which the submit handler maps to `teamId: null` —
-                            so the dialog opened showing "— no team —" and an organizer who typed
-                            a reason and pressed Move without touching the dropdown REMOVED the
-                            player from their team. Team size is the divisor in every team score,
-                            so the accidental path was a silent score change for two teams.
+                        This used to set "", which the submit handler maps to `teamId: null` — so
+                        the dialog opened showing "— no team —" and an organizer who typed a reason
+                        and pressed Move without touching the dropdown REMOVED the player from
+                        their team. Team size is the divisor in every team score, so the accidental
+                        path was a silent score change for two teams.
 
-                            A destructive action must never be the one that happens when you do
-                            nothing.
-                          */
-                          closeTeamForm();
-                          setMoving(member);
-                          setMoveTarget(team.teamId);
-                        }}
-                      >
-                        {member.displayName} → move
-                      </Button>
-                    </li>
-                  ))}
+                        A destructive action must never be the one that happens when you do
+                        nothing.
+                      */
+                      setMoving(member);
+                      setMoveTarget(team.teamId);
+                    }),
+                  )}
                   {team.members.length === 0 && (
                     <li className="text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
-                      No members — this team scores nothing.
+                      No members, so this team scores nothing.
                     </li>
                   )}
                 </ul>
@@ -394,14 +687,11 @@ export function RosterManager({ contestId }: RosterManagerProps) {
                     aria-expanded={teamForm?.kind === "rename" && teamForm.teamId === team.teamId}
                     disabled={busy}
                     onClick={() => {
-                      setMoving(null);
-                      setTeamFormReason("");
+                      const alreadyOpen =
+                        teamForm?.kind === "rename" && teamForm.teamId === team.teamId;
+                      closeEveryForm();
                       setTeamFormName(team.name);
-                      setTeamForm((current) =>
-                        current?.kind === "rename" && current.teamId === team.teamId
-                          ? null
-                          : { kind: "rename", teamId: team.teamId },
-                      );
+                      if (!alreadyOpen) setTeamForm({ kind: "rename", teamId: team.teamId });
                     }}
                   >
                     Rename
@@ -412,13 +702,10 @@ export function RosterManager({ contestId }: RosterManagerProps) {
                     aria-expanded={teamForm?.kind === "dissolve" && teamForm.teamId === team.teamId}
                     disabled={busy}
                     onClick={() => {
-                      setMoving(null);
-                      setTeamFormReason("");
-                      setTeamForm((current) =>
-                        current?.kind === "dissolve" && current.teamId === team.teamId
-                          ? null
-                          : { kind: "dissolve", teamId: team.teamId },
-                      );
+                      const alreadyOpen =
+                        teamForm?.kind === "dissolve" && teamForm.teamId === team.teamId;
+                      closeEveryForm();
+                      if (!alreadyOpen) setTeamForm({ kind: "dissolve", teamId: team.teamId });
                     }}
                   >
                     Dissolve

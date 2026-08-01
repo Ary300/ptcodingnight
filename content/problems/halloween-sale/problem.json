@@ -20,5 +20,38 @@
     "kind": "whitespace"
   },
   "sampleCount": 2,
-  "originAttribution": "Task inspired by a problem of the same name used at a past Coding Night. Statement and test data written fresh for this platform."
+  "originAttribution": "Task inspired by a problem of the same name used at a past Coding Night. Statement and test data written fresh for this platform.",
+  "signature": {
+    "name": "howManyGames",
+    "returns": {
+      "type": "int[]",
+      "join": " "
+    },
+    "shared": [
+      {
+        "name": "q",
+        "type": "int",
+        "passed": false
+      }
+    ],
+    "repeat": "q",
+    "params": [
+      {
+        "name": "p",
+        "type": "int"
+      },
+      {
+        "name": "d",
+        "type": "int"
+      },
+      {
+        "name": "m",
+        "type": "int"
+      },
+      {
+        "name": "b",
+        "type": "int"
+      }
+    ]
+  }
 }

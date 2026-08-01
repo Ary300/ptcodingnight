@@ -3,13 +3,13 @@
 The Park Tudor robotics team left the encoder logger running on the Panthers' drivetrain
 for the entire build season. Every time someone drove the robot around the commons, the
 logger appended one line: the number of encoder ticks the wheels turned during that
-session. The team captain wants a single number for the banner in the hallway — total
+session. The team captain wants a single number for the banner in the hallway: total
 ticks, all season, no rounding. There were a *lot* of sessions, and some of those late
 Friday nights racked up an absurd number of ticks, so pick your integer type carefully.
 
 ## Input
 
-The first line contains a single integer $n$ — the number of logged sessions.
+The first line contains a single integer $n$, the number of logged sessions.
 
 The second line contains $n$ space-separated integers $t_1, t_2, \dots, t_n$, where $t_i$
 is the number of encoder ticks recorded in session $i$.
@@ -40,7 +40,7 @@ Output:
 ```
 
 Each session is already larger than $2^{31}-1$, and the five of them add to
-$25{,}000{,}000{,}000$. In Java this needs `long` (and `Long.parseLong`) — an `int`
+$25{,}000{,}000{,}000$. In Java this needs `long` (and `Long.parseLong`). An `int`
 would silently wrap around and print garbage.
 
 A second, smaller sample:

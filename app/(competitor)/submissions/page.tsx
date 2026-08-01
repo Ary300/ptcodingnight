@@ -4,7 +4,8 @@ import { SubmissionHistory } from "@/components/contest/submissions/SubmissionHi
 import { Crumbs } from "@/components/ui";
 
 export const metadata: Metadata = {
-  title: "My submissions — Coding Night",
+  // A pipe, not an em dash. A browser tab is read by a person, so the no-em-dash rule reaches it.
+  title: "My submissions | Coding Night",
 };
 
 export default function SubmissionsPage() {

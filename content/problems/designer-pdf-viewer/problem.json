@@ -20,5 +20,30 @@
     "kind": "whitespace"
   },
   "sampleCount": 2,
-  "originAttribution": "Task inspired by a problem of the same name used at a past Coding Night. Statement and test data written fresh for this platform."
+  "originAttribution": "Task inspired by a problem of the same name used at a past Coding Night. Statement and test data written fresh for this platform.",
+  "signature": {
+    "name": "designerPdfViewer",
+    "returns": {
+      "type": "int"
+    },
+    "shared": [
+      {
+        "name": "h",
+        "type": "int[]",
+        "length": 26
+      },
+      {
+        "name": "q",
+        "type": "int",
+        "passed": false
+      }
+    ],
+    "repeat": "q",
+    "params": [
+      {
+        "name": "word",
+        "type": "string"
+      }
+    ]
+  }
 }

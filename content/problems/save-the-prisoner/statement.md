@@ -44,7 +44,7 @@ Sample 1 output
 3
 ```
 
-At the first table the slices land on seats $3, 4, 5, 1, 2, 3, 4, 5$ — eight slices, and the
+At the first table the slices land on seats $3, 4, 5, 1, 2, 3, 4, 5$: eight slices, and the
 eighth one stops on seat $5$. At the second table the four slices go to seats $4, 1, 2, 3$,
 so seat $3$ takes out the boxes.
 

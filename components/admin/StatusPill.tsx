@@ -48,7 +48,13 @@ export function ProblemStatePill({ state }: { state: ProblemState }) {
  *
  * The state's own word carries the meaning — the border is a second channel, never the only one.
  */
-const CONTEST_STATE_HINT: Record<string, string> = {
+/**
+ * Typed against the same six literals the API schema and `contest-setup.ts` spell out, so a
+ * renamed lifecycle state fails to compile here instead of rendering a pill with no hint.
+ */
+type ContestState = "DRAFT" | "SCHEDULED" | "RUNNING" | "FROZEN" | "ENDED" | "ARCHIVED";
+
+const CONTEST_STATE_HINT: Record<ContestState, string> = {
   DRAFT: "Not published. Students cannot see it.",
   SCHEDULED: "Published, not started.",
   RUNNING: "Live. Students are submitting now.",
@@ -57,20 +63,28 @@ const CONTEST_STATE_HINT: Record<string, string> = {
   ARCHIVED: "Retired.",
 };
 
-export function ContestStatePill({ state }: { state: string }) {
+export function ContestStatePill({ state }: { state: ContestState }) {
   const emphatic = state === "RUNNING" || state === "FROZEN";
-  const hint = CONTEST_STATE_HINT[state] ?? "";
+  const hint = CONTEST_STATE_HINT[state];
 
   return (
     <span
-      className={`inline-flex items-center rounded-chip px-2 py-0.5 font-semibold whitespace-nowrap ${
+      className={`inline-flex items-center gap-1.5 rounded-chip px-2 py-0.5 font-semibold whitespace-nowrap ${
         emphatic ? "border border-panther text-panther" : "border border-rule-edge text-ink/75"
       }`}
       style={{ fontSize: "var(--text-xs)" }}
       title={hint}
     >
+      {/*
+        The dot is what HackerRank puts on a live contest, and it is the one glance-speed cue in
+        a list where every other row is bordered grey. Decoration only: the word RUNNING is the
+        signal, per the never-colour-alone rule.
+      */}
+      {state === "RUNNING" && (
+        <span aria-hidden="true" className="inline-block h-1.5 w-1.5 rounded-full bg-panther" />
+      )}
       {state}
-      {hint !== "" && <span className="sr-only">. {hint}</span>}
+      <span className="sr-only">. {hint}</span>
     </span>
   );
 }

@@ -1,10 +1,13 @@
 "use client";
 
-import { TEAM_VISIBLE_ROWS } from "./constants";
+import { useEffect, useState } from "react";
+
+import { TEAM_EXPANDED_ROW_COST, TEAM_VISIBLE_ROWS } from "./constants";
 import { Countdown } from "./Countdown";
 import { CrestWatermark } from "./CrestWatermark";
 import { FrozenPlate } from "./FrozenPlate";
 import styles from "./leaderboard.module.css";
+import { drawnTeamRows } from "./projector-rows";
 import { TeamStandingsBoard } from "./TeamStandingsBoard";
 import { useTeamStandings } from "./useTeamStandings";
 
@@ -16,10 +19,27 @@ import { useTeamStandings } from "./useTeamStandings";
  * tracks of the same header row, so the title stays centred on the canvas rather than on whatever
  * space they left.
  *
- * Team-level only. The per-player breakdown is deliberately NOT here: a room reads ranks from the
- * back of a classroom, and a projector that tries to show twelve players' subtotals shows nothing
- * legible. The breakdown lives in the competitor and admin views, where somebody is close enough to
- * a screen to read it.
+ * ## The breakdown, and what it costs
+ *
+ * This screen used to say, in this comment, that the per-player breakdown was deliberately not
+ * here. The organizer disagreed, in as many words: "there is no drop down menu in that to show what
+ * every individual is contributing to the score there". The old reasoning was half right — twelve
+ * players' subtotals as a *column*, at projector size, is not legible — so the breakdown is here
+ * now as a wrapping LINE (`TeamRosterStrip`), one team at a time, and the screen pays for it in
+ * rows.
+ *
+ * **One team at a time, not a mode toggle, and not free.** The three options were: expand every
+ * team (impossible, the board is already full at seven rows), a separate "breakdown mode" screen
+ * that replaces the standings (the room loses the ranking it is watching, at the exact moment the
+ * organizer wants to talk about one team's place in it), or one open row inline. The last keeps the
+ * Codeforces shape: the ranking never leaves the wall, and the strip appears directly under the row
+ * it explains, so the addends sit under the arithmetic that consumes them.
+ *
+ * The price is stated rather than hidden. A projector does not scroll, so the open strip is paid
+ * for out of `TEAM_VISIBLE_ROWS` (see `TEAM_EXPANDED_ROW_COST`), the footnote says how many teams
+ * are drawn and out of how many, and the open team is drawn even when it ranks below the cut. The
+ * failure being designed against is specific and has happened here: a change that silently clipped
+ * five rows under a footnote that claimed to show ten.
  *
  * No login, no chrome, no scrollbars (PRD §9.3). A dropped poll keeps the previous rows rather than
  * blanking — the room cannot tell a five-second-stale board from a live one, and can very much tell
@@ -48,6 +68,30 @@ export function TeamProjectorScreen({
 }: TeamProjectorScreenProps) {
   const { standings, source, error } = useTeamStandings(contestId);
 
+  /**
+   * The one open team, held HERE rather than in the board.
+   *
+   * The board draws whatever rows it is given; this screen is what decides how many rows there is
+   * room for. Those two facts have to be decided together, so they live in one place.
+   */
+  const [openTeamId, setOpenTeamId] = useState<string | null>(null);
+
+  // Escape closes, because the organizer opening this is at a laptop and the board is behind them.
+  // Bound to the window rather than to the row: once the strip is open, the focused element may be
+  // anything, and a projector is not a screen anyone wants to hunt for a close button on.
+  useEffect(() => {
+    if (openTeamId === null) return undefined;
+
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key === "Escape") setOpenTeamId(null);
+    };
+
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [openTeamId]);
+
   // The HEADER RENDERS IN EVERY STATE, including "still loading" and "the API said no".
   //
   // The first version early-returned a bare sentence for those cases, which meant the wall showed
@@ -66,7 +110,30 @@ export function TeamProjectorScreen({
       : null;
 
   const frozen = standings?.frozen === true;
-  const visible = standings === null ? [] : standings.teams.slice(0, maxRows);
+
+  /*
+    How many rows fit, and which ones.
+
+    `openIndex` is looked up by id on every poll rather than remembered as a position, because the
+    board reorders under the strip: a team that was rank 5 when it was opened can be rank 3 four
+    seconds later, and a remembered index would then have the wrong team's roster open under the
+    wrong row. A team that has vanished from the payload resolves to null, which is closed.
+  */
+  const teams = standings === null ? [] : standings.teams;
+  const found = openTeamId === null ? -1 : teams.findIndex((t) => t.teamId === openTeamId);
+  const openIndex = found === -1 ? null : found;
+
+  const cap =
+    openIndex === null ? maxRows : Math.max(1, maxRows - TEAM_EXPANDED_ROW_COST);
+  const { indices, jumped } = drawnTeamRows(teams.length, cap, openIndex);
+  const visible = indices.flatMap((at) => {
+    const team = teams[at];
+    return team === undefined ? [] : [team];
+  });
+
+  /** What the footnote may honestly claim as "the top N". A pulled-up row is not part of it. */
+  const topCount = jumped ? visible.length - 1 : visible.length;
+  const openRank = openIndex === null ? null : (teams[openIndex]?.rank ?? null);
 
   /*
     Live or frozen, IN WORDS — DESIGN.md §7, and the individual board has always said it. The team
@@ -80,7 +147,7 @@ export function TeamProjectorScreen({
     standings === null
       ? "Waiting for the scoreboard"
       : frozen
-        ? // Short, because the gold plate directly below it carries the instant and the "judging
+        ? // Short, because the plate directly below it carries the instant and the "judging
           // continues" part. Saying both twice reads as a stutter from ten metres away.
           "Frozen standings"
         : `Live standings · updated ${timeOfDay(standings.asOf)}`;
@@ -105,21 +172,33 @@ export function TeamProjectorScreen({
 
       <main className={styles.teamStage}>
         <header className={styles.teamHead}>
-          <div className={styles.teamHeadLeft}>
-            {standings !== null && (
-              <p className={`${styles.state} ${frozen ? styles.stateFrozen : styles.stateLive}`}>
-                <span aria-hidden="true" className={styles.stateDot} />
-                {frozen ? "Board frozen" : "Live"}
-              </p>
-            )}
-          </div>
+          {/*
+            THE CORNER PILL IS GONE. "get rid of the little live symbol in the top left it looks
+            ugly" — it was a coloured dot and a word in the corner of a screen whose whole job is
+            to be read from ten metres, and a dot is the least legible thing on it at that range.
+
+            The STATE is not gone, and must never be: a frozen board that does not say so is a
+            stale ranking the room will read as the current one. It moves into the subtitle, one
+            line under the title, which is where the eye already is on the way into the `#` column
+            — and it is words, not a glyph, so it survives greyscale, colour-vision deficiency and
+            `prefers-reduced-motion` alike (DESIGN.md §3).
+
+            The track itself stays. `.teamHead` is `1fr auto 1fr` so that the title is centred on
+            the CANVAS rather than on whatever the clock left over; removing the element would
+            centre it on the wrong thing.
+          */}
+          <div className={styles.teamHeadLeft} />
 
           <div>
             <h1 className={styles.teamTitle}>
               Park Tudor Coding Night{" "}
               <span className={styles.teamTitleSub}>Team standings</span>
             </h1>
-            <p className={styles.teamSubtitle}>{subtitle}</p>
+            <p
+              className={`${styles.teamSubtitle} ${frozen ? styles.teamSubtitleFrozen : ""}`}
+            >
+              {subtitle}
+            </p>
           </div>
 
           <div className={styles.teamHeadRight}>
@@ -145,16 +224,49 @@ export function TeamProjectorScreen({
               {message}
             </p>
           ) : (
-            <TeamStandingsBoard teams={visible} variant="projector" />
+            <TeamStandingsBoard
+              teams={visible}
+              variant="projector"
+              openTeamId={openTeamId}
+              onToggleTeam={(teamId) => {
+                // One at a time. Two open strips is four rows off a seven-row board, and a room
+                // reading two breakdowns at once is reading neither.
+                setOpenTeamId((current) => (current === teamId ? null : teamId));
+              }}
+            />
           )}
         </div>
 
         <div className={styles.teamFootnote}>
-          {standings !== null && standings.teams.length > visible.length && (
+          {standings !== null && standings.teams.length > topCount && (
+            /*
+              The DRAWN count, which is not always the top of the table: an open team below the cut
+              is pulled up and drawn out of sequence, and the ranks then jump (1 2 3 4, then 7). The
+              jump is legible in the rank column on its own, and it is said here in words as well,
+              because a numeral that skips is a fact the board should state rather than leave to be
+              noticed.
+            */
             <span>
-              Showing top <span className="numeric">{visible.length}</span> of{" "}
+              Showing top <span className="numeric">{topCount}</span> of{" "}
               <span className="numeric">{standings.teams.length}</span> teams
+              {jumped && openRank !== null && (
+                <>
+                  , plus rank <span className="numeric">{openRank}</span>
+                </>
+              )}
             </span>
+          )}
+
+          {/*
+            Why the count just dropped. A board that shows five of nine seconds after showing seven
+            of nine, with nothing to explain it, reads as teams having disappeared.
+
+            Only when the budget actually cost somebody their row: on a four-team contest the whole
+            field fits with a strip open, and announcing a squeeze that did not happen is its own
+            small lie.
+          */}
+          {openIndex !== null && teams.length > cap && (
+            <span>A breakdown is open, so fewer teams fit.</span>
           )}
 
           {/* A board that has lost contact says so rather than pretending. It keeps the last

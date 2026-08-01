@@ -2,17 +2,21 @@
 
 import {
   useCallback,
+  useEffect,
   useId,
   useLayoutEffect,
   useMemo,
   useRef,
   useState,
   type KeyboardEvent,
+  type ReactNode,
   type UIEvent,
 } from "react";
 
+import { Button } from "@/components/ui";
+
 import { tokenize, type TokenKind } from "./highlight";
-import { LANGUAGE_LABEL, type CodeEditorProps } from "./types";
+import { LANGUAGE_LABEL, LANGUAGE_TEMPLATE, type CodeEditorProps } from "./types";
 
 /**
  * The editing surface, loaded as its own chunk (see `CodeEditor.tsx`).
@@ -55,6 +59,25 @@ import { LANGUAGE_LABEL, type CodeEditorProps } from "./types";
  * The resolution is the established one: **Tab indents while typing; Escape then Tab moves
  * focus.** The current mode is announced in a live region and stated visibly under the
  * editor, because an escape hatch nobody knows about is not an escape hatch.
+ *
+ * ## The toolbar strip
+ *
+ * HackerRank draws a thin tinted bar directly above the code (hr-challenge-live.png): the
+ * language dropdown on the left, small icon actions — reset and full screen — on the right.
+ * That strip lives HERE rather than in the workspace, because both of its actions are
+ * properties of the editor: reset needs the starter template and the caret, and full screen
+ * has to take the toolbar and the status strip with it or the student loses Line/Col and the
+ * keyboard hint exactly when the editor fills the monitor.
+ *
+ * `toolbarStart` is the language picker's seat. The picker belongs to the workspace (it also
+ * gates on the problem's allowed languages), so it arrives as a node rather than being
+ * imported — and once it sits inside this strip it survives full screen too, which a bar
+ * outside this component never can.
+ *
+ * Reset is destructive and cannot be undone, so a single click never performs it: the icon
+ * arms an inline confirm in the same strip, and the safe choice takes focus. `window.confirm`
+ * would be simpler and is also a modal the student cannot style, cannot reach reliably from
+ * a screen reader in every browser, and looks like a system fault mid-contest.
  */
 
 const INDENT = "    ";
@@ -92,6 +115,19 @@ function lineEndAfter(value: string, index: number): number {
   return found === -1 ? value.length : found;
 }
 
+/**
+ * The surface's own props: the shared contract plus the toolbar's left-hand seat.
+ *
+ * Optional and additive, so every existing caller of `CodeEditorProps` still typechecks.
+ * Wiring it up is two edits outside this file: `CodeEditor.tsx` widens its prop type to this
+ * interface (the dynamic import already forwards everything), and the workspace moves its
+ * `LanguagePicker` out of the header bar into `toolbarStart`.
+ */
+export interface CodeEditorSurfaceProps extends CodeEditorProps {
+  /** Rendered on the toolbar's left, where HackerRank keeps its language dropdown. */
+  readonly toolbarStart?: ReactNode;
+}
+
 export function CodeEditorSurface({
   value,
   onChange,
@@ -99,7 +135,8 @@ export function CodeEditorSurface({
   disabled = false,
   onSubmitShortcut,
   label,
-}: CodeEditorProps) {
+  toolbarStart,
+}: CodeEditorSurfaceProps) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const gutterRef = useRef<HTMLDivElement | null>(null);
   const overlayRef = useRef<HTMLPreElement | null>(null);
@@ -296,6 +333,74 @@ export function CodeEditorSurface({
     [autoIndent, indentSelection, onSubmitShortcut, tabMovesFocus],
   );
 
+  /* ---- toolbar: reset to the starter template ---- */
+
+  const template = LANGUAGE_TEMPLATE[language];
+  const pristine = value === template;
+  const [confirmingReset, setConfirmingReset] = useState(false);
+  const keepButtonRef = useRef<HTMLButtonElement | null>(null);
+  const resetButtonRef = useRef<HTMLButtonElement | null>(null);
+  const wasConfirming = useRef(false);
+
+  /**
+   * Arming swaps the icon for the confirm prompt, which removes the focused element from the
+   * DOM — and focus that falls to `<body>` strands a keyboard user. So the prompt's SAFE
+   * button takes it on the way in, and on the way out the icon takes it back — unless the
+   * reset was CONFIRMED, in which case the value is pristine again, the icon is disabled, and
+   * a disabled button ignores `focus()`. Then the editor takes it, which is where the student
+   * is headed anyway. In an effect rather than the click handlers, because on the way out the
+   * icon is not mounted yet when the handler runs.
+   */
+  useEffect(() => {
+    if (confirmingReset && !wasConfirming.current) keepButtonRef.current?.focus();
+    if (!confirmingReset && wasConfirming.current) {
+      const icon = resetButtonRef.current;
+      if (icon !== null && !icon.disabled) icon.focus();
+      else textareaRef.current?.focus();
+    }
+    wasConfirming.current = confirmingReset;
+  }, [confirmingReset]);
+
+  const resetToTemplate = useCallback(() => {
+    applyEdit(template, 0, 0);
+    // `setSelectionRange` on a collapsed caret fires no `select` event, so the derived caret
+    // state has to be moved by hand or Line/Col keeps showing where the old code ended.
+    setCaret({ line: 1, column: 1 });
+    setConfirmingReset(false);
+  }, [applyEdit, template]);
+
+  /* ---- toolbar: full screen ---- */
+
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  // A lazy initializer, not an effect: whether the API exists is a fact about the environment
+  // that cannot change while mounted, and the `typeof` guard keeps the read legal if this
+  // surface is ever rendered outside its `ssr: false` wrapper. Where it is unavailable
+  // (iPhone Safari) the button is hidden entirely rather than rendered to fail.
+  const [fullscreenAvailable] = useState(
+    () => typeof document !== "undefined" && document.fullscreenEnabled,
+  );
+
+  useEffect(() => {
+    const onFullscreenChange = () => {
+      setIsFullscreen(document.fullscreenElement === rootRef.current);
+    };
+    document.addEventListener("fullscreenchange", onFullscreenChange);
+    return () => document.removeEventListener("fullscreenchange", onFullscreenChange);
+  }, []);
+
+  const toggleFullscreen = useCallback(() => {
+    const root = rootRef.current;
+    if (root === null) return;
+    if (document.fullscreenElement === root) {
+      void document.exitFullscreen();
+      return;
+    }
+    // A rejection here means the permissions policy forbids it, which `fullscreenEnabled`
+    // already reported as false and hid the button — nothing useful to tell the student.
+    void root.requestFullscreen().catch(() => undefined);
+  }, []);
+
   /** One handler for both followers: the gutter tracks rows, the overlay tracks rows and columns. */
   const syncScroll = useCallback((event: UIEvent<HTMLTextAreaElement>) => {
     const source = event.currentTarget;
@@ -309,13 +414,127 @@ export function CodeEditorSurface({
   }, []);
 
   return (
-    <div className="flex flex-col">
+    // `bg-paper` matters only in full screen: a fullscreened element with no background is
+    // painted over the UA's black backdrop, and the status strip's ink text vanishes into it.
+    <div ref={rootRef} className={isFullscreen ? "flex h-full flex-col bg-paper" : "flex flex-col"}>
+      {/*
+        The thin toolbar HackerRank draws directly above its editor (hr-challenge-live.png): a
+        tinted strip, the language dropdown on the left, small icon actions on the right. Same
+        tint as the workspace's header bar so the two read as one piece of chrome, and no bottom
+        border — the dark band underneath is its own edge.
+
+        Icon buttons are 28px squares: the glyph is quiet but the target is not, and each one
+        carries an aria-label AND a title, because an unlabelled icon is a riddle in both senses.
+      */}
+      <div className="flex items-center gap-1 bg-ink/[0.03] px-2 py-1">
+        <div className="min-w-0 flex-1">{toolbarStart}</div>
+
+        {confirmingReset ? (
+          <span className="flex flex-wrap items-center justify-end gap-2" role="group" aria-label="Confirm reset">
+            <span className="text-ink/70" style={{ fontSize: "var(--text-xs)" }}>
+              Replace your code with the starter template?
+            </span>
+            {/* `danger`, because this is the one click on the page that destroys work. */}
+            <Button type="button" variant="danger" size="sm" onClick={resetToTemplate}>
+              Reset
+            </Button>
+            <Button
+              ref={keepButtonRef}
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => setConfirmingReset(false)}
+            >
+              Keep my code
+            </Button>
+          </span>
+        ) : (
+          <button
+            ref={resetButtonRef}
+            type="button"
+            // Disabled while pristine: resetting a template to itself is a no-op button, and a
+            // live-looking control that does nothing teaches the student to distrust the rest.
+            disabled={disabled || pristine}
+            onClick={() => setConfirmingReset(true)}
+            aria-label="Reset the editor to the starter template"
+            title="Reset to the starter template"
+            className="inline-flex h-7 w-7 items-center justify-center rounded text-ink/70 hover:bg-ink/10 hover:text-ink disabled:cursor-not-allowed disabled:text-ink/30 disabled:hover:bg-transparent"
+          >
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 16 16"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M2.5 2.5v4H6" />
+              <path d="M2.9 6.4a5.5 5.5 0 1 1-.4 2.6" />
+            </svg>
+          </button>
+        )}
+
+        {fullscreenAvailable && (
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={toggleFullscreen}
+            aria-label={isFullscreen ? "Exit full screen" : "Enter full screen"}
+            title={isFullscreen ? "Exit full screen" : "Full screen"}
+            className="inline-flex h-7 w-7 items-center justify-center rounded text-ink/70 hover:bg-ink/10 hover:text-ink disabled:cursor-not-allowed disabled:text-ink/30 disabled:hover:bg-transparent"
+          >
+            {isFullscreen ? (
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 16 16"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M6 2v4H2" />
+                <path d="M10 2v4h4" />
+                <path d="M6 14v-4H2" />
+                <path d="M10 14v-4h4" />
+              </svg>
+            ) : (
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 16 16"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M2 6V2h4" />
+                <path d="M14 6V2h-4" />
+                <path d="M2 10v4h4" />
+                <path d="M14 10v4h-4" />
+              </svg>
+            )}
+          </button>
+        )}
+      </div>
+
       {/*
         The code area itself: gutter, coloured layer, and the textarea over both. No border and
         no radius — it is one band inside the panel the workspace draws around it, which is how
         HackerRank's editor sits inside its challenge card.
+
+        In full screen the band takes every row the toolbar and status strip leave (`flex-1`),
+        with `min-h-0` so it can also SHRINK below its content and scroll instead of pushing the
+        status strip off the bottom of the monitor.
       */}
-      <div className="flex bg-ink">
+      <div className={isFullscreen ? "flex min-h-0 flex-1 bg-ink" : "flex bg-ink"}>
         <div
           ref={gutterRef}
           aria-hidden="true"
@@ -374,8 +593,11 @@ export function CodeEditorSurface({
             // selection therefore needs its own colour: without it, selected text is an invisible
             // block on a dark ground.
             // Shorter on a phone: 22rem of editor plus the statement above it is a lot of
-            // scrolling to reach Submit, and the box is resizable anyway.
-            className="relative block max-h-[70vh] min-h-[16rem] w-full resize-y overflow-auto bg-transparent p-3 font-mono text-transparent caret-gold outline-none selection:bg-paper/25 disabled:cursor-not-allowed sm:min-h-[22rem]"
+            // scrolling to reach Submit, and the box is resizable anyway. In full screen the
+            // band's height is the layout's decision, so the resize handle and the caps go.
+            className={`relative block w-full overflow-auto bg-transparent p-3 font-mono text-transparent caret-gold outline-none selection:bg-paper/25 disabled:cursor-not-allowed ${
+              isFullscreen ? "h-full" : "max-h-[70vh] min-h-[16rem] resize-y sm:min-h-[22rem]"
+            }`}
             style={{ ...SHARED_TEXT }}
           />
         </div>

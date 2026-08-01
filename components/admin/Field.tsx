@@ -4,9 +4,16 @@ import {
   useId,
   type InputHTMLAttributes,
   type ReactNode,
-  type SelectHTMLAttributes,
   type TextareaHTMLAttributes,
 } from "react";
+
+import {
+  CONTROL_LEADING,
+  CONTROL_PAD,
+  CONTROL_SURFACE,
+  Select as SelectTrigger,
+  type SelectProps as SelectTriggerProps,
+} from "@/components/ui/Select";
 
 /**
  * Admin form controls.
@@ -31,11 +38,21 @@ import {
  * by its own colour alpha (`text-ink/60`, the documented AA floor) and never by a wrapper
  * `opacity`, which multiplies with child alpha — `tests/a11y/team-screens.spec.ts` fails this
  * surface by name for it.
+ *
+ * ## The box comes from `components/ui/Select`
+ *
+ * Surface, corner, rule weight, padding and the disabled skin are imported rather than written
+ * here, so a select and the text input beside it in the same grid row cannot drift apart. They
+ * had: the editor's language picker was 34px at a 4px corner on an `ink/25` rule while these
+ * were 42px, flat, on `--rule-edge`.
+ *
+ * The disabled skin moved with them, and that was a bug fix, not a reshuffle. It used to be
+ * `disabled:opacity-60` on the control, and `opacity` MULTIPLIES with child alpha — so the
+ * placeholder, already `text-ink/60`, landed at 0.36 on a disabled field. It is a flat fill and
+ * muted ink now, the same way `components/ui/Button.tsx` does it.
  */
 
-const CONTROL =
-  "w-full rounded-flat border bg-paper px-3 py-2 text-ink placeholder:text-ink/60 " +
-  "disabled:cursor-not-allowed disabled:opacity-60";
+const CONTROL = `${CONTROL_SURFACE} ${CONTROL_PAD.md} ${CONTROL_LEADING.md} placeholder:text-ink/60`;
 
 function borderFor(invalid: boolean): string {
   // `--panther` is 5.08 on paper: AA, and the only palette colour that may carry meaning
@@ -154,7 +171,10 @@ export function TextArea({ label, hint, error, mono = false, required, ...rest }
   );
 }
 
-type SelectProps = Omit<SelectHTMLAttributes<HTMLSelectElement>, "id" | "className"> & {
+type SelectProps = Omit<
+  SelectTriggerProps,
+  "id" | "invalid" | "shellClassName" | "size" | "aria-invalid"
+> & {
   label: string;
   hint?: ReactNode;
   error?: string | null;
@@ -165,16 +185,19 @@ export function Select({ label, hint, error, required, children, ...rest }: Sele
   return (
     <Field label={label} hint={hint} error={error} required={required}>
       {({ controlId, describedBy, invalid }) => (
-        <select
+        // The trigger is `components/ui/Select`; what this adds is the label, hint and error
+        // wiring that every control on this surface shares. `size` is fixed at `md` because an
+        // admin form row is the only place these appear, and a form that mixed two trigger
+        // heights down one column would be the drift this consolidation just removed.
+        <SelectTrigger
           {...rest}
           id={controlId}
           required={required}
-          aria-invalid={invalid || undefined}
+          invalid={invalid}
           aria-describedby={describedBy}
-          className={`${CONTROL} ${borderFor(invalid)}`}
         >
           {children}
-        </select>
+        </SelectTrigger>
       )}
     </Field>
   );

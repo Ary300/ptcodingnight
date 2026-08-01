@@ -2,6 +2,7 @@ import { DomainError, NotFoundError, ValidationError } from "@/lib/errors";
 import { prisma } from "@/lib/db";
 import { AUDIT_ACTIONS, writeAudit, type Db } from "@/lib/contest/audit";
 import { assignSetForOne } from "@/lib/contest/set-assignment";
+import { uniqueDisplayName } from "@/lib/contest/enrolment";
 import { invalidateScoringInput } from "@/lib/contest/standings";
 import { newTeamCode } from "@/lib/contest/team-code";
 
@@ -493,14 +494,380 @@ export async function adminReassignSet(
   invalidateScoringInput(participant.contestId);
 }
 
+/* ------------------------------------------------------------------------ */
+/* Building a roster before anyone has signed in                             */
+/* ------------------------------------------------------------------------ */
+
+/**
+ * ## The defect this section exists to fix
+ *
+ * A `Participant` row belongs to exactly ONE contest, and until now the only thing that created
+ * one was `ensureEnrolled` at sign-in. `adminRoster` lists participants of the contest it was
+ * given, so a contest created this morning contained nobody and could contain nobody — the
+ * organizer's words were "I could not add any of the people who participated in the Demo to
+ * Test2 ... I could only add people if they signed up or signed in AFTER the contest had
+ * started."
+ *
+ * That is backwards. Adding people, assigning problems and forming teams all happen BEFORE the
+ * gun; starting the contest is the last thing an organizer does, not the first. So an organizer
+ * can now put any known account on any contest's roster, and the `Participant` row is created by
+ * that action rather than by the student happening to sign in at the right moment.
+ *
+ * ## One account per person, one participant per contest
+ *
+ * `User` is the person and `Participant` is their entry in one contest. Adding somebody never
+ * touches `User`, so nothing here can merge or duplicate an account. The `(contestId, userId)`
+ * check below is what keeps the second half of that rule: adding the same person twice returns
+ * the row they already have instead of minting a rival participant that competes against them for
+ * their own submissions.
+ */
+
+/** A known account that is NOT yet on this contest's roster. */
+export interface AddableUser {
+  readonly userId: string;
+  readonly displayName: string;
+  readonly email: string | null;
+  readonly gradYear: number | null;
+  readonly role: string;
+  /**
+   * Contests this account has competed in before, newest first.
+   *
+   * Two students really do share a name — `uniqueDisplayName` exists because of it — so a picker
+   * that shows only names asks an organizer to guess. Email, graduation year and "was in the Demo"
+   * are what actually tell two Alex Chens apart.
+   */
+  readonly pastContests: readonly string[];
+}
+
+/** Nobody is picking a student out of a list of five hundred; they type a name. */
+const ADDABLE_DEFAULT_LIMIT = 20;
+export const ADDABLE_MAX_LIMIT = 50;
+
+/**
+ * Accounts an organizer could add to this contest: every known user with no `Participant` row here.
+ *
+ * **Organizers are included, and that is deliberate.** Automatic enrolment skips them — signing an
+ * organizer in must not put them in a team's divisor by accident — but this is not automatic. An
+ * organizer who also wants to compete is a decision a human is making on purpose, and the role is
+ * returned beside the name so the screen can say which kind of account it is.
+ *
+ * Disabled accounts are excluded: a disabled account cannot sign in, so putting one on a roster
+ * creates a participant who can never submit and still occupies a place in the divisor.
+ */
+export async function adminAddableUsers(
+  contestId: string,
+  query: string,
+  limit: number = ADDABLE_DEFAULT_LIMIT,
+): Promise<AddableUser[]> {
+  // Proves the contest exists before reporting a list of people who are "not in it".
+  await contestForTeams(contestId);
+
+  const trimmed = query.trim();
+  const take = Math.min(Math.max(limit, 1), ADDABLE_MAX_LIMIT);
+
+  const users = await prisma.user.findMany({
+    where: {
+      disabledAt: null,
+      participants: { none: { contestId } },
+      ...(trimmed === ""
+        ? {}
+        : {
+            OR: [
+              { displayName: { contains: trimmed, mode: "insensitive" as const } },
+              { email: { contains: trimmed, mode: "insensitive" as const } },
+            ],
+          }),
+    },
+    select: { id: true, displayName: true, email: true, gradYear: true, role: true },
+    // Two keys, because `displayName` is not unique across accounts and Postgres returns rows in
+    // whatever order it likes otherwise. A picker whose order changes between keystrokes moves the
+    // row under the organizer's cursor.
+    orderBy: [{ displayName: "asc" }, { id: "asc" }],
+    take,
+  });
+
+  if (users.length === 0) return [];
+
+  // Only for the page being shown. "Which contests has this person been in" is a join nobody wants
+  // to run across every account in the school.
+  const history = await prisma.participant.findMany({
+    where: { userId: { in: users.map((user) => user.id) } },
+    select: { userId: true, contest: { select: { name: true, startsAt: true } } },
+    orderBy: { contest: { startsAt: "desc" } },
+  });
+
+  const byUser = new Map<string, string[]>();
+  for (const row of history) {
+    if (row.userId === null) continue;
+    const names = byUser.get(row.userId) ?? [];
+    names.push(row.contest.name);
+    byUser.set(row.userId, names);
+  }
+
+  return users.map((user) => ({
+    userId: user.id,
+    displayName: user.displayName,
+    email: user.email,
+    gradYear: user.gradYear,
+    role: user.role,
+    pastContests: byUser.get(user.id) ?? [],
+  }));
+}
+
+export interface AddParticipantResult {
+  readonly participantId: string;
+  readonly displayName: string;
+  /** False when this account was already on the roster; the call changed nothing. */
+  readonly created: boolean;
+}
+
+/**
+ * Put a known account on this contest's roster, creating the `Participant`.
+ *
+ * **No contest-state gate.** Building a roster while the contest is DRAFT or SCHEDULED is the
+ * normal case — it is the entire point — and a late arrival on the night has to be addable while
+ * it is RUNNING. The one state worth refusing is a contest that is over, because adding somebody
+ * to a finished contest produces a competitor with no possible submissions and a place in a
+ * divisor that has already been published.
+ *
+ * Idempotent on `(contestId, userId)`: adding the same person twice hands back the row they
+ * already have. Without that, a double-clicked button mints a second participant that competes
+ * against the first for the same person's submissions, and `Participant` has no unique constraint
+ * on `(contestId, userId)` to catch it — `userId` is nullable, because join-by-code participants
+ * predate accounts.
+ */
+export async function adminAddParticipant(
+  contestId: string,
+  userId: string,
+  actor: string,
+): Promise<AddParticipantResult> {
+  const contest = await prisma.contest.findUnique({
+    where: { id: contestId },
+    select: { id: true, state: true },
+  });
+  if (contest === null) throw new NotFoundError("Contest");
+  if (contest.state === "ENDED" || contest.state === "ARCHIVED") {
+    throw new DomainError(
+      "CONTEST_NOT_RUNNING",
+      "This contest is over, so nobody else can be added to it.",
+    );
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, displayName: true, disabledAt: true },
+  });
+  if (user === null) throw new NotFoundError("User");
+  if (user.disabledAt !== null) {
+    throw new ValidationError("That account is disabled and cannot compete.");
+  }
+
+  const existing = await prisma.participant.findFirst({
+    where: { contestId, userId },
+    select: { id: true, displayName: true },
+  });
+  if (existing !== null) {
+    return { participantId: existing.id, displayName: existing.displayName, created: false };
+  }
+
+  const displayName = await uniqueDisplayName(contestId, user.displayName);
+
+  const created = await prisma.$transaction(async (tx) => {
+    const participant = await tx.participant.create({
+      data: {
+        contestId,
+        userId,
+        displayName,
+        // No team, exactly as at sign-in. A participant on no team is in nobody's divisor, so
+        // adding somebody early cannot move a score — which is what makes this safe to do in bulk
+        // before the contest starts.
+        teamId: null,
+      },
+      select: { id: true, displayName: true },
+    });
+    await writeAudit(
+      {
+        actor,
+        action: AUDIT_ACTIONS.participantAdded,
+        entity: `Participant:${participant.id}`,
+        after: { contestId, userId, displayName: participant.displayName },
+      },
+      tx,
+    );
+    return participant;
+  });
+
+  invalidateScoringInput(contestId);
+  return { participantId: created.id, displayName: created.displayName, created: true };
+}
+
+/** What removing a participant would destroy. Read before the delete so the audit row can say it. */
+export interface ParticipantRemovalImpact {
+  readonly participantId: string;
+  readonly displayName: string;
+  readonly contestId: string;
+  readonly teamId: string | null;
+  readonly submissionCount: number;
+}
+
+/**
+ * Take somebody off a contest entirely.
+ *
+ * ## Why submissions have to be confirmed separately
+ *
+ * `Submission.participantId` is `onDelete: Cascade`, so deleting a participant deletes their
+ * judged submissions with them — and standings are re-derived from the submission log, so that is
+ * not a tidy-up, it is rewriting history for every team they were on. An organizer removing a
+ * student who signed up twice by mistake and an organizer removing a student who has been
+ * competing for an hour are doing two very different things, and the button is the same button.
+ *
+ * So: a participant with no submissions is removed outright, and one with submissions is refused
+ * until the caller passes `deleteSubmissions`. The message names the count, because "you are about
+ * to delete 14 judged submissions" is the only thing that makes the second case visible.
+ *
+ * The non-destructive alternative is `adminMoveParticipant(id, null)`, which takes them out of
+ * every divisor and leaves the log intact. The refusal message says so.
+ */
+export async function adminRemoveParticipant(
+  contestId: string,
+  participantId: string,
+  actor: string,
+  reason: string,
+  deleteSubmissions: boolean,
+): Promise<ParticipantRemovalImpact> {
+  const participant = await prisma.participant.findUnique({
+    where: { id: participantId },
+    select: {
+      id: true,
+      displayName: true,
+      contestId: true,
+      teamId: true,
+      userId: true,
+      team: { select: { name: true } },
+      _count: { select: { submissions: true } },
+    },
+  });
+  if (participant === null) throw new NotFoundError("Participant");
+
+  /*
+    THE CONTEST COMES FROM THE PATH AND THE PARTICIPANT FROM THE BODY, so nothing about the URL
+    constrains the id. Checked here rather than at the route edge because it has to happen BEFORE
+    the delete: an organizer on Test2's screen must not be able to delete a participant of the
+    Demo and receive Test2's roster back looking entirely correct.
+  */
+  if (participant.contestId !== contestId) {
+    throw new ValidationError("That participant belongs to a different contest");
+  }
+
+  const submissionCount = participant._count.submissions;
+  if (submissionCount > 0 && !deleteSubmissions) {
+    throw new DomainError(
+      "CONFLICT",
+      `${participant.displayName} has ${String(submissionCount)} judged submission` +
+        `${submissionCount === 1 ? "" : "s"}. Removing them from the contest deletes those too. ` +
+        "Confirm that, or take them off their team instead, which keeps the record and removes " +
+        "them from every score.",
+    );
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await writeAudit(
+      {
+        actor,
+        action: AUDIT_ACTIONS.participantRemoved,
+        entity: `Participant:${participantId}`,
+        before: {
+          contestId: participant.contestId,
+          displayName: participant.displayName,
+          userId: participant.userId,
+          teamId: participant.teamId,
+          teamName: participant.team?.name ?? null,
+          // The row is about to cascade away. This number is the only thing that will remain to
+          // say there was work here.
+          submissionsDeleted: submissionCount,
+        },
+        reason,
+      },
+      tx,
+    );
+    // The audit row is written FIRST and inside the same transaction: `AuditLog` has no foreign
+    // key to `Participant`, but writing it after the delete would leave a window where a failure
+    // loses the only record of what went.
+    await tx.participant.delete({ where: { id: participantId } });
+  });
+
+  invalidateScoringInput(participant.contestId);
+
+  return {
+    participantId,
+    displayName: participant.displayName,
+    contestId: participant.contestId,
+    teamId: participant.teamId,
+    submissionCount,
+  };
+}
+
+/* ------------------------------------------------------------------------ */
+/* The roster itself                                                         */
+/* ------------------------------------------------------------------------ */
+
+/**
+ * One person on the roster, as an ORGANIZER sees them.
+ *
+ * Strictly more than `TeamMember`, which is the student-facing shape and stays a name and an id.
+ * The three extra fields all exist to answer a question the organizer's screen has to answer:
+ *
+ *  - `email` tells two students with the same name apart, which is the whole reason
+ *    `uniqueDisplayName` had to invent a suffix in the first place.
+ *  - `userId` says whether this participant is backed by an account at all. A null one is a
+ *    legacy join-by-code row, and it cannot be re-added after removal because there is no account
+ *    to add.
+ *  - `submissionCount` is what removal destroys, so the screen can say so before it happens
+ *    rather than after.
+ */
+export interface RosterMember {
+  readonly participantId: string;
+  readonly displayName: string;
+  readonly userId: string | null;
+  readonly email: string | null;
+  readonly submissionCount: number;
+}
+
 /** The organizer's roster: every team, its members, and everybody on no team at all. */
 export async function adminRoster(contestId: string): Promise<{
   readonly maxTeamSize: number;
   readonly formationOpen: boolean;
-  readonly teams: readonly (TeamView & { readonly memberCount: number })[];
-  readonly unassigned: readonly { participantId: string; displayName: string }[];
+  readonly teams: readonly (Omit<TeamView, "members"> & {
+    readonly memberCount: number;
+    readonly members: readonly RosterMember[];
+  })[];
+  readonly unassigned: readonly RosterMember[];
 }> {
   const contest = await contestForTeams(contestId);
+
+  const memberSelect = {
+    id: true,
+    displayName: true,
+    userId: true,
+    user: { select: { email: true } },
+    _count: { select: { submissions: true } },
+  } as const;
+
+  type MemberRow = {
+    id: string;
+    displayName: string;
+    userId: string | null;
+    user: { email: string | null } | null;
+    _count: { submissions: number };
+  };
+
+  const toMember = (row: MemberRow): RosterMember => ({
+    participantId: row.id,
+    displayName: row.displayName,
+    userId: row.userId,
+    email: row.user?.email ?? null,
+    submissionCount: row._count.submissions,
+  });
 
   const [teams, unassigned] = await Promise.all([
     prisma.team.findMany({
@@ -509,13 +876,13 @@ export async function adminRoster(contestId: string): Promise<{
         id: true,
         name: true,
         joinCode: true,
-        members: { select: { id: true, displayName: true }, orderBy: { id: "asc" } },
+        members: { select: memberSelect, orderBy: { id: "asc" } },
       },
       orderBy: [{ name: "asc" }, { id: "asc" }],
     }),
     prisma.participant.findMany({
       where: { contestId, teamId: null },
-      select: { id: true, displayName: true },
+      select: memberSelect,
       orderBy: [{ displayName: "asc" }, { id: "asc" }],
     }),
   ]);
@@ -529,8 +896,8 @@ export async function adminRoster(contestId: string): Promise<{
       joinCode: team.joinCode,
       maxTeamSize: contest.maxTeamSize,
       memberCount: team.members.length,
-      members: team.members.map((m) => ({ participantId: m.id, displayName: m.displayName })),
+      members: team.members.map(toMember),
     })),
-    unassigned: unassigned.map((p) => ({ participantId: p.id, displayName: p.displayName })),
+    unassigned: unassigned.map(toMember),
   };
 }

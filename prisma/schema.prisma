@@ -446,6 +446,21 @@ model Problem {
   /// Used by the authoring flow to generate expected outputs. Must pass its own tests
   /// before the problem may leave DRAFT (PRD §9.2).
   referenceSolution String?
+  /// The function-signature declaration this problem's starter code is generated from, or NULL.
+  ///
+  /// Validated by `SignatureSchema` (lib/schemas/seed.ts) on the way in and on the way out —
+  /// `Json` is `unknown` as far as Prisma is concerned, so it is a trust boundary in both
+  /// directions, and a row written by an older build must be parsed rather than assumed.
+  ///
+  /// **NULL is the normal case and must stay working.** Most of the bank has no signature, and a
+  /// problem without one behaves exactly as every problem did before this column existed: an
+  /// empty editor and a raw stdin-to-stdout program. Nothing about judging, scoring or
+  /// submission reads this field; it only decides what the editor is pre-filled with.
+  ///
+  /// Stored as the DECLARATION, not as the generated code. Six emitters times ten languages is
+  /// derivable from it by a pure function, so storing the output would be a second source of
+  /// truth that goes stale the moment an emitter is fixed.
+  signature         Json?
   /// Notes the HackerRank inspiration for an imported title. Titles and history only.
   originAttribution String?
   /// Which round this problem is for. Replaces the boolean isGroupProblem, which could not

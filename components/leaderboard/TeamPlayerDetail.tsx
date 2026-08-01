@@ -101,7 +101,8 @@ function ProblemLine({ problem, playerName }: ProblemLineProps) {
     // Stated in full rather than as a badge. A group problem's points are on the team's Group
     // column and deliberately NOT in this player's total (lib/scoring/team.ts), so a reader adding
     // the panel up and finding it short deserves the sentence rather than a word they must decode.
-    facts.push(`group — counts for the team, not for ${playerName}`);
+    // A colon rather than an em dash: no em dash in anything a user can read.
+    facts.push(`group: counts for the team, not for ${playerName}`);
   }
   if (problem.score === 0 && !problem.isGroupProblem) {
     // Said out loud rather than left to a bare `0`. A row exists here because there was a
@@ -216,10 +217,12 @@ export function TeamPlayerLine({ player }: TeamPlayerLineProps) {
             <span aria-hidden="true">{open ? "▾ " : "▸ "}</span>
             {player.displayName}
             {/* A button whose whole accessible name is a person's name says nothing about what
-                pressing it does. The name is spaced, not concatenated: "Adaproblem by problem" is
-                what a screen reader reads back when two adjacent runs are only separated
-                visually. */}
-            <span className={styles.visuallyHidden}> — problem by problem</span>
+                pressing it does. The name is separated, not concatenated: "Adaproblem by problem"
+                is what a screen reader reads back when two adjacent runs are only separated
+                visually. A colon does that job; an em dash is banned from anything a user can
+                read, and an accessible name is read out loud, which is as user-visible as text
+                gets. */}
+            <span className={styles.visuallyHidden}>: problem by problem</span>
           </button>
         ) : (
           <span className="min-w-0 truncate">{player.displayName}</span>

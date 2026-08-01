@@ -6,7 +6,7 @@ import { useState, type FormEvent } from "react";
 import { Button } from "@/components/ui";
 import { ConfirmButton } from "@/components/admin/ConfirmButton";
 import { Select, TextInput } from "@/components/admin/Field";
-import { AlertPlate, Panel } from "@/components/admin/Panel";
+import { Panel } from "@/components/admin/Panel";
 import {
   ContestDraftSchema,
   SCORING_PRESETS,
@@ -22,21 +22,33 @@ import {
  * cannot drift from the server's idea of a valid contest. The client check is a courtesy;
  * the API is the authority.
  *
- * ## Creating is a DOORWAY now, not a form you are left sitting on
+ * ## The shape is HackerRank's Contest Details page, on purpose
  *
- * It used to set a `saved` flag and leave the form filled with a live "Create contest" button, so
- * pressing it again made a second identical contest — which is exactly how the dev database
- * acquired two rows both named "Dup Test Night", same date, sitting next to each other in the
- * picker an organizer then had to choose from.
+ * Measured from their contest settings screen: ONE column of fields, each label above its
+ * control with a hint line in lighter ink beneath it, sections led by a heading and separated
+ * by a hairline rule rather than boxed into cards, and exactly one filled button on the page.
+ * The two-column grid this used to be put "Starts at" beside "Contest name" and "Freeze at"
+ * beside "Ends at", so the reading order of the fields and the meaning order of the fields
+ * disagreed. A settings form is a list you go down, not a grid you scan.
  *
- * Beside that flag it rendered two next-step links that had drifted apart: "Build the roster" went
- * to `/admin/teams?contest=<the new id>` and "Add problems" went to bare `/admin/problems` with
- * the id simply dropped. That is the reported complaint in one line of JSX, and it is a class of
- * bug that comes back every time somebody adds a third link.
+ * The column is capped at `max-w-2xl` because a full-bleed text input on a wide admin window
+ * is a 1200px-long box for a 30-character name.
  *
- * Both are gone, because there is now exactly ONE destination: `/admin/contests/<id>`, the contest
- * itself, whose tab strip carries the id by construction. A successful create navigates there and
- * this form is unmounted, so it cannot be submitted twice.
+ * ## A rejected form is answered at the field, never with a plate
+ *
+ * The old error summary was a black `AlertPlate` titled "This contest will not save yet" —
+ * exactly the rendering `components/admin/Panel.tsx` forbids for validation, because a black
+ * plate reads as "something is wrong with the judge" and pulls the eye away from the field
+ * that needs fixing. Each field already announces its own error through `Field`'s
+ * `aria-describedby` wiring; what remains here is one quiet line beside the submit button, so
+ * pressing Create with a bad field off-screen still visibly does something.
+ *
+ * ## Creating is a DOORWAY, not a form you are left sitting on
+ *
+ * It used to set a `saved` flag and leave the form filled with a live "Create contest" button,
+ * so pressing it again made a second identical contest. There is now exactly ONE destination:
+ * `/admin/contests/<id>`, whose tab strip carries the id by construction. A successful create
+ * navigates there and this form is unmounted, so it cannot be submitted twice.
  */
 
 const EMPTY_DRAFT: ContestDraft = {
@@ -175,23 +187,29 @@ export function ContestBuilder({ initial = EMPTY_DRAFT }: ContestBuilderProps) {
 
   const preset = SCORING_PRESETS.find((p) => p.id === draft.scoringPresetId);
   const divisionError = errors["divisions"];
+  const errorCount = Object.keys(errors).length;
 
   return (
-    <form onSubmit={(event) => void onSubmit(event)} noValidate className="flex flex-col gap-6">
+    <form
+      onSubmit={(event) => void onSubmit(event)}
+      noValidate
+      className="flex max-w-2xl flex-col gap-6"
+    >
       <Panel
-        title="Contest"
-        description="The window, the divisions, the preset and the freeze are what nobody wants to be deciding at 6:55pm. Set them now. A contest is created as a DRAFT, and students cannot see it until you publish it."
+        level="bare"
+        title="Contest details"
+        description="The window, the preset and the freeze are what nobody wants to be deciding at 6:55pm. Set them now. A contest is created as a DRAFT, and students cannot see it until you publish it."
       >
-        <div className="grid gap-5 sm:grid-cols-2">
+        <div className="flex flex-col gap-group">
           <TextInput
             label="Contest name"
             required
             value={draft.name}
             maxLength={120}
             error={errors["name"] ?? null}
+            hint="Students see this name on the sign-in screen and the projector."
             onChange={(e) => update("name", e.target.value)}
           />
-
 
           <TextInput
             label="Starts at"
@@ -200,6 +218,7 @@ export function ContestBuilder({ initial = EMPTY_DRAFT }: ContestBuilderProps) {
             numeric
             value={draft.startsAtLocal}
             error={errors["startsAtLocal"] ?? null}
+            hint="Your local time. The server stores the instant, so a UTC host cannot shift it."
             onChange={(e) => update("startsAtLocal", e.target.value)}
           />
 
@@ -210,6 +229,7 @@ export function ContestBuilder({ initial = EMPTY_DRAFT }: ContestBuilderProps) {
             numeric
             value={draft.endsAtLocal}
             error={errors["endsAtLocal"] ?? null}
+            hint="Submissions close here. Must fall after the start."
             onChange={(e) => update("endsAtLocal", e.target.value)}
           />
 
@@ -240,7 +260,21 @@ export function ContestBuilder({ initial = EMPTY_DRAFT }: ContestBuilderProps) {
         </div>
       </Panel>
 
+      {/*
+        Divisions are a repeatable ROW LIST: each division is its own bordered card with its
+        fields inside it and a worded Remove control, the shape HackerRank uses for anything
+        you can have N of. The old rendering was an input with a floating index digit on its
+        left and a red button hanging off its right, which is three loose objects per division
+        rather than one thing you can point at and say "that is division two".
+
+        The section itself stays UNBOXED (`level="bare"`, a hairline rule above it, exactly as
+        the reference separates Contest Details from Landing Page Customization) precisely so
+        the cards inside it read as the bounded objects. Framing both puts boxes in boxes and
+        neither reads as the row list.
+      */}
       <Panel
+        level="bare"
+        className="border-t border-rule-edge pt-6"
         title="Divisions"
         description="Divisions rank independently: there is an Intermediate winner and an Advanced winner (PRD §6.1)."
         aside={
@@ -251,30 +285,37 @@ export function ContestBuilder({ initial = EMPTY_DRAFT }: ContestBuilderProps) {
       >
         <ul className="flex flex-col gap-3">
           {draft.divisions.map((division, index) => (
-            <li key={division.key} className="flex items-end gap-2">
-              <span
-                className="numeric pb-2 opacity-60"
-                style={{ fontSize: "var(--text-xs)" }}
-                aria-hidden="true"
-              >
-                {index + 1}
-              </span>
-              <div className="flex-1">
-                <TextInput
-                  label={`Division ${index + 1} name`}
-                  required
-                  value={division.name}
-                  maxLength={40}
-                  error={errors[`divisions.${index}.name`] ?? null}
-                  onChange={(e) => renameDivision(division.key, e.target.value)}
+            <li key={division.key} className="rounded-panel border border-rule-edge bg-paper p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  {/*
+                    The index lives in the label, so the accessible name of every name field is
+                    distinct — three inputs all announced as "Division name" would leave a screen
+                    reader user guessing which one the duplicate-name error is about.
+                  */}
+                  <TextInput
+                    label={`Division ${index + 1} name`}
+                    required
+                    value={division.name}
+                    maxLength={40}
+                    error={errors[`divisions.${index}.name`] ?? null}
+                    onChange={(e) => renameDivision(division.key, e.target.value)}
+                  />
+                </div>
+                {/*
+                  A worded, two-step Remove rather than a bare ×: it deletes typed content, and
+                  `quiet` because it is a row action — the Button docstring's rule that in-row
+                  actions are text, and only the page's one primary action is filled.
+                */}
+                <ConfirmButton
+                  label="Remove"
+                  confirmLabel="Remove division"
+                  variant="quiet"
+                  size="sm"
+                  disabled={draft.divisions.length === 1}
+                  onConfirm={() => removeDivision(division.key)}
                 />
               </div>
-              <ConfirmButton
-                label="Remove"
-                confirmLabel="Remove division"
-                disabled={draft.divisions.length === 1}
-                onConfirm={() => removeDivision(division.key)}
-              />
             </li>
           ))}
         </ul>
@@ -292,37 +333,38 @@ export function ContestBuilder({ initial = EMPTY_DRAFT }: ContestBuilderProps) {
         </div>
       </Panel>
 
-      {Object.keys(errors).length > 0 && (
-        <AlertPlate tone="alarm" title="This contest will not save yet">
-          <ul className="list-disc pl-5">
-            {Object.entries(errors).map(([field, message]) => (
-              <li key={field}>{message}</li>
-            ))}
-          </ul>
-        </AlertPlate>
-      )}
-
-      {formError !== null && (
-        <AlertPlate tone="alarm" title="The server refused this contest">
-          {formError}
-        </AlertPlate>
-      )}
-
       {/*
         The action bar HackerRank puts at the foot of its contest admin. It carries one action,
-        because there is one thing to do: bring the contest into existence. Where to go next is no
-        longer a pair of links that can disagree with each other — it is the contest's own tab
-        strip, which this navigates into.
+        because there is one thing to do: bring the contest into existence. Refusals — the
+        client's own validation and the server's — answer HERE as a quiet line in the accent
+        ink, not as a black plate: Panel.tsx reserves plates for standing conditions, and a
+        rejected form is answered at the field, with this line only saying that fields above
+        are marked.
       */}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-rule-edge pt-4">
-        <p className="max-w-[60ch] text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
-          Created as a <strong>DRAFT</strong>. Students cannot see it. You will land on the
-          contest, with its problems, roster and side activities as tabs.
-        </p>
+      <div className="flex flex-col gap-3 border-t border-rule-edge pt-4">
+        {errorCount > 0 && (
+          <p role="alert" className="font-semibold text-panther" style={{ fontSize: "var(--text-sm)" }}>
+            This contest will not save yet: fix the {errorCount} marked field
+            {errorCount === 1 ? "" : "s"} above.
+          </p>
+        )}
 
-        <Button type="submit" disabled={busy}>
-          {busy ? "Creating…" : "Create contest"}
-        </Button>
+        {formError !== null && (
+          <p role="alert" className="font-semibold text-panther" style={{ fontSize: "var(--text-sm)" }}>
+            {formError}
+          </p>
+        )}
+
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="max-w-[60ch] text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
+            Created as a <strong>DRAFT</strong>. Students cannot see it. You will land on the
+            contest, with its problems, roster and side activities as tabs.
+          </p>
+
+          <Button type="submit" disabled={busy}>
+            {busy ? "Creating…" : "Create contest"}
+          </Button>
+        </div>
       </div>
     </form>
   );

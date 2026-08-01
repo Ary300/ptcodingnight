@@ -9,7 +9,7 @@ import type { Metadata } from "next";
  * grows tall enough to produce a scrollbar.
  */
 export const metadata: Metadata = {
-  title: "Standings — Park Tudor Coding Night",
+  title: "Standings | Park Tudor Coding Night",
   description: "Live contest standings.",
   // Nothing here should be indexed, and there is no internet on the night anyway.
   robots: { index: false, follow: false },

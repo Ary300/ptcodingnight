@@ -5,7 +5,7 @@ Night starts, so the club officers use one tiny warm-up problem to prove the jud
 awake. Tonight's warm-up: the Panthers' robotics team hauled in two bins of practice
 game pieces, one from the shop and one from the gym closet, and the drive coach wants a
 single number on the whiteboard before the first match. Add the two counts. That's the
-whole job — get a green verdict, then go get pizza.
+whole job: get a green verdict, then go get pizza.
 
 ## Input
 

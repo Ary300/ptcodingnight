@@ -7,7 +7,8 @@ import type { Verdict } from "@/lib/schemas/judge";
 
 import { sanitizeTestResults } from "../data/leak-guard";
 import type { StreamTransport } from "../data/useVerdictStream";
-import { TONE_COLOR, VERDICT_DISPLAY } from "./verdict-display";
+import type { VerdictTone } from "./verdict-display";
+import { judgingProgressLabel, TONE_COLOR, VERDICT_DISPLAY } from "./verdict-display";
 
 /**
  * The verdict panel — dark by necessity, not by taste. Rise, fall and gold all fail AA on
@@ -55,26 +56,63 @@ function Chip({ verdict }: { verdict: Verdict }) {
   );
 }
 
+/**
+ * HackerRank's per-case marker: a filled circle carrying a check or a cross. Inline SVG, not
+ * a font glyph — check and cross characters sit outside the vendored woff2 subsets and would
+ * tofu on an unknown machine (DESIGN.md §3). The glyph is inked so it reads against any of
+ * the three tone fills.
+ *
+ * The `internal` tone deliberately gets a dash, not a cross. An IE case is our problem, and a
+ * red-adjacent cross is the exact "your code failed" signal the IE rule forbids.
+ */
+function CaseMark({ tone }: { tone: VerdictTone }) {
+  const color = TONE_COLOR[tone];
+  return (
+    <svg aria-hidden="true" viewBox="0 0 16 16" className="h-4 w-4 shrink-0">
+      <circle cx="8" cy="8" r="8" fill={color} />
+      {tone === "pass" && (
+        <path
+          d="M4.5 8.5 7 11l4.5-5.5"
+          fill="none"
+          stroke="var(--color-ink)"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      )}
+      {tone === "fail" && (
+        <path
+          d="M5.5 5.5l5 5m0-5l-5 5"
+          fill="none"
+          stroke="var(--color-ink)"
+          strokeWidth="2"
+          strokeLinecap="round"
+        />
+      )}
+      {(tone === "compile" || tone === "internal") && (
+        <path
+          d="M5 8h6"
+          fill="none"
+          stroke="var(--color-ink)"
+          strokeWidth="2"
+          strokeLinecap="round"
+        />
+      )}
+    </svg>
+  );
+}
+
 function TestRow({ result }: { result: PublicTestResult }) {
   const presentation = VERDICT_DISPLAY[result.verdict];
   const passed = result.verdict === "AC";
   // `ordinal` is 1-based (lib/schemas/api.ts). Adding one here labelled the first sample of
   // every problem "Sample 2" — correct only against the stub, which was 0-based.
-  const name = result.isSample ? `Sample ${result.ordinal}` : `Test ${result.ordinal}`;
+  const name = result.isSample ? `Sample ${result.ordinal}` : `Test case ${result.ordinal}`;
 
   return (
     <li className="border-t border-paper/10 py-2 first:border-t-0">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        {/* A CSS-drawn mark, not a font glyph: check and cross characters sit outside the
-            vendored woff2 subsets and would tofu on an unknown machine (DESIGN.md §3). */}
-        <span
-          aria-hidden="true"
-          className="inline-block h-2.5 w-2.5 shrink-0 rounded-full"
-          style={{
-            background: passed ? TONE_COLOR.pass : "transparent",
-            border: passed ? "none" : `2px solid ${TONE_COLOR[presentation.tone]}`,
-          }}
-        />
+        <CaseMark tone={presentation.tone} />
         <span className="numeric text-paper/85" style={{ fontSize: "var(--text-xs)" }}>
           {name}
         </span>
@@ -94,17 +132,34 @@ function TestRow({ result }: { result: PublicTestResult }) {
         </span>
       </div>
 
-      {/* Samples are published by definition, so a full diff is fine here. */}
+      {/*
+        Samples are published by definition, so a full diff is fine here — and only here;
+        `sanitizeTestResults` has already stripped anything a hidden case tried to carry.
+
+        HackerRank folds each case's detail behind the row and opens the first failing one;
+        this does the same with a native disclosure. A failing sample opens itself because
+        that diff is the reason the student is looking at this panel. `open` never changes
+        after mount, so React never writes the attribute again and the student's own
+        toggling wins from then on.
+      */}
       {result.isSample && result.diffSnippet !== null && (
-        <pre
-          tabIndex={0}
-          role="region"
-          aria-label={`Difference for sample ${result.ordinal}`}
-          className="mt-2 overflow-x-auto rounded bg-paper/5 p-2 font-mono text-paper/80"
-          style={{ fontSize: "var(--text-xs)" }}
-        >
-          {result.diffSnippet}
-        </pre>
+        <details className="mt-2" open={passed ? undefined : true}>
+          <summary
+            className="cursor-pointer text-paper/70 hover:text-paper"
+            style={{ fontSize: "var(--text-xs)" }}
+          >
+            Difference from the expected output
+          </summary>
+          <pre
+            tabIndex={0}
+            role="region"
+            aria-label={`Difference for sample ${result.ordinal}`}
+            className="mt-2 overflow-x-auto rounded bg-paper/5 p-2 font-mono text-paper/80"
+            style={{ fontSize: "var(--text-xs)" }}
+          >
+            {result.diffSnippet}
+          </pre>
+        </details>
       )}
     </li>
   );
@@ -147,11 +202,16 @@ export function VerdictPanel({
           </span>
         )}
 
+        {/*
+          Which test is executing and how many wait behind it — not a spinner. A sample run
+          is a single request with no per-case progress to report, so it says only what is
+          true: the run is in flight. See `judgingProgressLabel` for the two honesty rules.
+        */}
         {busy && (
           <span className="text-paper/60" style={{ fontSize: "var(--text-xs)" }}>
-            {totalCases === null
-              ? "Judging…"
-              : `Judging ${safeResults.length} of ${totalCases} tests`}
+            {mode === "samples"
+              ? "Running the samples…"
+              : judgingProgressLabel(safeResults.length, totalCases)}
           </span>
         )}
       </header>
@@ -161,6 +221,19 @@ export function VerdictPanel({
         {verdict === null
           ? ""
           : `${VERDICT_DISPLAY[verdict].label}. ${VERDICT_DISPLAY[verdict].detail}`}
+      </p>
+
+      {/*
+        A second, separate live region for the start of the wait. Its text changes only when
+        `busy` flips, never per test — putting the per-test counter in here would read out
+        every case to a screen reader, which is noise nobody asked for.
+      */}
+      <p aria-live="polite" className="sr-only">
+        {busy
+          ? mode === "samples"
+            ? "Running the samples."
+            : "Judging your submission."
+          : ""}
       </p>
 
       {verdict !== null && (
@@ -215,8 +288,22 @@ export function VerdictPanel({
         </pre>
       )}
 
+      {/*
+        A sample run is all-or-nothing (`RunSamplesResponseSchema` is one array, not a
+        stream), so any rows on screen while a sample run is busy belong to the PREVIOUS
+        run — the workspace keeps them until the response lands. Leaving them full-strength
+        would let a student read last run's passes as this run's. Say so, and dim them.
+        Judged rows are the opposite: they stream in one by one, so while judging they are
+        current and stay at full strength.
+      */}
+      {safeResults.length > 0 && mode === "samples" && busy && (
+        <p className="mt-3 text-paper/50" style={{ fontSize: "var(--text-xs)" }}>
+          The rows below are from the previous run and will be replaced.
+        </p>
+      )}
+
       {safeResults.length > 0 && (
-        <ul className="mt-3">
+        <ul className={mode === "samples" && busy ? "mt-3 opacity-50" : "mt-3"}>
           {safeResults.map((result) => (
             <TestRow key={`${result.isSample ? "s" : "h"}-${result.ordinal}`} result={result} />
           ))}

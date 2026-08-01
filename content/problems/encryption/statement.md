@@ -51,7 +51,7 @@ bsoxocritx
 ```
 
 For the first secret the keyword `cab` gives a width of 3, so `panthers` fills the grid
-`pan` / `the` / `rsx` — the last row was one short, so it took an `x`. Sorting `c`,`a`,`b`
+`pan` / `the` / `rsx`: the last row was one short, so it took an `x`. Sorting `c`,`a`,`b`
 alphabetically reads column 1 first (`ahs`), then column 2 (`nex`), then column 0 (`ptr`).
 
 Sample 2 input:

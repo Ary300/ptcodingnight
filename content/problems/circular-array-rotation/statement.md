@@ -9,7 +9,7 @@ off a few slots for the pit display, but nobody wants to simulate a billion tick
 
 ## Input
 
-The first line contains three integers $n$, $k$, and $q$ — the number of slots, the number
+The first line contains three integers $n$, $k$, and $q$: the number of slots, the number
 of ticks the animation runs, and the number of slots to read.
 
 The second line contains $n$ integers $a_0, a_1, \dots, a_{n-1}$, the brightness value

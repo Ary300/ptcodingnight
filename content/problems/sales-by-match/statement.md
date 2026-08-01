@@ -2,14 +2,14 @@
 
 The Panther robotics pit crew keeps its work gloves in one enormous plastic bin under the
 build table, and nobody has ever bothered to keep left and right together. Every glove is
-stamped with a colour code, and any two gloves sharing the same code are interchangeable —
+stamped with a colour code, and any two gloves sharing the same code are interchangeable,
 so a **matched pair** is simply two gloves with the same stamp. Before the bus leaves for
 Saturday's meet, the crew wants to know how many complete pairs they can pull out of the
 bin. Leftover single gloves stay behind.
 
 ## Input
 
-The first line contains a single integer $n$ — the number of gloves in the bin.
+The first line contains a single integer $n$, the number of gloves in the bin.
 
 The second line contains $n$ space-separated integers $c_1, c_2, \dots, c_n$, where $c_i$
 is the colour code stamped on the $i$-th glove.

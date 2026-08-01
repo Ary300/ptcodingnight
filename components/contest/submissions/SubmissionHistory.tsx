@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useMemo } from "react";
+import { Fragment, useCallback, useMemo, useState } from "react";
 
 import type { ProblemSummary, SubmissionView } from "@/lib/schemas/api";
+import type { Verdict } from "@/lib/schemas/judge";
 
 import { contestApi } from "../data/backend";
 import { sanitizeTestResults } from "../data/leak-guard";
@@ -14,30 +15,48 @@ import { TONE_COLOR, VERDICT_DISPLAY } from "../verdict/verdict-display";
 import { recallSource } from "./source-cache";
 
 /**
- * "My submissions" — the full history (PRD §9.1).
+ * "My submissions" — the full history (PRD §9.1), as HackerRank draws it: a real table.
  *
- * Two things the contract does not give this screen, both filed in the report:
+ * ## What the reference actually shows
  *
- *  - `SubmissionViewSchema` has no `sourceCode`, so the code column falls back to a
- *    tab-local cache and says so when it has nothing.
- *  - It has no problem title or slot label either, only `contestProblemId`, so the titles
- *    here come from a second call to `listProblems()` and joining client-side.
+ * HackerRank's submissions surface is one table under a quiet tinted header row, one submission
+ * per line, and the empty state is a dashed box with a single centred sentence ("You have not
+ * made any submissions yet."). The previous version here was a stacked card list — two wrapped
+ * metadata runs per submission — which reads fine for three rows and turns to porridge at
+ * fifteen, because nothing lines up vertically. A table is the fix precisely because everything
+ * in a column shares an x-position: fifteen scores are one glance, not fifteen.
  *
- * ## The second read is now gated, and never falls back to a cuid
+ * Column order is Problem, Language, Verdict, Score, Time. Score and Time are right-aligned and
+ * set in `.numeric` (tabular figures): a column of times that does not line up digit-for-digit
+ * is the single most obvious tell that a table was not designed.
+ *
+ * ## Rows open in place
+ *
+ * There is no per-submission route in this app, so "view that submission" is an expansion: the
+ * whole row is clickable and the problem-name button carries `aria-expanded`/`aria-controls`
+ * for keyboard and screen-reader users. The detail panel holds everything the row's five cells
+ * do not: the test tally, the source (tab-local cache, and it says when it has nothing), the
+ * compiler output, and the leak-guard alert.
+ *
+ * ## Two contract gaps, both filed in the report
+ *
+ *  - `SubmissionViewSchema` has no `sourceCode`, so the code panel falls back to a tab-local
+ *    cache and says so when it has nothing.
+ *  - It has no problem title either, only `contestProblemId`, so titles come from a second call
+ *    to `listProblems()` joined client-side.
+ *
+ * ## The second read is gated, and never falls back to a cuid
  *
  * The two reads used to be independent and only the first one gated the render, so a slow or
- * failed `listProblems()` painted `cms9iinaf002o3m8cq2vj0kd1` in Baskerville display type where
- * the problem name belongs — transient on a bad link, permanent if the call failed outright, and
- * silent either way because the component only surfaced `submissions.error`. A database key is
- * never a thing to show a student: it answers no question they have and it reads as a crash.
+ * failed `listProblems()` painted `cms9iinaf002o3m8cq2vj0kd1` in display type where the problem
+ * name belongs. A database key is never a thing to show a student: it answers no question they
+ * have and it reads as a crash. So the loading state waits for both, and a failed join renders
+ * a named placeholder plus one line saying what is missing. The submissions themselves still
+ * render — the verdicts and scores are the point of the screen and do not depend on the join.
  *
- * So the loading state waits for both, and a failed join renders a named placeholder plus one
- * line saying what is missing. The submissions themselves still render — the verdicts and scores
- * are the point of the screen and they do not depend on the join.
- *
- * The per-test results run through `sanitizeTestResults` for the same reason the verdict
- * panel does. History is a second render path for the same data, and a leak guard that only
- * covers one path is not a leak guard.
+ * The per-test results run through `sanitizeTestResults` for the same reason the verdict panel
+ * does. History is a second render path for the same data, and a leak guard that only covers
+ * one path is not a leak guard.
  */
 
 function formatTime(iso: string): string {
@@ -46,129 +65,170 @@ function formatTime(iso: string): string {
   return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
 
-function Row({ submission, title }: { submission: SubmissionView; title: string | null }) {
+/**
+ * The verdict cell: a compact token carrying the letter code, then the word.
+ *
+ * The letter code sits on an `--ink` chip because that is the only ground the verdict colours
+ * are legal on — rise, fall and gold all fail AA on `--paper` (DESIGN.md §2), which rules out
+ * HackerRank's green-text-on-white verbatim. And the code is never colour alone: the word
+ * ("Accepted", "Too slow") rides next to it in plain ink, so a colour-blind student and a
+ * greyscale projector read the same verdict (DESIGN.md §3).
+ */
+function VerdictToken({ verdict }: { verdict: Verdict | null }) {
+  if (verdict === null) {
+    return (
+      <span className="text-ink/60" style={{ fontSize: "var(--text-sm)" }}>
+        Judging…
+      </span>
+    );
+  }
+  const presentation = VERDICT_DISPLAY[verdict];
+  return (
+    <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+      <span
+        className="numeric rounded px-1.5 py-0.5 font-semibold"
+        style={{
+          fontSize: "var(--text-xs)",
+          background: "var(--color-ink)",
+          color: TONE_COLOR[presentation.tone],
+        }}
+      >
+        {verdict}
+      </span>
+      <span style={{ fontSize: "var(--text-sm)" }}>{presentation.label}</span>
+    </span>
+  );
+}
+
+interface RowProps {
+  readonly submission: SubmissionView;
+  readonly title: string | null;
+  readonly open: boolean;
+  readonly onToggle: () => void;
+}
+
+function Row({ submission, title, open, onToggle }: RowProps) {
   const source = recallSource(submission.submissionId);
   const { results, leakedOrdinals } = sanitizeTestResults(submission.testResults);
-
-  const presentation = submission.verdict === null ? null : VERDICT_DISPLAY[submission.verdict];
   const passed = results.filter((result) => result.verdict === "AC").length;
+  const detailId = `submission-detail-${submission.submissionId}`;
 
   return (
-    <li>
+    <Fragment>
       {/*
-        Title first, then one quiet metadata run — HackerRank's list density, and the same shape
-        the problem list now uses. The previous version was seven columns that each became their
-        own line on a phone, so one submission was seven lines tall and a student scrolled past
-        three of them to find the one they had just made.
+        The whole row toggles — a 44px-tall target beats hunting for the one hot word — and the
+        problem-name button is the accessible control, so keyboard focus lands on something that
+        announces its expanded state. The button stops propagation or a click on it would bubble
+        to the row and toggle twice, i.e. do nothing.
       */}
-      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 px-3 pt-3 sm:px-4">
-        {/*
-          `title === null` means the problem list did not load, so this submission's problem has
-          no name we can honestly print. It renders as a named gap, never as the raw
-          `contestProblemId` — a cuid in display type is indistinguishable from a rendering fault
-          and tells the student nothing either way.
-        */}
-        {title === null ? (
-          <span className="min-w-0 flex-1 text-ink/60" style={{ fontSize: "var(--text-sm)" }}>
-            Problem name unavailable
-          </span>
-        ) : (
-          <span
-            className="min-w-0 flex-1 font-display font-bold"
+      <tr
+        onClick={onToggle}
+        className="cursor-pointer first:border-t-0 border-t border-rule-hair hover:bg-ink/[0.03]"
+      >
+        <td className="px-3 py-2.5 sm:px-4">
+          {/*
+            `title === null` means the problem list did not load, so this submission's problem
+            has no name we can honestly print. It renders as a named gap, never as the raw
+            `contestProblemId` — a cuid in display type is indistinguishable from a rendering
+            fault and tells the student nothing either way.
+          */}
+          <button
+            type="button"
+            aria-expanded={open}
+            aria-controls={detailId}
+            onClick={(event) => {
+              event.stopPropagation();
+              onToggle();
+            }}
+            className={
+              title === null
+                ? "text-left text-ink/60"
+                : "text-left font-display font-bold hover:text-panther"
+            }
             style={{ fontSize: "var(--text-sm)" }}
           >
-            {title}
-          </span>
-        )}
-
-        {/* The verdict word carries the meaning; the panther chip is chrome. On --paper,
-            rise/fall/gold are all below AA (DESIGN.md §2), so no verdict colour here. */}
-        <span
-          className={presentation === null ? "text-ink/60" : "font-semibold"}
+            {title ?? "Problem name unavailable"}
+          </button>
+        </td>
+        <td className="whitespace-nowrap px-3 py-2.5 sm:px-4" style={{ fontSize: "var(--text-sm)" }}>
+          {LANGUAGE_LABEL[submission.language]}
+        </td>
+        <td className="px-3 py-2.5 sm:px-4">
+          <VerdictToken verdict={submission.verdict} />
+        </td>
+        <td
+          className="numeric whitespace-nowrap px-3 py-2.5 text-right sm:px-4"
           style={{ fontSize: "var(--text-sm)" }}
         >
-          {presentation === null ? "Judging…" : presentation.label}
-        </span>
-        <span className="numeric shrink-0 text-right" style={{ fontSize: "var(--text-sm)" }}>
-          {submission.score} pts
-        </span>
-      </div>
-
-      <div
-        className="flex flex-wrap items-center gap-x-2 gap-y-0.5 px-3 pt-0.5 text-ink/60 sm:px-4"
-        style={{ fontSize: "var(--text-xs)" }}
-      >
-        <span className="numeric">{formatTime(submission.submittedAt)}</span>
-        <span aria-hidden="true" className="text-ink/40">
-          &#183;
-        </span>
-        <span>{LANGUAGE_LABEL[submission.language]}</span>
-        <span aria-hidden="true" className="text-ink/40">
-          &#183;
-        </span>
-        <span className="numeric">
-          {results.length === 0 ? "no tests reported" : `${passed}/${results.length} tests`}
-        </span>
-        <span aria-hidden="true" className="text-ink/40">
-          &#183;
-        </span>
-        <span className="numeric">
-          {submission.runtimeMs === null ? "no timing" : `${submission.runtimeMs} ms`}
-        </span>
-      </div>
-
-      {leakedOrdinals.length > 0 && (
-        <p
-          role="alert"
-          className="px-3 pt-2 text-panther sm:px-4"
-          style={{ fontSize: "var(--text-xs)" }}
+          {submission.score}
+        </td>
+        <td
+          className="numeric whitespace-nowrap px-3 py-2.5 text-right sm:px-4"
+          style={{ fontSize: "var(--text-sm)" }}
         >
-          Detail for {leakedOrdinals.length} hidden{" "}
-          {leakedOrdinals.length === 1 ? "test was" : "tests were"} withheld. Please tell an
-          organizer.
-        </p>
+          {formatTime(submission.submittedAt)}
+        </td>
+      </tr>
+
+      {open && (
+        /* No onClick here: selecting text in the code block must not collapse the panel. */
+        <tr id={detailId} className="bg-ink/[0.02]">
+          <td colSpan={5} className="px-3 pt-2 pb-3 sm:px-4">
+            <p className="text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
+              <span className="numeric">
+                {results.length === 0 ? "no tests reported" : `${passed}/${results.length} tests`}
+              </span>
+              <span aria-hidden="true" className="px-2 text-ink/40">
+                &#183;
+              </span>
+              <span className="numeric">
+                {submission.runtimeMs === null ? "no timing" : `${submission.runtimeMs} ms`}
+              </span>
+            </p>
+
+            {leakedOrdinals.length > 0 && (
+              <p role="alert" className="pt-2 text-panther" style={{ fontSize: "var(--text-xs)" }}>
+                Detail for {leakedOrdinals.length} hidden{" "}
+                {leakedOrdinals.length === 1 ? "test was" : "tests were"} withheld. Please tell an
+                organizer.
+              </p>
+            )}
+
+            {source === null ? (
+              <p className="pt-2 text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
+                The code for this submission is not available in this tab.
+              </p>
+            ) : (
+              <pre
+                tabIndex={0}
+                role="region"
+                aria-label={`Source for the ${formatTime(submission.submittedAt)} submission`}
+                className="mt-2 max-h-80 overflow-auto rounded bg-ink p-3 font-mono text-paper"
+                style={{ fontSize: "var(--text-xs)", lineHeight: "1.6" }}
+              >
+                {source}
+              </pre>
+            )}
+
+            {submission.compileError !== null && (
+              <pre
+                tabIndex={0}
+                role="region"
+                aria-label="Compiler output"
+                className="mt-2 max-h-48 overflow-auto rounded p-3 font-mono"
+                style={{
+                  fontSize: "var(--text-xs)",
+                  background: "var(--color-ink)",
+                  color: TONE_COLOR.compile,
+                }}
+              >
+                {submission.compileError}
+              </pre>
+            )}
+          </td>
+        </tr>
       )}
-
-      <details>
-        <summary
-          className="cursor-pointer px-3 py-2 text-ink/60 sm:px-4"
-          style={{ fontSize: "var(--text-xs)" }}
-        >
-          Code
-        </summary>
-        {source === null ? (
-          <p className="px-3 pb-3 text-ink/60 sm:px-4" style={{ fontSize: "var(--text-xs)" }}>
-            The code for this submission is not available in this tab.
-          </p>
-        ) : (
-          <pre
-            tabIndex={0}
-            role="region"
-            aria-label={`Source for the ${formatTime(submission.submittedAt)} submission`}
-            className="mx-3 mb-3 max-h-80 overflow-auto rounded bg-ink p-3 font-mono text-paper sm:mx-4"
-            style={{ fontSize: "var(--text-xs)", lineHeight: "1.6" }}
-          >
-            {source}
-          </pre>
-        )}
-      </details>
-
-      {submission.compileError !== null && (
-        <pre
-          tabIndex={0}
-          role="region"
-          aria-label="Compiler output"
-          className="mx-3 mb-3 max-h-48 overflow-auto rounded p-3 font-mono sm:mx-4"
-          style={{
-            fontSize: "var(--text-xs)",
-            background: "var(--color-ink)",
-            color: TONE_COLOR.compile,
-          }}
-        >
-          {submission.compileError}
-        </pre>
-      )}
-    </li>
+    </Fragment>
   );
 }
 
@@ -179,6 +239,7 @@ export function SubmissionHistory() {
 
   const submissions = useResource(loadSubmissions);
   const problems = useResource(loadProblems);
+  const [openId, setOpenId] = useState<string | null>(null);
 
   const titleById = useMemo(() => {
     const map = new Map<string, string>();
@@ -229,12 +290,17 @@ export function SubmissionHistory() {
 
   if (submissions.data.length === 0) {
     return (
+      /*
+        HackerRank's empty state exactly: a dashed hairline box with one centred sentence. The
+        second sentence answers the question a student actually has here after pressing "Run
+        samples" three times: sample runs are free, unjudged, and never listed.
+      */
       <p
-        className="rounded border border-ink/15 bg-paper p-4 text-ink/70"
+        className="rounded border border-dashed border-rule-edge bg-paper px-4 py-10 text-center text-ink/70"
         style={{ fontSize: "var(--text-sm)" }}
       >
-        You have not submitted anything yet. Running samples does not appear here, because it is free
-        and unjudged.
+        You have not made any submissions yet. Running samples is free and unjudged, so sample
+        runs never appear here.
       </p>
     );
   }
@@ -260,20 +326,74 @@ export function SubmissionHistory() {
         </p>
       )}
 
-      {/* One panel divided by hairlines, the same surface the problem list uses. Named, because a
-          page with more than one list gives a screen reader nothing to tell them apart. */}
-      <ul
-        aria-label="Submissions"
-        className="divide-y divide-ink/10 overflow-hidden rounded border border-ink/15 bg-paper"
-      >
-        {submissions.data.map((submission) => (
-          <Row
-            key={submission.submissionId}
-            submission={submission}
-            title={titleById.get(submission.contestProblemId) ?? null}
-          />
-        ))}
-      </ul>
+      {/*
+        The table scrolls inside its own wrapper. Five columns at 360px do not fit, and the page
+        must never scroll sideways (CLAUDE.md); `min-w` keeps the columns from crushing into
+        single-word verticals once the scroller takes over.
+      */}
+      <div className="overflow-x-auto rounded border border-rule-edge bg-paper">
+        <table aria-label="Submissions" className="w-full min-w-[560px] border-collapse">
+          {/*
+            The header is the same tinted bar TabStrip uses (`bg-ink/[0.04]`): one piece of
+            furniture, recognised everywhere. Left-aligned over text columns, right-aligned over
+            the numeric ones so the heading sits where its digits will.
+          */}
+          <thead>
+            <tr className="border-b border-rule-edge bg-ink/[0.04] text-ink/70">
+              <th
+                scope="col"
+                className="px-3 py-2 text-left font-semibold sm:px-4"
+                style={{ fontSize: "var(--text-xs)" }}
+              >
+                Problem
+              </th>
+              <th
+                scope="col"
+                className="px-3 py-2 text-left font-semibold sm:px-4"
+                style={{ fontSize: "var(--text-xs)" }}
+              >
+                Language
+              </th>
+              <th
+                scope="col"
+                className="px-3 py-2 text-left font-semibold sm:px-4"
+                style={{ fontSize: "var(--text-xs)" }}
+              >
+                Verdict
+              </th>
+              <th
+                scope="col"
+                className="px-3 py-2 text-right font-semibold sm:px-4"
+                style={{ fontSize: "var(--text-xs)" }}
+              >
+                Score
+              </th>
+              <th
+                scope="col"
+                className="px-3 py-2 text-right font-semibold sm:px-4"
+                style={{ fontSize: "var(--text-xs)" }}
+              >
+                Time
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {submissions.data.map((submission) => (
+              <Row
+                key={submission.submissionId}
+                submission={submission}
+                title={titleById.get(submission.contestProblemId) ?? null}
+                open={openId === submission.submissionId}
+                onToggle={() =>
+                  setOpenId((current) =>
+                    current === submission.submissionId ? null : submission.submissionId,
+                  )
+                }
+              />
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

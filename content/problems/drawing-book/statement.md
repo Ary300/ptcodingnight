@@ -8,7 +8,7 @@ so on. In other words, the spread numbered $k$ (counting from $0$) holds pages $
 $2k+1$, and any page that would be numbered above $n$ simply does not exist.
 
 Mentors keep shouting page numbers across the room. You may start from the front cover and
-flip forward, or start from the back cover and flip backward — whichever is fewer flips. Tell
+flip forward, or start from the back cover and flip backward, whichever is fewer flips. Tell
 each mentor how many flips they need.
 
 ## Input
@@ -49,7 +49,7 @@ starting from whichever cover is cheaper.
 ```
 
 The journal has spreads `[1]`, `[2,3]`, `[4,5]`, `[6,7]`. Page $3$ sits on spread $1$, so it
-is one flip from the front and two from the back — answer $1$. Page $6$ is on the very last
+is one flip from the front and two from the back, so the answer is $1$. Page $6$ is on the very last
 spread, visible the instant you open the back cover. Page $1$ is visible the instant you open
 the front cover.
 

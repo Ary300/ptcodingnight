@@ -90,6 +90,18 @@ export const API_ROUTES = {
     `/api/admin/contests/${encodeURIComponent(contestId)}/roster/move`,
   adminReassignSet: (contestId: string) =>
     `/api/admin/contests/${encodeURIComponent(contestId)}/roster/set`,
+  /**
+   * The contest's roster membership, as distinct from `/roster`, which is the VIEW of it.
+   *
+   * `GET` lists known accounts that are NOT on it yet, `POST` puts one on, `DELETE` takes one off.
+   * This is the route the reported bug needed and did not have: a `Participant` could only ever be
+   * created by that person signing in, so a contest created this morning contained nobody and
+   * could contain nobody.
+   */
+  adminContestParticipants: (contestId: string) =>
+    `/api/admin/contests/${encodeURIComponent(contestId)}/participants`,
+  adminAddableUsers: (contestId: string, query: string) =>
+    `/api/admin/contests/${encodeURIComponent(contestId)}/participants?q=${encodeURIComponent(query)}`,
 } as const;
 
 /**
@@ -402,12 +414,76 @@ export const AdminProblemBankSchema = z.object({
 });
 export type AdminProblemBank = z.infer<typeof AdminProblemBankSchema>;
 
+/**
+ * One person on the roster, as an ORGANIZER sees them.
+ *
+ * Strictly wider than `TeamMemberSchema`, which is the student-facing shape and stays a name and
+ * an id. The three extra fields each answer a question only the organizer's screen has:
+ *
+ *  - `email` tells two students with the same name apart. That is not hypothetical — the reason
+ *    `uniqueDisplayName` invents a "(2)" suffix is that `Participant` is unique on
+ *    `(contestId, displayName)` and two Alex Chens really do turn up.
+ *  - `userId` says whether the participant is backed by an account at all. Null is a legacy
+ *    join-by-code row, which cannot be re-added once removed because there is no account to add.
+ *  - `submissionCount` is what removing them destroys, so the screen can say so BEFORE the click
+ *    rather than after. `Submission.participantId` cascades on delete.
+ *
+ * None of this is on the student-facing `TeamViewSchema`, and it must not be: a competitor reading
+ * their own team has no business holding their teammates' email addresses.
+ */
+export const RosterMemberSchema = TeamMemberSchema.extend({
+  userId: z.string().nullable(),
+  email: z.string().nullable(),
+  submissionCount: z.number().int().nonnegative(),
+});
+export type RosterMember = z.infer<typeof RosterMemberSchema>;
+
 /** The organizer's roster view: every team plus everybody on none. */
 export const AdminRosterSchema = z.object({
   maxTeamSize: z.number().int().positive(),
   formationOpen: z.boolean(),
-  teams: z.array(TeamViewSchema.extend({ memberCount: z.number().int().nonnegative() })),
-  unassigned: z.array(TeamMemberSchema),
+  teams: z.array(
+    TeamViewSchema.extend({
+      memberCount: z.number().int().nonnegative(),
+      members: z.array(RosterMemberSchema),
+    }),
+  ),
+  unassigned: z.array(RosterMemberSchema),
+});
+export type AdminRoster = z.infer<typeof AdminRosterSchema>;
+
+/**
+ * A known account that is not yet on this contest's roster.
+ *
+ * `pastContests` is the field that closes the reported bug from the organizer's side: the people
+ * they wanted to add to Test2 were "the people who participated in the Demo", and a picker that
+ * shows only names cannot tell them which Alex Chen that was.
+ */
+export const AddableUserSchema = z.object({
+  userId: z.string(),
+  displayName: z.string(),
+  email: z.string().nullable(),
+  gradYear: z.number().int().nullable(),
+  role: z.enum(["COMPETITOR", "ADMIN"]),
+  pastContests: z.array(z.string()),
+});
+export type AddableUser = z.infer<typeof AddableUserSchema>;
+
+export const AddableUsersSchema = z.object({
+  users: z.array(AddableUserSchema),
+  /** True when the search was cut off at the limit, so the screen can say "keep typing". */
+  truncated: z.boolean(),
+});
+
+/**
+ * Adding somebody to a contest needs no reason, and every other organizer roster action does.
+ *
+ * The reason exists because a roster change is a SCORE change: team size is the divisor. Adding a
+ * participant creates them with no team, so they are in nobody's divisor and no score can move —
+ * there is nothing yet to explain. The audit row still records who did it and when.
+ */
+export const AdminAddParticipantRequestSchema = z.object({
+  userId: z.string().min(1),
 });
 
 /**
@@ -449,6 +525,31 @@ export const AdminReassignSetRequestSchema = AdminReasonSchema.extend({
   setId: z.string().min(1).nullable(),
 });
 
+/**
+ * Taking somebody off a contest entirely. Declared here rather than beside `AddableUserSchema`
+ * because it extends `AdminReasonSchema`, and a `const` cannot be read before its own line runs.
+ */
+export const AdminRemoveParticipantRequestSchema = AdminReasonSchema.extend({
+  participantId: z.string().min(1),
+  /**
+   * Must be sent as `true` before a participant with judged submissions is deleted.
+   *
+   * `Submission.participantId` is `onDelete: Cascade`, so removing them takes their judged work
+   * with it, and standings are re-derived from that log. Defaulting to false means the destructive
+   * case has to be asked for in words rather than arrived at by leaving a field out.
+   */
+  deleteSubmissions: z.boolean().default(false),
+});
+
+export const AdminRemoveParticipantResponseSchema = z.object({
+  removed: z.object({
+    participantId: z.string(),
+    displayName: z.string(),
+    submissionsDeleted: z.number().int().nonnegative(),
+  }),
+  roster: AdminRosterSchema,
+});
+
 // ---------------------------------------------------------------------------
 // Problems
 // ---------------------------------------------------------------------------
@@ -483,6 +584,21 @@ export const ProblemSummarySchema = z.object({
 });
 export type ProblemSummary = z.infer<typeof ProblemSummarySchema>;
 
+/**
+ * Template code for one language, pre-filled into the editor the first time a student opens the
+ * problem: the function stub they complete, plus the visible harness that reads stdin and prints
+ * the answer. Generated by `lib/judge/starters/` from the problem's declared signature.
+ *
+ * It is the whole file, never a fragment, because a submission IS one whole file. Splicing a
+ * student's function into a harness at judge time would mean the line numbers in a compile error
+ * name lines the student cannot see.
+ */
+export const StarterCodeSchema = z.object({
+  language: LanguageSchema,
+  code: z.string(),
+});
+export type StarterCode = z.infer<typeof StarterCodeSchema>;
+
 export const ProblemDetailSchema = ProblemSummarySchema.extend({
   statementMd: z.string(),
   inputSpec: z.string(),
@@ -494,6 +610,17 @@ export const ProblemDetailSchema = ProblemSummarySchema.extend({
   samples: z.array(SampleCaseSchema),
   hintsTaken: z.number().int().nonnegative(),
   hintCost: z.number().int().nonnegative(),
+  /**
+   * One entry per allowed language, or ABSENT for a problem that declares no signature.
+   *
+   * Optional rather than a defaulted empty array on purpose. Most of the 125-problem bank has no
+   * signature and never will, and for those the editor opens empty and the student writes a raw
+   * stdin-to-stdout program, exactly as before this field existed. Absent says "this problem has
+   * no starters"; it is not a degraded or half-loaded state, and a client must not render one.
+   *
+   * Ordered by the registry's language order, so a problem always serialises to the same bytes.
+   */
+  starters: z.array(StarterCodeSchema).optional(),
 });
 export type ProblemDetail = z.infer<typeof ProblemDetailSchema>;
 

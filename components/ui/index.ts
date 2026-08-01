@@ -25,5 +25,14 @@ export {
   type CellAlign,
 } from "@/components/ui/DataTable";
 export { Delta, type DeltaProps } from "@/components/ui/Delta";
+export {
+  Select,
+  CONTROL_SURFACE,
+  CONTROL_PAD,
+  CONTROL_LEADING,
+  CONTROL_FONT_SIZE,
+  type SelectProps,
+  type SelectSize,
+} from "@/components/ui/Select";
 export { TabStrip, Crumbs, type TabStripProps, type TabStripItem, type CrumbsProps } from "@/components/ui/TabStrip";
 export { Rail, railStateForDelta, type RailProps, type RailState } from "@/components/ui/Rail";

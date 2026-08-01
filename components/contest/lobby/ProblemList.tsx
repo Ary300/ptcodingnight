@@ -66,6 +66,19 @@ function ProblemCard({ problem }: { problem: ProblemSummary }) {
   const status = problemStatusLabel(problem.solved, problem.bestScore);
   const partial = !problem.solved && problem.bestScore !== null && problem.bestScore > 0;
 
+  /*
+    A row nobody has been able to touch has no status worth printing.
+
+    A locked problem could never have been attempted, so its status is "Unsolved" by construction —
+    and on the pre-start lobby that is every row, which puts the word "Unsolved" fourteen times on
+    a screen where nobody has had the chance to solve anything, next to a "Locked" badge that is
+    the only true thing in the pair. On a 360px phone the two of them together are most of the row.
+
+    Conditioned on the DATA rather than on the lock, so a row that somehow carries a real score is
+    still shown it.
+  */
+  const hasStatus = problem.unlocked || problem.solved || problem.bestScore !== null;
+
   const body = (
     <div className="flex flex-1 items-center gap-3 px-3 py-3 sm:gap-4 sm:px-4">
       <span
@@ -115,13 +128,15 @@ function ProblemCard({ problem }: { problem: ProblemSummary }) {
         </span>
       </span>
 
-      <span
-        className="flex shrink-0 items-center gap-2 sm:w-28"
-        style={{ fontSize: "var(--text-xs)" }}
-      >
-        <StatusMark solved={problem.solved} partial={partial} />
-        <span className={problem.solved ? "font-semibold" : "text-ink/60"}>{status}</span>
-      </span>
+      {hasStatus && (
+        <span
+          className="flex shrink-0 items-center gap-2 sm:w-28"
+          style={{ fontSize: "var(--text-xs)" }}
+        >
+          <StatusMark solved={problem.solved} partial={partial} />
+          <span className={problem.solved ? "font-semibold" : "text-ink/60"}>{status}</span>
+        </span>
+      )}
     </div>
   );
 
@@ -152,7 +167,9 @@ function ProblemCard({ problem }: { problem: ProblemSummary }) {
         href={`/contest/${problem.slug}`}
         className="flex flex-1 transition-colors hover:bg-ink/[0.04]"
         // The whole row is the target; the accessible name carries what the layout implies.
-        aria-label={`${problem.slotLabel} — ${problem.title}, rated ${problem.basePoints} points, ${status}`}
+        // A comma, not an em dash. A screen reader reads this string out, so it is user-visible
+        // text like any other, and no em dash may appear in text a person using this site reads.
+        aria-label={`${problem.slotLabel}, ${problem.title}, rated ${problem.basePoints} points, ${status}`}
       >
         {body}
       </Link>

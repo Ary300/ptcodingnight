@@ -51,6 +51,27 @@ export const VISIBLE_ROWS = 8;
  */
 export const TEAM_VISIBLE_ROWS = 7;
 
+/**
+ * Team rows given up while one team's roster strip is open, on the projector.
+ *
+ * **Measured, like the cap above, and for the same reason.** Opening a breakdown on a screen that
+ * does not scroll has to be PAID FOR in rows: there is no spare height to expand into. Measured on
+ * this commit with nine teams and four sets, board box against table box:
+ *
+ * | canvas    | 7 rows, closed | slack |
+ * |-----------|----------------|-------|
+ * | 1920×1080 | 964px          | 48px  |
+ * | 1280×720  | 668px          | 6px   |
+ *
+ * Six pixels. So the strip cannot come out of the slack on the canvas that matters most, and a
+ * board that let it would clip its last row silently against a footnote still claiming to show
+ * seven. Two rows buys 186px at 1920 and 130px at 1280, which holds a roster strip of up to four
+ * wrapped lines: enough for the largest roster the demo contest has (nine players) with room left.
+ *
+ * The footnote states the real drawn count and the real total, so the cost is never silent.
+ */
+export const TEAM_EXPANDED_ROW_COST = 2;
+
 /** Auto-advance through divisions while the board is live and unattended. */
 export const DIVISION_ROTATE_MS = 20_000;
 

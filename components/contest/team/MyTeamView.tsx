@@ -145,7 +145,7 @@ export function MyTeamView() {
               You are not on a team yet, so your points are not part of any team score.
             </p>
             <p className="mt-1">
-              An organizer will add you — there is nothing for you to do. Everything you solve
+              An organizer will add you, and there is nothing for you to do. Everything you solve
               before then joins your team&apos;s total the moment you are on it.
             </p>
           </div>

@@ -3,7 +3,7 @@
 The Park Tudor yearbook staff exports everything as PDFs, and the highlighter tool in their
 reader is stubbornly literal. Every letter in their display font is exactly $1$ mm wide, but
 each of the $26$ lowercase letters has its own height. When you highlight a word, the reader
-does not hug the letters — it paints one plain rectangle across the whole word, tall enough
+does not hug the letters: it paints one plain rectangle across the whole word, tall enough
 to cover the tallest letter in it. The staff wants to know how much yellow ink each highlight
 will cost before they print.
 

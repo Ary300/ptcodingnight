@@ -1,10 +1,10 @@
 # Day of the Programmer
 
-The Park Tudor CS Club celebrates **Day of the Programmer** on the 256th day of the year — day $2^8$, the number of values that fit in one byte. Ms. Okafor wants a banner printed for every celebration the club has ever held and every one it plans to hold, but nobody can remember which calendar date the 256th day actually lands on, and the answer shifts around in leap years. The robotics team has offered to laser-cut the banners; they just need the dates. Write the program that hands them the list.
+The Park Tudor CS Club celebrates **Day of the Programmer** on the 256th day of the year (day $2^8$, the number of values that fit in one byte). Ms. Okafor wants a banner printed for every celebration the club has ever held and every one it plans to hold, but nobody can remember which calendar date the 256th day actually lands on, and the answer shifts around in leap years. The robotics team has offered to laser-cut the banners; they just need the dates. Write the program that hands them the list.
 
 ## Input
 
-The first line contains an integer $T$ — the number of queries.
+The first line contains an integer $T$, the number of queries.
 
 Each of the next $T$ lines contains two integers $Y$ and $K$, separated by a space: a year and a day number within that year. (The club's own celebration uses $K = 256$, but Ms. Okafor also wants a few other dates checked.)
 

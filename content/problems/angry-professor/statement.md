@@ -13,9 +13,9 @@ The first line contains an integer $T$, the number of sessions.
 
 Each session is described by two lines:
 
-- A line with two integers $N$ and $K$ — the number of students on the roster for that
+- A line with two integers $N$ and $K$: the number of students on the roster for that
   session and the quorum Mr. Okafor set.
-- A line with $N$ integers $a_1, a_2, \dots, a_N$ — each student's arrival time in minutes
+- A line with $N$ integers $a_1, a_2, \dots, a_N$: each student's arrival time in minutes
   relative to 6:45. A negative value means the student arrived early, $0$ means they arrived
   exactly on time, and a positive value means they arrived late.
 

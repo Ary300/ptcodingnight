@@ -35,60 +35,125 @@ export interface Enrolment {
  * month's instead. Nothing errors. They land on a contest with no problems published, the roster
  * for tonight shows nobody, and the only visible symptom is two screens that are quietly empty —
  * the same signature as the "site looked dead" failure, from a different cause.
+ *
+ * FROZEN sits between RUNNING and SCHEDULED because a frozen contest is a running one with the
+ * public board held still: `assertCanJoin` in gate.ts treats it as joinable, and a student
+ * arriving late during a freeze belongs in the contest the room is in.
  */
-const STATE_PRIORITY: Readonly<Record<"RUNNING" | "SCHEDULED" | "DRAFT", number>> = {
+const STATE_PRIORITY: Readonly<Record<"RUNNING" | "FROZEN" | "SCHEDULED" | "DRAFT", number>> = {
   RUNNING: 0,
-  SCHEDULED: 1,
-  DRAFT: 2,
+  FROZEN: 1,
+  SCHEDULED: 2,
+  DRAFT: 3,
 };
 
 /**
- * The contest an organizer is currently running, or null.
- *
- * DRAFT and SCHEDULED are included, unlike the projector's version of this query. The roster is
- * built BEFORE the contest starts — that is the whole point of it — so enrolling only into a
- * RUNNING contest would mean nobody appears until the moment it is too late to organise them.
- *
- * Null means "there is nothing to enrol anyone in", and its callers must SAY so rather than sign
- * the student in anyway: a session with no participantId authorizes as nobody.
+ * The states a student may be signed into. ENDED and ARCHIVED are absent: a finished contest is
+ * read-only history, and landing a sign-in there is what "I could not add anybody to the new
+ * contest" looked like from the student's side.
  */
-async function enrollableContestId(now: Date = new Date()): Promise<string | null> {
+const SIGN_IN_STATES = ["DRAFT", "SCHEDULED", "RUNNING", "FROZEN"] as const;
+
+/** One contest a given user could be signed into, with the facts the ranking is built from. */
+export interface ContestChoice {
+  readonly contestId: string;
+  readonly name: string;
+  readonly state: string;
+  readonly startsAt: Date;
+  readonly endsAt: Date;
+  /** True when a `Participant` row for this user already exists in this contest. */
+  readonly alreadyParticipant: boolean;
+  /** True when `startsAt <= now < endsAt`. */
+  readonly containsNow: boolean;
+  /** True when `endsAt` is already behind us, whatever the state column says. */
+  readonly windowClosed: boolean;
+}
+
+/**
+ * Every contest this user could sign into, best first.
+ *
+ * ## The rule, and why it is in this order
+ *
+ * A `Participant` row belongs to exactly one contest, and a session carries exactly one
+ * `contestId`. Something has to decide which. Before this, that decision ignored the user
+ * completely — it looked only at contest state — so a student an organizer had just put on a team
+ * in a new contest signed in and landed somewhere else entirely, saw "This contest has not started
+ * yet", and had a second `Participant` minted for them in the wrong contest. That is the student
+ * half of the same defect as "I could not add anybody from the demo to Test2".
+ *
+ * Ranked ascending on:
+ *
+ *  1. **A contest whose window has already closed is a last resort.** `endsAt` in the past is a
+ *     fact about the clock that no state column can contradict: a contest left in DRAFT or
+ *     SCHEDULED with last month's window is abandoned, not upcoming. Without this key, being on
+ *     an abandoned contest's roster would outrank tonight's contest forever.
+ *  2. **A contest this user is ALREADY a participant of.** Being on a roster is an organizer's
+ *     explicit decision about this person; state and clock are ambient facts about the room. The
+ *     explicit decision wins. This is the key that fixes the reported bug.
+ *  3. **A contest whose window contains now.** The old first key, and it still decides every case
+ *     it was introduced for — a student signing in for the first time is a participant of nothing,
+ *     so key 2 is a tie for them and this one takes over. Two contests can be RUNNING at once (a
+ *     rehearsal left open, last year's board never ended, the seeded demo beside the real thing)
+ *     and "is it on right now" is the question a student signing in is actually asking.
+ *  4. **State priority**, which orders contests that are equally in or out of their window — the
+ *     DRAFT/SCHEDULED case the roster is built in, before any window has opened.
+ *  5. `startsAt desc`, inherited from the query and preserved by a stable sort.
+ *
+ * The list is returned whole rather than reduced to a winner because a student can legitimately be
+ * a participant of two open contests at once, and in that case the choice is theirs to make rather
+ * than ours to guess. `ensureEnrolled` takes the head; a chooser reads the rest.
+ */
+export async function contestsForUser(
+  userId: string | null,
+  now: Date = new Date(),
+): Promise<ContestChoice[]> {
   const contests = await prisma.contest.findMany({
-    where: { state: { in: ["DRAFT", "SCHEDULED", "RUNNING"] } },
+    where: { state: { in: [...SIGN_IN_STATES] } },
     orderBy: { startsAt: "desc" },
-    select: { id: true, state: true, startsAt: true, endsAt: true },
+    select: { id: true, name: true, state: true, startsAt: true, endsAt: true },
   });
 
-  /*
-    A CONTEST WHOSE WINDOW CONTAINS NOW WINS, before anything else.
+  const mine =
+    userId === null
+      ? new Set<string>()
+      : new Set(
+          (
+            await prisma.participant.findMany({
+              where: { userId, contestId: { in: contests.map((c) => c.id) } },
+              select: { contestId: true },
+            })
+          ).map((row) => row.contestId),
+        );
 
-    State priority alone was not enough. Two contests can be RUNNING at the same time — a rehearsal
-    left open, last year's board never ended, a seeded demo beside the real thing — and the tie was
-    broken by `startsAt desc`, which picks the one created most recently rather than the one
-    happening. Observed: a student signed in and was enrolled into a contest that had already
-    ended, while the contest in the room went on without them; and the same ordering elsewhere put
-    a contest starting in nineteen days on the projector, showing "LIVE" and a 472-hour clock.
+  const choices: ContestChoice[] = contests.map((contest) => ({
+    contestId: contest.id,
+    name: contest.name,
+    state: contest.state,
+    startsAt: contest.startsAt,
+    endsAt: contest.endsAt,
+    alreadyParticipant: mine.has(contest.id),
+    containsNow:
+      contest.startsAt.getTime() <= now.getTime() && now.getTime() < contest.endsAt.getTime(),
+    windowClosed: contest.endsAt.getTime() <= now.getTime(),
+  }));
 
-    "Is it on right now" is a fact about the clock, not about a column, and it is the question a
-    student signing in is actually asking. State priority still decides among contests that are all
-    equally in or out of their window — which is the DRAFT/SCHEDULED case the roster is built in,
-    before any window has opened.
-  */
-  const containsNow = (c: { startsAt: Date; endsAt: Date }): boolean =>
-    c.startsAt.getTime() <= now.getTime() && now.getTime() < c.endsAt.getTime();
-
-  // Sorted on a copy: `Array.prototype.sort` mutates, and the rows are the query's, not ours.
+  // Sorted on a copy: `Array.prototype.sort` mutates, and these rows are the query's, not ours.
   // The sort is stable, so `startsAt desc` still decides ties inside a rank.
-  const ranked = [...contests].sort((a, b) => {
-    const byWindow = Number(containsNow(b)) - Number(containsNow(a));
+  return [...choices].sort((a, b) => {
+    const byClosed = Number(a.windowClosed) - Number(b.windowClosed);
+    if (byClosed !== 0) return byClosed;
+
+    const byMine = Number(b.alreadyParticipant) - Number(a.alreadyParticipant);
+    if (byMine !== 0) return byMine;
+
+    const byWindow = Number(b.containsNow) - Number(a.containsNow);
     if (byWindow !== 0) return byWindow;
+
     return (
       STATE_PRIORITY[a.state as keyof typeof STATE_PRIORITY] -
       STATE_PRIORITY[b.state as keyof typeof STATE_PRIORITY]
     );
   });
-
-  return ranked[0]?.id ?? null;
 }
 
 /**
@@ -97,45 +162,56 @@ async function enrollableContestId(now: Date = new Date()): Promise<string | nul
  * Keyed on `(contestId, userId)` rather than on the display name: names are editable by an
  * organizer, and re-running this after a rename must not mint a second participant that competes
  * against the first for the same person's submissions.
+ *
+ * Returns null when there is nothing to enrol anyone in, and its callers must SAY so rather than
+ * sign the student in anyway: a session with no participantId authorizes as nobody.
  */
 export async function ensureEnrolled(
   userId: string,
   displayName: string,
+  now: Date = new Date(),
 ): Promise<Enrolment | null> {
-  const contestId = await enrollableContestId();
-  if (contestId === null) return null;
+  const choices = await contestsForUser(userId, now);
+  const best = choices[0];
+  if (best === undefined) return null;
 
   const existing = await prisma.participant.findFirst({
-    where: { contestId, userId },
+    where: { contestId: best.contestId, userId },
     select: { id: true },
   });
   if (existing !== null) {
-    return { contestId, participantId: existing.id, created: false };
+    return { contestId: best.contestId, participantId: existing.id, created: false };
   }
 
   const created = await prisma.participant.create({
     data: {
-      contestId,
+      contestId: best.contestId,
       userId,
-      displayName: await uniqueDisplayName(contestId, displayName),
+      displayName: await uniqueDisplayName(best.contestId, displayName),
       // No team. The organizer assigns it from the roster, and that is the only place it happens.
       teamId: null,
     },
     select: { id: true },
   });
 
-  return { contestId, participantId: created.id, created: true };
+  return { contestId: best.contestId, participantId: created.id, created: true };
 }
 
 /**
  * `Participant` is unique on `(contestId, displayName)`, and two students really can share a name.
  *
  * The constraint exists so a leaderboard never shows two indistinguishable rows, which is worth
- * keeping — but it must not turn "a second Alex Chen signed up" into a failed sign-in. Suffixing
+ * keeping — but it must not turn "a second Alex Chen signed up" into a failed sign-in.
+ *
+ * Exported because the organizer creates participants too now (`adminAddParticipant` in
+ * `lib/contest/teams.ts`). A second copy of this rule would be a second answer to the question
+ * "what happens when two Alex Chens are in one contest", and the two copies would diverge.
+ *
+ * Suffixing
  * is ugly and visible, which is the point: an organizer renames them from the roster, and until
  * they do, the room can still tell the two apart.
  */
-async function uniqueDisplayName(contestId: string, wanted: string): Promise<string> {
+export async function uniqueDisplayName(contestId: string, wanted: string): Promise<string> {
   const base = wanted.trim().slice(0, 40) || "Competitor";
 
   const taken = await prisma.participant.findMany({

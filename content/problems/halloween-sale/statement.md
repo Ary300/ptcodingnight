@@ -3,7 +3,7 @@
 The Panther Spirit Store runs the same gimmick every Halloween: a table of glow-in-the-dark
 pumpkin keychains with a price tag that melts as you shop. The first keychain you carry to
 the register costs $p$ cents. Every keychain after that costs $d$ cents less than the one
-before it, but the cashier will never ring one up below $m$ cents — once the price hits the
+before it, but the cashier will never ring one up below $m$ cents. Once the price hits the
 floor it stays there all night. You have $b$ cents in your hoodie pocket, you must buy the
 keychains one at a time in this order, and you stop the moment you cannot afford the next
 one. How much loot do you leave with?

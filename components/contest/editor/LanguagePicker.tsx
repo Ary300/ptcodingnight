@@ -2,6 +2,7 @@
 
 import { useId } from "react";
 
+import { Select } from "@/components/ui/Select";
 import { LanguageSchema, type Language } from "@/lib/schemas/judge";
 
 import { LANGUAGE_LABEL } from "./types";
@@ -22,6 +23,16 @@ import { LANGUAGE_LABEL } from "./types";
  * `LANGUAGE_LABEL`, which is built from the registry. Neither the ids nor the labels are restated
  * anywhere in this file: a hardcoded list here would silently disagree with what the judge will
  * actually accept, and the student would find out by having a submission refused.
+ *
+ * **The box is `components/ui/Select` and no longer drawn here.** It used to be `rounded`
+ * (4px) on `border-ink/25` — neither of which is a token: DESIGN.md §5a has three radii and
+ * §5b replaced eleven hand-picked `border-ink/N` alphas with three rule weights, and this
+ * control was off both scales. Measured against the admin selects on the same commit it was
+ * 34px tall at a 4px corner where they were 42px and flat, which is how one product ends up
+ * with four dropdowns that look like four products.
+ *
+ * It stays `size="sm"`: this one lives in the editor's header strip beside `Button size="sm"`
+ * and a `--text-xs` caption, and a 42px form-row control in that bar would tower over both.
  */
 
 export interface LanguagePickerProps {
@@ -39,8 +50,9 @@ export function LanguagePicker({ value, allowed, onChange, disabled = false }: L
       <label htmlFor={id} className="shrink-0 text-ink/70" style={{ fontSize: "var(--text-xs)" }}>
         Language
       </label>
-      <select
+      <Select
         id={id}
+        size="sm"
         value={value}
         disabled={disabled}
         onChange={(event) => {
@@ -50,15 +62,14 @@ export function LanguagePicker({ value, allowed, onChange, disabled = false }: L
         }}
         // Roomy like HackerRank's, which is a wide control rather than a squeezed one — but
         // `max-w-full` so it shrinks instead of pushing the header bar past 360px.
-        className="w-52 max-w-full rounded border border-ink/25 bg-paper px-2 py-1.5 text-ink disabled:opacity-50"
-        style={{ fontSize: "var(--text-xs)" }}
+        shellClassName="w-52 max-w-full"
       >
         {allowed.map((language) => (
           <option key={language} value={language}>
             {LANGUAGE_LABEL[language]}
           </option>
         ))}
-      </select>
+      </Select>
     </div>
   );
 }

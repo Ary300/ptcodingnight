@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 
+import { Button } from "@/components/ui";
 import type { Language } from "@/lib/schemas/judge";
 
 import { LANGUAGE_LABEL } from "./types";
@@ -122,18 +123,25 @@ export function UploadCode({ language, onLoaded, disabled = false }: UploadCodeP
         aria-label="Upload code as file"
       />
 
-      <button
+      {/*
+        A bordered quiet button, not an underlined link — hr-challenge-live.png shows "Upload
+        Code as File" as a small outlined button at the editor's bottom left, the same weight as
+        Run Code and visibly lighter than Submit. The shared `secondary` variant IS that object,
+        so this borrows it rather than growing a third button style on the page.
+      */}
+      <Button
         type="button"
+        variant="secondary"
+        size="sm"
         disabled={disabled}
         onClick={() => input.current?.click()}
-        className="inline-flex items-center gap-1.5 self-start text-ink/70 underline underline-offset-2 hover:text-panther disabled:no-underline disabled:opacity-60"
-        style={{ fontSize: "var(--text-xs)" }}
+        className="self-start"
       >
         <svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true" fill="currentColor">
           <path d="M8 1 4 5h2.5v5h3V5H12L8 1zM2 12v2h12v-2h1.5v3.5h-15V12H2z" />
         </svg>
         Upload Code as File
-      </button>
+      </Button>
 
       {note !== null && (
         <p

@@ -40,6 +40,14 @@ export const AUDIT_ACTIONS = {
   contestFreeze: "contest.freeze",
   contestUnfreeze: "contest.unfreeze",
   participantJoin: "participant.join",
+  /// An organizer put a known account on a contest roster before anyone signed into it. The row
+  /// that makes "who added this person, and when" answerable for a participant nobody ever saw
+  /// sign in — which is now the normal case, because a roster is built before the contest starts.
+  participantAdded: "participant.added_by_organizer",
+  /// An organizer took somebody off a contest entirely. Records the submission count that went
+  /// with them: `Submission.participantId` cascades on delete, so this is the only remaining
+  /// record that there was work to lose.
+  participantRemoved: "participant.removed_by_organizer",
   /// A browser presenting a valid join claim was handed its existing participant back. The row
   /// carries `chosenSetId` on EVERY rejoin, not just the first: the set must never change, and a
   /// trail that records it each time is how a set that did change stops being deniable.

@@ -91,7 +91,18 @@ test.describe("prefers-reduced-motion", () => {
    */
   test("the board still states live or frozen, in words", async ({ page }) => {
     await page.goto(`/projector?contest=${await runningContestId(page)}`);
-    await expect(page.getByText(/^(Live|Board frozen)$/)).toBeVisible();
+    /*
+      The words moved, the requirement did not.
+
+      This used to match the corner pill, `^(Live|Board frozen)$`. The organizer had the pill
+      removed ("get rid of the little live symbol in the top left it looks ugly"), so the state now
+      lives in the subtitle under the title: "Live standings · updated 09:12" or "Frozen
+      standings". That is still WORDS, still on the way into the `#` column, and still the thing
+      that stops a room reading a frozen ranking as the current one — which is what this test is
+      for. Matching the start of the line rather than the whole of it, because the live case
+      carries the timestamp with it.
+    */
+    await expect(page.getByText(/^(Live standings|Frozen standings)/)).toBeVisible();
     await auditPage(page, "/projector (reduced motion)");
   });
 

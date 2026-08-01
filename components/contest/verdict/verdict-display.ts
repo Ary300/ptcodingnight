@@ -55,3 +55,37 @@ export function problemStatusLabel(solved: boolean, bestScore: number | null): s
   if (bestScore !== null) return "Attempted";
   return "Unsolved";
 }
+
+/**
+ * What the header says while the judge is still running.
+ *
+ * Two honesty rules shape the wording:
+ *
+ *  1. **Counts, never names.** Samples and hidden tests number themselves independently
+ *     (`PublicTestResult.ordinal` restarts per kind), so "running test 4" cannot safely claim
+ *     to be the row that will appear as "Test case 4". A count of finished results is a fact
+ *     we hold; a name for the case still inside the judge is a guess. HackerRank shows the
+ *     same thing for the same reason: a position in the queue, not an identity.
+ *  2. **Say what is known, not what is hoped.** With no total we report only how many results
+ *     are back. With a total we can say which position is executing and how many wait behind
+ *     it, and when the count reaches the total but no verdict has landed, the true state is
+ *     "aggregating", not "running", so that is what it says.
+ *
+ * `completedCases` is the number of results already returned; the case executing now is the
+ * next one after those.
+ */
+export function judgingProgressLabel(
+  completedCases: number,
+  totalCases: number | null,
+): string {
+  if (totalCases !== null && completedCases >= totalCases) {
+    return "All tests have run. Working out the verdict…";
+  }
+  if (totalCases === null) {
+    if (completedCases === 0) return "Judging: running the first test…";
+    return `Judging: ${completedCases} ${completedCases === 1 ? "test" : "tests"} finished, running the next…`;
+  }
+  const running = completedCases + 1;
+  const remaining = totalCases - running;
+  return `Running test ${running} of ${totalCases}, ${remaining} still to go…`;
+}

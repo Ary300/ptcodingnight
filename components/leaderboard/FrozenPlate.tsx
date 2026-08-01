@@ -28,7 +28,9 @@ export function FrozenPlate({ lifting, liftMs, asOfLabel }: FrozenPlateProps) {
     >
       <span className={styles.plateTitle}>BOARD FROZEN</span>
       <span className={styles.plateNote}>
-        standings as of <span className="numeric">{asOfLabel}</span> — judging continues
+        {/* A comma, not an em dash: no em dash appears in anything a person using this site can
+            read, and this plate is the largest sentence on the largest screen in the building. */}
+        standings as of <span className="numeric">{asOfLabel}</span>, judging continues
       </span>
     </div>
   );

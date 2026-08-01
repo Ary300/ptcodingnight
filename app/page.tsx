@@ -75,7 +75,7 @@ const GUARANTEES = [
   },
   {
     title: "One scoring rule, in one place",
-    body: "Your team's score is every member's points divided by the number of people on the team, plus side activities. Integer arithmetic throughout — no float ever decides a placing.",
+    body: "Your team's score is every member's points divided by the number of people on the team, plus side activities. Integer arithmetic throughout: no float ever decides a placing.",
   },
   {
     title: "The board can be replayed",
@@ -151,8 +151,21 @@ function BoardPreview() {
                 <td className="px-3 py-2.5 font-semibold whitespace-nowrap">{row.team}</td>
                 {Array.from({ length: widest }, (_, index) => (
                   <td key={index} className="numeric px-3 py-2.5 text-right text-ink/75">
-                    {/* An em dash, not a zero: this team has no player in that set. */}
-                    {row.sets[index] ?? <span className="text-ink/40">&mdash;</span>}
+                    {/*
+                      A dash, not a zero: this team has no player in that set, and a 0 would
+                      read as a player who scored nothing. The glyph is an EN dash because the
+                      house rule bans U+2014 from anything a user can read, and the guard test
+                      (tests/unit/no-em-dash.test.ts) fails the build if one comes back.
+
+                      The dash alone is silence to a screen reader, so the reason is spelled out
+                      in sr-only text rather than left to a punctuation mark.
+                    */}
+                    {row.sets[index] ?? (
+                      <span className="text-ink/40">
+                        <span aria-hidden="true">&ndash;</span>
+                        <span className="sr-only">no player</span>
+                      </span>
+                    )}
                   </td>
                 ))}
                 <td className="numeric px-3 py-2.5 text-right text-ink/75">{row.side}</td>

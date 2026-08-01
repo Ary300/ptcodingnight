@@ -5,6 +5,7 @@ import { useState } from "react";
 import type { TeamStandingRow, TeamPlayerRow } from "@/lib/schemas/api";
 
 import { TeamPlayerLine } from "./TeamPlayerDetail";
+import { TeamRosterStrip } from "./TeamRosterStrip";
 import styles from "./leaderboard.module.css";
 
 /**
@@ -46,6 +47,11 @@ import styles from "./leaderboard.module.css";
  * is taken in `getTeamStandings`, not here, because both routes behind this board are
  * unauthenticated and a component gate would leave the data sitting in the network tab.
  *
+ * The PROJECTOR has level one and only level one, drawn differently: `TeamRosterStrip`, one
+ * wrapping line instead of a column, controlled from `TeamProjectorScreen` because on a wall the
+ * open row has to be paid for in rows. Level two never appears there, twice over — the payload
+ * sends `null` to an anonymous reader, and the strip has no place to put it.
+ *
  * This is also where the imitation stops. A CF row is a name and a total, because an individual's
  * score is a sum anyone can add up. A mean is not, so the divisor stays on the row. A board that
  * looked more like Codeforces by dropping it would be a worse board.
@@ -65,9 +71,11 @@ import styles from "./leaderboard.module.css";
  *   across a whole set, and a rejection count summed over that means nothing anybody would want.
  *   An unscored cell still shows a real `0` — "in this set, nothing yet".
  * - **Colour as the carrier of meaning.** CF leans on green-for-solved. Here `0` versus `420`,
- *   weight, and the em-dash for "nobody in this set" each read correctly in greyscale, which they
+ *   weight, and the dash for "nobody in this set" each read correctly in greyscale, which they
  *   have to: the board spends part of the night desaturated behind the freeze, and roughly 1 in 12
- *   boys in the room has a colour-vision deficiency (DESIGN.md §3).
+ *   boys in the room has a colour-vision deficiency (DESIGN.md §3). The projector's team score is
+ *   red as of this change, and it is still not colour ALONE: it is the `=` column, in the heaviest
+ *   weight on the row, at the largest size on the board.
  *
  * ## Formatting
  *
@@ -78,10 +86,22 @@ import styles from "./leaderboard.module.css";
 
 export interface TeamStandingsBoardProps {
   teams: readonly TeamStandingRow[];
-  /** Compact mode for the projector: no expansion, larger type, ranks only. */
+  /** Projector mode: larger type, no per-player panel, and a controlled roster strip. */
   variant?: "interactive" | "projector";
   /** Highlights the viewer's own team. */
   highlightTeamId?: string | null;
+  /**
+   * Projector only: which team's roster strip is open.
+   *
+   * **Controlled from outside, unlike the interactive expander**, and that asymmetry is the whole
+   * design. On a phone an open panel just makes the page taller. On a wall there is no taller: the
+   * strip has to be paid for out of the row budget, so the screen that owns the budget
+   * (`TeamProjectorScreen`) has to own the open row too. A board that toggled its own state here
+   * would expand into rows it had already been told to draw, and clip them.
+   */
+  openTeamId?: string | null;
+  /** Projector only. Absent means the board is not expandable at all. */
+  onToggleTeam?: (teamId: string) => void;
 }
 
 function formatScore(score: number): string {
@@ -161,9 +181,13 @@ export function TeamStandingsBoard({
   teams,
   variant = "interactive",
   highlightTeamId = null,
+  openTeamId = null,
+  onToggleTeam,
 }: TeamStandingsBoardProps) {
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
   const projector = variant === "projector";
+  /** A projector board is expandable only when somebody upstream is budgeting for it. */
+  const toggleWall = projector ? onToggleTeam : undefined;
 
   const toggle = (teamId: string): void => {
     setExpanded((current) => {
@@ -384,7 +408,9 @@ export function TeamStandingsBoard({
 
           <tbody>
             {teams.map((team) => {
-              const isOpen = expanded.has(team.teamId);
+              const isOpen = projector
+                ? openTeamId === team.teamId
+                : expanded.has(team.teamId);
               const mine =
                 highlightTeamId !== null && team.teamId === highlightTeamId;
               const rowTint = mine
@@ -392,6 +418,19 @@ export function TeamStandingsBoard({
                   ? "bg-gold/10"
                   : "bg-panther/8"
                 : "";
+
+              /* A tint is a colour, and colour is never the only channel (DESIGN.md §3). The word
+                 is what actually says whose row this is. Lifted out of the name cell because that
+                 cell is a button on the wall and a plain span everywhere else, and the label
+                 belongs to both. */
+              const mineTag = mine ? (
+                <span
+                  className={`ml-2 font-body font-normal ${accent}`}
+                  style={{ fontSize: size.sub }}
+                >
+                  your team
+                </span>
+              ) : null;
 
               return [
                 <tr key={team.teamId} className={rowTint}>
@@ -424,22 +463,53 @@ export function TeamStandingsBoard({
                   </td>
 
                   <td className={`border ${grid} ${cellPad} align-top`}>
-                    <span
-                      className="block truncate font-display font-bold"
-                      style={{ fontSize: size.name }}
-                    >
-                      {team.name}
-                      {mine && (
-                        /* A tint is a colour, and colour is never the only channel (DESIGN.md §3).
-                         The word is what actually says whose row this is. */
-                        <span
-                          className={`ml-2 font-body font-normal ${accent}`}
-                          style={{ fontSize: size.sub }}
-                        >
-                          your team
+                    {/*
+                      On the wall the TEAM NAME is the control, and that is a height decision
+                      rather than a taste one. The interactive board puts its expander on a line of
+                      its own under the arithmetic; a third line on the projector takes a team row
+                      from ~93px to ~120px, which costs two of the seven teams on the board before
+                      anybody has opened anything. The caret is the second channel for the state,
+                      since `aria-expanded` is invisible and a room cannot hear it.
+                    */}
+                    {toggleWall !== undefined ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          toggleWall(team.teamId);
+                        }}
+                        aria-expanded={isOpen}
+                        /*
+                          `inline-block` and shrink-to-fit, NOT `block w-full`.
+
+                          A full-width button is wider than a narrow window, and clicking it makes
+                          the browser scroll the table's own `overflow-x` box to bring the focused
+                          element into view — which slid the `#` column off the left edge the
+                          moment a row was opened. Measured at 360px. A button only as wide as its
+                          own text is already fully visible, so there is nothing to scroll to.
+                        */
+                        className="inline-block max-w-full truncate text-left font-display font-bold"
+                        style={{ fontSize: size.name }}
+                      >
+                        <span aria-hidden="true" className={accent}>
+                          {isOpen ? "▾ " : "▸ "}
                         </span>
-                      )}
-                    </span>
+                        {team.name}
+                        {/* A button whose whole accessible name is a team's name says nothing
+                            about what pressing it does. */}
+                        <span className={styles.visuallyHidden}>
+                          : who scored what
+                        </span>
+                        {mineTag}
+                      </button>
+                    ) : (
+                      <span
+                        className="block truncate font-display font-bold"
+                        style={{ fontSize: size.name }}
+                      >
+                        {team.name}
+                        {mineTag}
+                      </span>
+                    )}
                     <span
                       className={`numeric block ${muted}`}
                       style={{
@@ -475,8 +545,23 @@ export function TeamStandingsBoard({
                     )}
                   </td>
 
+                  {/*
+                    THE TEAM SCORE IS RED ON THE WALL, numerals and all.
+                    "for the projector view i meant that the SCORES would be red not just the
+                    question" — the accent used to be on the set letters in the header while the
+                    number the room is actually there to read was ink like everything else.
+
+                    Full strength, no alpha: `--panther` is 5.08:1 on `--paper`, which clears AA
+                    here and clears AAA at this size (`--fs-lg`, bold), and ANY alpha on it drops
+                    below the floor (DESIGN.md §7). Weight and position already separate this
+                    column, so the colour is a third channel rather than the only one.
+
+                    Interactive boards keep ink. `/team` and `/admin/awards` are paper surfaces
+                    read at 30cm where `--panther` is the link and control colour, and a red total
+                    there reads as something to press.
+                  */}
                   <td
-                    className={`numeric border ${grid} ${cellPad} text-right align-top font-display font-bold`}
+                    className={`numeric border ${grid} ${cellPad} text-right align-top font-display font-bold ${projector ? accent : ""}`}
                     style={{ fontSize: size.total }}
                   >
                     {formatScore(team.score)}
@@ -490,13 +575,18 @@ export function TeamStandingsBoard({
                         className={`numeric border ${grid} ${cellPad} text-center align-top`}
                       >
                         {cell === null ? (
-                          // Nobody on this team is in this set. An em-dash, not a zero: zero is a
-                          // score somebody earned and this is the absence of a player.
+                          // Nobody on this team is in this set. A rule, not a zero: zero is a
+                          // score somebody earned and this is the absence of a player. An EN dash
+                          // rather than an em dash, because the em dash is banned from anything a
+                          // user can read (tests/unit/no-em-dash.test.ts, which counts `&mdash;`
+                          // as the same character it renders to). The meaning was never in the
+                          // width of the glyph anyway; it is in the aria-label and in the contrast
+                          // with a real digit.
                           <span
                             className={dim}
                             aria-label="no player in this set"
                           >
-                            &mdash;
+                            &ndash;
                           </span>
                         ) : (
                           <>
@@ -539,7 +629,7 @@ export function TeamStandingsBoard({
                     className={`numeric border ${grid} ${cellPad} text-center align-top`}
                   >
                     {team.groupPoints === 0 ? (
-                      <span className={dim}>&mdash;</span>
+                      <span className={dim} aria-label="none">&ndash;</span>
                     ) : (
                       <span
                         className={`font-bold ${scored}`}
@@ -553,7 +643,7 @@ export function TeamStandingsBoard({
                     className={`numeric border ${grid} ${cellPad} text-center align-top`}
                   >
                     {team.sideActivityPoints === 0 ? (
-                      <span className={dim}>&mdash;</span>
+                      <span className={dim} aria-label="none">&ndash;</span>
                     ) : (
                       <span
                         className={`font-bold ${scored}`}
@@ -565,7 +655,35 @@ export function TeamStandingsBoard({
                   </td>
                 </tr>,
 
-                isOpen && !projector ? (
+                isOpen && projector ? (
+                  /*
+                    The wall's breakdown. A different component from the competitor board's, not a
+                    resize of it: `TeamPlayerDetail` renders one line per player and would print
+                    "Per-problem detail is shown for your own team." under every one of them, since
+                    the projector is anonymous and the payload sends `problems: null` to anonymous
+                    readers. See TeamRosterStrip for the rest of the reasoning.
+                  */
+                  <tr key={`${team.teamId}-detail`} className="bg-ink/5">
+                    <td
+                      className={`border ${grid} ${cellPad}`}
+                      style={{
+                        // The rail is reserved on every rank cell so rows stay the same width.
+                        // This one has no rank in it and still needs the reservation.
+                        borderLeftWidth: "var(--rail-width)",
+                        borderLeftStyle: "solid",
+                        borderLeftColor: mine
+                          ? "var(--color-panther)"
+                          : "transparent",
+                      }}
+                    />
+                    <td
+                      className={`border ${grid} ${cellPad}`}
+                      colSpan={4 + columns.length}
+                    >
+                      <TeamRosterStrip team={team} />
+                    </td>
+                  </tr>
+                ) : isOpen && !projector ? (
                   <tr key={`${team.teamId}-detail`} className="bg-ink/3">
                     <td className={`border ${grid} ${cellPad}`} />
                     <td

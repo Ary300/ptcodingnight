@@ -20,5 +20,50 @@
     "kind": "whitespace"
   },
   "sampleCount": 2,
-  "originAttribution": "Task inspired by a problem of the same name used at a past Coding Night. Statement and test data written fresh for this platform."
+  "originAttribution": "Task inspired by a problem of the same name used at a past Coding Night. Statement and test data written fresh for this platform.",
+  "signature": {
+    "name": "countApplesAndOranges",
+    "returns": {
+      "type": "int[]",
+      "join": "\n"
+    },
+    "params": [
+      {
+        "name": "s",
+        "type": "int"
+      },
+      {
+        "name": "t",
+        "type": "int"
+      },
+      {
+        "name": "a",
+        "type": "int"
+      },
+      {
+        "name": "b",
+        "type": "int"
+      },
+      {
+        "name": "n",
+        "type": "int",
+        "passed": false
+      },
+      {
+        "name": "m",
+        "type": "int",
+        "passed": false
+      },
+      {
+        "name": "apples",
+        "type": "int[]",
+        "length": "n"
+      },
+      {
+        "name": "oranges",
+        "type": "int[]",
+        "length": "m"
+      }
+    ]
+  }
 }

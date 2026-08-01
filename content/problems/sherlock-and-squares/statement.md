@@ -7,7 +7,7 @@ number of feet on each side. Given the range of areas still unclaimed in the sto
 the build captain wants to know how many *square-shaped* zones fit inside that range.
 
 For each range $[a, b]$, count the integers $n$ with $a \le n \le b$ such that $n$ is a
-perfect square — that is, $n = k \times k$ for some positive integer $k$.
+perfect square (that is, $n = k \times k$ for some positive integer $k$).
 
 ## Input
 
