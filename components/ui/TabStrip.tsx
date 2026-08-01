@@ -51,7 +51,7 @@ function isActive(pathname: string, href: string): boolean {
 
 export function TabStrip({ items, pathname, label }: TabStripProps) {
   return (
-    <nav aria-label={label} className="mt-4 border-b border-ink/15 bg-ink/[0.03]">
+    <nav aria-label={label} className="mt-4 border-b border-rule-edge bg-ink/[0.04]">
       {/*
         `overflow-x-auto` on the strip and nowhere else. Seven tabs at 360px do not fit, and the
         alternatives are worse: wrapping turns the strip into two rows that no longer read as
@@ -69,8 +69,8 @@ export function TabStrip({ items, pathname, label }: TabStripProps) {
                   active
                     ? // -mb-px pulls the tab down over the strip's own bottom border, which is
                       // what makes it look joined to the panel rather than sitting above it.
-                      "-mb-px inline-block border border-ink/15 border-b-transparent bg-paper px-4 py-2.5 font-semibold"
-                    : "inline-block border border-transparent px-4 py-2.5 text-ink/70 hover:text-ink"
+                      "-mb-px inline-block border border-rule-edge border-b-transparent bg-paper px-4 py-2.5 font-semibold"
+                    : "inline-block border border-transparent px-4 py-2.5 font-medium text-ink/70 hover:text-ink"
                 }
                 style={{ fontSize: "var(--text-sm)" }}
               >

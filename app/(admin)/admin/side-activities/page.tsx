@@ -1,20 +1,20 @@
 import { ContestPicker } from "@/components/admin/ContestPicker";
-import { SideActivityEntry } from "@/components/admin/SideActivityEntry";
+
+import { redirectIntoContestTab } from "../legacy-scope";
 
 /**
- * `/admin/side-activities` — award points for the non-coding activities.
+ * `/admin/side-activities` — the old flat URL for the non-coding points.
  *
- * `?contest=<id>` picks the contest. Required rather than guessed: awarding points to the wrong
- * contest's team is silent and hard to notice, and a wrong guess here changes a result.
+ * Now a tab of the contest (`/admin/contests/<id>/side-activities`). Awarding points to the wrong
+ * contest's team is silent and hard to notice, which is exactly why the contest is named at the
+ * top of the screen rather than living in a query string the organizer cannot see.
  */
 export default async function SideActivitiesPage({
   searchParams,
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const params = await searchParams;
-  const contest = params.contest;
-  const contestId = typeof contest === "string" && contest.length > 0 ? contest : null;
+  await redirectIntoContestTab(searchParams, "/side-activities");
 
   return (
     <div className="flex flex-col gap-6">
@@ -24,16 +24,12 @@ export default async function SideActivitiesPage({
         </h1>
         <p className="mt-1 max-w-[70ch] text-ink/60" style={{ fontSize: "var(--text-sm)" }}>
           The metal puzzle, train tracks, Connections. These are the only points with no submission
-          behind them, so this screen is the only record that they happened — every entry is kept,
-          with who entered it.
+          behind them, so this screen is the only record that they happened. Pick the contest the
+          points belong to.
         </p>
       </header>
 
-      {contestId === null ? (
-        <ContestPicker basePath="/admin/side-activities" purpose="awarding side-activity points" />
-      ) : (
-        <SideActivityEntry contestId={contestId} />
-      )}
+      <ContestPicker tab="/side-activities" purpose="awarding side-activity points" />
     </div>
   );
 }

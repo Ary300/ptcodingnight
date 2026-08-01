@@ -8,27 +8,33 @@ import type { AdminContestList } from "@/lib/schemas/api";
 import { AdminContestListSchema } from "@/lib/schemas/api";
 
 import { ContestStatePill } from "./StatusPill";
-import { ContestStateActions } from "./ContestStateActions";
 
 /**
- * Pick the contest a contest-scoped organizer screen acts on.
+ * The list of contests.
  *
- * ## The bug this replaces
+ * ## What it was, and what changed under it
  *
- * `/admin/teams` and `/admin/side-activities` read their contest from `?contest=`, and with no way
- * to enumerate contests the screens said: *"Add `?contest=<id>` to this URL."* The id was only
- * obtainable from `psql`. Clicking "Teams" in the organizer nav therefore led nowhere — and the
- * roster is a scoring input, since team size is the divisor in every team score.
+ * It was a per-screen "Which contest?" picker: five contest-scoped organizer screens each rendered
+ * their own copy, because each read its contest from `?contest=<id>` and nothing in the nav carried
+ * that query string. Every hop between two screens of the SAME contest therefore threw the
+ * organizer back to a wall of thirteen rows to re-find a contest they had just been inside.
  *
- * ## Why it still does not auto-select
+ * The contest id lives in the PATH now (`/admin/contests/<id>/…`), so a tab cannot drop it. This
+ * component keeps two jobs:
  *
- * With exactly one contest it would be easy to redirect straight into it. It does not, and the
- * reason is the same reason the query string exists: "the current contest" is hidden state. An
- * organizer who lands on a roster without having chosen the contest cannot tell, from the roster,
- * WHICH contest they are about to move somebody in — and moving somebody changes two team scores.
- * One extra click on a night that happens once a year is the cheap side of that trade.
+ * - `variant="list"` — the top level, HackerRank's "Manage Contests". `/admin` is this and nothing
+ *   else.
+ * - `variant="picker"` — what the old flat routes (`/admin/teams`, `/admin/side-activities`, …)
+ *   show when they are reached with no contest. They stay live so that bookmarks and links from
+ *   documentation still land somewhere useful rather than 404ing.
  *
- * What it does instead is make the one-contest case a single obvious target rather than a wall.
+ * ## The lifecycle buttons are gone from the row, on purpose
+ *
+ * Each row used to carry `Publish` / `Publish and open now` / `End contest`, and publishing was a
+ * single unconfirmed click. On a list containing two rows with the same name and the same date —
+ * which this list did — that is one slip from showing a room an unfinished problem set. Those
+ * controls now live on the contest's own Setup tab, where there is exactly one contest on screen
+ * and its name is the page heading. Nothing was removed; it moved somewhere unambiguous.
  *
  * ## Loading through `useResource`
  *
@@ -38,10 +44,18 @@ import { ContestStateActions } from "./ContestStateActions";
  */
 
 export interface ContestPickerProps {
-  /** Where a chosen contest goes, e.g. `/admin/teams`. `?contest=` is appended. */
-  readonly basePath: string;
-  /** What the organizer is about to do, named in the heading. */
+  /**
+   * The tab a chosen contest opens on: `""` for the contest itself, or `"/teams"`, `"/problems"`,
+   * `"/side-activities"`, `"/console"`, `"/awards"`.
+   *
+   * A path suffix rather than a full base path, because the contest id is now a path SEGMENT — the
+   * whole point of the restructure is that no caller assembles `?contest=` by hand any more.
+   */
+  readonly tab?: string;
+  /** What the organizer is about to do, named in the empty state. */
   readonly purpose: string;
+  /** `list` is the top-level Contests screen; `picker` is a flat route asking which contest. */
+  readonly variant?: "list" | "picker";
 }
 
 async function loadContests(): Promise<AdminContestList> {
@@ -65,7 +79,7 @@ async function loadContests(): Promise<AdminContestList> {
   );
 }
 
-export function ContestPicker({ basePath, purpose }: ContestPickerProps) {
+export function ContestPicker({ tab = "", purpose, variant = "picker" }: ContestPickerProps) {
   // Wrapped in an inline arrow because `useResource` requires a stable callback and the lint
   // rule requires the argument to `useCallback` be an inline function expression. Both are
   // satisfied by one line; a bare module-level function reference is not.
@@ -81,14 +95,14 @@ export function ContestPicker({ basePath, purpose }: ContestPickerProps) {
 
   if (load.status === "error" || load.data === null) {
     return (
-      <div className="rounded border border-ink/15 bg-paper p-5">
+      <div className="rounded border border-rule-edge bg-paper p-5">
         <p role="alert" className="text-panther" style={{ fontSize: "var(--text-sm)" }}>
           {load.error ?? "Those contests could not be loaded."}
         </p>
         <button
           type="button"
           onClick={load.reload}
-          className="mt-3 rounded border border-ink/25 px-3 py-1.5 font-semibold hover:border-ink/50"
+          className="mt-3 rounded border border-rule-edge px-3 py-1.5 font-semibold hover:border-rule-firm"
           style={{ fontSize: "var(--text-xs)" }}
         >
           Try again
@@ -99,35 +113,42 @@ export function ContestPicker({ basePath, purpose }: ContestPickerProps) {
 
   if (load.data.contests.length === 0) {
     return (
-      <div className="rounded border border-ink/15 bg-paper p-5">
+      <div className="rounded border border-rule-edge bg-paper p-5">
         <p style={{ fontSize: "var(--text-sm)" }}>
-          There are no contests yet. Build one first — {purpose} needs a contest to act on.
+          There are no contests yet. Make one first — {purpose} needs a contest to act on.
         </p>
         <Link
-          href="/admin/contest"
+          href="/admin/contests/new"
           className="mt-3 inline-block rounded bg-panther px-3 py-1.5 font-semibold text-paper hover:bg-panther-deep"
           style={{ fontSize: "var(--text-xs)" }}
         >
-          Contest builder
+          Create contest
         </Link>
       </div>
     );
   }
 
+  const heading = variant === "list" ? "All contests" : "Which contest?";
+
   return (
-    <section aria-label="Choose a contest" className="rounded border border-ink/12 bg-paper">
+    <section
+      // The picker variant keeps its old accessible name, because "choose a contest" is what the
+      // flat routes still ask and what the a11y suite audits them by.
+      aria-label={variant === "list" ? "All contests" : "Choose a contest"}
+      className="rounded border border-rule-edge bg-paper"
+    >
       <h2
-        className="border-b border-ink/12 px-5 py-3 font-display font-bold"
+        className="border-b border-rule-edge px-5 py-3 font-display font-bold"
         style={{ fontSize: "var(--text-md)" }}
       >
-        Which contest?
+        {heading}
       </h2>
 
       <ul>
         {load.data.contests.map((contest) => (
-          <li key={contest.contestId} className="border-b border-ink/10 last:border-b-0">
+          <li key={contest.contestId} className="border-b border-rule-hair last:border-b-0">
             <Link
-              href={`${basePath}?contest=${encodeURIComponent(contest.contestId)}`}
+              href={`/admin/contests/${encodeURIComponent(contest.contestId)}${tab}`}
               className="flex flex-wrap items-center gap-x-4 gap-y-1.5 px-5 py-3.5 hover:bg-ink/[0.035]"
             >
               <span className="font-display font-bold" style={{ fontSize: "var(--text-sm)" }}>
@@ -155,26 +176,6 @@ export function ContestPicker({ basePath, purpose }: ContestPickerProps) {
                 })}
               </span>
             </Link>
-
-            {/*
-              The lifecycle controls live on the row, OUTSIDE the link.
-
-              `POST /api/admin/contests/{id}/state` existed and nothing in the UI called it, so a
-              contest could be created and never started — and three separate strings promised the
-              step ("students cannot see it until you publish it", "Publish the contest when the
-              line-up is settled"). Every contest a student could actually enter had been written
-              by a seed script.
-
-              Nested inside the `<Link>` they would be a button inside a link, which is invalid
-              and unpredictable to operate with a keyboard.
-            */}
-            <div className="border-t border-ink/10 px-5 py-2.5">
-              <ContestStateActions
-                contestId={contest.contestId}
-                state={contest.state}
-                onChanged={load.reload}
-              />
-            </div>
           </li>
         ))}
       </ul>

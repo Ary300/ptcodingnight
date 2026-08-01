@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
-import { Button, type ButtonVariant } from "@/components/ui";
+import { Button, type ButtonSize, type ButtonVariant } from "@/components/ui";
 
 /**
  * Two-step confirmation for destructive or audit-logged actions.
@@ -21,6 +21,12 @@ export interface ConfirmButtonProps {
   confirmLabel: string;
   onConfirm: () => void;
   variant?: ButtonVariant;
+  /**
+   * `sm` for a control that lives inside a row or a card, `md` for a page's own action. Without
+   * this a row-level confirmation was the same physical size as the page's primary button, which
+   * is the thing that made `/admin/console` twenty-eight controls all shouting at once.
+   */
+  size?: ButtonSize;
   disabled?: boolean;
   className?: string;
 }
@@ -30,6 +36,7 @@ export function ConfirmButton({
   confirmLabel,
   onConfirm,
   variant = "danger",
+  size = "md",
   disabled = false,
   className,
 }: ConfirmButtonProps) {
@@ -47,6 +54,7 @@ export function ConfirmButton({
       <Button
         type="button"
         variant={variant}
+        size={size}
         disabled={disabled}
         className={className}
         onClick={() => setArmed(true)}
@@ -70,6 +78,7 @@ export function ConfirmButton({
       <Button
         type="button"
         variant="primary"
+        size={size}
         className={className}
         onClick={() => {
           setArmed(false);
@@ -78,7 +87,7 @@ export function ConfirmButton({
       >
         {confirmLabel}
       </Button>
-      <Button type="button" variant="ghost" onClick={() => setArmed(false)}>
+      <Button type="button" variant="quiet" size={size} onClick={() => setArmed(false)}>
         Cancel
       </Button>
       <span role="status" className="sr-only">

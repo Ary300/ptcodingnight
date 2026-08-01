@@ -52,20 +52,41 @@ const STATE_PRIORITY: Readonly<Record<"RUNNING" | "SCHEDULED" | "DRAFT", number>
  * Null means "there is nothing to enrol anyone in", and its callers must SAY so rather than sign
  * the student in anyway: a session with no participantId authorizes as nobody.
  */
-async function enrollableContestId(): Promise<string | null> {
+async function enrollableContestId(now: Date = new Date()): Promise<string | null> {
   const contests = await prisma.contest.findMany({
     where: { state: { in: ["DRAFT", "SCHEDULED", "RUNNING"] } },
     orderBy: { startsAt: "desc" },
-    select: { id: true, state: true },
+    select: { id: true, state: true, startsAt: true, endsAt: true },
   });
 
+  /*
+    A CONTEST WHOSE WINDOW CONTAINS NOW WINS, before anything else.
+
+    State priority alone was not enough. Two contests can be RUNNING at the same time — a rehearsal
+    left open, last year's board never ended, a seeded demo beside the real thing — and the tie was
+    broken by `startsAt desc`, which picks the one created most recently rather than the one
+    happening. Observed: a student signed in and was enrolled into a contest that had already
+    ended, while the contest in the room went on without them; and the same ordering elsewhere put
+    a contest starting in nineteen days on the projector, showing "LIVE" and a 472-hour clock.
+
+    "Is it on right now" is a fact about the clock, not about a column, and it is the question a
+    student signing in is actually asking. State priority still decides among contests that are all
+    equally in or out of their window — which is the DRAFT/SCHEDULED case the roster is built in,
+    before any window has opened.
+  */
+  const containsNow = (c: { startsAt: Date; endsAt: Date }): boolean =>
+    c.startsAt.getTime() <= now.getTime() && now.getTime() < c.endsAt.getTime();
+
   // Sorted on a copy: `Array.prototype.sort` mutates, and the rows are the query's, not ours.
-  // The sort is stable, so `startsAt desc` still decides ties inside a state.
-  const ranked = [...contests].sort(
-    (a, b) =>
+  // The sort is stable, so `startsAt desc` still decides ties inside a rank.
+  const ranked = [...contests].sort((a, b) => {
+    const byWindow = Number(containsNow(b)) - Number(containsNow(a));
+    if (byWindow !== 0) return byWindow;
+    return (
       STATE_PRIORITY[a.state as keyof typeof STATE_PRIORITY] -
-      STATE_PRIORITY[b.state as keyof typeof STATE_PRIORITY],
-  );
+      STATE_PRIORITY[b.state as keyof typeof STATE_PRIORITY]
+    );
+  });
 
   return ranked[0]?.id ?? null;
 }

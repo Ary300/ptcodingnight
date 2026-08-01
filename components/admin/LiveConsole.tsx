@@ -211,7 +211,15 @@ export function LiveConsole({ contestId }: LiveConsoleProps) {
   const windowed = total > submissions.length;
 
   return (
-    <div className="flex flex-col gap-6">
+    /*
+      `gap-section` between the four regions of this screen, not `gap-6`.
+
+      The three intervals in DESIGN.md §5c exist because everything here used to be 16-24px apart —
+      the distance between two unrelated regions was barely larger than the distance between two
+      rows inside one of them, so nothing on the page grouped and the eye had no lead. Judge
+      health, the freeze control, the feed and the log are four different subjects.
+    */
+    <div className="flex min-w-0 flex-col gap-section">
       {/*
         A failed POLL is a notice, not a takeover. The screen still holds the last good read, and
         an organiser looking at three-second-old data with a warning on it is far better served
@@ -220,7 +228,7 @@ export function LiveConsole({ contestId }: LiveConsoleProps) {
       {loadError !== null && (
         <p
           role="status"
-          className="rounded border border-panther px-3 py-2 font-semibold text-panther"
+          className="rounded-chip border border-panther px-3 py-2 font-semibold text-panther"
           style={{ fontSize: "var(--text-sm)" }}
         >
           Not updating: {loadError} What is below is the last successful read.
@@ -250,6 +258,7 @@ export function LiveConsole({ contestId }: LiveConsoleProps) {
       ) : (
         <Panel
           title="Public board"
+          level="bare"
           description="Freezing stops the public standings updating while judging continues. The admin view stays live either way (PRD §6.3)."
         >
           <ConfirmButton
@@ -262,10 +271,16 @@ export function LiveConsole({ contestId }: LiveConsoleProps) {
         </Panel>
       )}
 
+      {/*
+        `bare`, because the feed's own table already draws its edge. A framed panel around a
+        framed table is two boxes for one thing, which is most of what made these screens read as
+        a stack of identical cards.
+      */}
       <Panel
         title="Submissions"
+        level="bare"
         aside={
-          <span className="numeric text-ink/70" style={{ fontSize: "var(--text-xs)" }}>
+          <span className="numeric text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
             {/*
               Says WHICH submissions when the feed is windowed. A list that silently stops at 200
               reads as "that is all of them", and the one thing an organiser uses this feed for is
@@ -288,6 +303,7 @@ export function LiveConsole({ contestId }: LiveConsoleProps) {
 
       <Panel
         title="Action log"
+        level="bare"
         description="What this session has done, and what the server said back. AuditLog is the authoritative record."
       >
         {log.length === 0 ? (
@@ -295,10 +311,13 @@ export function LiveConsole({ contestId }: LiveConsoleProps) {
             Nothing yet.
           </p>
         ) : (
-          <ul className="flex flex-col gap-2" style={{ fontSize: "var(--text-sm)" }}>
+          <ul className="flex flex-col" style={{ fontSize: "var(--text-sm)" }}>
             {log.map((entry) => (
-              <li key={entry.id} className="flex gap-3 border-b border-ink/10 pb-2">
-                <span className="numeric text-ink/60">{entry.at}</span>
+              <li
+                key={entry.id}
+                className="flex gap-3 border-b border-rule-hair py-2 last:border-b-0"
+              >
+                <span className="numeric shrink-0 text-ink/60">{entry.at}</span>
                 <span className={`min-w-0 break-words ${entry.failed ? "text-panther" : ""}`}>
                   {entry.text}
                 </span>

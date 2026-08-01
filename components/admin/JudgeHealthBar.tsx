@@ -22,7 +22,18 @@ function formatMs(ms: number | null): string {
   return `${(ms / 1000).toFixed(1)} s`;
 }
 
-function Stat({ value, label, alarm = false }: { value: string; label: string; alarm?: boolean }) {
+function Stat({
+  value,
+  label,
+  alarm = false,
+  dark,
+}: {
+  value: string;
+  label: string;
+  alarm?: boolean;
+  /** The ground this sits on, because the muted floor is not the same colour on both. */
+  dark: boolean;
+}) {
   return (
     <div className="min-w-24">
       <div
@@ -31,7 +42,14 @@ function Stat({ value, label, alarm = false }: { value: string; label: string; a
       >
         {value}
       </div>
-      <div className="mt-1 opacity-70" style={{ fontSize: "var(--text-xs)" }}>
+      {/*
+        Muted by the text's OWN alpha, never by a wrapper `opacity` — opacity multiplies with
+        child alpha, and tests/a11y/team-screens.spec.ts fails a surface outright for it.
+      */}
+      <div
+        className={`mt-tight ${dark ? "text-paper/70" : "text-ink/60"}`}
+        style={{ fontSize: "var(--text-xs)" }}
+      >
         {label}
       </div>
     </div>
@@ -45,7 +63,7 @@ export function JudgeHealthBar({ health }: { health: JudgeHealth }) {
   return (
     <section
       aria-label="Judge health"
-      className={`rounded p-5 ${dark ? "bg-ink text-paper" : "border border-ink/12 bg-paper"}`}
+      className={`rounded-panel p-5 ${dark ? "bg-ink text-paper" : "border border-rule-edge bg-paper"}`}
       style={
         dark
           ? {
@@ -58,7 +76,7 @@ export function JudgeHealthBar({ health }: { health: JudgeHealth }) {
     >
       <p
         role="status"
-        className="mb-4 font-bold"
+        className="mb-group font-bold"
         style={{
           fontSize: "var(--text-md)",
           color: dark ? (level === "down" ? "var(--color-fall)" : "var(--color-gold)") : undefined,
@@ -67,16 +85,27 @@ export function JudgeHealthBar({ health }: { health: JudgeHealth }) {
         {LEVEL_COPY[level]}
       </p>
 
-      <div className="flex flex-wrap gap-x-10 gap-y-4">
-        <Stat value={String(health.queueDepth)} label="queued" alarm={dark && health.queueDepth > 25} />
-        <Stat value={String(health.active)} label="judging now" />
-        <Stat value={String(health.failed)} label="failed jobs" alarm={dark && health.failed > 0} />
+      <div className="flex flex-wrap gap-x-10 gap-y-group">
+        <Stat
+          value={String(health.queueDepth)}
+          label="queued"
+          alarm={dark && health.queueDepth > 25}
+          dark={dark}
+        />
+        <Stat value={String(health.active)} label="judging now" dark={dark} />
+        <Stat
+          value={String(health.failed)}
+          label="failed jobs"
+          alarm={dark && health.failed > 0}
+          dark={dark}
+        />
         <Stat
           value={String(health.workersOnline)}
           label="workers online"
           alarm={dark && health.workersOnline === 0}
+          dark={dark}
         />
-        <Stat value={formatMs(health.oldestWaitingMs)} label="oldest wait" />
+        <Stat value={formatMs(health.oldestWaitingMs)} label="oldest wait" dark={dark} />
         {/*
           Was "last heartbeat", against a field nothing ever wrote — it rendered a dash on every
           load and looked like a judge that had never checked in. What is actually knowable is
@@ -87,11 +116,12 @@ export function JudgeHealthBar({ health }: { health: JudgeHealth }) {
           value={health.reachable ? "yes" : "NO"}
           label="queue reachable"
           alarm={!health.reachable}
+          dark={dark}
         />
       </div>
 
       {level === "down" && (
-        <p className="mt-4 max-w-[70ch]" style={{ fontSize: "var(--text-sm)" }}>
+        <p className="mt-group max-w-[70ch]" style={{ fontSize: "var(--text-sm)" }}>
           {health.reachable
             ? "Nothing is being judged. Submissions are still being accepted and queued, so no student work is lost, but no verdict will land until a worker comes back."
             : "The judge queue cannot be reached, so submissions are being REFUSED rather than queued — a student pressing Submit gets an error. Check Redis before anything else; the numbers above are zeros because there was nothing to ask, not because the queue is empty."}

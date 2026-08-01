@@ -72,6 +72,30 @@ Two rules fall straight out of that table, and they are not stylistic:
    nothing else. On the projector it is chrome — rules, rails, the frozen plate border — not
    copy. On paper it is fine for text at 5.08.
 
+### The accent has a job list, and it is short
+
+Measured across the product before this rule existed: **51 of 90 uses of `--panther` were
+`text-panther` at full strength**, and it was simultaneously the brand mark, the step numbers on
+the home page, the rail on every admin card, the set letter, the Solved dot, the Override button,
+every link in body copy, and the active nav underline. A colour that means eight things means
+nothing, and the cost is not aesthetic: when everything on `/admin/console` is red, the organizer
+cannot see which control is the one they came for.
+
+> **`--panther` marks identity, the one primary action on a screen, and a destructive action.
+> Nothing else.**
+
+The third is a stated exception rather than something to be inferred. A red button for a
+destructive, audit-logged act — a verdict override — is a convention old enough that removing it
+would cost more than it saved, and `Button`'s `danger` variant is the only place it is spent.
+
+Everything that lost the accent differentiates by **weight** instead, which is the only lever
+available on `--panther` anyway: at 5.08:1 on paper, any alpha on it fails AA, so there is no
+such thing as a "lighter panther" that is still legible. Specifically dropped: the numbered steps
+on the home page, the rail on every admin card (see §5 — `Rail`'s `brand` state is division
+identity, not page furniture), links in body copy (underline plus inherited colour), and the
+Solved dot, which was already required by §3 to carry a second channel and now carries only it —
+a filled ring versus a hollow one.
+
 ---
 
 ## 3. The finding that shapes the leaderboard
@@ -134,16 +158,48 @@ A competitor reads a phone at 30 cm. The back row reads a projector at 10 m. One
 cannot serve both, and stretching one to try is how projector UIs end up looking like
 zoomed-in web pages.
 
-**App** — base 16px, ratio 1.25 (major third):
+**App** — base 16px. **Not a single ratio, and that is the point:**
 
 ```css
 --text-xs:  0.80rem;  /* 12.8px  metadata, timestamps */
---text-sm:  1.00rem;  /* 16px    body, form labels */
+--text-sm:  1.00rem;  /* 16px    body, form labels, dense chrome */
 --text-md:  1.25rem;  /* 20px    problem statement body */
---text-lg:  1.56rem;  /* 25px    problem title */
---text-xl:  1.95rem;  /* 31px    page heading */
---text-2xl: 2.44rem;  /* 39px    contest name */
+--text-lg:  1.75rem;  /* 28px    problem title, section head */
+--text-xl:  2.50rem;  /* 40px    page heading */
+--text-2xl: 3.50rem;  /* 56px    contest name, hero */
 ```
+
+The bottom three are still a 1.25 reading scale. Above `--text-md` the steps widen, and the
+reason is a measurement, not taste.
+
+**The first cut of this scale was a strict 1.25 all the way up, and it produced a product with no
+type hierarchy at all.** Walking every text node inside `<main>` on `/contest`: 86 text runs, and
+**73 of them were 13px or 16px**. Exactly two runs on the entire screen exceeded 20px. The six
+problem titles — the thing a student is on that page to click — rendered at 16px bold, the same
+size as the sentence of body copy above them. Across the codebase `--text-xs` was used 158 times
+and `--text-sm` 151, against `--text-lg` 16 and `--text-2xl` 4.
+
+A 1.25 ratio at 16px puts the "heading" step at 20px. That is not a step, it is a rounding error,
+and the consequence is that nothing on any screen announces itself as more important than anything
+else — which is the single loudest reason a page reads as generated rather than designed. 1.25 is
+a *reading* ratio; it is right between body and statement body, and wrong the moment a step has to
+carry rank.
+
+`--text-xs` stays at 12.8px rather than dropping to 12px. The 0.8px would buy no visible
+separation from `--text-sm` — the separation this scale needed was at the top, not the bottom —
+and students read this on phones.
+
+Two things that go with the new top of the scale:
+
+- **Pair the top three steps with `leading-tight`.** Call sites set `font-size` from the token as
+  an inline style, so a token line-height would not travel with it; at 40px a default 1.5 leading
+  is a gap you can park a card in.
+- **28px does not need to be bold.** Once a title is at `--text-lg` it is already the largest
+  thing in its row, so weight is free again to mean something else.
+
+`tests/a11y/primitives.spec.ts` asserts the **ratios** rather than the values: `--text-lg` at
+least 1.4× body, and a real step between each of the top three. Re-tune a number and it stays
+green; flatten the scale back and it does not.
 
 **Projector** — base 24px, ratio 1.333 (perfect fourth), deliberately more dramatic:
 
@@ -193,6 +249,157 @@ Grid: 12 columns in the app. The projector is a fixed two-zone split — standin
 the left ~72%, clock and division tabs stacked right — sized for 1920×1080, degrading to
 1280×720 without reflow, because school projectors are one or the other and neither one
 scrolls.
+
+### 5a. Radius — three values, each with a job
+
+```css
+--radius-flat:  0px;   /* inputs, table cells, code blocks, the editor surface */
+--radius-chip:  3px;   /* buttons, badges, verdict pills, set letters, status dots */
+--radius-panel: 8px;   /* cards, panels, dialogs, the outer edge of a standings table */
+```
+
+Tailwind emits these as `rounded-flat`, `rounded-chip`, `rounded-panel`.
+
+> **A rectangle that holds DATA has square corners. A small CONTROL has 3px. A rectangle that
+> holds a SECTION has 8px.**
+
+Before this there was one radius on everything: **89 of 97 rounded elements were the bare
+`rounded`**, 4px, on card and button and input and code block and badge and panel and table
+alike. Shape carried exactly zero information.
+
+The rule earns its keep in one specific place: **square cells inside a rounded outer edge.** That
+one contrast is most of what separates the data from the panel holding it, and it is what
+Codeforces gets for free from its 1px grid and we were getting from nothing.
+
+### 5b. Rules — three weights, each visibly different at 1px
+
+```css
+--color-rule-hair: ink 10%;   /* row dividers inside a table */
+--color-rule-edge: ink 18%;   /* the outline of a panel, an input, a table */
+--color-rule-firm: ink 45%;   /* a deliberate break between unrelated regions; sparse */
+```
+
+Declared in the colour namespace, so they exist as `border-rule-hair` / `-edge` / `-firm`. Each
+has an inverse-surface twin (`--color-rule-*-inverse`, paper over ink) for the projector and dark
+plates.
+
+This replaces **eleven hand-picked alphas over 100 uses** — `border-ink/8, /10, /12, /15, /20,
+/25, /30, /35, /40, /45, /50` — chosen per component and, at 1px, visually indistinguishable from
+one another. On `/contest`, four distinct border treatments painted at once; on `/team`, 19
+elements shared one and a 20th used another. The variety was real in the source and absent on
+screen, which is the generated-design signature exactly.
+
+> **A raw `border-ink/N` in a component is a defect, the same way a raw hex is.**
+
+The point is not tidiness. Three *visible* weights let a table's outer edge read differently from
+its inner row rules — a distinction the product could not draw at all.
+
+### 5c. Vertical rhythm — three intervals, and only three
+
+```css
+--spacing-tight:   0.5rem;  /*  8px  label -> its control, title -> its subtitle, row -> row */
+--spacing-group:   1.5rem;  /* 24px  item -> item inside one section */
+--spacing-section: 4rem;    /* 64px  section -> unrelated section */
+```
+
+Emitted as `gap-tight`, `mt-group`, `py-section`, and every other spacing utility.
+
+`gap-1/2/3/4/5/6/8` and `mt-1/2/3/4/5/6/8` were all in use at comparable frequency — the scale
+was being drawn from ad hoc. The measured consequence: on `/admin` the gap between the six cards
+(16px) and the gap between that grid and the next section heading (24px) were close enough to read
+as the same distance, so **nothing on the page grouped and nothing led.**
+
+The 8× jump from `tight` to `section` is the interval that was missing entirely. HackerRank's
+contest form runs roughly 8 / 40 / 64 and that spread is most of why it reads as laid out rather
+than emitted.
+
+### 5d. The data table
+
+`components/ui/DataTable.tsx` — `Table`, `THead`, `TBody`, `TR`, `TH`, `TD`, `Stacked`.
+
+Seven files in this codebase contained a `<table>` and each restyled it from scratch;
+`<th className="py-2 pr-3 font-semibold">` appeared verbatim in several. That is why the lobby
+standings card and the team board looked like different products while showing the same contest
+ten seconds apart.
+
+`TeamStandingsBoard` is a careful copy of the Codeforces standings page and is the thing the
+primitive was extracted **from**, not a thing to be rewritten by it — its projector sizing and
+column-width logic are load-bearing. What the primitive encodes is the grammar measured off the
+reference:
+
+- a **vertical hairline between every column**, not only between rows. The single biggest gap
+  between the reference and what we had, and no table outside the team board drew one.
+- a **tinted header** (`ink/4%`) in small uppercase — a header that is a different *ground*, not
+  merely bolder text.
+- **44px rows** with a 2% zebra, so the eye tracks across a wide row without a ruler. The stripe
+  is always reinforced by a row hairline, never the only channel.
+- a **`numeric` cell** that switches to mono tabular figures and right-aligns, per §4.
+- a **two-line `Stacked` cell** — the quantity over what qualifies it (score over solve time,
+  points over penalty). Codeforces' cell is two lines because the data is; ours could not say it.
+
+**Measured before it was written**, because a table introduces three new grounds and §7's floors
+were measured against one:
+
+| ground | full `--ink` | `text-ink/60` | `--panther` |
+|---|---|---|---|
+| `--paper` | 18.65 | 5.15 | 5.08 |
+| + 2% zebra | 17.89 | 5.08 | 4.87 |
+| + 8% highlight (the viewer's own row) | 16.59 | 4.95 | **4.52** |
+| 9% highlight | 16.34 | 4.92 | **4.45 ✗** |
+| zebra **and** 8% highlight together | — | — | **fails** |
+
+Two things fall out of that table and both are in the code:
+
+1. **8% is the ceiling on the highlight**, not a preference — one point further and `--panther`
+   misses AA, and a student's own row is exactly where an accent-coloured number turns up.
+2. **`TBody`'s zebra selector EXCLUDES the highlighted row** rather than painting under it. Two
+   tints composite multiplicatively and the combination fails, on the one row a student is
+   guaranteed to look at. The alternative was trusting that no caller ever puts an accent-coloured
+   number in their own row, which is not a thing to trust.
+
+And capping the tint at 8% has a consequence worth stating, because it is counter-intuitive: **the
+highlighted row then renders LIGHTER than the 2% zebra rows beside it**, so the emphasized row
+reads as the quiet one. That is worse than being subtle. `TR` therefore draws the §5 rail on the
+highlighted row as an inset shadow — no added width, no collision with the cell borders that make
+the grid — and the caller still supplies a `you` label. Three channels, per §3.
+
+Do not deepen the zebra past 3% without re-measuring this table.
+
+The primitive does **not** scroll for you. A wide table sits inside a container that does, and
+that container must be `min-w-0` if it is a flex child — which is precisely the bug that made
+`/team` drag the whole document sideways at 360px while the board's own `overflow-x-auto` sat
+there doing nothing.
+
+### 5e. Controls — a row action is text, a page action is a button
+
+`components/ui/Button.tsx` carries five variants and two sizes:
+
+| Variant | Shape | Use |
+|---|---|---|
+| `primary` | filled `--panther` | the ONE thing a screen exists to do |
+| `secondary` | `--rule-edge` outline | the alternative to it |
+| `ghost` | no border, muted ink | dismiss, cancel, close |
+| `danger` | `--panther` outline | destructive and audit-logged: override, rejudge |
+| `quiet` | text, underline on hover | anything that lives inside a table row |
+
+| Size | Padding | Type |
+|---|---|---|
+| `sm` | 10/4 | row and toolbar actions |
+| `md` | 16/8 | a page's own actions |
+
+Every button in the product used to be `px-4 py-2` at body size, which meant a row action and a
+page action were the same object. `/admin/console` rendered a full-size `Rejudge` and a
+red-outlined `Override` on each of **fourteen** rows: twenty-eight controls all shouting at once,
+with nothing to say which one the organizer came for. Both references solve this the same way — an
+in-row action is text, and only the page's one primary action is a filled button.
+
+`quiet` sits at `text-ink/60`, the documented §7 floor (5.15:1), and darkens to full ink on hover
+rather than changing hue: the affordance is weight and an underline, never colour alone. It keeps
+a 32px minimum height, because a text button on a phone still has to be hittable.
+
+**Weight lives on the variant, never in `Button`'s shared base string.** Two `font-*` utilities on
+one element are resolved by the order Tailwind emits them, not by the order they appear in the
+class list, so a base `font-semibold` that a variant tries to override is a coin flip.
 
 ---
 
@@ -249,8 +456,15 @@ Two rules that go with them:
   0.42 and measures 2.84:1. A locked problem row rendered that way is unreadable. Convey the
   state with a label and the rail — both of which a screen reader gets anyway — and leave the
   text at full strength.
-- **`disabled:opacity-*` is fine and exempt.** axe does not check contrast on disabled
-  controls, and a disabled control that looks disabled is correct.
+- **A disabled control is a different KIND of object, not a faded live one.** The old rule here
+  said `disabled:opacity-*` was fine and exempt — axe does not check contrast on disabled
+  controls, which is true — and it was read as licence to blanket a solid `--panther` fill in
+  `opacity-50`. On `/sign-in` that painted a washed-pink Sign in button: still obviously a button,
+  still obviously the primary one, giving no signal at all that it was off. It read as *enabled
+  and somehow broken*. Exempt from the contrast floor was never exempt from being legible. So
+  `Button` gives disabled its own skin — no fill, no border, `text-ink/40` — and the general rule
+  is: **remove the affordance, do not fade it.** `tests/a11y/primitives.spec.ts` asserts a
+  disabled primary carries no accent fill and no wrapper opacity.
 - Visible keyboard focus on every interactive element: 2px `--panther` ring with a 2px
   offset, never `outline: none`.
 - The entire submit flow completes keyboard-only.
@@ -283,6 +497,16 @@ default rather than a choice be revised. What that pass removed:
   identity colour, and red-green is the one pair colour-blind viewers cannot separate.
 - **A single type scale.** Convenient, and it produces a projector view that looks like a
   browser zoomed to 200%.
+- **A strict 1.25 ratio all the way up the app scale.** Rejected on a measurement, after it
+  shipped: 73 of the 86 text runs on `/contest` rendered at one of two sizes, and the six problem
+  titles came out the same size as the body copy above them. See §4 — 1.25 is a reading ratio and
+  it cannot also carry rank.
+- **One 4px corner on everything.** 89 of 97 rounded elements were the bare `rounded`, so shape
+  said nothing about what a thing was. Replaced by the three-value rule in §5a.
+- **Per-component border alphas.** Eleven values over 100 uses, indistinguishable at 1px:
+  variety that existed only in the source. Replaced by the three rules in §5b.
+- **`disabled:opacity-*` on a filled control.** Faded the primary action into something that read
+  as broken rather than off. See §7.
 - **Baskerville numerals on the leaderboard.** Prettier, and they jitter every time a score
   updates — which is exactly when everyone is looking.
 - **Pure `#FFFFFF`.** Clinical against a warm near-black. Warmed to `--paper`.

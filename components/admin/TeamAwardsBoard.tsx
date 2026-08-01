@@ -36,6 +36,23 @@ import type { TeamStandingsResponse } from "@/lib/schemas/api";
  *
  * Ties are shown as ties. PRD §6.1 is explicit that a remaining tie is never broken arbitrarily,
  * so two teams can share a step of the podium.
+ *
+ * ## The containment wrapper around the board is not decoration
+ *
+ * `/admin/awards` scrolled the whole document sideways at 360px — 541px against a 360px viewport,
+ * measured. The board's own `overflow-x-auto` box was working: it was 272px wide and clipping a
+ * 630px table. What escaped it were the **visually hidden spans** the board renders for column
+ * names and rank words. `.sr-only` is `position:absolute`, and an absolutely positioned element is
+ * clipped only by an ancestor that is its *containing block* — with no positioned ancestor inside
+ * the scroller, those spans took their static position out at x≈680 and took the document with
+ * them. Nothing was visible out there, which is exactly why it survived every screenshot review.
+ *
+ * The one-word fix belongs on the scroller inside `TeamStandingsBoard` (`relative` on the
+ * `overflow-x-auto` div), which would fix `/team` and `/projector` in the same stroke; that file
+ * is owned by another scope this pass, so this screen contains it at its own boundary instead and
+ * the report says so. `overflow-x: clip` rather than `hidden` deliberately: `clip` does not make
+ * a scroll container, so the board keeps its own sideways scroll and the page keeps its vertical
+ * one.
  */
 
 const PLACE_LABEL = ["1st", "2nd", "3rd"] as const;
@@ -55,6 +72,7 @@ export function TeamAwardsBoard({ standings, contestName }: TeamAwardsBoardProps
   return (
     <Panel
       title="Team results"
+      level="bare"
       description={
         <>
           Every row shows the numbers the score was computed from, not just the score. A team
@@ -66,7 +84,7 @@ export function TeamAwardsBoard({ standings, contestName }: TeamAwardsBoardProps
           <Button
             type="button"
             variant="secondary"
-            style={{ fontSize: "var(--text-xs)" }}
+            size="sm"
             onClick={() => {
               downloadBlob(
                 teamSafeFilename(contestName, "csv"),
@@ -80,7 +98,7 @@ export function TeamAwardsBoard({ standings, contestName }: TeamAwardsBoardProps
           <Button
             type="button"
             variant="secondary"
-            style={{ fontSize: "var(--text-xs)" }}
+            size="sm"
             onClick={() => {
               downloadBlob(
                 teamSafeFilename(contestName, "xlsx"),
@@ -105,27 +123,24 @@ export function TeamAwardsBoard({ standings, contestName }: TeamAwardsBoardProps
             measures 1.39 on `--paper`, which is unreadable. On ink it is 13.44. Same
             justification as the individual board — not decoration (DESIGN.md §2).
           */}
-          <ol className="mb-6 grid gap-3 sm:grid-cols-3">
+          <ol className="mb-group grid gap-3 sm:grid-cols-3">
             {podium.map((team) => (
               <li
                 key={team.teamId}
-                className="rounded bg-ink p-4 text-paper"
+                className="rounded-panel bg-ink p-4 text-paper"
                 aria-label={`${PLACE_LABEL[team.rank - 1] ?? `${String(team.rank)}th`} place, ${team.name}`}
               >
                 <div
                   className="numeric font-display font-bold"
-                  style={{ fontSize: "var(--text-sm)", color: "var(--color-gold)" }}
+                  style={{ fontSize: "var(--text-md)", color: "var(--color-gold)" }}
                 >
                   {PLACE_LABEL[team.rank - 1] ?? `${String(team.rank)}th`}
                   {team.isTied && <span className="ml-2 text-paper/70">= tied</span>}
                 </div>
-                <div
-                  className="mt-1 font-display font-bold"
-                  style={{ fontSize: "var(--text-md)" }}
-                >
+                <div className="mt-tight font-display font-bold" style={{ fontSize: "var(--text-md)" }}>
                   {team.name}
                 </div>
-                <div className="numeric mt-1 text-paper/70" style={{ fontSize: "var(--text-xs)" }}>
+                <div className="numeric mt-tight text-paper/70" style={{ fontSize: "var(--text-xs)" }}>
                   {formatScore(team.score)} points
                 </div>
               </li>
@@ -136,8 +151,14 @@ export function TeamAwardsBoard({ standings, contestName }: TeamAwardsBoardProps
             The full table, and the one everybody in the room has been looking at all night. The
             per-team expander, the arithmetic under each name and the flag on a team of one all
             live inside it, so they cannot drift away from what the projector showed.
+
+            The wrapper contains the board's visually-hidden spans — see the docstring. It is
+            `relative` so it becomes their containing block and `overflow-x-clip` so it does the
+            clipping without becoming a second scroll container in front of the board's own.
           */}
-          <TeamStandingsBoard teams={standings.teams} />
+          <div className="relative min-w-0 overflow-x-clip">
+            <TeamStandingsBoard teams={standings.teams} />
+          </div>
         </>
       )}
     </Panel>

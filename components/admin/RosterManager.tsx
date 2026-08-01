@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui";
 import { Panel } from "@/components/admin/Panel";
+import { Select, TextInput } from "@/components/admin/Field";
 import { API_ROUTES } from "@/lib/schemas/api";
 
 /**
@@ -22,6 +23,19 @@ import { API_ROUTES } from "@/lib/schemas/api";
  * anything. "Why did our score change" gets asked at 9pm, and the only acceptable answer is the
  * audit row rather than somebody's recollection. The API requires the reason; this form collects
  * it rather than letting the request fail.
+ *
+ * ## Why the two `window.prompt` dialogs are gone
+ *
+ * Dissolve and rename each opened one or two native prompts. `ConfirmButton`'s own docstring
+ * already argues against exactly that, for exactly this screen: a native dialog cannot be styled,
+ * cannot be audited by axe, and **steals focus from a room-facing screen**. It is also unbounded —
+ * `prompt()` accepts a two-character reason that the API then rejects, after the dialog has
+ * closed and taken the typing with it, so the organizer retypes from nothing. Rename compounded
+ * it with a second prompt, which meant a cancel on the second dialog silently discarded the name
+ * typed into the first.
+ *
+ * Both are inline forms now, in the same shape as the move form directly above them, with the
+ * same disabled-until-valid rule and the same audit-log sentence.
  */
 
 interface RosterTeam {
@@ -64,6 +78,12 @@ export interface RosterManagerProps {
  */
 const UNCHOSEN = "__unchosen__";
 
+/** The API's floor for an audit reason. Stated here so the form refuses before a round trip. */
+const MIN_REASON = 3;
+
+/** Which team-level form is open, if any. Only ever one, so a stray Enter cannot hit the other. */
+type TeamForm = { kind: "dissolve" | "rename"; teamId: string } | null;
+
 export function RosterManager({ contestId }: RosterManagerProps) {
   const [roster, setRoster] = useState<Roster | null>(null);
   const [attempt, setAttempt] = useState(0);
@@ -74,6 +94,16 @@ export function RosterManager({ contestId }: RosterManagerProps) {
   const [moving, setMoving] = useState<{ participantId: string; displayName: string } | null>(null);
   const [moveTarget, setMoveTarget] = useState<string>("");
   const [reason, setReason] = useState("");
+
+  const [teamForm, setTeamForm] = useState<TeamForm>(null);
+  const [teamFormName, setTeamFormName] = useState("");
+  const [teamFormReason, setTeamFormReason] = useState("");
+
+  const closeTeamForm = (): void => {
+    setTeamForm(null);
+    setTeamFormName("");
+    setTeamFormReason("");
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -117,6 +147,7 @@ export function RosterManager({ contestId }: RosterManagerProps) {
       setReason("");
       setMoveTarget("");
       setNewTeamName("");
+      closeTeamForm();
     } catch {
       setError("Could not reach the server.");
     } finally {
@@ -125,45 +156,69 @@ export function RosterManager({ contestId }: RosterManagerProps) {
   };
 
   if (roster === null) {
-    return (
-      <Panel title="Teams">
-        <p className="text-ink/65" style={{ fontSize: "var(--text-sm)" }}>
-          {error ?? "Loading the roster…"}
-        </p>
-      </Panel>
+    /*
+      No heading here. The page above already has an h1 reading "Teams", and wrapping this in a
+      Panel titled "Teams" printed the word twice, one line apart, with "Loading the roster…" under
+      the second one — which reads as two sections where there is one.
+
+      `role` is chosen by which it is: a failure is announced, a spinner is not.
+    */
+    return error === null ? (
+      <p role="status" className="text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
+        Loading the roster…
+      </p>
+    ) : (
+      <p role="alert" className="font-semibold text-panther" style={{ fontSize: "var(--text-sm)" }}>
+        {error}
+      </p>
     );
   }
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex min-w-0 flex-col gap-section">
       <Panel
         title="Not on a team"
+        level="bare"
         aside={
-          <span className="numeric text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
+          <span className="numeric text-ink/60" style={{ fontSize: "var(--text-sm)" }}>
             {roster.unassigned.length}
           </span>
         }
         description={
           <>
-            These participants contribute to <strong>no</strong> team score, and their points are
+            {/*
+              The emphasis wraps the whole claim rather than the single word "no". As
+              `<strong>no</strong> team score` it rendered as "noteam score" at 360px — the space
+              between an inline element's close tag and the next word is real in the source and
+              easy to lose to a formatter, and a missing space inside a sentence about scoring is
+              not a thing to leave to chance.
+            */}
+            These participants contribute to <strong>no team score</strong>, and their points are
             in nobody&rsquo;s pool. This list is the first thing to empty on the night.
           </>
         }
       >
         {roster.unassigned.length === 0 ? (
-          <p className="text-ink/65" style={{ fontSize: "var(--text-sm)" }}>
+          <p className="text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
             Everyone is on a team.
           </p>
         ) : (
-          <ul className="flex flex-wrap gap-2">
+          <ul className="flex flex-wrap gap-x-4 gap-y-tight">
             {roster.unassigned.map((person) => (
               <li key={person.participantId}>
+                {/*
+                  `justify-start text-left` because `Button` centres its content, and a student
+                  whose display name is long enough to wrap — "Walkthrough Student 1785555824834"
+                  does at 360px — got a second line centred under the first, which reads as two
+                  separate entries rather than one name.
+                */}
                 <Button
                   type="button"
-                  variant="secondary"
-                  style={{ fontSize: "var(--text-xs)" }}
+                  variant="quiet"
+                  className="justify-start text-left"
                   disabled={busy}
                   onClick={() => {
+                    closeTeamForm();
                     setMoving(person);
                     // Unassigned already: the sentinel below forces a deliberate choice rather
                     // than letting the form submit the state they are already in.
@@ -179,9 +234,9 @@ export function RosterManager({ contestId }: RosterManagerProps) {
       </Panel>
 
       {moving !== null && (
-        <Panel title={`Move ${moving.displayName}`}>
+        <Panel title={`Move ${moving.displayName}`} level="framed">
           <form
-            className="flex flex-col gap-3"
+            className="flex flex-col gap-group"
             onSubmit={(event) => {
               event.preventDefault();
               // Refused rather than guessed. `UNCHOSEN` means the organizer never touched the
@@ -194,50 +249,46 @@ export function RosterManager({ contestId }: RosterManagerProps) {
               });
             }}
           >
-            <label style={{ fontSize: "var(--text-sm)" }}>
-              Team
-              <select
-                value={moveTarget}
-                onChange={(event) => setMoveTarget(event.target.value)}
-                className="mt-1 block w-full rounded border border-ink/25 bg-paper px-3 py-2"
-                style={{ fontSize: "var(--text-sm)" }}
-              >
-                {/*
-                  A sentinel that is not a valid destination, so "I did not choose" and "remove
-                  them from their team" are different answers. They used to be the same value.
-                */}
-                <option value={UNCHOSEN} disabled>
-                  Choose a team…
+            <Select
+              label="Team"
+              required
+              value={moveTarget}
+              onChange={(event) => setMoveTarget(event.target.value)}
+            >
+              {/*
+                A sentinel that is not a valid destination, so "I did not choose" and "remove
+                them from their team" are different answers. They used to be the same value.
+              */}
+              <option value={UNCHOSEN} disabled>
+                Choose a team…
+              </option>
+              <option value="">— remove from their team —</option>
+              {roster.teams.map((team) => (
+                <option key={team.teamId} value={team.teamId}>
+                  {team.name} ({team.memberCount} members)
                 </option>
-                <option value="">— remove from their team —</option>
-                {roster.teams.map((team) => (
-                  <option key={team.teamId} value={team.teamId}>
-                    {team.name} ({team.memberCount} members)
-                  </option>
-                ))}
-              </select>
-            </label>
+              ))}
+            </Select>
 
-            <label style={{ fontSize: "var(--text-sm)" }}>
-              Reason
-              <input
-                value={reason}
-                onChange={(event) => setReason(event.target.value)}
-                className="mt-1 block w-full rounded border border-ink/25 bg-paper px-3 py-2"
-                style={{ fontSize: "var(--text-sm)" }}
-                placeholder="Why this is being changed"
-              />
-              <span className="mt-1 block text-ink/65" style={{ fontSize: "var(--text-xs)" }}>
-                This moves two divisors at once, so it changes two team scores. The reason goes in
-                the audit log.
-              </span>
-            </label>
+            <TextInput
+              label="Reason"
+              required
+              value={reason}
+              placeholder="Why this is being changed"
+              hint="This moves two divisors at once, so it changes two team scores. The reason goes in the audit log."
+              onChange={(event) => setReason(event.target.value)}
+            />
 
-            <div className="flex gap-2">
-              <Button type="submit" disabled={busy || reason.trim().length < 3}>
+            <div className="flex flex-wrap gap-2">
+              <Button type="submit" disabled={busy || reason.trim().length < MIN_REASON}>
                 {busy ? "Moving…" : "Move"}
               </Button>
-              <Button type="button" variant="ghost" onClick={() => setMoving(null)} disabled={busy}>
+              <Button
+                type="button"
+                variant="quiet"
+                onClick={() => setMoving(null)}
+                disabled={busy}
+              >
                 Cancel
               </Button>
             </div>
@@ -247,40 +298,43 @@ export function RosterManager({ contestId }: RosterManagerProps) {
 
       <Panel
         title="Teams"
+        level="bare"
         aside={
-          <span className="numeric text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
+          <span className="numeric text-ink/60" style={{ fontSize: "var(--text-sm)" }}>
             {roster.teams.length} · max {roster.maxTeamSize}
           </span>
         }
       >
         <form
-          className="mb-4 flex flex-wrap gap-2"
+          className="mb-group flex flex-wrap items-end gap-2"
           onSubmit={(event) => {
             event.preventDefault();
             void send(API_ROUTES.adminTeams(contestId), "POST", { name: newTeamName });
           }}
         >
-          <input
-            value={newTeamName}
-            onChange={(event) => setNewTeamName(event.target.value)}
-            className="w-64 rounded border border-ink/25 bg-paper px-3 py-2"
-            style={{ fontSize: "var(--text-sm)" }}
-            placeholder="New team name"
-            aria-label="New team name"
-          />
+          <div className="w-64">
+            <TextInput
+              label="New team name"
+              value={newTeamName}
+              onChange={(event) => setNewTeamName(event.target.value)}
+            />
+          </div>
           <Button type="submit" variant="secondary" disabled={busy || newTeamName.trim() === ""}>
             Create team
           </Button>
         </form>
 
         {roster.teams.length === 0 ? (
-          <p className="text-ink/65" style={{ fontSize: "var(--text-sm)" }}>
+          <p className="text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
             No teams yet.
           </p>
         ) : (
-          <ul className="flex flex-col gap-3">
+          <ul className="flex flex-col gap-group">
             {roster.teams.map((team) => (
-              <li key={team.teamId} className="rounded border border-ink/12 p-3">
+              <li
+                key={team.teamId}
+                className="rounded-panel border border-rule-edge p-4"
+              >
                 <div className="flex flex-wrap items-baseline justify-between gap-2">
                   <span className="font-semibold" style={{ fontSize: "var(--text-sm)" }}>
                     {team.name}
@@ -291,18 +345,18 @@ export function RosterManager({ contestId }: RosterManagerProps) {
                     that looked actionable and was not, on the screen where a wrong action changes
                     two team scores. The size is what matters here: it IS the divisor.
                   */}
-                  <span className="numeric text-ink/65" style={{ fontSize: "var(--text-xs)" }}>
+                  <span className="numeric text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
                     {team.memberCount}/{team.maxTeamSize} · divisor {team.memberCount}
                   </span>
                 </div>
 
-                <ul className="mt-2 flex flex-wrap gap-2">
+                <ul className="mt-tight flex flex-wrap gap-x-4 gap-y-1">
                   {team.members.map((member) => (
                     <li key={member.participantId}>
                       <Button
                         type="button"
-                        variant="ghost"
-                        style={{ fontSize: "var(--text-xs)" }}
+                        variant="quiet"
+                        className="justify-start text-left"
                         disabled={busy}
                         onClick={() => {
                           /*
@@ -317,6 +371,7 @@ export function RosterManager({ contestId }: RosterManagerProps) {
                             A destructive action must never be the one that happens when you do
                             nothing.
                           */
+                          closeTeamForm();
                           setMoving(member);
                           setMoveTarget(team.teamId);
                         }}
@@ -332,48 +387,116 @@ export function RosterManager({ contestId }: RosterManagerProps) {
                   )}
                 </ul>
 
-                <div className="mt-2 flex gap-2">
+                <div className="mt-tight flex flex-wrap gap-x-4">
                   <Button
                     type="button"
-                    variant="ghost"
-                    style={{ fontSize: "var(--text-xs)" }}
+                    variant="quiet"
+                    aria-expanded={teamForm?.kind === "rename" && teamForm.teamId === team.teamId}
                     disabled={busy}
                     onClick={() => {
-                      const why = window.prompt(
-                        `Dissolve "${team.name}"? Its ${String(team.memberCount)} member(s) become teamless. Reason:`,
+                      setMoving(null);
+                      setTeamFormReason("");
+                      setTeamFormName(team.name);
+                      setTeamForm((current) =>
+                        current?.kind === "rename" && current.teamId === team.teamId
+                          ? null
+                          : { kind: "rename", teamId: team.teamId },
                       );
-                      if (why === null || why.trim().length < 3) return;
-                      void send(API_ROUTES.adminTeam(team.teamId), "DELETE", { reason: why });
-                    }}
-                  >
-                    Dissolve
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    style={{ fontSize: "var(--text-xs)" }}
-                    disabled={busy}
-                    onClick={() => {
-                      const next = window.prompt(`Rename "${team.name}" to:`, team.name);
-                      if (next === null || next.trim() === "") return;
-                      const why = window.prompt("Reason for the rename:");
-                      if (why === null || why.trim().length < 3) return;
-                      void send(API_ROUTES.adminTeam(team.teamId), "PATCH", {
-                        name: next,
-                        reason: why,
-                      });
                     }}
                   >
                     Rename
                   </Button>
+                  <Button
+                    type="button"
+                    variant="quiet"
+                    aria-expanded={teamForm?.kind === "dissolve" && teamForm.teamId === team.teamId}
+                    disabled={busy}
+                    onClick={() => {
+                      setMoving(null);
+                      setTeamFormReason("");
+                      setTeamForm((current) =>
+                        current?.kind === "dissolve" && current.teamId === team.teamId
+                          ? null
+                          : { kind: "dissolve", teamId: team.teamId },
+                      );
+                    }}
+                  >
+                    Dissolve
+                  </Button>
                 </div>
+
+                {teamForm !== null && teamForm.teamId === team.teamId && (
+                  <form
+                    className="mt-group flex flex-col gap-group border-t border-rule-hair pt-3"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      if (teamFormReason.trim().length < MIN_REASON) return;
+                      if (teamForm.kind === "rename") {
+                        if (teamFormName.trim() === "") return;
+                        void send(API_ROUTES.adminTeam(team.teamId), "PATCH", {
+                          name: teamFormName.trim(),
+                          reason: teamFormReason.trim(),
+                        });
+                      } else {
+                        void send(API_ROUTES.adminTeam(team.teamId), "DELETE", {
+                          reason: teamFormReason.trim(),
+                        });
+                      }
+                    }}
+                  >
+                    {teamForm.kind === "rename" ? (
+                      <TextInput
+                        label={`New name for ${team.name}`}
+                        required
+                        value={teamFormName}
+                        onChange={(event) => setTeamFormName(event.target.value)}
+                      />
+                    ) : (
+                      <p role="alert" className="font-semibold" style={{ fontSize: "var(--text-sm)" }}>
+                        Dissolving &ldquo;{team.name}&rdquo; makes its {team.memberCount} member
+                        {team.memberCount === 1 ? "" : "s"} teamless. Their points then count for
+                        nobody until they are reassigned.
+                      </p>
+                    )}
+
+                    <TextInput
+                      label="Reason"
+                      required
+                      value={teamFormReason}
+                      placeholder="Why this is being changed"
+                      hint="Goes in the audit log. A roster change is a score change, so this is the answer to “why did our score move?” at 9pm."
+                      onChange={(event) => setTeamFormReason(event.target.value)}
+                    />
+
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        type="submit"
+                        variant={teamForm.kind === "dissolve" ? "danger" : "secondary"}
+                        disabled={
+                          busy ||
+                          teamFormReason.trim().length < MIN_REASON ||
+                          (teamForm.kind === "rename" && teamFormName.trim() === "")
+                        }
+                      >
+                        {teamForm.kind === "rename" ? "Rename team" : "Dissolve team"}
+                      </Button>
+                      <Button type="button" variant="quiet" onClick={closeTeamForm} disabled={busy}>
+                        Cancel
+                      </Button>
+                    </div>
+                  </form>
+                )}
               </li>
             ))}
           </ul>
         )}
 
         {error !== null && (
-          <p role="alert" className="mt-3 text-panther" style={{ fontSize: "var(--text-sm)" }}>
+          <p
+            role="alert"
+            className="mt-group font-semibold text-panther"
+            style={{ fontSize: "var(--text-sm)" }}
+          >
             {error}
           </p>
         )}

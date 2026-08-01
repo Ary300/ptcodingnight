@@ -584,6 +584,43 @@ export const StandingsResponseSchema = z.object({
 export type StandingsResponse = z.infer<typeof StandingsResponseSchema>;
 
 /**
+ * One problem, as it stands for one player.
+ *
+ * Present only when the viewer is entitled to it — see `TeamPlayerRowSchema.problems`. Every
+ * number here is already computed by `computeTeamStandings`; this schema exists because the mapper
+ * used to discard them, not because the scoring engine had to learn anything new. Nothing in
+ * `lib/scoring/` changed to add it, which is the evidence that no score moved.
+ */
+export const TeamPlayerProblemSchema = z.object({
+  contestProblemId: z.string(),
+  /** `ContestProblem.slotLabel` — "A-E1", "Group 1". From the database, never from the engine. */
+  slotLabel: z.string(),
+  title: z.string(),
+  basePoints: z.number().int().nonnegative(),
+  /** Best score across this player's submissions, after the hint deduction, floored at zero. */
+  score: z.number().int().nonnegative(),
+  /**
+   * Rejected submissions on this problem — Codeforces' red `-2`.
+   *
+   * NOT an attempt count, and must never be labelled one: a first-try accept is `0`, exactly the
+   * same as never submitting. `score` is what separates those two.
+   */
+  rejectedCount: z.number().int().nonnegative(),
+  penaltyMinutes: z.number().int().nonnegative(),
+  hintsTaken: z.number().int().nonnegative(),
+  /** Points the hints cost. This is why a 250-point problem can read 212. */
+  hintDeduction: z.number().int().nonnegative(),
+  /** First submission that scored above zero. Null means never scored. */
+  firstScoredAt: z.string().nullable(),
+  /**
+   * A group problem counts once FOR THE TEAM and is excluded from this player's `score`
+   * (`lib/scoring/team.ts`). Flagged so the breakdown can show the points and still add up.
+   */
+  isGroupProblem: z.boolean(),
+});
+export type TeamPlayerProblem = z.infer<typeof TeamPlayerProblemSchema>;
+
+/**
  * One player's line inside a team, for the expandable breakdown.
  *
  * Not a ranked row — players are not ranked against each other any more, teams are. This exists so
@@ -598,6 +635,34 @@ export const TeamPlayerRowSchema = z.object({
   penaltyMinutes: z.number().int().nonnegative(),
   /** Which Round 1 set they were assigned. Null before assignment. */
   chosenSetLabel: z.string().nullable(),
+
+  /**
+   * Individual problems this player scored above zero. Counted over the same problems `score`
+   * sums, in the mapper, so the two can never disagree.
+   *
+   * Unlike `problems` this is NOT gated: a count of solves is the same class of fact as the point
+   * total already on this row, and the projector prints that publicly.
+   */
+  solvedCount: z.number().int().nonnegative(),
+  /**
+   * The last submission by this player that raised their own total. Null if they never scored.
+   * "Still moving" versus "stalled forty minutes ago" — ungated for the same reason as
+   * `solvedCount`, and it is what an organizer scans for a stuck student.
+   */
+  lastScoreIncreaseAt: z.string().nullable(),
+  /**
+   * The per-problem breakdown, or `null` when the viewer may not read it.
+   *
+   * **`null` and `[]` are DIFFERENT CLAIMS and the UI renders them differently.** `[]` is "this
+   * player has attempted nothing"; `null` is "not yours to read". Collapsing them would print a
+   * lie about a real student.
+   *
+   * Non-null only for an organizer, or for a competitor asking about their OWN team. Both team
+   * standings routes are public with no login, because the projector has no session — so the
+   * payload is the disclosure boundary, not the component. Anything put here unconditionally is
+   * on the wall and readable by every rival team in the room.
+   */
+  problems: z.array(TeamPlayerProblemSchema).nullable(),
 });
 export type TeamPlayerRow = z.infer<typeof TeamPlayerRowSchema>;
 

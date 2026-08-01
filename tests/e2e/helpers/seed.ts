@@ -396,6 +396,8 @@ export async function seedE2EContest(options: SeedOptions = {}): Promise<SeededC
           verdict: submission.verdict,
           score: submission.score,
           judgedAt: submittedAt,
+          // Scoring requires it; a fixture submission without one scores nothing.
+          effectiveAt: submittedAt,
         },
       });
     }

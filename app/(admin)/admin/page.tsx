@@ -1,169 +1,52 @@
 import Link from "next/link";
 
-import { Panel } from "@/components/admin/Panel";
-import { problemBank } from "@/lib/contest/problem-bank";
+import { ContestPicker } from "@/components/admin/ContestPicker";
 
 /**
- * Organiser overview.
+ * `/admin` — the contest list. HackerRank's "Manage Contests", which is its admin HOME.
  *
- * Deliberately not a dashboard of charts. It answers the three questions an organiser has
- * on the week of the event: is the line-up ready, what is still DRAFT, and which problems
- * are we about to repeat that nobody has ever scored on.
+ * ## What this used to be
  *
- * ## The section list is the nav, and it was missing two of the six
+ * Six bordered cards in a 2-up grid, every one of them duplicating a link already in the nav bar
+ * directly above it, plus three problem-bank figures describing the global bank rather than any
+ * contest. **There was no list of contests on it and no way to create one**, so the first-time
+ * walk began by guessing that "Contest builder" meant "create" — and the screen an organizer
+ * actually needed, the one saying which contests exist and what state each is in, did not exist at
+ * any URL.
  *
- * Teams and Side activities were absent — the two screens that write SCORING INPUTS. Team size is
- * the divisor in every team score and side-activity points are added to it, so the only two ways
- * to change a team's score without a submission were the two an organizer could not find from
- * here. They are first now, and grouped as such.
+ * It is now the list and the one door off it. The problem-bank figures moved to `/admin/problems`,
+ * where they describe the thing on screen.
  *
- * ## The counts are real now
+ * ## Everything else is a tab of a contest
  *
- * They used to come from `components/admin/stub-data.ts` — twelve fixtures — under a banner
- * admitting as much. That banner was the right thing to do about a wrong situation: an organizer
- * who reads "3 still in DRAFT" off invented data and concludes the line-up is ready has been
- * actively misled. `problemBank()` reads the database, so the numbers now describe the contest
- * about to be run and the banner is gone.
+ * Teams, side activities, the live console and awards are not destinations any more; they are
+ * facets of one contest, reached by opening it. That is the whole restructure: the organizer picks
+ * a contest once, and every screen after that is inside it.
  */
-
-/** The two screens that change a team's score without a submission passing through the judge. */
-const SCORING_SECTIONS = [
-  {
-    href: "/admin/teams",
-    title: "Teams",
-    body: "Build the roster. Team size is the divisor in every team score, so a move here is a score change — and is audited as one.",
-  },
-  {
-    href: "/admin/side-activities",
-    title: "Side activities",
-    body: "The metal puzzle, train tracks, Connections. The only points with no submission behind them.",
-  },
-] as const;
-
-const SECTIONS = [
-  {
-    href: "/admin/contest",
-    title: "Contest builder",
-    body: "Name, window, divisions, scoring preset, freeze time.",
-  },
-  {
-    href: "/admin/problems",
-    title: "Problem bank",
-    body: "Past-contest history, DRAFT gate, authoring, test data, reference runs.",
-  },
-  {
-    href: "/admin/console",
-    title: "Live console",
-    body: "Submissions feed, judge health, rejudge, verdict override, freeze.",
-  },
-  {
-    href: "/admin/awards",
-    title: "Awards",
-    body: "Final standings, podium, CSV and XLSX export.",
-  },
-] as const;
-
-export default async function AdminOverviewPage() {
-  const { problems } = await problemBank();
-  const ready = problems.filter((p) => p.readyBlockers.length === 0);
-  const drafts = problems.filter((p) => p.state === "DRAFT");
-  const neverScored = problems.filter((p) => p.pastStatus === "used-but-zero-points");
-
+export default function AdminContestsPage() {
   return (
     <div className="flex flex-col gap-6">
-      <header>
-        <h1 className="font-display font-bold" style={{ fontSize: "var(--text-xl)" }}>
-          Coding Night
-        </h1>
-        <p className="mt-1 max-w-[70ch] text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
-          Everything an organizer touches, in the order the night needs it.
-        </p>
-      </header>
-
-      {/* The scoring-input screens, set apart and above the rest. */}
-      <div className="grid gap-4 sm:grid-cols-2">
-        {SCORING_SECTIONS.map((section) => (
-          <Link
-            key={section.href}
-            href={section.href}
-            className="rounded border border-ink/15 border-l-2 border-l-panther bg-paper p-5 hover:border-ink/35"
-          >
-            <h2 className="font-display font-bold" style={{ fontSize: "var(--text-md)" }}>
-              {section.title}
-            </h2>
-            <p className="mt-1 text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
-              {section.body}
-            </p>
-          </Link>
-        ))}
-      </div>
-
-      <div className="grid gap-4 sm:grid-cols-2">
-        {SECTIONS.map((section) => (
-          <Link
-            key={section.href}
-            href={section.href}
-            className="rounded border border-ink/15 bg-paper p-5 hover:border-panther"
-          >
-            <h2 className="font-display font-bold" style={{ fontSize: "var(--text-md)" }}>
-              {section.title}
-            </h2>
-            <p className="mt-1 text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
-              {section.body}
-            </p>
-          </Link>
-        ))}
-      </div>
-
-      <section aria-label="Problem bank readiness" className="flex flex-col gap-4">
-        <h2 className="font-display font-bold" style={{ fontSize: "var(--text-md)" }}>
-          Problem bank
-        </h2>
-        <div className="grid gap-4 sm:grid-cols-3">
-          <Figure value={ready.length} label="problems cleared for a live contest" />
-          <Figure value={drafts.length} label="still in DRAFT" />
-          <Figure value={neverScored.length} label="were used and scored nothing" />
+      <header className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h1 className="font-display font-bold" style={{ fontSize: "var(--text-xl)" }}>
+            Contests
+          </h1>
+          <p className="mt-1 max-w-[70ch] text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
+            Open a contest to set its problems, build its roster, award side-activity points, run
+            the console and publish it. Everything an organizer does belongs to one contest.
+          </p>
         </div>
 
-        {neverScored.length > 0 && (
-          <Panel
-            title="Do not repeat these by accident"
-            description="Used in a past contest, zero points from anybody. The single most useful thing the old spreadsheet remembered."
-          >
-            <ul className="flex flex-col gap-2" style={{ fontSize: "var(--text-sm)" }}>
-              {neverScored.map((problem) => (
-                <li
-                  key={problem.problemId}
-                  className="flex flex-wrap items-center gap-3 border-b border-ink/10 pb-2"
-                >
-                  <Link
-                    href={`/admin/problems/${problem.slug}`}
-                    className="underline underline-offset-4"
-                  >
-                    {problem.title}
-                  </Link>
-                  <span className="text-panther" style={{ fontSize: "var(--text-xs)" }}>
-                    nobody scored
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </Panel>
-        )}
-      </section>
-    </div>
-  );
-}
+        <Link
+          href="/admin/contests/new"
+          className="rounded bg-panther px-4 py-2 font-semibold text-paper hover:bg-panther-deep"
+          style={{ fontSize: "var(--text-sm)" }}
+        >
+          Create contest
+        </Link>
+      </header>
 
-function Figure({ value, label }: { value: number; label: string }) {
-  return (
-    <div className="rounded border border-ink/15 bg-paper p-5">
-      <div className="numeric leading-none font-semibold" style={{ fontSize: "var(--text-2xl)" }}>
-        {value}
-      </div>
-      <div className="mt-2 text-ink/70" style={{ fontSize: "var(--text-xs)" }}>
-        {label}
-      </div>
+      <ContestPicker variant="list" purpose="running a contest" />
     </div>
   );
 }

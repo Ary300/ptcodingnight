@@ -105,13 +105,17 @@
   --font-body: "Open Sans", system-ui, -apple-system, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
 
-  /* App scale — base 16px, ratio 1.25. Read at ~30cm. */
-  --text-xs: 0.8rem;
-  --text-sm: 1rem;
-  --text-md: 1.25rem;
-  --text-lg: 1.5625rem;
-  --text-xl: 1.953rem;
-  --text-2xl: 2.441rem;
+  /* App scale — base 16px. Read at ~30cm. See DESIGN.md §4.
+     NOT a single ratio, and that is the point. The bottom three are a 1.25 reading scale;
+     above `--text-md` the steps widen, because a strict 1.25 all the way up put the
+     "heading" step 25% over body and the product measured 85% of its text at two sizes.
+     A step that small is a rounding error, not a hierarchy. */
+  --text-xs: 0.8rem; /* 12.8px  metadata, timestamps */
+  --text-sm: 1rem; /* 16px    body, form labels, dense chrome */
+  --text-md: 1.25rem; /* 20px    problem statement body */
+  --text-lg: 1.75rem; /* 28px    problem title, section head */
+  --text-xl: 2.5rem; /* 40px    page heading */
+  --text-2xl: 3.5rem; /* 56px    contest name, hero */
 
   /* Projector scale — base 24px, ratio 1.333. Read at ~10m. Separate on purpose:
      one scale stretched across both makes the projector look like a zoomed browser. */
@@ -121,6 +125,38 @@
   --text-proj-xl: 3.556rem;
   --text-proj-2xl: 4.741rem;
   --text-proj-3xl: 6.321rem;
+
+  /* Radius — three values, each with a job (DESIGN.md §5a).
+     The rule: a rectangle that HOLDS DATA has square corners; a small CONTROL has 3px; a
+     rectangle that holds a SECTION has 8px. Before this there was one 4px corner on card,
+     button, input, code block, badge, panel and table alike — 89 of 97 rounded elements —
+     so shape carried no information at all. Tailwind emits these as `rounded-flat`,
+     `rounded-chip`, `rounded-panel`. */
+  --radius-flat: 0px; /* inputs, table cells, code blocks, the editor — read or typed into */
+  --radius-chip: 3px; /* buttons, badges, verdict pills, set letters, status dots */
+  --radius-panel: 8px; /* cards, panels, dialogs, the outer edge of a standings table */
+
+  /* Rules — three weights, each visibly different at 1px (DESIGN.md §5b).
+     Replaces eleven hand-picked `border-ink/N` alphas (8,10,12,15,20,25,30,35,40,45,50)
+     over 100 uses. At 1px those eleven are indistinguishable, so the variety was real in
+     the source and absent on screen — which is the generated-design signature exactly.
+     Declared in the colour namespace so `border-rule-edge` and friends exist as utilities. */
+  --color-rule-hair: color-mix(in srgb, var(--color-ink) 10%, transparent);
+  --color-rule-edge: color-mix(in srgb, var(--color-ink) 18%, transparent);
+  --color-rule-firm: color-mix(in srgb, var(--color-ink) 45%, transparent);
+  /* The same three on the inverse surface, for the projector and dark plates. */
+  --color-rule-hair-inverse: color-mix(in srgb, var(--color-paper) 12%, transparent);
+  --color-rule-edge-inverse: color-mix(in srgb, var(--color-paper) 22%, transparent);
+  --color-rule-firm-inverse: color-mix(in srgb, var(--color-paper) 50%, transparent);
+
+  /* Vertical rhythm — three intervals, and only three (DESIGN.md §5c).
+     gap-1..gap-8 were all in use at comparable frequency, so the distance between two
+     UNRELATED sections (24px) was barely larger than between two related items (12-16px)
+     and nothing on any page grouped. The 8x jump from `tight` to `section` is the part
+     that was missing. Emitted as `gap-tight`, `mt-group`, `py-section`, and so on. */
+  --spacing-tight: 0.5rem; /* 8px   label -> its control, title -> its subtitle */
+  --spacing-group: 1.5rem; /* 24px  item -> item inside one section */
+  --spacing-section: 4rem; /* 64px  section -> unrelated section */
 
   /* The rail — the device tying the app and the projector together (DESIGN.md §5). */
   --rail-width: 6px;

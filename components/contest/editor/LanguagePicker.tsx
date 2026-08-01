@@ -7,9 +7,21 @@ import { LanguageSchema, type Language } from "@/lib/schemas/judge";
 import { LANGUAGE_LABEL } from "./types";
 
 /**
- * A native `<select>`, on purpose. It is two languages, it must work on a phone, and the
- * platform control is already keyboard-complete and screen-reader-labelled — a custom
- * listbox here would be more code and less accessible.
+ * A native `<select>`, on purpose: it must work on a phone, and the platform control is already
+ * keyboard-complete and screen-reader-labelled — a custom listbox here would be more code and
+ * less accessible.
+ *
+ * The rationale used to read "it is two languages". It is ten — five runtimes and their compile
+ * variants (`VARIANTS` in lib/judge/runtimes.ts), six human languages: Python, Java 8/11/17/21,
+ * C, C++11/17, JavaScript, Go. A native select handles ten fine; the stale count is fixed here
+ * because a comment that miscounts the thing the file exists for invites someone to "simplify"
+ * the control on a premise that has not been true for months.
+ *
+ * **The option list is `allowed` and nothing else.** It arrives as `ProblemDetail.allowedLanguages`
+ * — the problem's own column, straight off the server — and the label for each id comes from
+ * `LANGUAGE_LABEL`, which is built from the registry. Neither the ids nor the labels are restated
+ * anywhere in this file: a hardcoded list here would silently disagree with what the judge will
+ * actually accept, and the student would find out by having a submission refused.
  */
 
 export interface LanguagePickerProps {

@@ -155,6 +155,7 @@ test.describe("rejudge", () => {
         verdict: "IE",
         score: 0,
         judgedAt: new Date(),
+        effectiveAt: new Date(),
       },
       select: { id: true },
     });

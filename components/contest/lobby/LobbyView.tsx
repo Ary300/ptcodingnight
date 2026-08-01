@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback } from "react";
 
 import { Crumbs } from "@/components/ui";
@@ -10,6 +9,7 @@ import { useParticipant } from "../data/participant";
 import { useResource } from "../data/useResource";
 import { AssignmentNotice } from "./AssignmentNotice";
 import { ProblemBrowser } from "./ProblemBrowser";
+import { SignInRequired } from "./SignInRequired";
 import { StandingsCard } from "./StandingsCard";
 
 /**
@@ -33,31 +33,18 @@ export function LobbyView() {
   const problems = useResource(loadProblems);
   const standings = useResource(loadStandings);
 
+  // The wording, the button and the tone now come from one place — see `SignInRequired`, which is
+  // this block extracted so that /team and /submissions stop inventing their own.
   if (participant.status === "anonymous") {
-    return (
-      <div className="max-w-md">
-        <h1 className="font-display font-bold" style={{ fontSize: "var(--text-lg)" }}>
-          You are not in the contest yet
-        </h1>
-        <p className="mt-2 text-ink/75" style={{ fontSize: "var(--text-sm)" }}>
-          Sign in with your school Google or GitHub account. The first sign-in creates your
-          account, and an organizer puts you on a team.
-        </p>
-        <Link
-          href="/sign-in"
-          className="mt-4 inline-block rounded bg-panther px-4 py-2 font-semibold text-paper hover:bg-panther-deep"
-          style={{ fontSize: "var(--text-sm)" }}
-        >
-          Sign in to compete
-        </Link>
-      </div>
-    );
+    return <SignInRequired level={1} what="tonight's problems" />;
   }
 
   const joined = participant.status === "joined" ? participant.participant : null;
-  const groupProblemCount = (problems.data ?? []).filter(
-    (problem) => problem.isGroupProblem,
-  ).length;
+  // Both counts come off the SAME list the student is looking at. The notice's wording depends on
+  // whether the list is group-only, and a count taken from anywhere else could disagree with the
+  // rows underneath it — which is exactly the bug it used to have.
+  const visibleProblems = problems.data ?? [];
+  const groupProblemCount = visibleProblems.filter((problem) => problem.isGroupProblem).length;
 
   return (
     <div className="grid gap-8 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
@@ -84,6 +71,7 @@ export function LobbyView() {
               needsTeam={joined.needsTeam}
               setLabel={joined.chosenSetLabel}
               groupProblemCount={groupProblemCount}
+              visibleProblemCount={visibleProblems.length}
             />
           </div>
         )}

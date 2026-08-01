@@ -28,11 +28,27 @@ export interface DeltaProps {
 export function Delta({ value, className }: DeltaProps) {
   const glyph = value > 0 ? `${UP}${value}` : value < 0 ? `${DOWN}${Math.abs(value)}` : NONE;
 
+  /*
+    NOT `--rise` and `--fall` any more, on either surface.
+
+    Those two are dark-surface colours: on `--paper` they measure 2.02 and 1.94, and axe flags both
+    as serious at projector sizes. They were legal while the projector was an `--ink` stage; the
+    stage is Codeforces white now, so there is no ground left in this product on which they pass.
+
+    There is no green in the palette that clears AA on paper, and inventing one to keep a
+    green-up/red-down convention would be choosing a convention over legibility on a wall. So: up
+    is `--ink` at weight, down is `--panther` at 5.08, unchanged is muted.
+
+    Nothing is lost, and the reason is in this file's own docstring: the GLYPH carries the meaning.
+    `--rise` and `--fall` differ in luminance by a factor of 1.04 — near-identical brightness
+    separated almost entirely by hue — so for the roughly one boy in twelve in that room with a
+    colour-vision deficiency, they never carried it in the first place.
+  */
   const color =
     value > 0
-      ? "var(--color-rise)"
+      ? "var(--color-ink)"
       : value < 0
-        ? "var(--color-fall)"
+        ? "var(--color-panther)"
         : "color-mix(in srgb, currentColor 45%, transparent)";
 
   const label =

@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { Fragment, useState } from "react";
 
-import { Button } from "@/components/ui";
+import { Button, Stacked, TBody, TD, TH, THead, TR, Table } from "@/components/ui";
 import { OverrideForm } from "@/components/admin/OverrideForm";
 import { VerdictPill } from "@/components/admin/StatusPill";
 import type { AdminSubmissionRow } from "@/components/admin/contract";
+import { VARIANTS } from "@/lib/judge/runtimes";
 import type { Verdict } from "@/lib/schemas/judge";
 
 /**
@@ -19,6 +20,29 @@ import type { Verdict } from "@/lib/schemas/judge";
  * `IE` rows are called out. PRD §7.2 requeues an internal error once and then alerts an
  * admin — this feed is where that alert has to be visible, since the student is deliberately
  * never shown `IE` as a failure.
+ *
+ * ## Three things that were wrong on the night-of screen
+ *
+ * **The language column printed the enum.** `JAVASCRIPT_NODE22`, `PYTHON_312`, `CPP_17`. The
+ * registry has carried a human `label` for every variant all along (`lib/judge/runtimes.ts`), and
+ * reading it here is also what keeps this column from going stale: a renamed variant changes one
+ * place, not two. Deriving the label rather than restating it is the same rule
+ * `components/contest/editor/types.ts` follows on the student side.
+ *
+ * **Twenty-eight full-size buttons.** A filled `Rejudge` and a red-outlined `Override` on each of
+ * fourteen rows, all shouting at once, with nothing to say which one the organizer came for. Both
+ * references keep an in-row action as TEXT and promote only the page's one primary action, so
+ * these are `variant="quiet"` now. `danger` is left for the override *form's* apply button, where
+ * it actually means something.
+ *
+ * **The document scrolled sideways at 360px.** The table sits in an `overflow-x-auto` box, which
+ * was doing nothing: `VerdictPill` renders a `.sr-only` span per row, `.sr-only` is
+ * `position:absolute`, and an absolutely positioned element is only clipped by an ancestor that is
+ * *its containing block*. With no positioned ancestor inside the scroller those spans took their
+ * static position out at x≈466 — inside the wide table, outside the scroller's clip — and dragged
+ * the whole document with them. `relative` on the scroller makes it the containing block and the
+ * overflow goes back inside the box where the caption says it is. Nothing visible moved, which is
+ * why this survived a screenshot review: the offending elements are invisible by construction.
  */
 
 export interface OverridePayload {
@@ -48,8 +72,21 @@ export interface SubmissionFeedProps {
 
 function timeOf(iso: string): string {
   // Fixed locale and timezone: a feed that renders differently on the organiser's laptop
-  // and the projector laptop is a support call nobody has time for on the night.
+  // and the projector laptop is a support call nobody has time for on the night. The column
+  // heading says UTC out loud rather than letting an organiser read 23:41 as local time.
   return new Date(iso).toISOString().slice(11, 19);
+}
+
+/**
+ * The registry's human name for a variant.
+ *
+ * `AdminSubmissionRow.language` is `LanguageSchema`, the registry's own enum, so this lookup is
+ * total by construction — which is the point. The four-homes problem in CLAUDE.md is that a stale
+ * language id parses as a string and dies at the registry; reading the label THROUGH the registry
+ * means a rename cannot leave this column behind.
+ */
+function languageLabel(language: AdminSubmissionRow["language"]): string {
+  return VARIANTS[language].label;
 }
 
 export function SubmissionFeed({
@@ -70,14 +107,25 @@ export function SubmissionFeed({
 
   const internalErrors = visible.filter((s) => s.verdict === "IE");
 
+  /** Opening one form closes the other: two open reason boxes on one row is two audit rows. */
+  const toggleRejudge = (id: string): void => {
+    setOverriding(null);
+    setRejudging((current) => (current === id ? null : id));
+    setRejudgeReason("");
+  };
+  const toggleOverride = (id: string): void => {
+    setRejudging(null);
+    setOverriding((current) => (current === id ? null : id));
+  };
+
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex min-w-0 flex-col gap-group">
       {participantFilter !== null && (
         <div className="flex flex-wrap items-center gap-3">
           <p className="font-semibold" style={{ fontSize: "var(--text-sm)" }}>
             Showing {visible[0]?.displayName ?? "one participant"} only
           </p>
-          <Button type="button" variant="ghost" onClick={() => onParticipantFilter(null)}>
+          <Button type="button" variant="quiet" size="sm" onClick={() => onParticipantFilter(null)}>
             Show everyone
           </Button>
         </div>
@@ -86,7 +134,7 @@ export function SubmissionFeed({
       {internalErrors.length > 0 && (
         <p
           role="alert"
-          className="rounded border border-panther px-3 py-2 font-semibold text-panther"
+          className="rounded-chip border border-panther px-3 py-2 font-semibold text-panther"
           style={{ fontSize: "var(--text-sm)" }}
         >
           {internalErrors.length} submission{internalErrors.length === 1 ? "" : "s"} ended in
@@ -95,183 +143,214 @@ export function SubmissionFeed({
         </p>
       )}
 
-      <div className="overflow-x-auto">
-        <table className="w-full border-collapse" style={{ fontSize: "var(--text-sm)" }}>
-          <caption className="sr-only">Live submissions feed</caption>
-          <thead>
-            <tr className="border-b border-ink/20 text-left">
-              <th scope="col" className="py-2 pr-3 font-semibold">
-                Time
-              </th>
-              <th scope="col" className="py-2 pr-3 font-semibold">
-                Participant
-              </th>
-              <th scope="col" className="py-2 pr-3 font-semibold">
-                Problem
-              </th>
-              <th scope="col" className="py-2 pr-3 font-semibold">
-                Lang
-              </th>
-              <th scope="col" className="py-2 pr-3 font-semibold">
-                Verdict
-              </th>
-              <th scope="col" className="py-2 pr-3 text-right font-semibold">
-                Score
-              </th>
-              <th scope="col" className="py-2 pr-3 text-right font-semibold">
-                Runtime
-              </th>
-              <th scope="col" className="py-2 font-semibold">
-                Actions
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {visible.map((submission) => (
-              <tr key={submission.submissionId} className="border-b border-ink/10 align-top">
-                <td className="numeric py-3 pr-3 whitespace-nowrap">{timeOf(submission.submittedAt)}</td>
-                <td className="py-3 pr-3">
-                  <button
-                    type="button"
-                    className="underline underline-offset-2"
-                    onClick={() => onParticipantFilter(submission.participantId)}
-                  >
-                    {submission.displayName}
-                  </button>
-                  <div className="opacity-70" style={{ fontSize: "var(--text-xs)" }}>
-                    {submission.divisionName}
-                  </div>
-                </td>
-                <td className="py-3 pr-3">
-                  <span className="numeric">{submission.slotLabel}</span> {submission.problemTitle}
-                  {/*
-                    An "overridden: <reason>" line used to hang under the problem title, and an
-                    "attempt N" line under the verdict, both read from fields the server does not
-                    send — the row shape was a hand-written proposal and those two were invented.
-                    An override IS recorded, in AuditLog with its reason, and that is where it is
-                    authoritative. Putting it back on the row is a real feature and is not this
-                    one: it needs the audit row joined in, not a field made up.
-                  */}
-                </td>
-                <td className="numeric py-3 pr-3">{submission.language}</td>
-                <td className="py-3 pr-3">
-                  <VerdictPill verdict={submission.verdict} />
-                </td>
-                <td className="numeric py-3 pr-3 text-right">{submission.score}</td>
-                <td className="numeric py-3 pr-3 text-right whitespace-nowrap">
-                  {submission.runtimeMs === null ? "-" : `${submission.runtimeMs} ms`}
-                </td>
-                <td className="py-3">
-                  <div className="flex flex-wrap gap-2">
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      aria-expanded={rejudging === submission.submissionId}
-                      onClick={() =>
-                        setRejudging((current) =>
-                          current === submission.submissionId ? null : submission.submissionId,
-                        )
-                      }
-                    >
-                      Rejudge
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="danger"
-                      aria-expanded={overriding === submission.submissionId}
-                      onClick={() =>
-                        setOverriding((current) =>
-                          current === submission.submissionId ? null : submission.submissionId,
-                        )
-                      }
-                    >
-                      Override
-                    </Button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      {visible.length === 0 && (
-        <p className="opacity-70" style={{ fontSize: "var(--text-sm)" }}>
+      {visible.length === 0 ? (
+        <p className="text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
           No submissions yet.
         </p>
-      )}
+      ) : (
+        /*
+          `relative` is load-bearing, not decoration — see the docstring above. `min-w-0` is the
+          other half: without it a flex child sizes to its content and the scroller never engages
+          at all, which is the bug that made `/team` drag the document sideways.
+        */
+        <div className="relative w-full min-w-0 overflow-x-auto">
+          {/*
+            A floor on the table's width, so a phone scrolls the box instead of compressing the
+            columns. Without it `w-full` squeezed six columns into 360px and "B2 Beautiful Days at
+            the Movies" wrapped to five lines — a row three times taller than the one above it,
+            which destroys the scan this feed exists for. Scrolling sideways is what the team
+            board already asks of a phone, and it is the honest trade for a six-column table.
+          */}
+          <Table caption="Live submissions feed" className="min-w-[46rem]">
+            <THead>
+              <TR>
+                <TH numeric>Time (UTC)</TH>
+                <TH>Participant</TH>
+                <TH>Problem</TH>
+                <TH numeric>Score</TH>
+                <TH>Verdict</TH>
+                <TH>Actions</TH>
+              </TR>
+            </THead>
+            <TBody>
+              {visible.map((submission) => {
+                const openForm =
+                  rejudging === submission.submissionId
+                    ? "rejudge"
+                    : overriding === submission.submissionId
+                      ? "override"
+                      : null;
 
-      {visible.map((submission) =>
-        overriding === submission.submissionId ? (
-          <OverrideForm
-            key={`override-${submission.submissionId}`}
-            submission={submission}
-            onCancel={() => setOverriding(null)}
-            onSubmit={(payload) => {
-              setOverriding(null);
-              onOverride(payload);
-            }}
-          />
-        ) : null,
-      )}
+                return (
+                  <Fragment key={submission.submissionId}>
+                    <TR>
+                      <TD numeric className="whitespace-nowrap align-top">
+                        {timeOf(submission.submittedAt)}
+                      </TD>
+                      <TD className="align-top">
+                        <Stacked
+                          value={
+                            <button
+                              type="button"
+                              className="text-left underline underline-offset-4"
+                              onClick={() => onParticipantFilter(submission.participantId)}
+                            >
+                              {submission.displayName}
+                            </button>
+                          }
+                          detail={submission.divisionName}
+                        />
+                      </TD>
+                      <TD className="align-top">
+                        {/*
+                          The language sits under the problem rather than in a column of its own.
+                          Six columns fit a phone where eight did not, and the variant is a fact
+                          ABOUT this attempt at this problem — "Java 17" next to "A1 Two Sum" reads
+                          the way an organizer asks the question.
+                        */}
+                        <Stacked
+                          value={
+                            <>
+                              <span className="numeric">{submission.slotLabel}</span>{" "}
+                              {submission.problemTitle}
+                            </>
+                          }
+                          detail={languageLabel(submission.language)}
+                        />
+                        {/*
+                          An "overridden: <reason>" line used to hang under the problem title, and
+                          an "attempt N" line under the verdict, both read from fields the server
+                          does not send — the row shape was a hand-written proposal and those two
+                          were invented. An override IS recorded, in AuditLog with its reason, and
+                          that is where it is authoritative. Putting it back on the row is a real
+                          feature and is not this one: it needs the audit row joined in, not a
+                          field made up.
+                        */}
+                      </TD>
+                      <TD numeric className="align-top">
+                        <Stacked
+                          value={submission.score}
+                          detail={
+                            submission.runtimeMs === null ? undefined : `${submission.runtimeMs} ms`
+                          }
+                          className="items-end"
+                        />
+                      </TD>
+                      <TD className="align-top">
+                        <VerdictPill verdict={submission.verdict} />
+                      </TD>
+                      <TD className="align-top">
+                        <div className="flex flex-wrap gap-x-3 gap-y-1">
+                          <Button
+                            type="button"
+                            variant="quiet"
+                            aria-expanded={openForm === "rejudge"}
+                            onClick={() => toggleRejudge(submission.submissionId)}
+                          >
+                            Rejudge
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="quiet"
+                            aria-expanded={openForm === "override"}
+                            onClick={() => toggleOverride(submission.submissionId)}
+                          >
+                            Override
+                          </Button>
+                        </div>
+                      </TD>
+                    </TR>
 
-      {/*
-        The rejudge form, with the reason it always required and never collected.
+                    {/*
+                      The form opens UNDER ITS OWN ROW.
 
-        A confirmation is not a reason. The old flow armed a ConfirmButton and the console supplied
-        a constant, so every rejudge in the audit log said the same nine words — for an action that
-        clears a verdict a student has already been shown and re-runs their code.
-      */}
-      {visible.map((submission) =>
-        rejudging === submission.submissionId ? (
-          <form
-            key={`rejudge-${submission.submissionId}`}
-            className="rounded border border-ink/20 bg-paper p-4"
-            onSubmit={(event) => {
-              event.preventDefault();
-              if (rejudgeReason.trim() === "") return;
-              onRejudge(submission.submissionId, rejudgeReason.trim());
-              setRejudging(null);
-              setRejudgeReason("");
-            }}
-          >
-            <h3 className="font-display font-bold" style={{ fontSize: "var(--text-md)" }}>
-              Rejudge {submission.displayName}&rsquo;s {submission.slotLabel}
-            </h3>
-            <p className="mt-1 max-w-[70ch] text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
-              This clears the verdict they have already seen and puts the submission back through
-              the judge. The reason goes in the audit log.
-            </p>
+                      Both forms used to render in a second pass below the whole table, so on a
+                      fourteen-row feed the reason box for row three appeared a screen and a half
+                      away from row three — and the only thing naming which submission it belonged
+                      to was a heading the organizer had to scroll back up to check against.
+                    */}
+                    {openForm !== null && (
+                      <tr>
+                        <td colSpan={6} className="bg-ink/[0.02] px-3 py-3">
+                          {openForm === "override" ? (
+                            <OverrideForm
+                              submission={submission}
+                              onCancel={() => setOverriding(null)}
+                              onSubmit={(payload) => {
+                                setOverriding(null);
+                                onOverride(payload);
+                              }}
+                            />
+                          ) : (
+                            <form
+                              className="flex flex-col gap-tight"
+                              onSubmit={(event) => {
+                                event.preventDefault();
+                                if (rejudgeReason.trim() === "") return;
+                                onRejudge(submission.submissionId, rejudgeReason.trim());
+                                setRejudging(null);
+                                setRejudgeReason("");
+                              }}
+                            >
+                              <h3
+                                className="font-display font-bold"
+                                style={{ fontSize: "var(--text-md)" }}
+                              >
+                                Rejudge {submission.displayName}&rsquo;s {submission.slotLabel}
+                              </h3>
+                              <p
+                                className="max-w-[70ch] text-ink/70"
+                                style={{ fontSize: "var(--text-sm)" }}
+                              >
+                                This clears the verdict they have already seen and puts the
+                                submission back through the judge. The reason goes in the audit
+                                log.
+                              </p>
 
-            <label className="mt-3 block" style={{ fontSize: "var(--text-sm)" }}>
-              Reason
-              <input
-                value={rejudgeReason}
-                onChange={(event) => setRejudgeReason(event.target.value)}
-                required
-                placeholder="e.g. the judge host was misconfigured for this round"
-                className="mt-1 block w-full rounded border border-ink/25 bg-paper px-3 py-2"
-                style={{ fontSize: "var(--text-sm)" }}
-              />
-            </label>
+                              <label className="block" style={{ fontSize: "var(--text-sm)" }}>
+                                Reason
+                                <input
+                                  value={rejudgeReason}
+                                  onChange={(event) => setRejudgeReason(event.target.value)}
+                                  required
+                                  placeholder="e.g. the judge host was misconfigured for this round"
+                                  className="mt-1 block w-full rounded-flat border border-rule-edge bg-paper px-3 py-2"
+                                  style={{ fontSize: "var(--text-sm)" }}
+                                />
+                              </label>
 
-            <div className="mt-3 flex flex-wrap gap-2">
-              <Button type="submit" variant="secondary" disabled={rejudgeReason.trim() === ""}>
-                Rejudge
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={() => {
-                  setRejudging(null);
-                  setRejudgeReason("");
-                }}
-              >
-                Cancel
-              </Button>
-            </div>
-          </form>
-        ) : null,
+                              <div className="flex flex-wrap gap-2">
+                                <Button
+                                  type="submit"
+                                  variant="danger"
+                                  size="sm"
+                                  disabled={rejudgeReason.trim() === ""}
+                                >
+                                  Rejudge
+                                </Button>
+                                <Button
+                                  type="button"
+                                  variant="quiet"
+                                  size="sm"
+                                  onClick={() => {
+                                    setRejudging(null);
+                                    setRejudgeReason("");
+                                  }}
+                                >
+                                  Cancel
+                                </Button>
+                              </div>
+                            </form>
+                          )}
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                );
+              })}
+            </TBody>
+          </Table>
+        </div>
       )}
     </div>
   );

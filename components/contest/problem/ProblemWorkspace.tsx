@@ -9,13 +9,14 @@ import { statementWithoutRepeatedTitle } from "@/lib/contest/statement";
 import type { Language } from "@/lib/schemas/judge";
 
 import { contestApi, errorMessageOf } from "../data/backend";
+import { useParticipant } from "../data/participant";
 import { useResource } from "../data/useResource";
 import { useVerdictStream } from "../data/useVerdictStream";
 import { CodeEditor } from "../editor/CodeEditor";
 import { LanguagePicker } from "../editor/LanguagePicker";
 import { UploadCode } from "../editor/UploadCode";
 import { LANGUAGE_TEMPLATE } from "../editor/types";
-import { HintPanel } from "../hints/HintPanel";
+import { SignInRequired } from "../lobby/SignInRequired";
 import { Markdown } from "../markdown/Markdown";
 import { rememberSource } from "../submissions/source-cache";
 import { VerdictPanel } from "../verdict/VerdictPanel";
@@ -57,6 +58,7 @@ function StatementSection({ title, source }: { title: string; source: string }) 
 }
 
 export function ProblemWorkspace({ slug }: ProblemWorkspaceProps) {
+  const participant = useParticipant();
   const load = useCallback(() => contestApi.getProblem(slug), [slug]);
   const problem = useResource(load);
 
@@ -120,7 +122,7 @@ export function ProblemWorkspace({ slug }: ProblemWorkspaceProps) {
     }
   }, [activeLanguage, detail, source]);
 
-  if (problem.status === "loading") {
+  if (participant.status === "loading" || problem.status === "loading") {
     return (
       <p role="status" className="text-ink/60" style={{ fontSize: "var(--text-sm)" }}>
         Loading problem…
@@ -129,6 +131,26 @@ export function ProblemWorkspace({ slug }: ProblemWorkspaceProps) {
   }
 
   if (problem.status === "error" || detail === null) {
+    /*
+      Signed out is a state, not an error — but it is only reported HERE, after the problem read
+      has actually failed, and the ordering is deliberate.
+
+      `fetchParticipant()` returns null for "not signed in" and for "could not ask" alike: a
+      timeout, a 500 and a genuine anonymous visitor are the same value. Short-circuiting on
+      `participant.status === "anonymous"` before the read therefore reproduces this project's
+      worst-ever bug from a new direction — a student with a valid cookie told they are not signed
+      in, on a page that would have rendered fine. I watched exactly that happen on an overloaded
+      dev server while writing this.
+
+      So the problem wins. If it loaded, the student works, whatever the session read said. Only
+      when the read has also failed does the anonymous answer get to explain why, and then it
+      explains it with a button instead of "You are not signed in to a contest." with nothing to
+      click — the third of the four wordings this one state used to have across four screens.
+    */
+    if (participant.status === "anonymous") {
+      return <SignInRequired level={1} what="this problem" />;
+    }
+
     return (
       <div>
         <p role="alert" className="text-panther" style={{ fontSize: "var(--text-sm)" }}>
@@ -320,7 +342,24 @@ export function ProblemWorkspace({ slug }: ProblemWorkspaceProps) {
             />
           )}
 
-          <HintPanel contestProblemId={detail.contestProblemId} problemTitle={detail.title} />
+          {/*
+            The Hints card is not rendered, and its absence is the fix.
+
+            `HintPanel` still exists and is still correct — what it had nothing to render against
+            is the API. `http-backend.ts` rejects `getHintBalance()` with `NOT_IMPLEMENTED` because
+            there is no hint endpoint, so the panel took its "no balance" branch on every problem,
+            for every student, every time: a bordered card headed "Hints" whose entire content was
+            "Hints are not available in this contest." It sat directly below Submit and was the
+            last thing on the busiest screen in the product, so every problem page ended by
+            announcing a feature that is not there.
+
+            An empty state is for a container that will sometimes have contents. This one never
+            will until docs/TODO.md T1 decides what a hint IS — no field in the schema holds hint
+            text — and a section that can only ever say "nothing here" should not be a section.
+
+            Restoring it is one line, and `HintPanel` is deliberately left in the tree so that
+            restoring it is one line.
+          */}
         </div>
       </section>
     </div>

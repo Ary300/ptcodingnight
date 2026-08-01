@@ -102,8 +102,22 @@ test.describe("prefers-reduced-motion", () => {
   });
 });
 
-test.describe("the projector is the inverse surface", () => {
-  test("ink ground, paper text — and the tokens are actually applied", async ({ page }) => {
+test.describe("the projector is a paper surface, like everything else", () => {
+  /*
+    This used to assert the OPPOSITE — "the projector is the inverse surface", ink ground and paper
+    text — and it was right about the code at the time.
+
+    The projector is a Codeforces-style white board now. The reason it was dark was that `--gold`,
+    `--rise` and `--fall` clear AAA on ink and fail AA on paper, so a dark stage was the only ground
+    all three could appear on. That was true and it optimised for keeping three accent colours a
+    standings board does not need; Codeforces uses one ground and one accent and reads from the back
+    of a room.
+
+    Kept as a spec rather than deleted, because the property still matters: the tokens must actually
+    be EMITTED and APPLIED. A projector that silently falls back to a browser default is the failure
+    this test exists to catch, and that failure looks identical on either ground.
+  */
+  test("paper ground, ink text — and the tokens are actually applied", async ({ page }) => {
     await page.goto("/projector");
     await expect(page.getByRole("heading", { name: /team standings/i })).toBeVisible();
 
@@ -137,11 +151,11 @@ test.describe("the projector is the inverse surface", () => {
     expect(surface?.paper).toBe("#fbf9f8");
 
     // #1a0606 -> rgb(26, 6, 6); #fbf9f8 -> rgb(251, 249, 248).
-    expect(surface?.background).toBe("rgb(26, 6, 6)");
-    expect(surface?.headingColor).toBe("rgb(251, 249, 248)");
+    expect(surface?.background, "the projector stage should be paper").toBe("rgb(251, 249, 248)");
+    expect(surface?.headingColor, "its text should be ink").toBe("rgb(26, 6, 6)");
   });
 
-  test("competitor surfaces are the other way round", async ({ page }) => {
+  test("competitor surfaces are the same way round", async ({ page }) => {
     await page.goto("/sign-in");
     const body = await page.evaluate(() => {
       const style = window.getComputedStyle(document.body);

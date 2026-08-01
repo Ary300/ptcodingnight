@@ -1,24 +1,21 @@
 import { ContestPicker } from "@/components/admin/ContestPicker";
-import { LiveConsole } from "@/components/admin/LiveConsole";
+
+import { redirectIntoContestTab } from "../legacy-scope";
 
 /**
- * `/admin/console?contest=<id>` — the screen an organizer works from during the round.
+ * `/admin/console` — the old flat URL for the live console.
  *
- * Contest-pinned like the roster and the side activities, and for a sharper reason than either:
- * freezing the wrong contest's board stops the wrong room's standings, and an override lands on
- * the wrong student's score. There is no implicit "current contest" to guess at.
- *
- * This page used to hand `LiveConsole` two fixtures. It now hands it a contest id and the console
- * reads the server.
+ * Now a tab of the contest (`/admin/contests/<id>/console`), and for a sharper reason than the
+ * other tabs: freezing the wrong contest's board stops the wrong room's standings, and an override
+ * lands on the wrong student's score. The contest is the page heading now, not an invisible query
+ * parameter picked on some earlier screen.
  */
 export default async function LiveConsolePage({
   searchParams,
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const params = await searchParams;
-  const contest = params.contest;
-  const contestId = typeof contest === "string" && contest.length > 0 ? contest : null;
+  await redirectIntoContestTab(searchParams, "/console");
 
   return (
     <div className="flex flex-col gap-6">
@@ -27,16 +24,12 @@ export default async function LiveConsolePage({
           Live console
         </h1>
         <p className="mt-1 max-w-[70ch] text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
-          Admin truth: this view is never frozen, even while the public board is. Click a name to
-          drill into one participant.
+          Admin truth: this view is never frozen, even while the public board is. Pick the contest
+          you are running.
         </p>
       </header>
 
-      {contestId === null ? (
-        <ContestPicker basePath="/admin/console" purpose="the live console" />
-      ) : (
-        <LiveConsole contestId={contestId} />
-      )}
+      <ContestPicker tab="/console" purpose="the live console" />
     </div>
   );
 }

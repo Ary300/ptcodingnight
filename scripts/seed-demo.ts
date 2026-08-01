@@ -497,6 +497,10 @@ async function main(): Promise<void> {
           runtimeMs: 30 + (minute % 7) * 11,
           memoryKb: 12_000,
           judgedAt: new Date(submittedAt.getTime() + 4_000),
+          // Written alongside judgedAt, and NOT optional: scoring requires an `effectiveAt` inside
+          // the window, so a seeded submission without one contributes nothing and the demo board
+          // reads all zeroes. See lib/scoring/index.ts.
+          effectiveAt: new Date(submittedAt.getTime() + 4_000),
         },
       });
     }

@@ -23,6 +23,12 @@ const eslintConfig = defineConfig([
     // review, which is the worst possible failure mode for a gate — it trains you to ignore it.
     ".claude/**",
 
+    // Playwright MCP's own scratch directory — page snapshots, console logs, and throwaway
+    // driver scripts written by browser automation. Gitignored, and not ours to lint: the same
+    // reasoning as `.claude/**` above. A gate that fails on a file no human wrote and no build
+    // consumes is a gate people learn to ignore.
+    ".playwright-mcp/**",
+
     // Judge fixtures are student submissions, and most of them are WRONG ON PURPOSE — the CE
     // cases do not parse at all, and the TLE cases are infinite loops with unused variables.
     // Linting them is a category error: eslint's job is our code, and every finding here would

@@ -26,8 +26,8 @@ export function ProblemStatePill({ state }: { state: ProblemState }) {
 
   return (
     <span
-      className={`inline-flex items-center rounded px-2 py-0.5 font-semibold whitespace-nowrap ${
-        emphatic ? "border border-panther text-panther" : "border border-ink/25 opacity-80"
+      className={`inline-flex items-center rounded-chip px-2 py-0.5 font-semibold whitespace-nowrap ${
+        emphatic ? "border border-panther text-panther" : "border border-rule-edge text-ink/75"
       }`}
       style={{ fontSize: "var(--text-xs)" }}
       title={copy.hint}
@@ -63,8 +63,8 @@ export function ContestStatePill({ state }: { state: string }) {
 
   return (
     <span
-      className={`inline-flex items-center rounded px-2 py-0.5 font-semibold whitespace-nowrap ${
-        emphatic ? "border border-panther text-panther" : "border border-ink/25 text-ink/75"
+      className={`inline-flex items-center rounded-chip px-2 py-0.5 font-semibold whitespace-nowrap ${
+        emphatic ? "border border-panther text-panther" : "border border-rule-edge text-ink/75"
       }`}
       style={{ fontSize: "var(--text-xs)" }}
       title={hint}
@@ -90,7 +90,7 @@ const VERDICT_NAME: Record<Verdict, string> = {
 export function VerdictPill({ verdict }: { verdict: Verdict | null }) {
   if (verdict === null) {
     return (
-      <span className="numeric opacity-60" style={{ fontSize: "var(--text-xs)" }}>
+      <span className="numeric text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
         judging
       </span>
     );
@@ -101,11 +101,11 @@ export function VerdictPill({ verdict }: { verdict: Verdict | null }) {
 
   return (
     <span
-      className={`numeric inline-flex items-center rounded px-2 py-0.5 font-semibold whitespace-nowrap ${
+      className={`numeric inline-flex items-center rounded-chip px-2 py-0.5 font-semibold whitespace-nowrap ${
         strong
           ? "bg-panther text-paper"
           : solid
-            ? "border border-ink/40"
+            ? "border border-rule-firm"
             : "border border-panther/50 text-panther"
       }`}
       style={{ fontSize: "var(--text-xs)" }}

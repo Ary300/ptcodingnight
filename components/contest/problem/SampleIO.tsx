@@ -28,11 +28,30 @@ function Block({ title, value, what }: { title: string; value: string; what: str
         </h4>
         <CopyButton value={value} what={what} />
       </div>
+      {/*
+        `whitespace-pre-wrap`, and it is a correctness fix rather than a style choice.
+
+        This was a horizontal `overflow-auto`, and on a 408px box holding 439px of content it
+        rendered `3000000000 4000000000 5000000000 6000000000 70000000` — the last value sliced in
+        half at the box edge. Technically scrollable; visually indistinguishable from truncated,
+        because macOS draws overlay scrollbars that are simply not there until you scroll. A
+        student diffing their output against a sample they cannot fully see debugs the wrong thing,
+        and this project's own rule about never silently truncating judge output applies with more
+        force to the one text a student is asked to reproduce exactly.
+
+        Wrapping preserves every newline (`pre-wrap`, not `normal`) and hides nothing. `break-words`
+        covers the pathological case of a single token longer than the line, which would otherwise
+        overflow the box and — inside a flex row — the page with it. The copy button still yields
+        the exact bytes, so a soft wrap costs nothing to anyone pasting it.
+
+        Vertical `overflow-auto` stays: a long sample is genuinely long, and the box is capped so
+        it does not push the editor off the screen.
+      */}
       <pre
         tabIndex={0}
         role="region"
         aria-label={what}
-        className="mt-1 max-h-48 overflow-auto rounded bg-ink p-3 font-mono text-paper"
+        className="mt-1 max-h-48 overflow-y-auto rounded bg-ink p-3 font-mono break-words whitespace-pre-wrap text-paper"
         style={{ fontSize: "var(--text-xs)", lineHeight: "1.6" }}
       >
         {value}

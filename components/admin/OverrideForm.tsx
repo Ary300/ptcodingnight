@@ -58,16 +58,26 @@ export function OverrideForm({ submission, onSubmit, onCancel }: OverrideFormPro
   };
 
   return (
-    <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-4 rounded border border-panther/50 p-4">
-      <h3 className="font-semibold" style={{ fontFamily: "var(--font-display)", fontSize: "var(--text-md)" }}>
-        Override verdict
-      </h3>
-      <p className="numeric opacity-75" style={{ fontSize: "var(--text-xs)" }}>
-        {submission.displayName} · {submission.slotLabel} {submission.problemTitle} ·{" "}
-        {submission.submissionId}
-      </p>
+    <form
+      onSubmit={handleSubmit}
+      noValidate
+      className="flex flex-col gap-group rounded-panel border border-panther/50 p-4"
+    >
+      <div className="flex flex-col gap-tight">
+        <h3
+          className="font-semibold"
+          style={{ fontFamily: "var(--font-display)", fontSize: "var(--text-md)" }}
+        >
+          Override verdict
+        </h3>
+        {/* `text-ink/70`, not `opacity-75`: a wrapper opacity multiplies with child alpha. */}
+        <p className="numeric text-ink/70" style={{ fontSize: "var(--text-xs)" }}>
+          {submission.displayName} · {submission.slotLabel} {submission.problemTitle} ·{" "}
+          {submission.submissionId}
+        </p>
+      </div>
 
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid gap-group sm:grid-cols-2">
         <Select
           label="New verdict"
           required
@@ -114,11 +124,11 @@ export function OverrideForm({ submission, onSubmit, onCancel }: OverrideFormPro
         <Button type="submit" variant="danger" disabled={reasonIsBlank}>
           Apply override
         </Button>
-        <Button type="button" variant="ghost" onClick={onCancel}>
+        <Button type="button" variant="quiet" onClick={onCancel}>
           Cancel
         </Button>
         {reasonIsBlank && (
-          <span className="opacity-75" style={{ fontSize: "var(--text-xs)" }}>
+          <span className="text-ink/70" style={{ fontSize: "var(--text-xs)" }}>
             A reason is required before this can be applied.
           </span>
         )}

@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { TeamStandingsBoard, useTeamStandings } from "@/components/leaderboard";
 import { Crumbs } from "@/components/ui";
 
+import { SignInRequired } from "../lobby/SignInRequired";
 
 /**
  * "My team" — PRD §9.1.
@@ -64,7 +65,8 @@ export function MyTeamView() {
         const parsed = readSession(await response.json());
         if (cancelled) return;
         if (parsed === null) {
-          setSessionError("Could not read your session. Try joining again.");
+          // Not "try joining again" — there is no join flow to try. Reloading is the action.
+          setSessionError("Could not read your session. Reload the page to try again.");
           return;
         }
         setSession(parsed);
@@ -87,17 +89,18 @@ export function MyTeamView() {
   // heading at all while it was doing anything other than succeeding. That is the same mistake the
   // projector had: a titled page explaining why it is empty is a different thing from an untitled
   // one, both to a student and to a screen reader walking the heading outline.
+  // "Join the contest first" is gone from here. It was the route layer's `ForbiddenError` text
+  // copied into the client, and it named the join-code flow, which no longer exists — a student
+  // reading it went looking for a code to type. Signed out is not an error state and is now the
+  // one panel every competitor screen shows; see `SignInRequired`.
   const notice =
     sessionError !== null
       ? { tone: "alert" as const, text: sessionError }
       : session === null
         ? { tone: "status" as const, text: "Loading your team…" }
-        : !session.signedIn
-          ? {
-              tone: "status" as const,
-              text: "Join the contest first, then your team will appear here.",
-            }
-          : null;
+        : null;
+
+  const signedOut = notice === null && session !== null && !session.signedIn;
 
   return (
     <div className="flex flex-col gap-5">
@@ -123,6 +126,10 @@ export function MyTeamView() {
           >
             {notice.text}
           </p>
+        ) : signedOut ? (
+          <div className="mt-3">
+            <SignInRequired what="your team and its score" />
+          </div>
         ) : session?.teamId === null ? (
           // Not a warning for its own sake. Team size is the divisor in every team score, so a
           // student with no team is scoring for nobody — and the only way they find out is if the
@@ -163,19 +170,54 @@ export function MyTeamView() {
         A student with no team is told so, above, and told who fixes it.
       */}
 
-      {notice === null && error !== null && (
+      {notice === null && !signedOut && error !== null && (
         <p role="status" className="text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
           {error}
         </p>
       )}
 
       {notice === null &&
+        !signedOut &&
         (standings === null ? (
           <p role="status" className="text-ink/60" style={{ fontSize: "var(--text-sm)" }}>
             Loading standings…
           </p>
         ) : (
-          <TeamStandingsBoard teams={standings.teams} highlightTeamId={session?.teamId ?? null} />
+          /*
+            Three classes, and every one of them is load-bearing. /team was the only student
+            screen that scrolled the document sideways at 360px — measured 569 against a 360
+            client width, with the dark header bar and the paper ground both stopping at 360 and
+            the rest of the page dragged out over white. It was TWO separate escapes stacked, and
+            fixing only the first takes it to 492, which still fails.
+
+            `min-w-0` — the board draws its own scroller (`w-full overflow-x-auto` in
+            `TeamStandingsBoard`) and it was being defeated from outside. A flex item defaults to
+            `min-width: auto`, which is its CONTENT's intrinsic width, so the ~710px table
+            stretched this wrapper instead of being clipped by it.
+
+            `relative overflow-x-clip` — the rest of it, and much less obvious. The board's
+            visually-hidden cell labels ("Rank", "5 minutes penalty") are `position: absolute`
+            with `clip-path: inset(50%)`, and an absolutely positioned element is NOT clipped by
+            an ancestor scrollport when its containing block is an ANCESTOR of that scrollport
+            (CSS 2.1 §11.1.1). The board's scroller is `position: static`, so those spans resolve
+            against something above it, sit at the table's unclipped x — measured right edges of
+            452 and 578 — and drag the document out to 579 while `body.scrollWidth` stays a
+            perfectly innocent 360. Making this wrapper both the containing block and the clipper
+            is what brings them back inside; `clip` rather than `hidden` so no scroll container is
+            created and the board's own sticky header is untouched.
+
+            **The one-word fix is upstream and is not in this file**: `position: relative` on the
+            scroller in `TeamStandingsBoard` clips them at source, measured 579 -> 360. That file
+            belongs to another pass. Until it lands, the projector and /admin/awards render the
+            same escaping spans, so this is a fix for /team and not for the board.
+
+            Any of this matters because the board's own hint — "scroll the table sideways for the
+            set, group and side columns" — described something that did not happen: the page moved
+            instead, and a student who followed the instruction dragged the layout off screen.
+          */
+          <div className="relative min-w-0 overflow-x-clip">
+            <TeamStandingsBoard teams={standings.teams} highlightTeamId={session?.teamId ?? null} />
+          </div>
         ))}
     </div>
   );

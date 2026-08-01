@@ -92,7 +92,16 @@ function ProblemCard({ problem }: { problem: ProblemSummary }) {
             {problem.difficulty === null ? "Unrated" : DIFFICULTY_LABEL[problem.difficulty]}
           </span>
           <Dot />
-          <span className="numeric">{problem.basePoints} pts</span>
+          {/*
+            "rated N", not "N pts". The judge awards the sum of per-test points, not `basePoints`
+            — on the demo contest all six rows carry `basePoints: 100` while the achievable totals
+            are 130 to 180. Printing "100 pts" told a student the six problems were worth the same
+            amount, which is the one thing this row exists to help them decide and the one thing it
+            got wrong. The word "rated" says the number is a weight rather than an award; the real
+            figure needs `achievablePoints` on the wire, which is not this file's to add. See
+            `ProblemMetaRail` for the full note.
+          */}
+          <span className="numeric">rated {problem.basePoints}</span>
           {problem.isGroupProblem && (
             <>
               <Dot />
@@ -143,7 +152,7 @@ function ProblemCard({ problem }: { problem: ProblemSummary }) {
         href={`/contest/${problem.slug}`}
         className="flex flex-1 transition-colors hover:bg-ink/[0.04]"
         // The whole row is the target; the accessible name carries what the layout implies.
-        aria-label={`${problem.slotLabel} — ${problem.title}, ${problem.basePoints} points, ${status}`}
+        aria-label={`${problem.slotLabel} — ${problem.title}, rated ${problem.basePoints} points, ${status}`}
       >
         {body}
       </Link>

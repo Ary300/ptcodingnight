@@ -26,6 +26,24 @@ import { Rail } from "@/components/ui";
  * *only* feedback a student gets about it, and without it "why does my neighbour have different
  * problems" has no answer on any screen.
  *
+ * ## Why every sentence here is derived from the list, never assumed
+ *
+ * This panel used to state, unconditionally, that "the only problems you can open are the N group
+ * problems below" — while all six rows underneath it rendered as ordinary links, and the API
+ * accepted a submission to every one of them. The premise was wrong in a way no test could see,
+ * because the notice was never told anything about the list it was describing.
+ *
+ * The server decides. `listProblems` filters the contest's problems through `canReadSet`
+ * (lib/contest/set-assignment.ts) before it returns them, and `canReadSet` returns true for every
+ * set when the contest has `allowReadingUnassignedSets` — which `scripts/seed-demo.ts` sets on
+ * purpose. **So a row that reached this screen is a row the student may open and submit to**,
+ * always: scope is enforced by omission from the payload, not by the row being inert. The same
+ * filter guards the submit route, so there is no second policy for this notice to get wrong.
+ *
+ * That makes `visibleProblemCount` and `groupProblemCount` the only two numbers this component
+ * needs, and it makes the restrictive wording conditional on the one thing that actually implies
+ * it: the list containing nothing but group problems.
+ *
  * ## Colour is not the channel
  *
  * The panther rail and the red heading are the third channel, never the first (DESIGN.md §3):
@@ -41,6 +59,17 @@ export interface AssignmentNoticeProps {
   readonly setLabel: string | null;
   /** How many of the visible problems are group problems — the ones everybody can open. */
   readonly groupProblemCount: number;
+  /**
+   * How many rows the list is actually showing. Every one of them is openable and submittable —
+   * see the note above. Without this the notice cannot tell "you may only open the group
+   * problems" from "you may open all of these", and it guessed wrong.
+   */
+  readonly visibleProblemCount: number;
+}
+
+/** `2 group problems`, `1 group problem`. Kept out of the JSX so the branches stay readable. */
+function groupPhrase(count: number): string {
+  return count === 1 ? "group problem" : `${String(count)} group problems`;
 }
 
 function Panel({ children }: { children: React.ReactNode }) {
@@ -59,7 +88,12 @@ export function AssignmentNotice({
   needsTeam,
   setLabel,
   groupProblemCount,
+  visibleProblemCount,
 }: AssignmentNoticeProps) {
+  // True only when the list contains nothing but group problems. Anything else on screen is a
+  // problem the server chose to send this student, which means they may open and submit to it.
+  const groupOnly = visibleProblemCount === groupProblemCount;
+
   if (needsTeam) {
     return (
       <Panel>
@@ -75,11 +109,11 @@ export function AssignmentNotice({
         <p className="mt-1" style={{ fontSize: "var(--text-sm)" }}>
           An organizer will put you on a team — there is nothing for you to do. Your problem set is
           assigned along with your team, so until then{" "}
-          {groupProblemCount === 0
-            ? "you will not see any problems of your own."
-            : `the only problems you can open are the ${
-                groupProblemCount === 1 ? "group problem" : `${String(groupProblemCount)} group problems`
-              } below, which everyone can open.`}
+          {visibleProblemCount === 0
+            ? "there is nothing for you to open yet."
+            : groupOnly
+              ? `the only problems you can open are the ${groupPhrase(groupProblemCount)} below, which everyone can open.`
+              : `you can open and submit to every problem listed below — all ${String(visibleProblemCount)} of them, not just the ${groupPhrase(groupProblemCount)}.`}
         </p>
         <p className="mt-1 text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
           Points you score before you are added still count — they join your team&apos;s total the
@@ -99,8 +133,10 @@ export function AssignmentNotice({
           No problem set assigned yet
         </h2>
         <p className="mt-1" style={{ fontSize: "var(--text-sm)" }}>
-          You are on a team, but an organizer has not assigned your set. The group problems below
-          are open to everyone in the meantime.
+          You are on a team, but an organizer has not assigned your set.{" "}
+          {groupOnly
+            ? "The group problems below are open to everyone in the meantime."
+            : "Everything listed below is open to you in the meantime — you can submit to any of it."}
         </p>
       </Panel>
     );
@@ -112,9 +148,17 @@ export function AssignmentNotice({
         Your problem set is{" "}
         <span className="numeric text-panther">{setLabel}</span>
       </h2>
+      {/*
+        This used to end with "the rows marked group are open to every competitor", which a
+        student read as "and the rest of these rows are not mine". Both halves of that were
+        wrong on a contest with `allowReadingUnassignedSets`: the other sets' rows were listed,
+        openable, and accepted submissions. Say what is actually true of the list on screen.
+      */}
       <p className="mt-1 text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
-        Sets are assigned by an organizer, never chosen, so this is fixed for the round. The rows
-        marked <span className="text-ink">group</span> are open to every competitor.
+        Sets are assigned by an organizer, never chosen, so this is fixed for the round.{" "}
+        {groupOnly
+          ? "Your set and the rows marked group are what you see below."
+          : "Every problem listed below is one you can open and submit to, including the other sets — they are all yours to score on."}
       </p>
     </Panel>
   );

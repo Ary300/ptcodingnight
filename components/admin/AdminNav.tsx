@@ -4,31 +4,48 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 /**
- * Admin navigation.
+ * The organizer's TOP-LEVEL navigation — two items, because there are two things that are not
+ * inside a contest.
  *
- * The current page is marked with `aria-current`, not only with a colour — the same rule
- * the rest of this build follows, for the same reason.
+ * ## Why it used to be seven, and why that was the bug
  *
- * Tabs underlined in `--panther`, matching the competitor bar exactly. The filled red pill this
- * used to draw was the loudest thing on an organiser screen, competing with the two treatments
- * that are supposed to own that weight: a failing reference solution and an unhealthy judge.
+ * It listed Overview, Contest, Problems, Live console, Teams, Side activities and Awards. Five of
+ * those seven were contest-scoped by `?contest=<id>` — and **not one of these hrefs carried it**.
+ * So standing on `/admin/problems?contest=cms9lx…` and clicking "Teams" went to bare
+ * `/admin/teams`, which had no contest, which rendered a thirteen-row picker asking which contest
+ * the organizer had been inside two seconds earlier. Five screens each carried a private copy of
+ * that picker to compensate.
+ *
+ * A query string is not inherited by a link; a path segment is. The five moved under
+ * `/admin/contests/<id>/…` and became tabs of the contest (`ContestTabs`), so this bar is left
+ * with the two destinations that genuinely have no contest:
+ *
+ * - **Contests** — the list, and the only place a contest is created.
+ * - **Problem bank** — the 130 problems, their DRAFT gate and their past-contest history. It is
+ *   the same bank whichever contest you are building, so it does not belong to one.
+ *
+ * Nothing was removed. Teams, side activities, the console and awards are one click further in and
+ * carry their contest with them; their old flat URLs still resolve.
+ *
+ * The current page is marked with `aria-current`, not only with a colour — the same rule the rest
+ * of this build follows, for the same reason. Underlined in `--panther`, matching the competitor
+ * bar exactly.
  */
 
 const LINKS = [
-  { href: "/admin", label: "Overview" },
-  { href: "/admin/contest", label: "Contest" },
-  { href: "/admin/problems", label: "Problems" },
-  { href: "/admin/console", label: "Live console" },
-  { href: "/admin/teams", label: "Teams" },
-  // `/admin/side-activities` was built, routed, tested and in no nav — reachable only by typing
-  // the URL. It is where side-activity points are entered, so a screen nobody can find is points
-  // nobody awards, and the team score is short by exactly those points with nothing to show why.
-  { href: "/admin/side-activities", label: "Side activities" },
-  { href: "/admin/awards", label: "Awards" },
+  { href: "/admin", label: "Contests" },
+  { href: "/admin/problems", label: "Problem bank" },
 ] as const;
 
+/**
+ * `/admin` is exact-match only: it is a prefix of every other admin URL, so a `startsWith` test
+ * would mark Contests as the current page on every screen in the console.
+ *
+ * "Contests" does stay marked while you are inside one (`/admin/contests/…`), which is true — the
+ * contest's own tab strip says which facet, and this bar says which half of the product.
+ */
 function isActive(pathname: string, href: string): boolean {
-  return href === "/admin" ? pathname === "/admin" : pathname.startsWith(href);
+  return href === "/admin" ? pathname === "/admin" || pathname.startsWith("/admin/contest") : pathname.startsWith(href);
 }
 
 export function AdminNav() {

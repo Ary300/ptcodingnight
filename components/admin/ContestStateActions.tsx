@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { Button } from "@/components/ui";
@@ -36,8 +37,16 @@ import { ConfirmButton } from "./ConfirmButton";
 export interface ContestStateActionsProps {
   readonly contestId: string;
   readonly state: string;
-  /** Re-read the list, so the pill and the available actions follow the new state. */
-  readonly onChanged: () => void;
+  /**
+   * Re-read the list, so the pill and the available actions follow the new state.
+   *
+   * Optional, because the contest's own Setup tab renders on the server: there is no client-side
+   * list to re-read there, and the thing that must change — the state pill in the shell, the
+   * checklist, the tab strip — is server-rendered. `router.refresh()` re-runs that render. A
+   * required callback would have forced a client wrapper around this whose only job was to call
+   * the same function.
+   */
+  readonly onChanged?: () => void;
 }
 
 /** What an organizer may do next, given where the contest is. Mirrors `setContestState`. */
@@ -61,6 +70,7 @@ function nextStates(state: string): readonly { to: "SCHEDULED" | "RUNNING" | "EN
 }
 
 export function ContestStateActions({ contestId, state, onChanged }: ContestStateActionsProps) {
+  const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -82,7 +92,8 @@ export function ContestStateActions({ contestId, state, onChanged }: ContestStat
         setError(message === "" ? "That change was refused." : message);
         return;
       }
-      onChanged();
+      if (onChanged === undefined) router.refresh();
+      else onChanged();
     } catch {
       setError("Could not reach the server.");
     } finally {

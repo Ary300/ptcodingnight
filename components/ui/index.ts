@@ -7,7 +7,23 @@
  * outcome this directory exists to prevent.
  */
 
-export { Button, type ButtonProps, type ButtonVariant } from "@/components/ui/Button";
+export { Button, type ButtonProps, type ButtonVariant, type ButtonSize } from "@/components/ui/Button";
+export {
+  Table,
+  THead,
+  TBody,
+  TR,
+  TH,
+  TD,
+  Stacked,
+  type TableProps,
+  type TableSectionProps,
+  type TRProps,
+  type THProps,
+  type TDProps,
+  type StackedProps,
+  type CellAlign,
+} from "@/components/ui/DataTable";
 export { Delta, type DeltaProps } from "@/components/ui/Delta";
 export { TabStrip, Crumbs, type TabStripProps, type TabStripItem, type CrumbsProps } from "@/components/ui/TabStrip";
 export { Rail, railStateForDelta, type RailProps, type RailState } from "@/components/ui/Rail";

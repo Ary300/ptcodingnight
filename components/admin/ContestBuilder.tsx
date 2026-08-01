@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 
 import { Button } from "@/components/ui";
@@ -16,12 +16,27 @@ import {
 } from "@/components/admin/contract";
 
 /**
- * Contest builder — name, window, divisions, scoring preset, join code, freeze time
- * (PRD §9.2).
+ * Contest builder — name, window, divisions, scoring preset, freeze time (PRD §9.2).
  *
  * Validation is `ContestDraftSchema`, the same Zod schema the route will parse, so the form
  * cannot drift from the server's idea of a valid contest. The client check is a courtesy;
  * the API is the authority.
+ *
+ * ## Creating is a DOORWAY now, not a form you are left sitting on
+ *
+ * It used to set a `saved` flag and leave the form filled with a live "Create contest" button, so
+ * pressing it again made a second identical contest — which is exactly how the dev database
+ * acquired two rows both named "Dup Test Night", same date, sitting next to each other in the
+ * picker an organizer then had to choose from.
+ *
+ * Beside that flag it rendered two next-step links that had drifted apart: "Build the roster" went
+ * to `/admin/teams?contest=<the new id>` and "Add problems" went to bare `/admin/problems` with
+ * the id simply dropped. That is the reported complaint in one line of JSX, and it is a class of
+ * bug that comes back every time somebody adds a third link.
+ *
+ * Both are gone, because there is now exactly ONE destination: `/admin/contests/<id>`, the contest
+ * itself, whose tab strip carries the id by construction. A successful create navigates there and
+ * this form is unmounted, so it cannot be submitted twice.
  */
 
 const EMPTY_DRAFT: ContestDraft = {
@@ -61,16 +76,14 @@ export interface ContestBuilderProps {
 }
 
 export function ContestBuilder({ initial = EMPTY_DRAFT }: ContestBuilderProps) {
+  const router = useRouter();
   const [draft, setDraft] = useState<ContestDraft>(initial);
   const [errors, setErrors] = useState<Errors>({});
-  const [saved, setSaved] = useState(false);
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
-  const [createdId, setCreatedId] = useState<string | null>(null);
 
   const update = <K extends keyof ContestDraft>(key: K, value: ContestDraft[K]): void => {
     setDraft((previous) => ({ ...previous, [key]: value }));
-    setSaved(false);
   };
 
   const renameDivision = (key: string, name: string): void => {
@@ -93,16 +106,16 @@ export function ContestBuilder({ initial = EMPTY_DRAFT }: ContestBuilderProps) {
   };
 
   /**
-   * Create the contest.
-   *
-   * This used to validate the draft and then set a "saved" flag, next to a comment explaining that
-   * there was no route to call. There is one now, and the organizer's first job — the one every
-   * other screen depends on — no longer requires running a seed script.
+   * Create the contest, then go and stand inside it.
    *
    * `datetime-local` yields wall-clock text with no zone, which is not an instant. `new Date(...)`
    * on that string resolves it in the BROWSER's zone, which is the organizer's, which is the one
    * they typed it in. Converting here rather than sending the raw string is what stops a contest
    * starting an hour early on a server set to UTC.
+   *
+   * `busy` is deliberately NOT cleared on the success path: `router.push` is asynchronous, and a
+   * form that becomes pressable again during the navigation is a form that can create the contest
+   * twice. It clears on every failure, which is the only case where pressing again is right.
    */
   const onSubmit = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault();
@@ -111,7 +124,6 @@ export function ContestBuilder({ initial = EMPTY_DRAFT }: ContestBuilderProps) {
     if (Object.keys(found).length > 0) return;
 
     setBusy(true);
-    setSaved(false);
     setFormError(null);
     try {
       const response = await fetch("/api/admin/contests", {
@@ -134,6 +146,7 @@ export function ContestBuilder({ initial = EMPTY_DRAFT }: ContestBuilderProps) {
             ? String((body as { error: { message?: unknown } }).error.message ?? "")
             : "";
         setFormError(message === "" ? "That contest could not be created." : message);
+        setBusy(false);
         return;
       }
 
@@ -141,11 +154,21 @@ export function ContestBuilder({ initial = EMPTY_DRAFT }: ContestBuilderProps) {
         typeof body === "object" && body !== null && "data" in body
           ? (body as { data: { contestId?: unknown } }).data.contestId
           : null;
-      setSaved(true);
-      if (typeof id === "string") setCreatedId(id);
+
+      if (typeof id !== "string" || id === "") {
+        // The contest exists — the POST succeeded — but the response did not name it, so there is
+        // nowhere specific to send the organizer. Say so rather than pretending, and point at the
+        // list, where it will be the newest row.
+        setFormError(
+          "The contest was created, but the server did not return its id. Open it from Contests.",
+        );
+        setBusy(false);
+        return;
+      }
+
+      router.push(`/admin/contests/${encodeURIComponent(id)}`);
     } catch {
       setFormError("Could not reach the server.");
-    } finally {
       setBusy(false);
     }
   };
@@ -286,43 +309,20 @@ export function ContestBuilder({ initial = EMPTY_DRAFT }: ContestBuilderProps) {
       )}
 
       {/*
-        The action bar HackerRank puts at the foot of its contest admin: the primary action on the
-        right, and what to do NEXT beside it once the thing exists. A "saved" message that only
-        says "saved" leaves an organizer on a form with nothing to press, when what they actually
-        want is to go and put problems in it.
+        The action bar HackerRank puts at the foot of its contest admin. It carries one action,
+        because there is one thing to do: bring the contest into existence. Where to go next is no
+        longer a pair of links that can disagree with each other — it is the contest's own tab
+        strip, which this navigates into.
       */}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-ink/12 pt-4">
-        <div>
-          {saved && (
-            <span role="status" className="font-semibold" style={{ fontSize: "var(--text-sm)" }}>
-              Created as a <strong>DRAFT</strong>. Students cannot see it yet.
-            </span>
-          )}
-        </div>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-rule-edge pt-4">
+        <p className="max-w-[60ch] text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
+          Created as a <strong>DRAFT</strong> — students cannot see it. You will land on the
+          contest, with its problems, roster and side activities as tabs.
+        </p>
 
-        <div className="flex flex-wrap items-center gap-3">
-          {saved && createdId !== null && (
-            <>
-              <Link
-                href={`/admin/teams?contest=${encodeURIComponent(createdId)}`}
-                className="rounded border border-ink/25 px-3 py-2 font-semibold hover:border-ink/50"
-                style={{ fontSize: "var(--text-sm)" }}
-              >
-                Build the roster
-              </Link>
-              <Link
-                href="/admin/problems"
-                className="rounded border border-ink/25 px-3 py-2 font-semibold hover:border-ink/50"
-                style={{ fontSize: "var(--text-sm)" }}
-              >
-                Add problems
-              </Link>
-            </>
-          )}
-          <Button type="submit" disabled={busy}>
-            {busy ? "Creating…" : "Create contest"}
-          </Button>
-        </div>
+        <Button type="submit" disabled={busy}>
+          {busy ? "Creating…" : "Create contest"}
+        </Button>
       </div>
     </form>
   );

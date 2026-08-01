@@ -200,14 +200,21 @@ export function TeamStandingsBoard({
   const accent = "text-panther";
 
   /**
-   * Codeforces prints a solved cell green and a failed one red. Both are available on the
-   * projector and NEITHER is on the competitor board: `--rise` and `--fall` measure 2.02 and 1.94
-   * on `--paper` and are dark-surface only (DESIGN.md §2). On paper the two states are carried by
-   * weight and by `--panther` at 5.08 — the correct move rather than a concession, because the
-   * number itself already says which state it is in.
+   * Codeforces prints a solved cell green and a failed one red. NEITHER is available to us any
+   * more, on either surface.
+   *
+   * This branched on `projector` back when the projector was an `--ink` stage, where `--rise` and
+   * `--fall` clear AAA. The stage is paper now, and on paper they measure **2.02** and **1.94** —
+   * axe caught the green one at exactly 2.02 against #fbf9f8 and called it serious. The comment
+   * above this code already said so; the code had simply not followed it, which is the whole
+   * hazard of a colour that is legal on one ground and not the other.
+   *
+   * So both states are carried by WEIGHT and by `--panther` at 5.08, which is also what was asked
+   * for — the numbers are red. The number itself already says which state it is in, so hue was
+   * never doing the work here anyway (DESIGN.md §3: colour is never the only channel).
    */
-  const scored = projector ? "text-rise" : "text-ink";
-  const unscored = projector ? "text-fall" : "text-panther";
+  const scored = "text-ink";
+  const unscored = "text-panther";
 
   /**
    * Every size on the projector comes from the stage's `--fs-*` ladder rather than the raw
@@ -563,7 +570,13 @@ export function TeamStandingsBoard({
                     <td className={`border ${grid} ${cellPad}`} />
                     <td
                       className={`border ${grid} ${cellPad}`}
-                      colSpan={3 + columns.length}
+                      /*
+                        Team, `=`, every set column, Group and Side — everything except the rank
+                        cell to its left. This was `3 + columns.length`, one short, which left the
+                        browser inventing an anonymous column at the right edge and squeezed the
+                        breakdown into less width than the row above it.
+                      */
+                      colSpan={4 + columns.length}
                     >
                       {/* Level one, unchanged and public: who is on the team, on which set, for
                         how many points. Each line carries its own level-two disclosure when the

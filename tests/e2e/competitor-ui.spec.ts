@@ -142,7 +142,14 @@ test.describe("the competitor journey in a browser", () => {
     ).toBeVisible();
 
     // --- history -------------------------------------------------------------
-    await page.getByRole("link", { name: "My submissions" }).click();
+    // Scoped to the NAV. "My submissions" is now also an item in the account menu, so an
+    // unscoped `getByRole("link")` is a strict-mode violation — and the fix is to name which one
+    // the journey uses, not to take `.first()` and let the spec drift onto whichever the DOM
+    // happens to put first.
+    await page
+      .getByRole("navigation", { name: "Competitor" })
+      .getByRole("link", { name: "My submissions" })
+      .click();
     await page.waitForURL("**/submissions");
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
   });
@@ -150,7 +157,11 @@ test.describe("the competitor journey in a browser", () => {
   test("a signed-out visitor is offered SIGN-IN rather than bounced to it", async ({ page }) => {
     await page.goto("/contest");
 
-    await expect(page.getByRole("heading", { name: "You are not in the contest yet" })).toBeVisible();
+    // "You are not signed in", not "You are not in the contest yet". The lobby's panel is now the
+    // one every competitor screen shows — /team and /submissions used to have their own wording,
+    // and two of them read "Join the contest first", which is the route layer's ForbiddenError
+    // naming a flow that was deleted. `components/contest/lobby/SignInRequired.tsx`.
+    await expect(page.getByRole("heading", { name: "You are not signed in" })).toBeVisible();
 
     // Sign-in, not a join code. Codes are gone from every student-facing surface: team membership
     // is decided only in the organizer's roster, and a student's route in is Google or GitHub.
