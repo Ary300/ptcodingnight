@@ -68,7 +68,27 @@ export function ProblemWorkspace({ slug }: ProblemWorkspaceProps) {
   const [chosenLanguage, setChosenLanguage] = useState<Language | null>(null);
   const activeLanguage: Language =
     chosenLanguage ?? problem.data?.allowedLanguages[0] ?? "PYTHON_312";
-  const [source, setSource] = useDraft(slug, activeLanguage, LANGUAGE_TEMPLATE[activeLanguage]);
+
+  /*
+    What the editor opens with for the active language: the problem's own generated starter
+    (the function stub plus the visible stdin/stdout harness, from `ProblemDetail.starters`)
+    when the problem declares a signature, and the generic language template otherwise. Most
+    of the bank has no signature yet, and a generic template beats an empty box.
+
+    This is a *fallback*, never a clobber. `useDraft` only shows it when the student has no
+    stored draft for this (problem, language) pair, and a draft is written by keystrokes
+    alone, never by seeding. So:
+      - first open: the starter appears;
+      - switching language: the new language shows its own draft if the student typed in it,
+        its own starter if they never did, and the previous language's work stays in its own
+        draft either way. Nothing a student typed is ever replaced by a template implicitly;
+        loading the template over their code is only the editor's reset control, which
+        confirms first.
+  */
+  const activeStarter =
+    problem.data?.starters?.find((entry) => entry.language === activeLanguage)?.code ??
+    LANGUAGE_TEMPLATE[activeLanguage];
+  const [source, setSource] = useDraft(slug, activeLanguage, activeStarter);
 
   const [lastAction, setLastAction] = useState<"samples" | "judged" | null>(null);
   const [sampleResults, setSampleResults] = useState<readonly PublicTestResult[]>([]);
@@ -255,6 +275,9 @@ export function ProblemWorkspace({ slug }: ProblemWorkspaceProps) {
             value={source}
             onChange={setSource}
             language={activeLanguage}
+            // The same starter the draft was seeded from, so the surface's reset control
+            // restores THIS problem's template and its pristine check measures against it.
+            template={activeStarter}
             disabled={submitBusy}
             onSubmitShortcut={() => void submit()}
             label={`Solution for ${detail.title}`}
@@ -275,9 +298,13 @@ export function ProblemWorkspace({ slug }: ProblemWorkspaceProps) {
 
           The two buttons are not the same button and must not look it. `secondary` is an outline
           and `primary` is filled panther, which is the same grey/accent pair HackerRank uses, and
-          the sentence between them says which one costs an attempt. On a phone they wrap to their
+          the judged one restates what it does in its own label. On a phone they wrap to their
           own row and Submit stays last, so the button nearest the thumb is still the deliberate
           one rather than the accidental one.
+
+          `whitespace-nowrap` on both labels: HackerRank's Run Code / Submit Code never break
+          mid-label at any width, and ours did at phone widths — the flex-wrap on the row is the
+          intended reflow, a two-line button is not. The buttons wrap as whole units instead.
         */}
         <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 border-t border-rule-edge pt-3">
           <UploadCode
@@ -290,6 +317,7 @@ export function ProblemWorkspace({ slug }: ProblemWorkspaceProps) {
             <Button
               type="button"
               variant="secondary"
+              className="whitespace-nowrap"
               onClick={() => void runSamples()}
               disabled={sampleBusy || submitBusy}
             >
@@ -297,6 +325,7 @@ export function ProblemWorkspace({ slug }: ProblemWorkspaceProps) {
             </Button>
             <Button
               type="button"
+              className="whitespace-nowrap"
               onClick={() => void submit()}
               disabled={submitBusy || sampleBusy || judging}
             >

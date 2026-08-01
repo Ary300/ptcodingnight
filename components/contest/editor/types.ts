@@ -10,6 +10,17 @@ export interface CodeEditorProps {
   value: string;
   onChange: (next: string) => void;
   language: Language;
+  /**
+   * The code this editor treats as untouched: the reset target, and the value the reset
+   * control compares against to decide it has nothing to do.
+   *
+   * Per problem when the problem declares a signature (`ProblemDetail.starters` carries the
+   * generated stub-plus-harness for each allowed language); omitted, the generic
+   * `LANGUAGE_TEMPLATE` for `language` applies, so every existing caller keeps its old
+   * behaviour. It must always be the template for the CURRENT `language`: resetting a Java
+   * buffer to a Python starter would hand the student code that cannot compile.
+   */
+  template?: string;
   disabled?: boolean;
   /** Ctrl/Cmd+Enter. Judged submit is a deliberate action, so this confirms nothing. */
   onSubmitShortcut?: () => void;

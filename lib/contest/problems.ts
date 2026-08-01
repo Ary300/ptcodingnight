@@ -2,12 +2,15 @@ import { readFile } from "node:fs/promises";
 
 import { ForbiddenError, NotFoundError } from "@/lib/errors";
 import { prisma } from "@/lib/db";
+import { startersFor, type StarterCode } from "@/lib/judge/starters";
+import type { LanguageId } from "@/lib/judge/runtimes";
 import {
   ProblemDetailSchema,
   ProblemSummarySchema,
   type ProblemDetail,
   type ProblemSummary,
 } from "@/lib/schemas/api";
+import { SignatureSchema } from "@/lib/schemas/seed";
 import { CLASSIC_PRESET } from "@/lib/types/scoring";
 import {
   assertCanListProblems,
@@ -227,6 +230,7 @@ export async function getProblemDetail(
           timeLimitMs: true,
           memoryLimitMb: true,
           allowedLanguages: true,
+          signature: true,
         },
       },
     },
@@ -278,7 +282,52 @@ export async function getProblemDetail(
     samples,
     hintsTaken,
     hintCost: hintCostFor(contestProblem.basePoints),
+    starters: startersFromStoredSignature(
+      contestProblem.problem.signature,
+      contestProblem.problem.allowedLanguages,
+      contestProblem.problem.slug,
+    ),
   });
+}
+
+/**
+ * The starters a problem detail carries, generated fresh from the stored signature declaration.
+ *
+ * Generated on every read, never persisted: the emitters in `lib/judge/starters/` are the source
+ * of truth, and a stored copy of their output goes stale the moment an emitter improves. They are
+ * only attached here, on the detail path, so they sit behind the same statement gate as the
+ * statement itself; the pre-start list, which withholds titles, never carries them.
+ *
+ * `undefined`, not `[]`, for a problem with no signature. That is most of the bank, and the
+ * absence is what the client branches on: no starters means an empty editor, exactly as before
+ * this feature existed. `ProblemDetailSchema.starters` is optional for the same reason.
+ *
+ * The signature column is `Json?`, so what comes back from Prisma is untrusted shape. It is
+ * validated here, at the boundary, rather than assumed: a row that fails `SignatureSchema` is a
+ * content bug, not a reason the problem page cannot render, so it logs and degrades to the
+ * no-signature behaviour instead of throwing. This mirrors `readIfPresent` below.
+ */
+function startersFromStoredSignature(
+  raw: unknown,
+  allowedLanguages: readonly LanguageId[],
+  slug: string,
+): StarterCode[] | undefined {
+  if (raw === null || raw === undefined) return undefined;
+
+  const parsed = SignatureSchema.safeParse(raw);
+  if (!parsed.success) {
+    console.error(
+      JSON.stringify({
+        level: "error",
+        event: "problem.signature_invalid",
+        slug,
+        message: parsed.error.message,
+      }),
+    );
+    return undefined;
+  }
+
+  return startersFor(parsed.data, allowedLanguages);
 }
 
 async function countHints(participantId: string | null, contestProblemId: string): Promise<number> {
