@@ -243,25 +243,14 @@ export function ProblemWorkspace({ slug }: ProblemWorkspaceProps) {
         */}
         <div className="rounded border border-ink/15 bg-paper">
           {/*
-            The panel's own header bar, holding the language picker on the RIGHT — where
-            HackerRank puts its language dropdown. Inside the panel rather than floating above it,
-            so it reads as a property of the editor rather than of the page.
-          */}
-          <div className="flex flex-wrap-reverse items-center justify-between gap-x-3 gap-y-2 border-b border-ink/15 bg-ink/[0.03] px-3 py-2">
-            {/* 60%, not 55%: ink at 55% over paper composites to #7f7373, which measures
-                4.34:1 and fails AA's 4.5:1 at this size. 57% is the minimum that clears it;
-                60% gives 5.16:1 so a later token tweak does not silently drop it back under. */}
-            <span className="text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
-              Your work is kept in this tab until you close it.
-            </span>
-            <LanguagePicker
-              value={activeLanguage}
-              allowed={detail.allowedLanguages}
-              onChange={setChosenLanguage}
-              disabled={submitBusy || judging}
-            />
-          </div>
+            ONE toolbar, not two. The picker sits in the editor surface's own `toolbarStart` seat,
+            so the selector is on the left of the same tinted strip that carries the reset and
+            full-screen icons on the right, which is HackerRank's arrangement.
 
+            It used to be a separate header bar stacked above the surface's strip: two tinted rows
+            doing one row's job, and the picker was left behind whenever the editor went full
+            screen, which is exactly when a student is most likely to want it.
+          */}
           <CodeEditor
             value={source}
             onChange={setSource}
@@ -269,6 +258,14 @@ export function ProblemWorkspace({ slug }: ProblemWorkspaceProps) {
             disabled={submitBusy}
             onSubmitShortcut={() => void submit()}
             label={`Solution for ${detail.title}`}
+            toolbarStart={
+              <LanguagePicker
+                value={activeLanguage}
+                allowed={detail.allowedLanguages}
+                onChange={setChosenLanguage}
+                disabled={submitBusy || judging}
+              />
+            }
           />
         </div>
 
@@ -282,7 +279,7 @@ export function ProblemWorkspace({ slug }: ProblemWorkspaceProps) {
           own row and Submit stays last, so the button nearest the thumb is still the deliberate
           one rather than the accidental one.
         */}
-        <div className="mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 border-t border-rule-edge pt-3">
           <UploadCode
             language={activeLanguage}
             disabled={submitBusy || sampleBusy}
@@ -290,9 +287,6 @@ export function ProblemWorkspace({ slug }: ProblemWorkspaceProps) {
           />
 
           <div className="flex flex-wrap items-center gap-3">
-            <span className="text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
-              Running samples is free. Submitting counts.
-            </span>
             <Button
               type="button"
               variant="secondary"

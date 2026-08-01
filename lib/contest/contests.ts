@@ -248,10 +248,17 @@ export async function setContestProblems(
 export async function setContestState(
   contestId: string,
   next: "SCHEDULED" | "RUNNING" | "ENDED",
+  now: Date = new Date(),
 ): Promise<{ state: string }> {
   const contest = await prisma.contest.findUnique({
     where: { id: contestId },
-    select: { state: true, _count: { select: { contestProblems: true } } },
+    select: {
+      state: true,
+      startsAt: true,
+      endsAt: true,
+      freezeAt: true,
+      _count: { select: { contestProblems: true } },
+    },
   });
   if (contest === null) throw new NotFoundError("Contest");
 
@@ -274,9 +281,43 @@ export async function setContestState(
     throw new ValidationError(`A ${contest.state} contest cannot become ${next}`);
   }
 
+  /*
+    STARTING A CONTEST MOVES ITS CLOCK, or the button is a lie.
+
+    This function's own doc comment always promised "open it now, regardless of the clock", but it
+    wrote only the state column. So an organizer who pressed Start at 6:50 on a contest scheduled
+    for 7:00 produced state=RUNNING with startsAt still in the future, and the two halves of the
+    product read different columns: the problem list keys on state and showed everything, while
+    `assertCanSubmit` keys on the window and answered every submission "This contest has not
+    started yet" — the organizer's report, verbatim, reproduced against a RUNNING contest.
+
+    So: starting early slides the WHOLE window by the same delta. The duration is what the
+    organizer planned ("start the contest to give everyone all the time"); the start time is when
+    they pressed the button. freezeAt is part of the window and slides with it — a freeze offset
+    is a decision about the last N minutes, not about a wall-clock time of day.
+
+    Ending early pulls endsAt back to now for the same invariant, stated once: THE STORED WINDOW
+    DESCRIBES WHAT ACTUALLY HAPPENED. Scoring cutoffs and the review lobby both read it.
+    A freeze that never happened before the early end is erased rather than left dangling after
+    the contest's own end.
+  */
+  const window: { startsAt?: Date; endsAt?: Date; freezeAt?: Date | null } = {};
+  if (next === "RUNNING" && contest.startsAt.getTime() > now.getTime()) {
+    const slide = contest.startsAt.getTime() - now.getTime();
+    window.startsAt = now;
+    window.endsAt = new Date(contest.endsAt.getTime() - slide);
+    if (contest.freezeAt !== null) window.freezeAt = new Date(contest.freezeAt.getTime() - slide);
+  }
+  if (next === "ENDED" && contest.endsAt.getTime() > now.getTime()) {
+    window.endsAt = now;
+    if (contest.freezeAt !== null && contest.freezeAt.getTime() > now.getTime()) {
+      window.freezeAt = null;
+    }
+  }
+
   const updated = await prisma.contest.update({
     where: { id: contestId },
-    data: { state: next },
+    data: { state: next, ...window },
     select: { state: true },
   });
   return { state: updated.state };

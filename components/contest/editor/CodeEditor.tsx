@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 
-import type { CodeEditorProps } from "./types";
+import type { CodeEditorSurfaceProps } from "./CodeEditorSurface";
 
 /**
  * The editor, lazy-loaded (PRD §10: "Editor — Monaco, lazy-loaded").
@@ -51,7 +51,7 @@ const Surface = dynamic(() => import("./CodeEditorSurface").then((m) => m.CodeEd
   loading: () => <EditorSkeleton />,
 });
 
-export function CodeEditor(props: CodeEditorProps) {
+export function CodeEditor(props: CodeEditorSurfaceProps) {
   return <Surface {...props} />;
 }
 

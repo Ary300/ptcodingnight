@@ -185,6 +185,63 @@ test.describe("an organizer builds a contest from nothing", () => {
     ).toBeGreaterThan(0);
   });
 
+  test("starting a FUTURE-scheduled contest early slides its whole window to now", async () => {
+    // The organizer's report, reproduced and then fixed: they published a contest scheduled for
+    // later, pressed Start, and every submission still answered "This contest has not started
+    // yet". setContestState wrote only the state column, so state said RUNNING while the window
+    // said not-yet, and assertCanSubmit reads the window. Starting early must move the window.
+    const name = `E2E Built Future ${Date.now()}`;
+    const startsAt = new Date(Date.now() + 6 * 60 * 60_000); // six hours out
+    const endsAt = new Date(startsAt.getTime() + 2 * 60 * 60_000); // a two-hour contest
+
+    const created = await readOk(
+      await admin.createContestRaw({
+        name,
+        startsAt: startsAt.toISOString(),
+        endsAt: endsAt.toISOString(),
+        freezeAt: null,
+        scoringPresetId: "classic",
+        divisions: ["Intermediate", "Advanced"],
+      }),
+    );
+    const futureId = (created.data as { contestId: string }).contestId;
+
+    const problems = await testDb().problem.findMany({
+      where: { state: "PUBLISHED" },
+      take: 1,
+      orderBy: { slug: "asc" },
+      select: { id: true },
+    });
+    await readOk(
+      await admin.setContestProblemsRaw(futureId, {
+        reason: "E2E: future line-up",
+        problems: [
+          { problemId: problems[0]!.id, slotLabel: "A1", basePoints: 100, setLabel: null, divisionId: null },
+        ],
+      }),
+    );
+
+    const before = Date.now();
+    await readOk(await admin.setContestStateRaw(futureId, "SCHEDULED", "E2E: publish future"));
+    await readOk(await admin.setContestStateRaw(futureId, "RUNNING", "E2E: open future early"));
+    const after = Date.now();
+
+    const row = await testDb().contest.findUniqueOrThrow({
+      where: { id: futureId },
+      select: { state: true, startsAt: true, endsAt: true },
+    });
+    expect(row.state).toBe("RUNNING");
+    // startsAt is now (within the wall-clock of the two calls), not six hours out.
+    expect(row.startsAt.getTime()).toBeGreaterThanOrEqual(before - 1000);
+    expect(row.startsAt.getTime()).toBeLessThanOrEqual(after + 1000);
+    // The planned two-hour DURATION is preserved: endsAt is ~2h after the new start, not the
+    // original 8-hours-from-now.
+    const durationMs = row.endsAt.getTime() - row.startsAt.getTime();
+    expect(Math.abs(durationMs - 2 * 60 * 60_000)).toBeLessThan(5000);
+
+    await testDb().contest.deleteMany({ where: { id: futureId } });
+  });
+
   test("refuses a line-up change once the contest is running", async () => {
     const envelope = await readEnvelope(
       await admin.setContestProblemsRaw(builtId, { reason: "E2E: too late", problems: [] }),
