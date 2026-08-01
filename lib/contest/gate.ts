@@ -16,7 +16,28 @@ import { DomainError, DraftProblemError, ForbiddenError } from "@/lib/errors";
 /** Joining is open while a contest is scheduled or under way — never once it has ended. */
 const JOINABLE: readonly ContestState[] = ["SCHEDULED", "RUNNING", "FROZEN"];
 
-/** Problems are readable while the contest runs, and afterwards for review. */
+/**
+ * The problem LIST is visible from the moment a contest is published, not from the moment it
+ * starts.
+ *
+ * SCHEDULED used to be missing here, and one predicate served both the list and the statement. So a
+ * student an organizer had just put on a team opened the lobby before the start and got a bare red
+ * line, "This contest has not started yet", with a Try again link and nothing else, while the
+ * standings panel beside it rendered their name perfectly well. An empty screen is
+ * indistinguishable from a broken one, and that is what they reported.
+ *
+ * What is visible before the start is deliberately thin: how many problems there are, their slots
+ * and their points. See `redactUnstartedProblem` in lib/contest/problems.ts for what is withheld
+ * and why.
+ */
+const LISTABLE: readonly ContestState[] = ["SCHEDULED", "RUNNING", "FROZEN", "ENDED"];
+
+/**
+ * A STATEMENT is readable only once the contest is under way, and afterwards for review.
+ *
+ * This is the half that must NOT relax. The statement, the constraints and the samples are the
+ * problem; handing them out early hands out a head start.
+ */
 const READABLE: readonly ContestState[] = ["RUNNING", "FROZEN", "ENDED"];
 
 /** Judged submissions are accepted only while the clock is running. A freeze does not stop it. */
@@ -35,6 +56,19 @@ export function assertCanJoin(state: ContestState): void {
   }
 }
 
+/** May this viewer see that the problems EXIST: their count, slots and points. */
+export function assertCanListProblems(state: ContestState): void {
+  if (!LISTABLE.includes(state)) {
+    throw new DomainError(
+      "CONTEST_NOT_RUNNING",
+      state === "DRAFT"
+        ? "This contest has not been published yet. An organizer still has to open it."
+        : "This contest is not available.",
+    );
+  }
+}
+
+/** May this viewer read a problem's STATEMENT. Strictly narrower than listing. */
 export function assertCanReadProblems(state: ContestState): void {
   if (!READABLE.includes(state)) {
     throw new DomainError("CONTEST_NOT_RUNNING", "This contest has not started yet");

@@ -10,6 +10,7 @@ import {
 } from "@/lib/schemas/api";
 import { CLASSIC_PRESET } from "@/lib/types/scoring";
 import {
+  assertCanListProblems,
   assertCanReadProblems,
   assertProblemIsLive,
   assertUnlocked,
@@ -105,7 +106,7 @@ export async function listProblems(
   if (contest === null) throw new NotFoundError("Contest");
 
   const scope = await scopeFor(contestId, viewer);
-  if (!scope.admin) assertCanReadProblems(contest.state);
+  if (!scope.admin) assertCanListProblems(contest.state);
 
   const contestProblems = await prisma.contestProblem.findMany({
     where: { contestId },
@@ -137,18 +138,36 @@ export async function listProblems(
     solvedProblemIds(scope.participantId),
   ]);
 
+  /*
+    BEFORE THE GUN, THE TITLES ARE WITHHELD, and that is not decoration.
+
+    A student may now see the SHAPE of a contest that has not started: how many problems, their
+    slots, what each is worth. That is what makes a pre-start lobby possible instead of a bare
+    "This contest has not started yet".
+
+    What they must not see is WHICH problems. Our bank is seeded from `data/problems_seed.csv`,
+    whose titles are the titles of publicly available problems — "A Very Big Sum", "Angry
+    Professor". A student handed those ten minutes early does not need our statement at all; they
+    can look the problem up, solve it elsewhere, and paste. The slug is derived from the title, so
+    it leaks the same thing and is withheld with it.
+
+    Withheld, not omitted: the row still exists, still carries its slot and its points, and still
+    reports `unlocked: false`, so the lobby can render a real locked list.
+  */
+  const started = contest.state !== "SCHEDULED";
+
   return visible.map((cp) =>
     ProblemSummarySchema.parse({
       contestProblemId: cp.id,
-      slug: cp.problem.slug,
-      title: cp.problem.title,
+      slug: started ? cp.problem.slug : "",
+      title: started ? cp.problem.title : `Problem ${cp.slotLabel}`,
       slotLabel: cp.slotLabel,
       difficulty: cp.problem.difficulty,
       basePoints: cp.basePoints,
       isGroupProblem: cp.problem.round === "GROUP",
       bestScore: scores.get(cp.id)?.score ?? null,
       solved: solvedIds.has(cp.id),
-      unlocked: scope.admin || isUnlocked(cp.unlockAt, now),
+      unlocked: scope.admin || (started && isUnlocked(cp.unlockAt, now)),
     }),
   );
 }

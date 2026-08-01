@@ -11,6 +11,7 @@ import {
   assertUnlocked,
   isPublicBoardFrozen,
   isUnlocked,
+  assertCanListProblems,
   standingsCutoff,
   type ContestGateInput,
 } from "@/lib/contest/gate";
@@ -147,5 +148,44 @@ describe("standingsCutoff", () => {
 
   it("gives the public board everything when it is not frozen", () => {
     expect(standingsCutoff(contest(), ENDS, false)).toBeNull();
+  });
+});
+
+
+describe("listing a contest's problems is looser than reading one", () => {
+  /*
+    The bug this pins, reported by the organizer with a screenshot: a student an organizer had just
+    put on a team opened the lobby before the contest started and got a bare red line, "This contest
+    has not started yet", with a Try again link and nothing else — while the standings panel beside
+    it rendered their name perfectly well.
+
+    One predicate served both the list and the statement, and it excluded SCHEDULED. Splitting them
+    is what lets a pre-start lobby exist at all.
+  */
+  it("a SCHEDULED contest can be listed but its statements cannot be read", () => {
+    expect(() => assertCanListProblems("SCHEDULED")).not.toThrow();
+    expect(() => assertCanReadProblems("SCHEDULED")).toThrow();
+  });
+
+  it("a DRAFT contest is not listable either, and says why", () => {
+    // DRAFT means an organizer has not published it. That is a different sentence from "not
+    // started", and the student can do nothing about either — but only one of them is a mistake.
+    expect(() => assertCanListProblems("DRAFT")).toThrow(/published/i);
+  });
+
+  it("everything from RUNNING onwards allows both", () => {
+    for (const state of ["RUNNING", "FROZEN", "ENDED"] as const) {
+      expect(() => assertCanListProblems(state), state).not.toThrow();
+      expect(() => assertCanReadProblems(state), state).not.toThrow();
+    }
+  });
+
+  it("listing never implies submitting", () => {
+    // The whole point of the split: a student may SEE a scheduled contest and must not be able to
+    // submit to it. `assertCanSubmit` checks the clock independently, so relaxing the list gate
+    // cannot leak into the judge.
+    const scheduled = contest({ state: "SCHEDULED" });
+    expect(() => assertCanListProblems(scheduled.state)).not.toThrow();
+    expect(() => assertCanSubmit(scheduled, scheduled.startsAt)).toThrow();
   });
 });
