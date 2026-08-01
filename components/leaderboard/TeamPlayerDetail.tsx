@@ -213,8 +213,25 @@ export function TeamPlayerLine({ player }: TeamPlayerLineProps) {
             className="min-w-0 truncate text-left text-panther underline underline-offset-2"
           >
             {/* The glyph is a second channel for the open state, since `aria-expanded` is not
-                visible and the underline says "control", not "expanded". */}
-            <span aria-hidden="true">{open ? "▾ " : "▸ "}</span>
+                visible and the underline says "control", not "expanded". It is the shared
+                Select chevron (same path, stroke and caps) rather than the text glyphs it used
+                to be — one arrow style product-wide (inventory D36), down when open, right when
+                closed. Inline, so the button's `truncate` still measures it. */}
+            <svg
+              aria-hidden="true"
+              focusable="false"
+              width={9}
+              height={6}
+              viewBox="0 0 10 6"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={1.5}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className={`mr-1 inline-block transition-transform ${open ? "" : "-rotate-90"}`}
+            >
+              <path d="M1 1L5 5L9 1" />
+            </svg>
             {player.displayName}
             {/* A button whose whole accessible name is a person's name says nothing about what
                 pressing it does. The name is separated, not concatenated: "Adaproblem by problem"

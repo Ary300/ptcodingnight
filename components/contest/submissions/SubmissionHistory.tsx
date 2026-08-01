@@ -2,6 +2,7 @@
 
 import { Fragment, useCallback, useMemo, useState } from "react";
 
+import { Button } from "@/components/ui";
 import type { ProblemSummary, SubmissionView } from "@/lib/schemas/api";
 import type { Verdict } from "@/lib/schemas/judge";
 
@@ -32,11 +33,14 @@ import { recallSource } from "./source-cache";
  *
  * ## Rows open in place
  *
- * There is no per-submission route in this app, so "view that submission" is an expansion: the
- * whole row is clickable and the problem-name button carries `aria-expanded`/`aria-controls`
- * for keyboard and screen-reader users. The detail panel holds everything the row's five cells
- * do not: the test tally, the source (tab-local cache, and it says when it has nothing), the
- * compiler output, and the leak-guard alert.
+ * There is no per-submission route in this app, so "view that submission" is an expansion. The
+ * problem-name button is the ONE interactive element in the row — HackerRank's tables make only
+ * the challenge name hot, and the previous whole-row `onClick` with a `stopPropagation` button
+ * nested inside it was two click targets for one action (inventory D12). The button carries
+ * `aria-expanded`/`aria-controls` and a rotating chevron (the same glyph `ui/Select` draws), so
+ * the expandable state is visible rather than colour-and-hover alone. The detail panel holds
+ * everything the row's five cells do not: the test tally, the source (tab-local cache, and it
+ * says when it has nothing), the compiler output, and the leak-guard alert.
  *
  * ## Two contract gaps, both filed in the report
  *
@@ -116,15 +120,13 @@ function Row({ submission, title, open, onToggle }: RowProps) {
   return (
     <Fragment>
       {/*
-        The whole row toggles — a 44px-tall target beats hunting for the one hot word — and the
-        problem-name button is the accessible control, so keyboard focus lands on something that
-        announces its expanded state. The button stops propagation or a click on it would bubble
-        to the row and toggle twice, i.e. do nothing.
+        Only the problem name is interactive — the reference's tables make one element per row
+        hot, and a row-level onClick around a nested button was two targets for one action. The
+        hover tint stays as a reading aid across the five columns; the click affordance is the
+        name's chevron, colour change and focus ring. The negative margin trades the cell's own
+        padding back into the button, so the touch target keeps the full row height.
       */}
-      <tr
-        onClick={onToggle}
-        className="cursor-pointer first:border-t-0 border-t border-rule-hair hover:bg-ink/[0.03]"
-      >
+      <tr className="first:border-t-0 border-t border-rule-hair hover:bg-ink/[0.03]">
         <td className="px-3 py-2.5 sm:px-4">
           {/*
             `title === null` means the problem list did not load, so this submission's problem
@@ -136,17 +138,34 @@ function Row({ submission, title, open, onToggle }: RowProps) {
             type="button"
             aria-expanded={open}
             aria-controls={detailId}
-            onClick={(event) => {
-              event.stopPropagation();
-              onToggle();
-            }}
+            onClick={onToggle}
             className={
               title === null
-                ? "text-left text-ink/60"
-                : "text-left font-display font-bold hover:text-panther"
+                ? "-my-2.5 py-2.5 text-left text-ink/60"
+                : "-my-2.5 py-2.5 text-left font-display font-bold hover:text-panther"
             }
             style={{ fontSize: "var(--text-sm)" }}
           >
+            {/*
+              The open state, drawn: down when open, right when closed. Same geometry as the
+              shared Select chevron (10x6, 1.5 stroke, round caps) so the product keeps one
+              arrow style. Decorative — `aria-expanded` already says this out loud.
+            */}
+            <svg
+              aria-hidden="true"
+              focusable="false"
+              width={10}
+              height={6}
+              viewBox="0 0 10 6"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={1.5}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className={`mr-1.5 inline-block transition-transform ${open ? "" : "-rotate-90"}`}
+            >
+              <path d="M1 1L5 5L9 1" />
+            </svg>
             {title ?? "Problem name unavailable"}
           </button>
         </td>
@@ -171,7 +190,6 @@ function Row({ submission, title, open, onToggle }: RowProps) {
       </tr>
 
       {open && (
-        /* No onClick here: selecting text in the code block must not collapse the panel. */
         <tr id={detailId} className="bg-ink/[0.02]">
           <td colSpan={5} className="px-3 pt-2 pb-3 sm:px-4">
             <p className="text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
@@ -316,13 +334,11 @@ export function SubmissionHistory() {
         <p role="status" className="mb-3 text-ink/70" style={{ fontSize: "var(--text-xs)" }}>
           Problem names could not be loaded, so the rows below are unnamed. Verdicts and scores are
           unaffected.{" "}
-          <button
-            type="button"
-            onClick={problems.reload}
-            className="text-panther underline underline-offset-2"
-          >
+          {/* Button quiet, not a hand-rolled panther link (inventory D13): one retry grammar
+              product-wide. */}
+          <Button variant="quiet" size="sm" onClick={problems.reload}>
             Try again
-          </button>
+          </Button>
         </p>
       )}
 

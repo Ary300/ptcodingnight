@@ -285,13 +285,21 @@ export function RosterManager({ contestId }: RosterManagerProps) {
           {/*
             "assign" for somebody on no team and "move" for somebody on one. The same word for
             both read as a no-op on the list whose whole purpose is that it should empty.
+
+            The arrow is aria-hidden: it is a visual separator, and inside the accessible name a
+            screen reader announced it as "right arrow" in the middle of the person's name (B1).
+            The name is now "<person> assign", which is the action being offered.
           */}
-          {person.displayName} → {moveVerb}
+          {person.displayName} <span aria-hidden="true">→</span> {moveVerb}
         </Button>
+        {/*
+          `aria-expanded:*` classes: the open state used to have no visual channel on the button
+          itself, only the form appearing below (B2). Weight plus underline, never colour alone.
+        */}
         <Button
           type="button"
           variant="quiet"
-          className="justify-start text-left"
+          className="justify-start text-left aria-expanded:font-semibold aria-expanded:text-ink aria-expanded:underline"
           aria-expanded={removing?.participantId === person.participantId}
           disabled={busy}
           onClick={() => {
@@ -347,14 +355,26 @@ export function RosterManager({ contestId }: RosterManagerProps) {
             )}
           </p>
 
+          {/*
+            A grid, not a flex with a hand-tuned `mt-1` (B3). The first cell is exactly one
+            line of the label's text tall (`1lh` inherits the label's line-height), and the box
+            centres inside it, so the checkbox lines up with the first line of a wrapping label
+            at any type scale. 18px box: the 16px default read smaller than the reference's
+            (HackerRank's checkboxes measure 18-20px).
+          */}
           {person.submissionCount > 0 && (
-            <label className="flex items-start gap-2" style={{ fontSize: "var(--text-sm)" }}>
-              <input
-                type="checkbox"
-                className="mt-1 accent-panther"
-                checked={removeConfirmed}
-                onChange={(event) => setRemoveConfirmed(event.target.checked)}
-              />
+            <label
+              className="grid grid-cols-[auto_1fr] items-start gap-x-2"
+              style={{ fontSize: "var(--text-sm)" }}
+            >
+              <span className="flex h-[1lh] items-center">
+                <input
+                  type="checkbox"
+                  className="h-[1.125rem] w-[1.125rem] accent-panther"
+                  checked={removeConfirmed}
+                  onChange={(event) => setRemoveConfirmed(event.target.checked)}
+                />
+              </span>
               <span>
                 Yes, delete their {person.submissionCount} submission
                 {person.submissionCount === 1 ? "" : "s"} as well. This cannot be undone.
@@ -471,9 +491,15 @@ export function RosterManager({ contestId }: RosterManagerProps) {
                         .join(" · ")}
                     </span>
                   </div>
+                  {/*
+                    Quiet, not secondary (B8): both references keep in-row actions as text, and
+                    an outlined box on every candidate row competed with the page's own actions.
+                    The label stays exactly "Add": tests/e2e/organizer-setup-flow.spec.ts finds
+                    this button by that name with exact matching.
+                  */}
                   <Button
                     type="button"
-                    variant="secondary"
+                    variant="quiet"
                     disabled={busy}
                     onClick={() => {
                       void send(API_ROUTES.adminContestParticipants(contestId), "POST", {
@@ -623,7 +649,11 @@ export function RosterManager({ contestId }: RosterManagerProps) {
               onChange={(event) => setNewTeamName(event.target.value)}
             />
           </div>
-          <Button type="submit" variant="secondary" disabled={busy || newTeamName.trim() === ""}>
+          {/*
+            Primary, not secondary (B11): creating a team is the one creating action on this
+            panel, and the reference fills its creating action ("Create a Contest" is solid).
+          */}
+          <Button type="submit" disabled={busy || newTeamName.trim() === ""}>
             Create team
           </Button>
         </form>
@@ -680,10 +710,15 @@ export function RosterManager({ contestId }: RosterManagerProps) {
                   )}
                 </ul>
 
+                {/*
+                  As on the remove toggle above: `aria-expanded:*` gives the open toggle a
+                  visual channel of its own (B12) - weight and underline, never colour alone.
+                */}
                 <div className="mt-tight flex flex-wrap gap-x-4">
                   <Button
                     type="button"
                     variant="quiet"
+                    className="aria-expanded:font-semibold aria-expanded:text-ink aria-expanded:underline"
                     aria-expanded={teamForm?.kind === "rename" && teamForm.teamId === team.teamId}
                     disabled={busy}
                     onClick={() => {
@@ -699,6 +734,7 @@ export function RosterManager({ contestId }: RosterManagerProps) {
                   <Button
                     type="button"
                     variant="quiet"
+                    className="aria-expanded:font-semibold aria-expanded:text-ink aria-expanded:underline"
                     aria-expanded={teamForm?.kind === "dissolve" && teamForm.teamId === team.teamId}
                     disabled={busy}
                     onClick={() => {

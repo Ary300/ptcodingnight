@@ -132,6 +132,7 @@ export function CodeEditorSurface({
   value,
   onChange,
   language,
+  template: templateProp,
   disabled = false,
   onSubmitShortcut,
   label,
@@ -335,7 +336,10 @@ export function CodeEditorSurface({
 
   /* ---- toolbar: reset to the starter template ---- */
 
-  const template = LANGUAGE_TEMPLATE[language];
+  // The problem's own starter when the caller has one, the generic language stub otherwise.
+  // Byte equality is the "has the student edited it" predicate: the seeded value IS the
+  // template, so any keystroke breaks equality and any reset restores it.
+  const template = templateProp ?? LANGUAGE_TEMPLATE[language];
   const pristine = value === template;
   const [confirmingReset, setConfirmingReset] = useState(false);
   const keepButtonRef = useRef<HTMLButtonElement | null>(null);

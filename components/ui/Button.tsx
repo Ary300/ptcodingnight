@@ -34,18 +34,35 @@ export type ButtonSize = "sm" | "md";
  * are resolved by the order Tailwind emits them, not by the order they appear in the class
  * list, so a base `font-semibold` that a variant tries to override is a coin flip.
  */
+/*
+ * The corner is raw `rounded` (4px), not `--radius-chip` (3px): every button in the reference
+ * screenshots measures ~4-6px, and 4px is what `components/ui/Select.tsx` now gives every
+ * control for the same reason, so a button beside an input shares one corner. 4px is off the
+ * three-radius token scale; globals.css is orchestrator-owned, so promoting it to a
+ * `--radius-control` token is requested in the Group C report rather than done here. If the
+ * radius here changes, change CONTROL_SURFACE in Select.tsx with it.
+ *
+ * Every boxed variant carries a 1px border (transparent where it has no colour) so that a
+ * primary next to a secondary is the same height to the pixel, and both match the 42px md
+ * control box from Select.tsx.
+ */
 const VARIANT: Record<ButtonVariant, string> = {
-  primary: "rounded-chip bg-panther font-semibold text-paper hover:bg-panther-deep",
+  primary: "rounded border border-transparent bg-panther font-semibold text-paper hover:bg-panther-deep",
+  /*
+   * `bg-paper`, not transparent: HR's secondary buttons (Run Code, Preview Landing Page,
+   * Add Challenge) are a white or near-white FILL with a grey border, so on a tinted row or
+   * toolbar the button reads as its own surface rather than a floating outline.
+   */
   secondary:
-    "rounded-chip border border-rule-edge bg-transparent font-semibold text-ink hover:bg-ink/5",
-  ghost: "rounded-chip bg-transparent font-medium text-ink/70 hover:bg-ink/5 hover:text-ink",
+    "rounded border border-rule-edge bg-paper font-semibold text-ink hover:bg-ink/5",
+  ghost: "rounded border border-transparent bg-transparent font-medium text-ink/70 hover:bg-ink/5 hover:text-ink",
   /*
    * Destructive and audit-logged actions (verdict override, rejudge). The one use of the accent
    * outside identity and the primary action, and it is stated as an exception in DESIGN.md §2
    * rather than left to be inferred: a red button for a destructive act is a convention old
    * enough that removing it would cost more than it saved.
    */
-  danger: "rounded-chip border border-panther font-semibold text-panther hover:bg-panther hover:text-paper",
+  danger: "rounded border border-panther font-semibold text-panther hover:bg-panther hover:text-paper",
   /*
    * A row action. Text, not a box. `text-ink/60` is the documented AA floor on paper (5.15:1),
    * and it darkens to full ink on hover rather than changing colour, so the affordance is weight
@@ -54,10 +71,28 @@ const VARIANT: Record<ButtonVariant, string> = {
   quiet: "font-medium text-ink/60 underline-offset-4 hover:text-ink hover:underline",
 };
 
-/** Padding for the variants that are boxes. `quiet` is text and takes none. */
+/**
+ * Padding for the variants that are boxes. `quiet` is text and takes none.
+ *
+ * Sized against the reference, not against what fits: HR's page CTAs (Sign Up, Save Changes,
+ * Submit Code) are ~40-48px tall with generous ~20-24px side padding, and ours measured ~36px,
+ * one size class short on every screen. With the pinned line box below, md is now
+ * 24 + 16 + 2 = 42px and sm is 20 + 12 + 2 = 34px, which are exactly the md and sm control
+ * heights in Select.tsx, so a button sits flush beside a select or an input in the same row.
+ */
 const PAD: Record<ButtonSize, string> = {
-  sm: "px-2.5 py-1",
-  md: "px-4 py-2",
+  sm: "px-3 py-1.5",
+  md: "px-5 py-2",
+};
+
+/**
+ * The line box, pinned for the same reason Select.tsx pins CONTROL_LEADING: height is
+ * padding + border + line box, and leaving the third to the font's `normal` made every
+ * button height a per-browser font metric instead of a fact.
+ */
+const LEADING: Record<ButtonSize, string> = {
+  sm: "leading-5",
+  md: "leading-6",
 };
 
 const FONT_SIZE: Record<ButtonSize, string> = {
@@ -92,7 +127,7 @@ export function Button({
       className={[
         "inline-flex items-center justify-center gap-2 transition-colors",
         // A text button still has to be hittable on a phone: 32px of height without a box.
-        quiet ? "min-h-8" : PAD[size],
+        quiet ? "min-h-8" : `${PAD[size]} ${LEADING[size]}`,
         VARIANT[variant],
         "disabled:cursor-not-allowed",
         // Tailwind emits `disabled:` after `hover:`, so a disabled control cannot be hovered

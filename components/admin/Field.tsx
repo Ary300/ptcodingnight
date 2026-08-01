@@ -57,7 +57,11 @@ const CONTROL = `${CONTROL_SURFACE} ${CONTROL_PAD.md} ${CONTROL_LEADING.md} plac
 function borderFor(invalid: boolean): string {
   // `--panther` is 5.08 on paper: AA, and the only palette colour that may carry meaning
   // as text on this surface (DESIGN.md §2).
-  return invalid ? "border-panther" : "border-rule-edge";
+  //
+  // `focus:border-ink` is the reference's darkened focus border (see the rationale on
+  // CONTROL_SURFACE in components/ui/Select.tsx); invalid keeps panther even focused, so the
+  // error signal is never repainted away by the caret arriving to fix it.
+  return invalid ? "border-panther" : "border-rule-edge focus:border-ink";
 }
 
 interface FieldShellProps {
@@ -65,6 +69,13 @@ interface FieldShellProps {
   hint?: ReactNode;
   error?: string | null;
   required?: boolean;
+  /**
+   * Lets the control run the full column when the two-column layout engages. Single-line
+   * controls stop at `max-w-md`, because in the reference (`12.23.42`) the Organization Name
+   * input is ~310px in a page-wide column while the Tagline TEXTAREA runs the whole width.
+   * Set by `TextArea`; everything single-line leaves it false.
+   */
+  wide?: boolean;
   children: (ids: {
     controlId: string;
     describedBy: string | undefined;
@@ -72,7 +83,24 @@ interface FieldShellProps {
   }) => ReactNode;
 }
 
-export function Field({ label, hint, error, required = false, children }: FieldShellProps) {
+/**
+ * ## The label sits BESIDE the control, as in every reference admin form
+ *
+ * HackerRank's admin forms (`12.23.42`, `12.24.35`) are two-column: label in a left column,
+ * control in the right, red asterisk on the label, hints and errors under the control. Ours
+ * stacked the label above, which the inventory lists as C5's layout defect.
+ *
+ * The switch is a CONTAINER query, not a viewport one, because these fields also render
+ * inside narrow inline panels (the move-participant form in a team card, for one) where a
+ * 12rem label column would crush the control on a wide monitor. Below a 36rem-wide
+ * container (`@xl`) the field stacks exactly as before; at or above it, the reference's
+ * two-column grid engages. The `@container` wrapper is the field's own width, so each field
+ * decides for itself.
+ *
+ * `@xl:pt-2.5` on the label centres its 20px line against the 42px md control box; on a
+ * textarea it reads as first-line alignment, which is what the reference does with Tagline.
+ */
+export function Field({ label, hint, error, required = false, wide = false, children }: FieldShellProps) {
   const base = useId();
   const controlId = `${base}-control`;
   const hintId = `${base}-hint`;
@@ -85,32 +113,47 @@ export function Field({ label, hint, error, required = false, children }: FieldS
       .join(" ") || undefined;
 
   return (
-    <div className="flex flex-col gap-tight">
-      <label htmlFor={controlId} className="font-semibold" style={{ fontSize: "var(--text-sm)" }}>
-        {label}
-        {required && (
-          <span className="text-panther" aria-hidden="true">
-            {" *"}
-          </span>
-        )}
-        {required && <span className="sr-only"> (required)</span>}
-      </label>
-      {hint !== undefined && (
-        <p id={hintId} className="max-w-[70ch] text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
-          {hint}
-        </p>
-      )}
-      {children({ controlId, describedBy, invalid })}
-      {invalid && (
-        <p
-          id={errorId}
-          role="alert"
-          className="font-semibold text-panther"
-          style={{ fontSize: "var(--text-xs)" }}
+    <div className="@container">
+      <div className="grid grid-cols-1 gap-tight @xl:grid-cols-[12rem_minmax(0,1fr)] @xl:gap-x-group">
+        <label
+          htmlFor={controlId}
+          className="font-semibold @xl:pt-2.5"
+          style={{ fontSize: "var(--text-sm)" }}
         >
-          {error}
-        </p>
-      )}
+          {label}
+          {required && (
+            <span className="text-panther" aria-hidden="true">
+              {" *"}
+            </span>
+          )}
+          {required && <span className="sr-only"> (required)</span>}
+        </label>
+        <div className={`flex min-w-0 flex-col gap-tight ${wide ? "" : "@xl:max-w-md"}`}>
+          {children({ controlId, describedBy, invalid })}
+          {/* Hint BELOW the control: the reference puts helper text under the box
+              ("Characters left: 100" beneath the Tagline textarea in 12.23.42), and the
+              error already lives there, so a field's answers all arrive in one place. */}
+          {hint !== undefined && (
+            <p
+              id={hintId}
+              className="max-w-[70ch] text-ink/60"
+              style={{ fontSize: "var(--text-xs)" }}
+            >
+              {hint}
+            </p>
+          )}
+          {invalid && (
+            <p
+              id={errorId}
+              role="alert"
+              className="font-semibold text-panther"
+              style={{ fontSize: "var(--text-xs)" }}
+            >
+              {error}
+            </p>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -156,7 +199,7 @@ type TextAreaProps = Omit<TextareaHTMLAttributes<HTMLTextAreaElement>, "id" | "c
 
 export function TextArea({ label, hint, error, mono = false, required, ...rest }: TextAreaProps) {
   return (
-    <Field label={label} hint={hint} error={error} required={required}>
+    <Field label={label} hint={hint} error={error} required={required} wide>
       {({ controlId, describedBy, invalid }) => (
         <textarea
           {...rest}

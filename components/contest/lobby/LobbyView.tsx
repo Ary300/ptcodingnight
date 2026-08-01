@@ -2,7 +2,7 @@
 
 import { useCallback } from "react";
 
-import { Crumbs } from "@/components/ui";
+import { Button, Crumbs } from "@/components/ui";
 
 import { contestApi } from "../data/backend";
 import { useParticipant } from "../data/participant";
@@ -184,27 +184,23 @@ export function LobbyView({ phase = null }: LobbyViewProps) {
                 style={{ fontSize: "var(--text-sm)" }}
               >
                 {problems.error}{" "}
-                <button
-                  type="button"
-                  onClick={problems.reload}
-                  className="text-panther underline underline-offset-2"
-                >
+                {/* Button quiet, not a hand-rolled panther link: reload-after-error is a row
+                    action and the product has exactly one grammar for those (ui/Button's
+                    docblock). A third underlined-red skin here was inventory defect D11. */}
+                <Button variant="quiet" onClick={problems.reload}>
                   Check again
-                </button>
+                </Button>
               </p>
             ) : (
               <div role="alert">
                 <p className="text-panther" style={{ fontSize: "var(--text-sm)" }}>
                   {problems.error}
                 </p>
-                <button
-                  type="button"
-                  onClick={problems.reload}
-                  className="mt-2 text-panther underline underline-offset-2"
-                  style={{ fontSize: "var(--text-xs)" }}
-                >
+                {/* The error sentence above carries the red; the action is the shared quiet
+                    button, same as every other in-flow retry (D11). */}
+                <Button variant="quiet" size="sm" className="mt-1" onClick={problems.reload}>
                   Try again
-                </button>
+                </Button>
               </div>
             ))}
           {problems.status === "ready" &&

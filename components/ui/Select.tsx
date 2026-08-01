@@ -59,9 +59,32 @@ export type SelectSize = "sm" | "md";
  * Surface, corner, rule weight and the disabled skin: everything a control's box has that is
  * not its padding or its type face. Shared with `components/admin/Field.tsx`.
  *
- * `--radius-flat` and not `--radius-chip`, even though a select is arguably a control rather
- * than a thing you type into: it stands in a grid beside text inputs that are flat, and a 3px
- * corner next to a 0px corner in one form row reads as a mistake rather than as a taxonomy.
+ * ## The corner is 4px, measured off HackerRank, and it is deliberately not `--radius-flat`
+ *
+ * Every select and every input in every reference screenshot (`12.23.42`, `12.24.35`,
+ * `12.24.25`, the editor picker in `hr-challenge-live.png`) has a ~4px corner. Our controls
+ * shipped at `--radius-flat` = 0px, and the inventory called that the single largest systemic
+ * mismatch in the product. Raw `rounded` is Tailwind's 4px and is what the reference-matching
+ * sign-in inputs already use, so the two halves of the product now agree.
+ *
+ * §5a's taxonomy survives this: a rectangle that HOLDS DATA (table cell, code block) stays
+ * flat at 0px; a CONTROL is rounded; a SECTION is 8px. What moves is only which bucket a
+ * form control belongs to. The remaining debt is that 4px is off the three-radius token
+ * scale — globals.css is orchestrator-owned, so the promotion to a `--radius-control: 4px`
+ * token (and folding `--radius-chip` 3px into it) is requested in the Group C report rather
+ * than done here. `components/ui/Button.tsx` carries the same raw `rounded` for the same
+ * reason; if one changes, change both.
+ *
+ * ## Focus changes the control's OWN border, not just the outer ring
+ *
+ * HackerRank's focused control darkens its border (near-black in the signup modal, blue plus
+ * a halo in the admin). Ours kept `--rule-edge` and relied on the global 2px panther outline
+ * alone, so a focused-but-not-hovered select's box looked identical to a resting one inside
+ * the ring — and the outline is `:focus-visible`, so a MOUSE focus showed nothing at all.
+ * `focus:border-ink` (in `borderFor` below, valid branch only) is the reference's darkened
+ * border in our palette; the global panther outline remains the halo. Invalid controls keep
+ * `--panther` even focused, because the error signal outranks the focus signal and the two
+ * would otherwise be indistinguishable reds.
  */
 export const CONTROL_SURFACE =
   // `transition-[border-color]` and NOT `transition-colors`: in Tailwind v4 that shorthand
@@ -69,7 +92,7 @@ export const CONTROL_SURFACE =
   // into a select FADED the ring up from ink to `--panther` over 150ms — the one indicator a
   // keyboard-only user has, arriving late and washed out. The border is the only colour here
   // that has any business animating.
-  "w-full rounded-flat border bg-paper text-ink transition-[border-color] " +
+  "w-full rounded border bg-paper text-ink transition-[border-color] " +
   "disabled:cursor-not-allowed disabled:border-rule-hair disabled:bg-ink/5 disabled:text-ink/40";
 
 /** Padding by size. The select adds its own right padding to clear the chevron. */
@@ -128,7 +151,11 @@ const CHEVRON_BOX: Record<SelectSize, { width: number; height: number }> = {
  * beneath the control and points `aria-describedby` at it.
  */
 function borderFor(invalid: boolean): string {
-  return invalid ? "border-panther" : "border-rule-edge hover:border-rule-firm";
+  // `focus:` is emitted after `hover:` in Tailwind's variant order, so a hovered focused
+  // control settles on ink rather than flickering between the two weights.
+  return invalid
+    ? "border-panther"
+    : "border-rule-edge hover:border-rule-firm focus:border-ink";
 }
 
 export interface SelectProps
@@ -195,7 +222,9 @@ export function Select({
       */}
       <span
         aria-hidden="true"
-        className={`pointer-events-none absolute ${CHEVRON_POSITION[size]} text-ink/70 peer-disabled:text-ink/40`}
+        // Full ink, not an alpha: the reference glyph is near-black (measured on the Create
+        // Contest form and the editor picker), and ours read one shade too light beside it.
+        className={`pointer-events-none absolute ${CHEVRON_POSITION[size]} text-ink peer-disabled:text-ink/40`}
       >
         <svg
           width={glyph.width}
