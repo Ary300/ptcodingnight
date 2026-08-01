@@ -90,7 +90,10 @@ test.describe("keyboard-only", () => {
     await tabUntil(
       page,
       "a problem in the list",
-      (snapshot) => snapshot.tag === "a" && / — .*points/.test(snapshot.name),
+      // Comma, not an em dash. The problem link's accessible name reads
+      // "<slot>, <title>, rated N points, <status>" since em dashes were removed from all
+      // user-visible text (a screen reader reads an aria-label aloud, so it is user-visible).
+      (snapshot) => snapshot.tag === "a" && /rated .*points/.test(snapshot.name),
     );
     await page.keyboard.press("Enter");
 
