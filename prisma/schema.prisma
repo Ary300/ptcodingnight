@@ -603,6 +603,18 @@ model Submission {
   runtimeMs   Int?
   memoryKb    Int?
   judgedAt    DateTime?
+  /// When this submission's CURRENT verdict and score became true.
+  ///
+  /// Distinct from `judgedAt`, which is when the JUDGE ran and never changes afterwards. An
+  /// override moves `effectiveAt` and leaves `judgedAt` alone, so "what did the judge say, and
+  /// when" stays answerable while the board still knows when the answer changed.
+  ///
+  /// This is what makes a freeze hold. The public board during a freeze shows the standings as
+  /// they were at the freeze instant; filtering on `submittedAt` alone answered "which
+  /// submissions existed yet", so a pre-freeze submission that was overridden or rejudged
+  /// afterwards moved the frozen board. Measured: frozen with a student on 0, override to 140,
+  /// and eighteen seconds later the anonymous board reported frozen:true, the same asOf, and 140.
+  effectiveAt DateTime?
   /// Pointer to the structured judge log retained for dispute resolution (PRD §10).
   judgeLogRef String?
 

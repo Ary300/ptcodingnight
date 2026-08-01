@@ -278,6 +278,10 @@ async function persistResult(submissionId: string, result: JudgeResult): Promise
     data: {
       verdict: result.verdict,
       score: result.score,
+      // The judge's answer is now the current answer. `judgedAt` records when the judge RAN;
+      // `effectiveAt` records when what it said became true. They are equal here and diverge the
+      // moment an organizer overrides the verdict.
+      effectiveAt: new Date(),
       runtimeMs: result.runtimeMs,
       memoryKb: result.memoryKb,
       judgedAt: new Date(),

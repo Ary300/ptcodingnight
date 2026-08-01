@@ -170,7 +170,10 @@ export async function overrideVerdict(
   */
   await prisma.submission.update({
     where: { id: input.submissionId },
-    data: { verdict: input.verdict, score: input.score },
+    // `effectiveAt: now`, `judgedAt` untouched. The override IS the current answer as of now —
+    // which is what keeps it off a board that is already frozen — while the judge's own timestamp
+    // survives so "what did the judge say, and when" stays answerable.
+    data: { verdict: input.verdict, score: input.score, effectiveAt: now },
   });
 
   await writeAudit({
@@ -321,7 +324,16 @@ export async function rejudgeSubmission(
 
   await prisma.submission.update({
     where: { id: submissionId },
-    data: { verdict: null, score: 0, runtimeMs: null, memoryKb: null, judgedAt: null },
+    data: {
+      verdict: null,
+      score: 0,
+      runtimeMs: null,
+      memoryKb: null,
+      judgedAt: null,
+      // Cleared with the verdict: until the judge answers again there IS no current answer, and a
+      // stale effectiveAt would keep the old score on a frozen board.
+      effectiveAt: null,
+    },
   });
 
   await removeJob(submissionId);

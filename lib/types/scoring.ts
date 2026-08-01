@@ -129,6 +129,23 @@ export interface SubmissionRecord {
   readonly verdict: Verdict;
   /** Points the judge awarded this submission in isolation. */
   readonly score: number;
+  /**
+   * When this submission's CURRENT verdict and score became true.
+   *
+   * Distinct from `submittedAt`, and the distinction is what makes a freeze hold.
+   *
+   * The public board during a freeze shows the standings AS THEY WERE at the freeze instant.
+   * Filtering on `submittedAt` alone answered a different question — "which submissions existed
+   * yet" — so a submission made before the freeze whose verdict was overridden or rejudged
+   * afterwards passed straight through carrying its NEW score. Measured: a contest frozen with a
+   * student on 0, an override to 140, and eighteen seconds later the anonymous public board
+   * reported `frozen: true`, the same `asOf`, and 140. A rejudge did the same in reverse and
+   * dropped a named student to zero on the wall.
+   *
+   * Null when the judge has not answered yet, which is also correct: at the freeze instant that
+   * submission had no verdict, so it contributed nothing.
+   */
+  readonly effectiveAt: Date | null;
 }
 
 export interface HintGrantRecord {

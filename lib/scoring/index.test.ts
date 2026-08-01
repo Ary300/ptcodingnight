@@ -47,6 +47,9 @@ function sub(
     submissionId: `s${String(seq).padStart(3, "0")}`,
     participantId: "u1",
     contestProblemId: "p1",
+    // Defaults to submittedAt, so every existing case behaves exactly as it did before
+    // `effectiveAt` existed. A case that is ABOUT a late override states it explicitly.
+    effectiveAt: over.submittedAt,
     ...over,
   };
 }
@@ -362,6 +365,48 @@ describe("edge cases", () => {
     expect(standing?.lastScoreIncreaseAt?.toISOString()).toBe(at(10).toISOString());
   });
 
+  it("a frozen board does not move when a pre-freeze submission is overridden after the freeze", () => {
+    /*
+      THE BUG THIS PINS.
+
+      The window filtered on `submittedAt` alone, which answers "which submissions existed yet" —
+      not "what did the board know". So a submission made BEFORE the freeze whose verdict was
+      overridden or rejudged AFTER it passed straight through carrying its new score.
+
+      Measured on the running app, anonymously: a contest frozen with a student on 0, an override
+      to AC/140, and 18.8 seconds later GET /api/standings returned `frozen: true`, the SAME
+      `asOf`, and 140. A rejudge did the reverse and dropped a named student to zero on the wall —
+      which is the projector, in front of the room, during the one period the freeze exists to
+      protect.
+    */
+    const freeze = at(10);
+
+    // Submitted before the freeze, and the judge said WA before the freeze too.
+    const beforeOverride = only([
+      sub({ submittedAt: at(5), effectiveAt: at(5), verdict: "WA", score: 0 }),
+    ]);
+    expect(beforeOverride?.score).toBe(0);
+
+    // An organizer overrides it to AC AFTER the freeze. Same submission, same submittedAt.
+    // `only(submissions, hints, config, options)` — the cutoff is the FOURTH argument.
+    const afterOverride = only(
+      [sub({ submittedAt: at(5), effectiveAt: at(20), verdict: "AC", score: 100 })],
+      [],
+      config(),
+      { upTo: freeze },
+    );
+    expect(
+      afterOverride?.score,
+      "the frozen board moved when a verdict changed after the freeze",
+    ).toBe(0);
+
+    // And once unfrozen, it counts — the score is not lost, only held.
+    const unfrozen = only([
+      sub({ submittedAt: at(5), effectiveAt: at(20), verdict: "AC", score: 100 }),
+    ]);
+    expect(unfrozen?.score).toBe(100);
+  });
+
   it("orders same-instant submissions by id so replay is stable", () => {
     const sameTime = at(10);
     const a: SubmissionRecord = {
@@ -369,6 +414,7 @@ describe("edge cases", () => {
       participantId: "u1",
       contestProblemId: "p1",
       submittedAt: sameTime,
+      effectiveAt: sameTime,
       verdict: "AC",
       score: 100,
     };

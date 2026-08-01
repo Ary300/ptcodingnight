@@ -49,7 +49,30 @@ function submissionsInWindow(
   const cutoff = upTo == null ? Number.POSITIVE_INFINITY : upTo.getTime();
 
   return submissions
-    .filter((s) => isScorable(s.verdict) && s.submittedAt.getTime() <= cutoff)
+    /*
+      Both instants must be inside the window.
+
+      `submittedAt <= cutoff` keeps a submission made after the freeze off the board. `effectiveAt
+      <= cutoff` keeps an ANSWER that arrived after the freeze off it — a rejudge, an override, or
+      a verdict the judge had simply not returned yet.
+
+      Filtering on `submittedAt` alone answered a different question — "which submissions existed
+      yet" — so a submission made BEFORE the freeze whose verdict changed AFTER it went straight
+      through carrying its new score. Measured anonymously on the running app: a contest frozen
+      with a student on 0, an override to AC, and eighteen seconds later the public board reported
+      `frozen: true`, the same `asOf`, and the new score. A rejudge did the reverse and dropped a
+      named student to zero on the projector, in front of the room, during the one period a freeze
+      exists to protect.
+
+      `effectiveAt === null` is an unjudged submission, which contributes nothing at any cutoff.
+    */
+    .filter(
+      (s) =>
+        isScorable(s.verdict) &&
+        s.submittedAt.getTime() <= cutoff &&
+        s.effectiveAt !== null &&
+        s.effectiveAt.getTime() <= cutoff,
+    )
     .sort((a, b) => {
       const at = a.submittedAt.getTime();
       const bt = b.submittedAt.getTime();

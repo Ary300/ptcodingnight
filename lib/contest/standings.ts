@@ -6,12 +6,14 @@ import {
   StandingsResponseSchema,
   TeamStandingsResponseSchema,
   type StandingsResponse,
+  type TeamPlayerProblem,
   type TeamStandingsResponse,
 } from "@/lib/schemas/api";
 import type {
   ContestConfig,
   HintGrantRecord,
   ParticipantRecord,
+  ProblemStanding,
   ScoringPresetId,
   SideActivityRecord,
   Standing,
@@ -47,6 +49,22 @@ export interface ScoringInput {
   readonly divisionNames: ReadonlyMap<string, string>;
   /** Set id to label ("A".."D"). Presentation only — the scoring engine never sees a set's name. */
   readonly problemSetLabels: readonly (readonly [string, string])[];
+  /**
+   * `contestProblemId` to what a reader needs to recognise the problem.
+   *
+   * Presentation only, and here for exactly the reason `problemSetLabels` is here: the scoring
+   * engine must not know that a problem has a NAME. `ProblemStanding` carries a cuid and nothing
+   * else, on purpose, and a breakdown showing `cms9iinaf002o…` is not a breakdown.
+   */
+  readonly problemLabels: readonly (readonly [string, ProblemLabel])[];
+}
+
+/** What the per-player breakdown needs to describe a problem. Never an input to a score. */
+export interface ProblemLabel {
+  readonly slotLabel: string;
+  readonly title: string;
+  readonly basePoints: number;
+  readonly isGroupProblem: boolean;
 }
 
 /** The unlabelled group: participants an organizer has not put in a division yet. */
@@ -103,7 +121,10 @@ async function queryScoringInput(contestId: string): Promise<ScoringInput> {
           id: true,
           divisionId: true,
           basePoints: true,
-          problem: { select: { round: true } },
+          // `title` and `slotLabel` are read for the breakdown's benefit only. They are put on
+          // `problemLabels` below and never on `config`, so nothing in `lib/scoring/` can see them.
+          slotLabel: true,
+          problem: { select: { round: true, title: true } },
           setId: true,
         },
       },
@@ -131,6 +152,7 @@ async function queryScoringInput(contestId: string): Promise<ScoringInput> {
         participantId: true,
         contestProblemId: true,
         submittedAt: true,
+        effectiveAt: true,
         verdict: true,
         score: true,
       },
@@ -198,6 +220,7 @@ async function queryScoringInput(contestId: string): Promise<ScoringInput> {
         participantId: s.participantId,
         contestProblemId: s.contestProblemId,
         submittedAt: s.submittedAt,
+        effectiveAt: s.effectiveAt,
         verdict: s.verdict,
         score: s.score,
       })),
@@ -209,6 +232,18 @@ async function queryScoringInput(contestId: string): Promise<ScoringInput> {
     })),
     divisionNames: new Map(contest.divisions.map((d) => [d.id, d.name])),
     problemSetLabels: contest.problemSets.map((set) => [set.id, set.label] as const),
+    problemLabels: contest.contestProblems.map(
+      (cp) =>
+        [
+          cp.id,
+          {
+            slotLabel: cp.slotLabel,
+            title: cp.problem.title,
+            basePoints: cp.basePoints,
+            isGroupProblem: cp.problem.round === "GROUP",
+          },
+        ] as const,
+    ),
   };
 }
 
@@ -351,6 +386,26 @@ export async function problemStandingsFor(
  * The freeze works the same way and for the same reason — by asking about an earlier INSTANT rather
  * than by filtering the answer afterwards, so the frozen board is a real board from a real moment
  * and the unfreeze is the same function called again (D16).
+ *
+ * ## Who sees the per-player breakdown, and why
+ *
+ * `TeamPlayerRow.problems` is the per-problem detail: what each player scored on each problem, how
+ * many rejected submissions it took, and what their hints cost. Both team-standings routes are
+ * **unauthenticated** — the projector has no session — so THIS FUNCTION is the disclosure boundary.
+ * A component cannot be it; by the time a component renders, the data has already crossed the wire
+ * and is in the browser's network tab.
+ *
+ * | who is asking | `problems` | why |
+ * |---|---|---|
+ * | anonymous, and the projector | `null` | Per-problem scores, wrong-attempt counts and hint usage for every player of every team, with no login, is live competitive intel on a wall — and personally embarrassing about a named minor. The freeze exists precisely to stop the room reading live progress; this would hand the room more than the unfrozen board ever did. |
+ * | competitor, their OWN team | full array | Their teammates' points are the divisor in their own score. `/team` exists so a student can check arithmetic they are being ranked on, and a mean cannot be checked from the total alone. |
+ * | competitor, ANOTHER team | `null` | Another student's attempt history is not theirs to read. Their team's total, rank and per-player points stay visible, because those are already on the projector. |
+ * | organizer | full array, every team | Needs it to spot a stuck player mid-round, and to settle a dispute on `/admin/awards` after. An organizer already sees through the freeze. |
+ *
+ * The freeze needs no second decision here: the detail comes out of the same
+ * `computeTeamStandings(..., { upTo })` call as the totals, so a frozen board's detail is frozen
+ * for free and an organizer's is live for free. No route can leak an unfrozen breakdown by
+ * forgetting a parameter, which is the property `cutoffFor` was built to guarantee.
  */
 export async function getTeamStandings(
   contestId: string,
@@ -374,31 +429,112 @@ export async function getTeamStandings(
   // Set labels are a presentation concern, so they are looked up here rather than threaded through
   // the scoring engine — which must not know that a set has a name.
   const setLabel = new Map(input.problemSetLabels);
+  const problemLabel = new Map(input.problemLabels);
+
+  /**
+   * The viewer's own team, or null.
+   *
+   * No new query and no change to `Viewer`: `CompetitorViewer` carries no `teamId`, but the
+   * participant rows this function already holds do. A competitor viewing another contest's board
+   * matches nothing here and lands on null, which is the safe side.
+   */
+  const viewerTeamId =
+    viewer.kind === "competitor"
+      ? (input.participants.find((p) => p.participantId === viewer.participantId)?.teamId ?? null)
+      : null;
 
   return TeamStandingsResponseSchema.parse({
     contestId,
     frozen: !admin && isPublicBoardFrozen(input.contest, now),
     asOf: (upTo ?? now).toISOString(),
     endsAt: input.contest.endsAt.toISOString(),
-    teams: teams.map((team) => ({
-      teamId: team.teamId,
-      name: team.name,
-      rank: team.rank,
-      isTied: team.isTied,
-      score: team.score,
-      scoreHundredths: team.scoreHundredths,
-      teamSize: team.teamSize,
-      playerPoolPoints: team.playerPoolPoints,
-      groupPoints: team.groupPoints,
-      sideActivityPoints: team.sideActivityPoints,
-      penaltyMinutes: team.penaltyMinutes,
-      players: team.players.map((player) => ({
-        participantId: player.participantId,
-        displayName: player.displayName,
-        score: player.score,
-        penaltyMinutes: player.penaltyMinutes,
-        chosenSetLabel: player.chosenSetId === null ? null : setLabel.get(player.chosenSetId) ?? null,
-      })),
-    })),
+    teams: teams.map((team) => {
+      // Decided once, per team, here — the one place that knows both who is asking and whose row
+      // this is. A component cannot make this decision, because by the time it renders the data
+      // has already crossed the wire.
+      const mayReadDetail = admin || (viewerTeamId !== null && team.teamId === viewerTeamId);
+
+      return {
+        teamId: team.teamId,
+        name: team.name,
+        rank: team.rank,
+        isTied: team.isTied,
+        score: team.score,
+        scoreHundredths: team.scoreHundredths,
+        teamSize: team.teamSize,
+        playerPoolPoints: team.playerPoolPoints,
+        groupPoints: team.groupPoints,
+        sideActivityPoints: team.sideActivityPoints,
+        penaltyMinutes: team.penaltyMinutes,
+        players: team.players.map((player) => ({
+          participantId: player.participantId,
+          displayName: player.displayName,
+          score: player.score,
+          penaltyMinutes: player.penaltyMinutes,
+          chosenSetLabel:
+            player.chosenSetId === null ? null : (setLabel.get(player.chosenSetId) ?? null),
+          // Computed here, off the same problems `score` sums, so a solve count can never
+          // disagree with the total printed beside it.
+          solvedCount: player.problems.filter(
+            (p) => p.score > 0 && problemLabel.get(p.contestProblemId)?.isGroupProblem !== true,
+          ).length,
+          lastScoreIncreaseAt: player.lastScoreIncreaseAt?.toISOString() ?? null,
+          problems: mayReadDetail ? detailFor(player.problems, problemLabel) : null,
+        })),
+      };
+    }),
   });
+}
+
+/**
+ * The per-problem breakdown for one player, labelled and re-sorted for a reader.
+ *
+ * The engine emits `problems` sorted by `contestProblemId` — stable, and byte-identical on replay,
+ * but meaningless to a student looking for "the second easy one". Sorting for display therefore
+ * happens HERE, in presentation, never in `lib/scoring/`.
+ *
+ * The sort key is the PAIR `(slotLabel, contestProblemId)`. `prisma/schema.prisma` puts no
+ * uniqueness constraint on `slotLabel`, so two problems may share one, and a single-key sort over a
+ * non-unique key is not stable — which would break byte-identical replay in exactly the way the
+ * per-player breakdown already broke it once.
+ */
+function detailFor(
+  problems: readonly ProblemStanding[],
+  labels: ReadonlyMap<string, ProblemLabel>,
+): readonly TeamPlayerProblem[] {
+  const unknownProblem: ProblemLabel = {
+    // A submission whose ContestProblem was removed from the line-up. Rare, but it must render as
+    // something a human can act on rather than vanish from a total it still contributes to.
+    slotLabel: "?",
+    title: "Removed from the line-up",
+    basePoints: 0,
+    isGroupProblem: false,
+  };
+
+  return problems
+    .map((problem) => {
+      const label = labels.get(problem.contestProblemId) ?? unknownProblem;
+      return {
+        contestProblemId: problem.contestProblemId,
+        slotLabel: label.slotLabel,
+        title: label.title,
+        basePoints: label.basePoints,
+        score: problem.score,
+        rejectedCount: problem.rejectedCount,
+        penaltyMinutes: problem.penaltyMinutes,
+        hintsTaken: problem.hintsTaken,
+        hintDeduction: problem.hintDeduction,
+        firstScoredAt: problem.firstScoredAt?.toISOString() ?? null,
+        isGroupProblem: label.isGroupProblem,
+      };
+    })
+    .sort((a, b) => {
+      const bySlot = a.slotLabel.localeCompare(b.slotLabel);
+      if (bySlot !== 0) return bySlot;
+      return a.contestProblemId < b.contestProblemId
+        ? -1
+        : a.contestProblemId > b.contestProblemId
+          ? 1
+          : 0;
+    });
 }

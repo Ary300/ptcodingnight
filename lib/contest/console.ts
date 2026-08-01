@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import type { AdminConsoleView, AdminSubmissionRow, JudgeHealthView } from "@/lib/schemas/api";
 import type { Language, Verdict } from "@/lib/schemas/judge";
 import { judgeQueue } from "./queue";
+import { reconcile } from "./submissions";
 
 /**
  * What the organizer's live console reads.
@@ -26,6 +27,39 @@ import { judgeQueue } from "./queue";
 const FEED_LIMIT = 200;
 
 export async function adminConsole(contestId: string): Promise<AdminConsoleView> {
+  /*
+    RECONCILE FIRST, or a rejudged submission stays at zero forever.
+
+    Verdicts do not arrive by themselves. The worker returns its result as the job's VALUE and
+    writes nothing to the database; `reconcile` is what moves a finished job into `Submission`.
+    Two things call it — the competitor's SSE stream (`lib/contest/stream.ts`) and
+    `getSubmissionView` — and both are scoped to the student who owns the submission.
+
+    A REJUDGE is organizer-initiated and normally happens after the round, when no student has a
+    stream open. So the job completed, the queue held an AC, and the row stayed `verdict: null`,
+    `score: 0` — measured at 3m27s and still counting, while this console polled every three
+    seconds and showed "judging". The public standings had already dropped the student from 460 to
+    320. One hand-called GET on the submission reconciled it instantly, which is what proved the
+    verdict had been sitting in Redis the whole time.
+
+    So the organizer's own console has to do what the student's stream does. Only unjudged rows are
+    touched, and `reconcile` is safe to call repeatedly and concurrently — it writes conditionally
+    on the submission still being unjudged, so exactly one caller wins.
+  */
+  const unjudged = await prisma.submission.findMany({
+    where: { contestProblem: { contestId }, verdict: null },
+    select: { id: true },
+    // Bounded. A contest with hundreds of queued submissions during the burst must not turn one
+    // console poll into hundreds of queue reads; the rest reconcile on the next tick, three
+    // seconds later, or when the student's own stream picks them up.
+    take: 40,
+    orderBy: { submittedAt: "desc" },
+  });
+  const now = new Date();
+  for (const row of unjudged) {
+    await reconcile(row.id, now).catch(() => undefined);
+  }
+
   const [contest, rows, total, health] = await Promise.all([
     prisma.contest.findUnique({
       where: { id: contestId },

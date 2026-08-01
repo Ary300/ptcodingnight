@@ -59,6 +59,8 @@ interface RawGolden {
     participantId: string;
     contestProblemId: string;
     submittedAt: string;
+    /** Optional. Absent means "the judge's answer is the current answer" — see the loader. */
+    effectiveAt?: string;
     verdict: string;
     score: number;
   }[];
@@ -132,6 +134,17 @@ function loadFrom(raw: RawGolden): GoldenInput {
       participantId: s.participantId,
       contestProblemId: s.contestProblemId,
       submittedAt: new Date(s.submittedAt),
+      /*
+        Defaults to `submittedAt` for a fixture that does not state it.
+
+        The golden contest has no overrides and no rejudges, so for every one of its submissions
+        the judge's answer IS the current answer, and any instant at or before the cutoff gives the
+        same result. Using `submittedAt` keeps G6 byte-identical to what it produced before this
+        field existed — which is the property that makes the golden fixture worth having.
+
+        A fixture that wants to exercise a frozen board against a late override states it.
+      */
+      effectiveAt: s.effectiveAt === undefined ? new Date(s.submittedAt) : new Date(s.effectiveAt),
       verdict: s.verdict as Verdict,
       score: s.score,
     })),
