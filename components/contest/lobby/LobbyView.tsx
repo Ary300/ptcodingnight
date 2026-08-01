@@ -2,6 +2,8 @@
 
 import { useCallback } from "react";
 
+import Link from "next/link";
+
 import { Button, Crumbs } from "@/components/ui";
 
 import { contestApi } from "../data/backend";
@@ -50,9 +52,16 @@ import type { ContestPhase } from "./phase";
 export interface LobbyViewProps {
   /** Where the contest is in its own night. Null for an anonymous or organizer viewer. */
   readonly phase?: ContestPhase | null;
+  /**
+   * The server's authoritative read of who is here. The client `useParticipant` hook maps an
+   * organizer to "anonymous" because an admin has no participantId, so without this an organizer
+   * who follows "View as a student" is falsely told to sign in. Defaulted so existing callers and
+   * tests are unaffected.
+   */
+  readonly viewerKind?: "anonymous" | "competitor" | "admin";
 }
 
-export function LobbyView({ phase = null }: LobbyViewProps) {
+export function LobbyView({ phase = null, viewerKind }: LobbyViewProps) {
   const participant = useParticipant();
 
   const loadProblems = useCallback(() => contestApi.listProblems(), []);
@@ -60,6 +69,14 @@ export function LobbyView({ phase = null }: LobbyViewProps) {
 
   const problems = useResource(loadProblems);
   const standings = useResource(loadStandings);
+
+  // An organizer took the "View as a student" link and has no competitor identity to show. That
+  // is not a sign-in failure, so it does not get the sign-in panel; it gets a true sentence and a
+  // way back to the console. The server settles this (`viewerKind`), because the client hook reads
+  // an admin as anonymous.
+  if (viewerKind === "admin") {
+    return <OrganizerViewingNotice />;
+  }
 
   // The wording, the button and the tone now come from one place — see `SignInRequired`, which is
   // this block extracted so that /team and /submissions stop inventing their own.
@@ -243,6 +260,36 @@ export function LobbyView({ phase = null }: LobbyViewProps) {
           />
         )}
       </div>
+    </div>
+  );
+}
+
+
+/**
+ * What an organizer sees on /contest.
+ *
+ * They arrive here from the "View as a student" item in the organizer menu, so the honest message
+ * is that this is the student view and they are not a competitor in it, plus the way back. Not an
+ * error, not a sign-in prompt.
+ */
+function OrganizerViewingNotice() {
+  return (
+    <div role="status" className="max-w-md">
+      <h1 className="font-display font-bold" style={{ fontSize: "var(--text-lg)" }}>
+        This is the student view
+      </h1>
+      <p className="mt-2 text-ink/75" style={{ fontSize: "var(--text-sm)" }}>
+        You are signed in as an organizer, so you are not on a team and have no problem set of your
+        own. To see a real student lobby, open a contest and use a test account, or manage the
+        contest from the console.
+      </p>
+      <Link
+        href="/admin"
+        className="mt-4 inline-block rounded bg-panther px-4 py-2 font-semibold text-paper hover:bg-panther-deep"
+        style={{ fontSize: "var(--text-sm)" }}
+      >
+        Back to the organizer console
+      </Link>
     </div>
   );
 }

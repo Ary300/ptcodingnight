@@ -65,6 +65,31 @@ export function SignInForm({ initialError = null }: SignInFormProps) {
   const [passcodeBusy, setPasscodeBusy] = useState(false);
 
   const bannerRef = useRef<HTMLDivElement>(null);
+  const formRef = useRef<HTMLFormElement>(null);
+
+  /*
+    RECONCILE STATE WITH ANYTHING TYPED BEFORE HYDRATION.
+
+    These are controlled inputs, so their value tracks React state. But between the server HTML
+    painting and this component hydrating, the fields are live plain inputs: a fast typist on a
+    slow connection (a room full of students on venue wifi is exactly that) can fill email and
+    password, and those keystrokes never reached React, so `email === ""` kept the Sign in button
+    disabled forever. Browser autofill lands the same way. On mount we read whatever the DOM
+    already holds and adopt it, so the button reflects what the student can see in the fields.
+  */
+  useEffect(() => {
+    const root = formRef.current?.closest("[data-signin-root]") ?? document;
+    const read = (name: string): string => {
+      const el = root.querySelector(`input[name="${name}"]`);
+      return el instanceof HTMLInputElement ? el.value : "";
+    };
+    const domEmail = read("signin-email");
+    const domPassword = read("signin-password");
+    const domPasscode = read("signin-passcode");
+    if (domEmail !== "") setEmail((v) => (v === "" ? domEmail : v));
+    if (domPassword !== "") setPassword((v) => (v === "" ? domPassword : v));
+    if (domPasscode !== "") setPasscode((v) => (v === "" ? domPasscode : v));
+  }, []);
 
   /**
    * Announce the arrival-time error, which `role="alert"` alone does NOT do.
@@ -244,11 +269,12 @@ export function SignInForm({ initialError = null }: SignInFormProps) {
         <span className="h-px flex-1 bg-ink/15" />
       </div>
 
-      <form className="flex flex-col gap-3" onSubmit={(event) => void submit(event)}>
+      <form ref={formRef} className="flex flex-col gap-3" onSubmit={(event) => void submit(event)}>
         <label className="flex flex-col gap-1" style={{ fontSize: "var(--text-sm)" }}>
           Email
           <input
             type="email"
+            name="signin-email"
             autoComplete="username"
             required
             value={email}
@@ -269,6 +295,7 @@ export function SignInForm({ initialError = null }: SignInFormProps) {
           Password
           <input
             type="password"
+            name="signin-password"
             autoComplete="current-password"
             required
             value={password}
@@ -323,6 +350,7 @@ export function SignInForm({ initialError = null }: SignInFormProps) {
             Passcode
             <input
               type="password"
+              name="signin-passcode"
               autoComplete="off"
               value={passcode}
               onChange={(event) => setPasscode(event.target.value)}

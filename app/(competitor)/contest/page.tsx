@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 
 import { LobbyView } from "@/components/contest/lobby/LobbyView";
 
-import { loadContestPhase } from "./contest-phase";
+import { loadContestPhase, viewerKindForLobby } from "./contest-phase";
 
 export const metadata: Metadata = {
   // A pipe, not an em dash: no em dash may appear in anything a person using this site can read,
@@ -28,7 +28,7 @@ export default async function ContestPage() {
     Null for an anonymous visitor or an organizer. The lobby draws its sign-in state for those and
     never reads a phase.
   */
-  const phase = await loadContestPhase();
+  const [phase, viewerKind] = await Promise.all([loadContestPhase(), viewerKindForLobby()]);
 
   /*
     Keyed on the phase, which remounts the lobby when the contest opens or closes.
@@ -41,5 +41,5 @@ export default async function ContestPage() {
 
     Two remounts per night is the entire cost.
   */
-  return <LobbyView key={phase?.phase ?? "signed-out"} phase={phase} />;
+  return <LobbyView key={phase?.phase ?? "signed-out"} phase={phase} viewerKind={viewerKind} />;
 }

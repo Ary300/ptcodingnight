@@ -107,3 +107,18 @@ function phaseOf(
   if (now.getTime() < contest.startsAt.getTime()) return "before";
   return "live";
 }
+
+
+/**
+ * Just the viewer's kind, for the lobby's signed-out state.
+ *
+ * The lobby is a client component and its `useParticipant` hook maps an ADMIN session to
+ * "anonymous" (an organizer has no participantId), so without this an organizer who takes the
+ * "View as a student" link is told "You are not signed in" on a screen they are signed in to. This
+ * is a server cookie read, so it is authoritative and costs no extra round trip: the page already
+ * awaits the phase.
+ */
+export async function viewerKindForLobby(now: Date = new Date()): Promise<"anonymous" | "competitor" | "admin"> {
+  const viewer = await viewerFromCookies(now);
+  return viewer.kind;
+}
