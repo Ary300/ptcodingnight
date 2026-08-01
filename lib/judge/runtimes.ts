@@ -369,11 +369,32 @@ const NEWER_THAN_CPP11 =
 
 const NEWER_THAN_CPP17 =
   "-Werror=c++20-extensions -Werror=c++23-extensions -Werror=c++26-extensions";
+/**
+ * ## How a variant's `label` is written
+ *
+ * These strings are what a student reads in the language dropdown, forty times an hour, and the
+ * rule comes from reading all 44 of HackerRank's:
+ *
+ *   - **A version token appears only where the family has more than one row.** C++11 / C++17 and
+ *     Java 8 / 11 / 17 / 21 need one; C, Go and JavaScript do not. `C (C17)` read as a typo.
+ *   - **The token is the LANGUAGE STANDARD, never the toolchain.** "C++11", not
+ *     "g++ 14 -std=c++11". "Python 3", not "Python 3.12" — the minor version is a fact about our
+ *     Docker image, not about the language a student is writing.
+ *   - **A parenthesised qualifier names the runtime only where the language name is genuinely
+ *     ambiguous.** JavaScript is (browser vs Node vs Deno); Go is not.
+ *
+ * The exact toolchain version is still here in the registry for the problem's metadata rail. It is
+ * deliberately not in the dropdown: a string read that often should be short.
+ *
+ * This is a LABEL, not a `LanguageId`. Renaming an id has four homes and three of them are data
+ * (see CLAUDE.md); renaming a label has one, because `LANGUAGE_LABEL` in
+ * components/contest/editor/types.ts derives from here.
+ */
 export const VARIANTS: Readonly<Record<LanguageId, Variant>> = {
   PYTHON_312: {
     id: "PYTHON_312",
     runtime: "python312",
-    label: "Python 3.12",
+    label: "Python 3",
     sourceFile: "main.py",
     // No build, but a syntax error is a COMPILE error rather than a runtime one: `RE` would
     // tell a student their algorithm crashed when the file never parsed. `compile()` rather
@@ -473,7 +494,7 @@ public class Main {
   C_17: {
     id: "C_17",
     runtime: "gcc14",
-    label: "C (C17)",
+    label: "C",
     sourceFile: "main.c",
     // -lm because contest C reaches for sqrt and friends often enough that omitting it would
     // read as a platform bug rather than a missing flag.
@@ -530,7 +551,7 @@ int main() {
   JAVASCRIPT_NODE22: {
     id: "JAVASCRIPT_NODE22",
     runtime: "node22",
-    label: "JavaScript (Node 22)",
+    label: "JavaScript (Node.js)",
     sourceFile: "main.js",
     // --check parses without executing, so a syntax error is CE rather than RE.
     compileCommand: "node --check /work/main.js",
@@ -549,7 +570,7 @@ main();
   GO_123: {
     id: "GO_123",
     runtime: "go123",
-    label: "Go 1.23",
+    label: "Go",
     sourceFile: "main.go",
     // GOCACHE points at the image's PRE-WARMED cache on the read-only rootfs, not at tmpfs.
     // Go reads a cache it cannot write to without complaint, and the one entry this build
