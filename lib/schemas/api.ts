@@ -67,6 +67,15 @@ export const API_ROUTES = {
   submissions: "/api/submissions",
   submission: (id: string) => `/api/submissions/${encodeURIComponent(id)}`,
 
+  /** The signed-in student's own account: read the profile, rename, manage the avatar. */
+  me: "/api/me",
+  myAvatar: "/api/me/avatar",
+  /** A user's avatar image, by id, for an `<img src>`. `v` busts the cache when it changes. */
+  userAvatar: (userId: string, version?: string | null) =>
+    version === undefined || version === null
+      ? `/api/users/${encodeURIComponent(userId)}/avatar`
+      : `/api/users/${encodeURIComponent(userId)}/avatar?v=${encodeURIComponent(version)}`,
+
   /** Team formation. Contest-scoped like everything else a competitor reaches after joining. */
   myTeam: (contestId: string) => `/api/contests/${encodeURIComponent(contestId)}/teams/mine`,
   teamStandings: (contestId: string) =>
@@ -883,3 +892,37 @@ export const VerdictEventSchema = z.object({
   score: z.number().int().nonnegative(),
   testResults: z.array(PublicTestResultSchema),
 });
+
+// ---------------------------------------------------------------------------
+// Account / profile
+// ---------------------------------------------------------------------------
+
+/** The bounds a display name must satisfy. Kept in step with lib/contest/account.ts. */
+const DISPLAY_NAME_MAX = 40;
+
+/** What a student sees on their own Settings page. Never carries another account's data. */
+export const AccountProfileSchema = z.object({
+  userId: z.string(),
+  displayName: z.string(),
+  email: z.string().nullable(),
+  gradYear: z.number().int().nullable(),
+  hasAvatar: z.boolean(),
+  avatarUpdatedAt: z.string().nullable(),
+});
+export type AccountProfile = z.infer<typeof AccountProfileSchema>;
+
+/** The rename request. Trimmed and length-checked here; normalised again server-side. */
+export const RenameAccountRequestSchema = z.object({
+  displayName: z.string().trim().min(1, "Your name cannot be empty.").max(DISPLAY_NAME_MAX),
+});
+export type RenameAccountRequest = z.infer<typeof RenameAccountRequestSchema>;
+
+/**
+ * The rename response. `adjustedOnABoard` is true when a contest already had the wanted name, so
+ * a participant row was stored with a suffix and the board will show it.
+ */
+export const RenameAccountResponseSchema = z.object({
+  displayName: z.string(),
+  adjustedOnABoard: z.boolean(),
+});
+export type RenameAccountResponse = z.infer<typeof RenameAccountResponseSchema>;

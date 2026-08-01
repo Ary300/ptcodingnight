@@ -44,11 +44,18 @@ describe("viewerFromSession", () => {
       contestId: "c-1",
       displayName: "Ada",
       sessionId: "s-1",
+      // userId is null here: this competitor signed in by join code, which has no account.
+      userId: null,
     });
   });
 
   it("maps an admin session", () => {
-    expect(admin).toEqual({ kind: "admin", displayName: "Organizer", sessionId: "s-2" });
+    expect(admin).toEqual({
+      kind: "admin",
+      displayName: "Organizer",
+      sessionId: "s-2",
+      userId: null,
+    });
   });
 
   it("treats a half-populated competitor session as anonymous", () => {

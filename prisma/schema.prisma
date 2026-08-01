@@ -185,6 +185,22 @@ model User {
   /// is renameable and reusable, the id is not.
   githubSub String? @unique
 
+  /// A profile picture the student uploaded from Settings, stored as raw bytes.
+  ///
+  /// In the row rather than on disk or in object storage on purpose: this app already keeps its
+  /// state in one Postgres it can back up and restore atomically, and an avatar that lives
+  /// somewhere else is a second thing that can be missing after a restore. The images are small
+  /// and capped (see `AVATAR_MAX_BYTES`), and this column is NEVER selected by the hot paths —
+  /// only the dedicated avatar route reads it, so a `SELECT *` on User does not drag a picture
+  /// into every session lookup.
+  avatarData      Bytes?
+  /// The image's MIME type, so the serving route sends the right `Content-Type`. Constrained to a
+  /// small allow-list at the write boundary, never trusted from the upload.
+  avatarMime      String?
+  /// When the avatar last changed, used to bust the browser cache on the `<img>` URL — without it
+  /// a new picture would not show until the cached one expired.
+  avatarUpdatedAt DateTime?
+
   participants Participant[]
   sessions     Session[]
 

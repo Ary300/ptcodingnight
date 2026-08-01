@@ -76,6 +76,12 @@ export function CompetitorChrome({ children }: { children: ReactNode }) {
     a line of text, and the judge queue is the thing that must not be starved on the night.
   */
   const [team, setTeam] = useState<{ name: string } | null>(null);
+  // The account id and the avatar's version, for the menu's picture. Read from the same session
+  // response as the team, so the picture and the team name never cost two requests.
+  const [account, setAccount] = useState<{ userId: string | null; avatarVersion: string | null }>({
+    userId: null,
+    avatarVersion: null,
+  });
   useEffect(() => {
     if (!joined) return undefined;
     let cancelled = false;
@@ -84,11 +90,17 @@ export function CompetitorChrome({ children }: { children: ReactNode }) {
         const response = await fetch("/api/auth/session", { cache: "no-store" });
         if (!response.ok || cancelled) return;
         const body: unknown = await response.json();
-        const name =
+        const data =
           typeof body === "object" && body !== null && "data" in body
-            ? (body as { data: { teamName?: unknown } }).data.teamName
+            ? (body as { data: Record<string, unknown> }).data
             : null;
+        if (data === null) return;
+        const name = data.teamName;
         if (typeof name === "string" && name.length > 0) setTeam({ name });
+        setAccount({
+          userId: typeof data.userId === "string" ? data.userId : null,
+          avatarVersion: typeof data.avatarUpdatedAt === "string" ? data.avatarUpdatedAt : null,
+        });
       } catch {
         // The menu simply shows no team. A failed chrome fetch must never surface as an error on
         // a page whose content loaded fine.
@@ -256,6 +268,8 @@ export function CompetitorChrome({ children }: { children: ReactNode }) {
                 displayName={participant.participant.displayName}
                 teamName={team?.name ?? null}
                 setLabel={setLabel}
+                userId={account.userId}
+                avatarVersion={account.avatarVersion}
                 onSignOut={leave}
               />
             )}

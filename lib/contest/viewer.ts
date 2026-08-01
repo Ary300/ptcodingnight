@@ -21,12 +21,20 @@ export interface CompetitorViewer {
   readonly contestId: string;
   readonly displayName: string;
   readonly sessionId: string;
+  /**
+   * The account behind this session, when there is one. NULL for a join-by-code competitor, who
+   * has a display name but no `User` row and therefore no profile to edit. Settings is gated on
+   * this being present.
+   */
+  readonly userId: string | null;
 }
 
 export interface AdminViewer {
   readonly kind: "admin";
   readonly displayName: string;
   readonly sessionId: string;
+  /** An organizer always signs in through a `User` account, so this is never null for them. */
+  readonly userId: string | null;
 }
 
 export type Viewer = AnonymousViewer | CompetitorViewer | AdminViewer;
@@ -47,7 +55,12 @@ export function viewerFromSession(session: LoadedSession | null): Viewer {
   if (session === null) return ANONYMOUS;
 
   if (session.role === "ADMIN") {
-    return { kind: "admin", displayName: session.displayName, sessionId: session.id };
+    return {
+      kind: "admin",
+      displayName: session.displayName,
+      sessionId: session.id,
+      userId: session.userId,
+    };
   }
 
   if (session.participantId === null || session.contestId === null) return ANONYMOUS;
@@ -58,6 +71,7 @@ export function viewerFromSession(session: LoadedSession | null): Viewer {
     contestId: session.contestId,
     displayName: session.displayName,
     sessionId: session.id,
+    userId: session.userId,
   };
 }
 
@@ -121,6 +135,21 @@ export function requireAdmin(viewer: Viewer): AdminViewer {
 export function requireCompetitor(viewer: Viewer): CompetitorViewer {
   if (viewer.kind !== "competitor") throw new ForbiddenError("Join the contest first");
   return viewer;
+}
+
+/**
+ * The `User` account behind the session, for the profile routes.
+ *
+ * Either role can edit their own profile, so this does not care whether the viewer is a competitor
+ * or an organizer, only that a `User` is behind the session. A join-by-code competitor has a
+ * display name but no account, so there is nothing to persist a change to and Settings is refused
+ * with a message rather than silently doing nothing.
+ */
+export function requireAccountUserId(viewer: Viewer): string {
+  if ((viewer.kind === "competitor" || viewer.kind === "admin") && viewer.userId !== null) {
+    return viewer.userId;
+  }
+  throw new ForbiddenError("Sign in with a Google, GitHub or organizer account to change your profile");
 }
 
 /**

@@ -25,6 +25,21 @@ import { viewerFromRequest } from "@/lib/contest/viewer";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+/**
+ * The avatar's last-changed instant, so the client can build a cache-busting `<img>` URL. Null for
+ * a join-by-code competitor (no account) or an account with no picture. One tiny select, kept off
+ * the avatar bytes themselves, which never travel with a session read.
+ */
+async function avatarUpdatedAtFor(userId: string | null): Promise<string | null> {
+  if (userId === null) return null;
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { avatarUpdatedAt: true, avatarMime: true },
+  });
+  if (user === null || user.avatarMime === null) return null;
+  return user.avatarUpdatedAt?.toISOString() ?? null;
+}
+
 export async function GET(request: Request): Promise<NextResponse> {
   return handle(async () => {
     const viewer = await viewerFromRequest(request, new Date());
@@ -34,6 +49,7 @@ export async function GET(request: Request): Promise<NextResponse> {
         {
           signedIn: false as const,
           role: null,
+          userId: null,
           displayName: null,
           participantId: null,
           contestId: null,
@@ -42,6 +58,7 @@ export async function GET(request: Request): Promise<NextResponse> {
           divisionId: null,
           chosenSetId: null,
           chosenSetLabel: null,
+          avatarUpdatedAt: null,
         },
         NO_STORE,
       );
@@ -52,6 +69,7 @@ export async function GET(request: Request): Promise<NextResponse> {
         {
           signedIn: true as const,
           role: "ADMIN" as const,
+          userId: viewer.userId,
           displayName: viewer.displayName,
           participantId: null,
           contestId: null,
@@ -60,6 +78,7 @@ export async function GET(request: Request): Promise<NextResponse> {
           divisionId: null,
           chosenSetId: null,
           chosenSetLabel: null,
+          avatarUpdatedAt: await avatarUpdatedAtFor(viewer.userId),
         },
         NO_STORE,
       );
@@ -93,6 +112,7 @@ export async function GET(request: Request): Promise<NextResponse> {
       {
         signedIn: true as const,
         role: "COMPETITOR" as const,
+        userId: viewer.userId,
         displayName: viewer.displayName,
         participantId: viewer.participantId,
         contestId: viewer.contestId,
@@ -101,6 +121,7 @@ export async function GET(request: Request): Promise<NextResponse> {
         divisionId: participant?.divisionId ?? null,
         chosenSetId: participant?.chosenSetId ?? null,
         chosenSetLabel: participant?.chosenSet?.label ?? null,
+        avatarUpdatedAt: await avatarUpdatedAtFor(viewer.userId),
       },
       NO_STORE,
     );

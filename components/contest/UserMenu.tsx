@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
+import { API_ROUTES } from "@/lib/schemas/api";
+
 /**
  * The account menu HackerRank puts at the right of its nav: an avatar and a chevron, a panel with
  * the viewer's headline stat at the top, then divided destinations and finally sign-out.
@@ -34,6 +36,10 @@ export interface UserMenuProps {
   readonly teamName?: string | null;
   /** The problem set an organizer assigned, when there is one. */
   readonly setLabel?: string | null;
+  /** The account behind the session, so the avatar image can be addressed. Null for join-by-code. */
+  readonly userId?: string | null;
+  /** The avatar's last-changed instant, used to bust the image cache. Null when there is none. */
+  readonly avatarVersion?: string | null;
   readonly onSignOut: () => void;
 }
 
@@ -42,21 +48,53 @@ const ITEMS = [
   { href: "/team", label: "My team" },
   { href: "/submissions", label: "My submissions" },
   { href: "/projector", label: "Live standings" },
+  { href: "/settings", label: "Settings" },
 ] as const;
 
 /**
- * The first letter of the display name, in a disc.
+ * The account picture, at a given size.
  *
- * A real initial rather than a generic silhouette, because a shared lab machine is exactly where
- * "am I still signed in as the last student" matters — and it is the fastest possible answer to
- * that at 360px, where the name itself is hidden.
+ * When the account has uploaded an avatar (`userId` set and `version` present) it renders the
+ * image; otherwise, and if the image fails to load, it falls back to the first initial in a disc.
+ * The initial is not a placeholder to be embarrassed about: on a shared lab machine it is the
+ * fastest possible answer to "am I still signed in as the last student", which is exactly the
+ * question at 360px where the name itself is hidden.
  */
-function Avatar({ displayName }: { displayName: string }) {
+function Avatar({
+  displayName,
+  userId,
+  version,
+  sizeClass = "h-7 w-7",
+}: {
+  displayName: string;
+  userId?: string | null;
+  version?: string | null;
+  sizeClass?: string;
+}) {
   const initial = displayName.trim().charAt(0).toUpperCase();
+  const [broken, setBroken] = useState(false);
+  const showImage =
+    typeof userId === "string" && userId !== "" && (version ?? null) !== null && !broken;
+
+  if (showImage) {
+    return (
+      // A plain <img>, not next/image: the source is our own dynamic route with its own cache
+      // headers, and next/image would try to optimise a route it cannot statically know.
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={API_ROUTES.userAvatar(userId, version)}
+        alt=""
+        aria-hidden="true"
+        onError={() => setBroken(true)}
+        className={`${sizeClass} shrink-0 rounded-full object-cover`}
+      />
+    );
+  }
+
   return (
     <span
       aria-hidden="true"
-      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-panther font-semibold text-paper"
+      className={`${sizeClass} flex shrink-0 items-center justify-center rounded-full bg-panther font-semibold text-paper`}
       style={{ fontSize: "var(--text-xs)" }}
     >
       {initial === "" ? "?" : initial}
@@ -68,6 +106,8 @@ export function UserMenu({
   displayName,
   teamName = null,
   setLabel = null,
+  userId = null,
+  avatarVersion = null,
   onSignOut,
 }: UserMenuProps) {
   const [open, setOpen] = useState(false);
@@ -114,7 +154,7 @@ export function UserMenu({
         className="flex min-w-0 items-center gap-2 rounded px-1.5 py-1 text-paper/85 hover:text-paper"
         style={{ fontSize: "var(--text-sm)" }}
       >
-        <Avatar displayName={displayName} />
+        <Avatar displayName={displayName} userId={userId} version={avatarVersion} />
         <span // Hidden only BELOW 400px, where 10rem of display name is a third of the viewport
           // spent on something the student already knows; the avatar and the aria-label still
           // identify the account there.
