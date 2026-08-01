@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
 
 import { TextArea, TextInput } from "@/components/admin/Field";
+import { AlertPlate } from "@/components/admin/Panel";
 import { Button } from "@/components/ui";
 import {
   API_ROUTES,
@@ -12,22 +13,37 @@ import {
 } from "@/lib/schemas/api";
 
 /**
- * Create a coding question, the Park Tudor way: HackerRank's wizard with the two steps we do not
+ * Write a coding question, the Park Tudor way: HackerRank's wizard with the two steps we do not
  * need taken out.
  *
  * HackerRank's flow is Question Details → Languages → Code Stubs → Testcases. Ours is three steps,
  * because two of theirs are decisions we have already made for every question:
  *
  *   - there is no TYPE step: every question here is a coding question;
- *   - there is no LANGUAGES step: every question runs in all six, always.
+ *   - there is no LANGUAGES step: every question runs in all ten variants, always.
  *
  * So the steps are Details, Starter code (optional), and Test cases. The step rail on the left is
  * HackerRank's, and it is a real navigation aid rather than decoration: a long question is written
  * over several sittings, and the rail says which parts are done.
  *
- * All state lives in this one component. A create is a single POST to /api/admin/problems, which
- * writes the test files and the rows and returns the new problem; on success we go to the bank,
- * where it is now cleared for a contest.
+ * All state lives in this one component. A create is a single POST to /api/admin/problems; an edit
+ * is a single PATCH to /api/admin/problems/{slug}. Both write the test files and the rows on the
+ * server, and both are refused by the same checks, because both call the same function there.
+ *
+ * ## Why one component does both
+ *
+ * A separate edit form would be a second answer to "what makes a question valid", and this codebase
+ * has already paid for that kind of drift: `components/admin/contract.ts` hand-wrote a server type
+ * and it listed two of the ten languages the judge runs. The differences between creating and
+ * editing are three: where the request goes, what the button says, and whether the fields start
+ * empty. Everything else is the same screen and stays one screen.
+ *
+ * ## The edit form starts FULL, and that is the whole point
+ *
+ * `edit.initial` carries the statement, the signature, and every test case with its input and its
+ * expected output READ BACK OFF DISK, because `TestCase` stores a path rather than a blob. A form
+ * populated from the rows alone would show empty boxes beside cases that have real content, and the
+ * first Save would make the screen true by destroying the data.
  */
 
 const SIGNATURE_TYPES = ["int", "long", "string", "int[]", "long[]", "string[]"] as const;
@@ -57,28 +73,90 @@ const STEPS: readonly { key: StepKey; title: string; blurb: string }[] = [
 let nextId = 1;
 const makeId = (): number => (nextId += 1);
 
-export function ProblemBuilder() {
+/** The starter-code signature in the flat form this builder collects, as it comes back for an edit. */
+export interface ProblemBuilderSignature {
+  readonly name: string;
+  readonly returns: SignatureType;
+  readonly params: readonly { readonly name: string; readonly type: SignatureType }[];
+}
+
+export interface ProblemBuilderCase {
+  readonly input: string;
+  readonly expectedOutput: string;
+  readonly isSample: boolean;
+}
+
+/** Everything an existing question starts the form with. Mirrors `AuthoredProblemDraft`. */
+export interface ProblemBuilderInitial {
+  readonly title: string;
+  readonly statementMd: string;
+  readonly inputSpec: string;
+  readonly outputSpec: string;
+  readonly constraints: string;
+  readonly difficulty: "E" | "M" | "H";
+  readonly signature: ProblemBuilderSignature | null;
+  /**
+   * False when a signature IS stored but this flat form cannot express it exactly, which is the
+   * case for a hand-authored `problem.json` using shared fields or a repeat loop. The starter step
+   * then explains itself, and saving leaves the stored signature alone.
+   */
+  readonly signatureEditable: boolean;
+  readonly testCases: readonly ProblemBuilderCase[];
+}
+
+export interface ProblemBuilderEdit {
+  readonly slug: string;
+  readonly initial: ProblemBuilderInitial;
+  /**
+   * Judged submissions that already exist against this question. Not a blocker: a live contest is
+   * refused by the server, and what is left is a past contest or a draft. It is worth saying out
+   * loud, because changing test data changes what those verdicts meant.
+   */
+  readonly judgedSubmissionCount: number;
+}
+
+export interface ProblemBuilderProps {
+  /** Omit to create a new question. Supply it to edit an existing one. */
+  readonly edit?: ProblemBuilderEdit;
+}
+
+export function ProblemBuilder({ edit }: ProblemBuilderProps = {}) {
   const router = useRouter();
+  const initial = edit?.initial;
   const [step, setStep] = useState<StepKey>("details");
 
   // --- details ---
-  const [title, setTitle] = useState("");
-  const [statementMd, setStatementMd] = useState("");
-  const [inputSpec, setInputSpec] = useState("");
-  const [outputSpec, setOutputSpec] = useState("");
-  const [constraints, setConstraints] = useState("");
-  const [difficulty, setDifficulty] = useState<"E" | "M" | "H">("E");
+  const [title, setTitle] = useState(initial?.title ?? "");
+  const [statementMd, setStatementMd] = useState(initial?.statementMd ?? "");
+  const [inputSpec, setInputSpec] = useState(initial?.inputSpec ?? "");
+  const [outputSpec, setOutputSpec] = useState(initial?.outputSpec ?? "");
+  const [constraints, setConstraints] = useState(initial?.constraints ?? "");
+  const [difficulty, setDifficulty] = useState<"E" | "M" | "H">(initial?.difficulty ?? "E");
 
   // --- starter code ---
-  const [wantStarter, setWantStarter] = useState(false);
-  const [fnName, setFnName] = useState("solve");
-  const [returns, setReturns] = useState<SignatureType>("int");
-  const [params, setParams] = useState<DraftParam[]>([{ id: makeId(), name: "n", type: "int" }]);
+  // A question whose stored signature this form cannot represent keeps it: the checkbox is not
+  // rendered at all, and `signature` is left out of the PATCH entirely.
+  const signatureLocked = initial !== undefined && !initial.signatureEditable;
+  const [wantStarter, setWantStarter] = useState(initial?.signature != null);
+  const [fnName, setFnName] = useState(initial?.signature?.name ?? "solve");
+  const [returns, setReturns] = useState<SignatureType>(initial?.signature?.returns ?? "int");
+  const [params, setParams] = useState<DraftParam[]>(() =>
+    initial?.signature != null && initial.signature.params.length > 0
+      ? initial.signature.params.map((p) => ({ id: makeId(), name: p.name, type: p.type }))
+      : [{ id: makeId(), name: "n", type: "int" }],
+  );
 
   // --- test cases ---
-  const [cases, setCases] = useState<DraftCase[]>([
-    { id: makeId(), input: "", expectedOutput: "", isSample: true },
-  ]);
+  const [cases, setCases] = useState<DraftCase[]>(() =>
+    initial !== undefined && initial.testCases.length > 0
+      ? initial.testCases.map((c) => ({
+          id: makeId(),
+          input: c.input,
+          expectedOutput: c.expectedOutput,
+          isSample: c.isSample,
+        }))
+      : [{ id: makeId(), input: "", expectedOutput: "", isSample: true }],
+  );
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -89,45 +167,54 @@ export function ProblemBuilder() {
   const testsComplete =
     cases.length > 0 && sampleCount > 0 && cases.every((c) => c.expectedOutput.trim() !== "");
 
-  const create = useCallback(async () => {
+  const save = useCallback(async () => {
     setSubmitting(true);
     setError(null);
     try {
-      const body: CreateProblemRequest = {
+      const common = {
         title: title.trim(),
         statementMd,
         inputSpec: inputSpec.trim() === "" ? undefined : inputSpec,
         outputSpec: outputSpec.trim() === "" ? undefined : outputSpec,
         constraints: constraints.trim() === "" ? undefined : constraints,
         difficulty,
-        signature: wantStarter
-          ? {
-              name: fnName.trim(),
-              returns,
-              params: params
-                .filter((p) => p.name.trim() !== "")
-                .map((p) => ({ name: p.name.trim(), type: p.type })),
-            }
-          : null,
         testCases: cases.map((c) => ({
           input: c.input,
           expectedOutput: c.expectedOutput,
           isSample: c.isSample,
         })),
       };
+      const signature = wantStarter
+        ? {
+            name: fnName.trim(),
+            returns,
+            params: params
+              .filter((p) => p.name.trim() !== "")
+              .map((p) => ({ name: p.name.trim(), type: p.type })),
+          }
+        : null;
+      // OMITTED, not sent as null, when the stored signature is one this form cannot represent.
+      // `null` is a request to REMOVE the starter code, and sending it because a checkbox the
+      // organizer never saw happened to be unchecked would delete a harness nobody touched.
+      const body: CreateProblemRequest = signatureLocked ? common : { ...common, signature };
 
-      const response = await fetch(API_ROUTES.adminProblems, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
+      const response = await fetch(
+        edit === undefined
+          ? API_ROUTES.adminProblems
+          : `${API_ROUTES.adminProblems}/${encodeURIComponent(edit.slug)}`,
+        {
+          method: edit === undefined ? "POST" : "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        },
+      );
       const payload: unknown = await response.json();
       if (!response.ok) {
         const message =
           typeof payload === "object" && payload !== null && "error" in payload
             ? (payload as { error: { message?: string } }).error.message
             : undefined;
-        setError(message ?? "The question could not be created.");
+        setError(message ?? "The question could not be saved.");
         return;
       }
       const data =
@@ -139,8 +226,9 @@ export function ProblemBuilder() {
         setError("The server returned an unexpected response.");
         return;
       }
-      // Straight to the bank, where the new question is now listed and cleared for a contest.
-      router.push("/admin/problems");
+      // A create lands on the bank, where the new question is now listed and cleared for a
+      // contest. An edit lands on the question itself, whose preview shows what it now says.
+      router.push(edit === undefined ? "/admin/problems" : `/admin/problems/${parsed.data.slug}`);
       router.refresh();
     } catch {
       setError("We could not reach the server.");
@@ -155,15 +243,36 @@ export function ProblemBuilder() {
     constraints,
     difficulty,
     wantStarter,
+    signatureLocked,
     fnName,
     returns,
     params,
     cases,
+    edit,
     router,
   ]);
 
   return (
     <div className="grid gap-6 lg:grid-cols-[14rem_1fr]">
+      {/* --- what an edit is about to reinterpret -------------------------- */}
+      {edit !== undefined && edit.judgedSubmissionCount > 0 && (
+        // Spans both columns rather than sitting in the form, because it is a fact about the
+        // question and not about any one step. `live` is false: it is a standing condition present
+        // at first render, and a live region here would announce it on every arrival.
+        <div className="lg:col-span-2">
+          <AlertPlate tone="notice" title="This question has already been judged" live={false}>
+            <p>
+              {edit.judgedSubmissionCount} submission
+              {edit.judgedSubmissionCount === 1 ? " has" : "s have"} been judged against this
+              question. Changing the test data does not change those verdicts, but it does change
+              what they meant: a stored <strong>AC</strong> was earned against cases that will no
+              longer exist. Editing the statement or the limits is safe. Editing the cases is a
+              decision about a result somebody already has.
+            </p>
+          </AlertPlate>
+        </div>
+      )}
+
       {/* --- step rail ---------------------------------------------------- */}
       <nav aria-label="Question sections" className="lg:sticky lg:top-4 lg:self-start">
         <ol className="flex gap-2 overflow-x-auto lg:flex-col lg:overflow-visible">
@@ -267,20 +376,36 @@ export function ProblemBuilder() {
             <SectionHeading title="Starter code" />
             <p className="max-w-[62ch] text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
               Optional. Pre-fill the editor with a function the student completes, so they never
-              write input parsing. The same stub is generated for all six languages. Leave this off
+              write input parsing. The same stub is generated for every language. Leave this off
               and the student gets a blank editor and reads stdin themselves.
             </p>
-            <label className="flex items-center gap-2" style={{ fontSize: "var(--text-sm)" }}>
-              <input
-                type="checkbox"
-                checked={wantStarter}
-                onChange={(e) => setWantStarter(e.target.checked)}
-                className="h-4 w-4 accent-panther"
-              />
-              Give this question starter code
-            </label>
 
-            {wantStarter && (
+            {signatureLocked ? (
+              <p
+                className="max-w-[62ch] border-l-2 border-panther pl-4"
+                style={{ fontSize: "var(--text-sm)" }}
+              >
+                <strong>This question&rsquo;s starter code is kept as it is, and is not editable
+                here.</strong>{" "}
+                Its signature uses parts of the harness format this form does not offer: fields read
+                once before a repeat loop, or a count field named by hand. Flattening that into a
+                function name and a parameter list would change how every student&rsquo;s stub reads
+                its input, without saying so. Saving leaves it untouched. To change it, edit the
+                question&rsquo;s <code>problem.json</code> in the repository.
+              </p>
+            ) : (
+              <label className="flex items-center gap-2" style={{ fontSize: "var(--text-sm)" }}>
+                <input
+                  type="checkbox"
+                  checked={wantStarter}
+                  onChange={(e) => setWantStarter(e.target.checked)}
+                  className="h-4 w-4 accent-panther"
+                />
+                Give this question starter code
+              </label>
+            )}
+
+            {!signatureLocked && wantStarter && (
               <div className="flex flex-col gap-4 border-l-2 border-rule-edge pl-4">
                 <div className="grid gap-4 sm:grid-cols-2">
                   <TextInput
@@ -460,12 +585,24 @@ export function ProblemBuilder() {
             <p className="text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
               {detailsComplete
                 ? testsComplete
-                  ? "Ready to create."
+                  ? edit === undefined
+                    ? "Ready to create."
+                    : "Ready to save."
                   : "Add a statement and at least one sample test case."
                 : "A title and a statement are required."}
             </p>
           )}
           <div className="flex items-center gap-2">
+            {edit !== undefined && (
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={submitting}
+                onClick={() => router.push(`/admin/problems/${edit.slug}`)}
+              >
+                Cancel
+              </Button>
+            )}
             {step !== "tests" && (
               <Button
                 type="button"
@@ -478,9 +615,15 @@ export function ProblemBuilder() {
             <Button
               type="button"
               disabled={submitting || !detailsComplete || !testsComplete}
-              onClick={() => void create()}
+              onClick={() => void save()}
             >
-              {submitting ? "Creating…" : "Create question"}
+              {edit === undefined
+                ? submitting
+                  ? "Creating…"
+                  : "Create question"
+                : submitting
+                  ? "Saving…"
+                  : "Save changes"}
             </Button>
           </div>
         </div>

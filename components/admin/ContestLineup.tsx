@@ -8,6 +8,7 @@ import {
   CONTROL_LEADING,
   CONTROL_PAD,
   CONTROL_SURFACE,
+  Select,
   Stacked,
   Table,
   TBody,
@@ -53,9 +54,34 @@ import { ProblemStatePill } from "@/components/admin/StatusPill";
  * in are what make it a slot in a contest rather than a row in a bank, and an organizer picking
  * problems is already thinking about the shape of the round.
  *
- * A blank set label means a GROUP problem — every team works it regardless of assignment. That is
- * the distinction the whole Coding Night format rests on, so it is spelled out on screen rather
- * than implied by a naming convention.
+ * ## Individual or group is a CONTROL, and it used to be a blank field
+ *
+ * The two kinds of problem in this format are not variations on a theme. An INDIVIDUAL problem
+ * belongs to one of the sets (A, B, C…), and every member of a team holds a different set, so
+ * exactly one person on each team ever works it. A GROUP problem belongs to no set: the whole
+ * team works it together, and every team gets the same ones. In the schema that is
+ * `ContestProblem.setId` being null, and it is the distinction the whole Coding Night format
+ * rests on.
+ *
+ * This screen used to encode it as *leave the set box blank and it becomes a group problem*. The
+ * defect in that is not that it is hard to discover, though it is: it is that **the two states
+ * are drawn identically.** An organizer who meant "group" and an organizer who has not filled the
+ * box in yet produce the same row, and the screen cannot tell them apart, so it cannot warn
+ * either of them. The failure mode runs in the direction that hurts: the row still had a default
+ * set of "A" from Add, so a problem the organizer intended the whole team to work together was
+ * quietly handed to whichever one member of each team held set A, and nothing anywhere said so
+ * until the round was running and three quarters of the room had never seen the question. A
+ * blank field that silently means something is exactly how that happens.
+ *
+ * So the kind is chosen, in words, per row. The set label control is shown only when Individual
+ * is chosen, and choosing Group CLEARS it, because a set label on a group problem is a
+ * contradiction the data cannot express: there is one `setId` column and it is either a set or
+ * null. And an Individual problem with no set label now blocks Save rather than silently saving
+ * as a group problem, because a designation the organizer can read on screen and the row that
+ * gets written have to agree, which is the entire point of making it explicit.
+ *
+ * The request shape is untouched: `setLabel: null` has always been how the PUT says "group".
+ * What changed is that the organizer now says it rather than implies it.
  *
  * ## Add and Remove edit a draft, and the screen says so
  *
@@ -98,15 +124,45 @@ export interface ContestLineupProps {
    * Read on the server by the page, because there is no GET route for a contest's problems — only
    * the PUT that replaces them. Optional so the component still works where no line-up is known.
    */
-  readonly initial?: readonly Slot[];
+  readonly initial?: readonly StoredSlot[];
 }
 
-interface Slot {
+/** Individual: it sits in one set, so one member of each team works it. Group: no set, whole team. */
+type SlotKind = "individual" | "group";
+
+/**
+ * A line-up row as the SERVER hands it down, with no kind on it.
+ *
+ * The database has nowhere to put one: the distinction lives in `ContestProblem.setId` being null
+ * or not, which the server flattens to `setLabel: ""`. So this shape stays exactly as the page's
+ * `LineupSlot` produces it, and the kind is derived once on mount by `withKind`. Deriving it from
+ * stored data is sound — a stored null genuinely IS a group problem. What was never sound was
+ * deriving it from a box the organizer was still typing into.
+ */
+export interface StoredSlot {
   readonly problemId: string;
   readonly title: string;
   readonly slotLabel: string;
   readonly basePoints: number;
   readonly setLabel: string;
+}
+
+/** A row while it is being edited: the stored shape plus the kind the organizer chose, explicitly. */
+interface Slot extends StoredSlot {
+  readonly kind: SlotKind;
+}
+
+/**
+ * Read the stored rows into editable ones.
+ *
+ * `setLabel === ""` here is the SERVER saying `setId` was null, not an organizer leaving a box
+ * empty, so this is the one place the old convention is still a correct reading of the data.
+ */
+function withKind(stored: readonly StoredSlot[]): readonly Slot[] {
+  return stored.map((slot): Slot => ({
+    ...slot,
+    kind: slot.setLabel.trim() === "" ? "group" : "individual",
+  }));
 }
 
 /** DRAFT problems are 121 of the 130 in the bank, and none of them may go in a live contest. */
@@ -169,7 +225,12 @@ function sameLineup(a: readonly Slot[], b: readonly Slot[]): boolean {
         slot.problemId === other.problemId &&
         slot.slotLabel === other.slotLabel &&
         slot.basePoints === other.basePoints &&
-        slot.setLabel === other.setLabel
+        slot.setLabel === other.setLabel &&
+        // The kind is compared even though a group row and a set-less individual row would PUT
+        // the same bytes, because the screen displays the kind: flipping Group to Individual
+        // changes what the organizer is looking at, and "not saved yet" has to mean "what you can
+        // see is not what is stored". The row is unsaveable until a set label is typed anyway.
+        slot.kind === other.kind
       );
     })
   );
@@ -195,17 +256,18 @@ async function loadBank(): Promise<readonly AdminProblemRow[]> {
 export function ContestLineup({ contestId, initial = [] }: ContestLineupProps) {
   const bank = useResource(useCallback(() => loadBank(), []));
 
-  const [slots, setSlots] = useState<readonly Slot[]>(initial);
+  const [slots, setSlots] = useState<readonly Slot[]>(() => withKind(initial));
   // What the server currently holds, as far as this screen knows. `slots` differing from it is
   // the definition of "unsaved changes", which bug (b) requires the screen to name.
-  const [savedSlots, setSavedSlots] = useState<readonly Slot[]>(initial);
+  // Read through the same `withKind`, so opening a saved line-up is never dirty on arrival.
+  const [savedSlots, setSavedSlots] = useState<readonly Slot[]>(() => withKind(initial));
   const [filter, setFilter] = useState("");
   const [bankFilter, setBankFilter] = useState<BankFilter>("ready");
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const slotErrorId = useId();
+  const lineupErrorId = useId();
 
   const add = (problem: AdminProblemRow): void => {
     setSaved(false);
@@ -218,6 +280,11 @@ export function ContestLineup({ contestId, initial = [] }: ContestLineupProps) {
         // right far more often than it is wrong, and an empty box is a box everybody has to fill.
         slotLabel: `A${String(current.length + 1)}`,
         basePoints: 100,
+        // Individual with set A is the common case and is what the old default already produced.
+        // It is safe to default only because it is now VISIBLE as a choice: the reason the same
+        // default used to be dangerous is that a row meant to be a group problem carried it
+        // silently, with nothing on screen contradicting the organizer's intention.
+        kind: "individual",
         setLabel: "A",
       },
     ]);
@@ -249,8 +316,11 @@ export function ContestLineup({ contestId, initial = [] }: ContestLineupProps) {
             problemId: slot.problemId,
             slotLabel: slot.slotLabel,
             basePoints: slot.basePoints,
-            // Blank means GROUP. Trimmed, because a space is not a set.
-            setLabel: slot.setLabel.trim() === "" ? null : slot.setLabel.trim(),
+            // `null` is how this route has always said GROUP, so the request shape is unchanged.
+            // What it now comes from is the organizer's stated choice rather than an empty box.
+            // Trimmed, because a space is not a set label; an individual row that trims to
+            // nothing cannot reach here, since Save is disabled while one exists.
+            setLabel: slot.kind === "group" ? null : slot.setLabel.trim(),
             divisionId: null,
           })),
         }),
@@ -307,13 +377,44 @@ export function ContestLineup({ contestId, initial = [] }: ContestLineupProps) {
 
   const duplicates = duplicateSlotLabels(slots);
   const blankCount = slots.filter((slot) => slot.slotLabel.trim() === "").length;
-  const lineupBlocked = duplicates.length > 0 || blankCount > 0;
+  /*
+    An Individual row with no set label is a REFUSAL, not a silent group problem.
+
+    This is the whole reason the choice is worth a control. Under the old convention the two were
+    the same row, so the only thing the screen could do with an empty box was guess, and it guessed
+    "group" — which is how a problem meant for one set could end up worked by every team, or the
+    reverse, with no warning either way. Now the organizer has said which one they mean, so an
+    Individual row that names no set is a stated intention the data cannot carry, and the right
+    answer is to stop and say so rather than to save the opposite of what is on screen.
+  */
+  const setMissingCount = slots.filter(
+    (slot) => slot.kind === "individual" && slot.setLabel.trim() === "",
+  ).length;
+  const slotLabelBlocked = duplicates.length > 0 || blankCount > 0;
+  const lineupBlocked = slotLabelBlocked || setMissingCount > 0;
   const dirty = !sameLineup(slots, savedSlots);
+
+  // The closing sentence of the refusal, which has to name the way out of whichever fault is
+  // actually present. "Give every problem its own slot label to save." in front of a line-up whose
+  // only fault is a missing set is the sort of message that sends an organizer hunting through a
+  // column that is already correct.
+  let lineupBlockedFix: string;
+  if (slotLabelBlocked && setMissingCount > 0) {
+    lineupBlockedFix =
+      "Give every problem its own slot label, and name a set on every individual problem, to save.";
+  } else if (slotLabelBlocked) {
+    lineupBlockedFix = "Give every problem its own slot label to save.";
+  } else {
+    lineupBlockedFix = "Name a set on each of those, or change them to Group, to save.";
+  }
 
   const slotInvalid = (slot: Slot): boolean => {
     const label = slot.slotLabel.trim();
     return label === "" || duplicates.includes(label);
   };
+
+  const setInvalid = (slot: Slot): boolean =>
+    slot.kind === "individual" && slot.setLabel.trim() === "";
 
   return (
     <div className="flex flex-col gap-6">
@@ -327,19 +428,24 @@ export function ContestLineup({ contestId, initial = [] }: ContestLineupProps) {
             {dirty ? " (not saved yet)" : ""}
           </span>
         }
-        description="Saving REPLACES the whole line-up. Leave the set blank to make a problem a GROUP problem: every team works it, whichever set a player was assigned."
+        description="Saving REPLACES the whole line-up. Say of each problem whether it is Individual, meaning it sits in one set so one member of each team works it, or Group, meaning the whole team works it together and every team gets it."
       >
         {slots.length === 0 ? (
           <PanelNote>Nothing chosen yet. Pick from the bank below.</PanelNote>
         ) : (
           <div className="min-w-0 overflow-x-auto">
-            <Table caption="Problems in this contest" className="min-w-[36rem]">
+            {/* Wider than it was: the set column now holds a choice and its set label side by
+                side. It scrolls inside its own box rather than pushing the page sideways. */}
+            <Table caption="Problems in this contest" className="min-w-[44rem]">
               <THead>
                 <TR>
                   <TH className="w-full">Problem</TH>
                   <TH>Slot</TH>
                   <TH>Points</TH>
-                  <TH>Set</TH>
+                  {/* The heading names the decision rather than one of its two outcomes. "Set"
+                      alone read as a box to fill in, which is how leaving it empty came to mean
+                      something nobody had been told. */}
+                  <TH>Individual or group</TH>
                   <TH>
                     <span className="sr-only">Remove</span>
                   </TH>
@@ -348,6 +454,7 @@ export function ContestLineup({ contestId, initial = [] }: ContestLineupProps) {
               <TBody>
                 {slots.map((slot) => {
                   const invalid = slotInvalid(slot);
+                  const setMissing = setInvalid(slot);
                   return (
                     <TR key={slot.problemId}>
                       <TD className="font-semibold">{slot.title}</TD>
@@ -358,7 +465,7 @@ export function ContestLineup({ contestId, initial = [] }: ContestLineupProps) {
                           <input
                             aria-label={`Slot label for ${slot.title}`}
                             aria-invalid={invalid || undefined}
-                            aria-describedby={invalid ? slotErrorId : undefined}
+                            aria-describedby={invalid ? lineupErrorId : undefined}
                             value={slot.slotLabel}
                             onChange={(e) => patch(slot.problemId, { slotLabel: e.target.value })}
                             className={`${ROW_CONTROL} ${rowControlBorder(invalid)}`}
@@ -382,15 +489,58 @@ export function ContestLineup({ contestId, initial = [] }: ContestLineupProps) {
                         </span>
                       </TD>
                       <TD>
-                        <span className="inline-block w-20 align-middle">
-                          <input
-                            aria-label={`Set for ${slot.title}. Blank for a group problem`}
-                            value={slot.setLabel}
-                            placeholder="group"
-                            onChange={(e) => patch(slot.problemId, { setLabel: e.target.value })}
-                            className={`${ROW_CONTROL} ${rowControlBorder(false)}`}
-                            style={{ fontSize: CONTROL_FONT_SIZE.sm }}
-                          />
+                        <span className="flex items-center gap-2">
+                          <Select
+                            size="sm"
+                            shellClassName="w-32"
+                            aria-label={`Individual or group for ${slot.title}`}
+                            value={slot.kind}
+                            onChange={(e) => {
+                              /*
+                                Choosing Group CLEARS the set label in the same update, rather
+                                than hiding a value that is still there. A hidden field that still
+                                holds "A" is the same class of bug one layer down: the screen would
+                                say Group, the state would say A, and which one reached the
+                                database would depend on a branch in `save`. There is one `setId`
+                                column and it is either a set or null, so the editor's state is
+                                kept unable to express anything else.
+                              */
+                              const kind: SlotKind =
+                                e.target.value === "group" ? "group" : "individual";
+                              patch(
+                                slot.problemId,
+                                kind === "group" ? { kind, setLabel: "" } : { kind },
+                              );
+                            }}
+                          >
+                            <option value="individual">Individual</option>
+                            <option value="group">Group</option>
+                          </Select>
+
+                          {/*
+                            The set label belongs to Individual and is shown only with it. It is
+                            deliberately NOT pre-filled when the organizer switches back from
+                            Group: the previous label was cleared on the way out, and putting a
+                            guess back is how a row acquires a set nobody chose. Blank here is a
+                            question the screen asks out loud, below, instead of an answer it
+                            invents.
+                          */}
+                          {slot.kind === "individual" && (
+                            <span className="inline-block w-20 shrink-0 align-middle">
+                              <input
+                                aria-label={`Set label for ${slot.title}`}
+                                aria-invalid={setMissing || undefined}
+                                aria-describedby={setMissing ? lineupErrorId : undefined}
+                                value={slot.setLabel}
+                                placeholder="A"
+                                onChange={(e) =>
+                                  patch(slot.problemId, { setLabel: e.target.value })
+                                }
+                                className={`${ROW_CONTROL} ${rowControlBorder(setMissing)}`}
+                                style={{ fontSize: CONTROL_FONT_SIZE.sm }}
+                              />
+                            </span>
+                          )}
                         </span>
                       </TD>
                       <TD align="end">
@@ -418,7 +568,7 @@ export function ContestLineup({ contestId, initial = [] }: ContestLineupProps) {
           // the duplicate because "fix something somewhere in this table" is the confusion this
           // screen is being reworked to end.
           <p
-            id={slotErrorId}
+            id={lineupErrorId}
             role="alert"
             className="mt-4 font-semibold text-panther"
             style={{ fontSize: "var(--text-sm)" }}
@@ -429,7 +579,15 @@ export function ContestLineup({ contestId, initial = [] }: ContestLineupProps) {
                 .join(", ")}. Two problems cannot share a slot, or the board cannot order them. `}
             {blankCount > 0 &&
               `${String(blankCount)} ${blankCount === 1 ? "problem has" : "problems have"} no slot label. `}
-            Give every problem its own slot label to save.
+            {setMissingCount > 0 &&
+              `${String(setMissingCount)} ${
+                setMissingCount === 1
+                  ? "problem is marked Individual and names"
+                  : "problems are marked Individual and name"
+              } no set, so there is no way to say which member of a team works ${
+                setMissingCount === 1 ? "it" : "them"
+              }. `}
+            {lineupBlockedFix}
           </p>
         )}
 

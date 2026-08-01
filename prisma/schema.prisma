@@ -312,6 +312,38 @@ model Contest {
   /// about (PRD §6.2). Null until Round 1 assignment runs.
   setAssignmentSeed String?
 
+  /// The difficulty recipe one set is built to: `[{ difficulty, count, points? }, ...]`.
+  ///
+  /// STORED RATHER THAN HARDCODED because the format has changed between years. It has been one
+  /// Easy, one Medium and one Hard, but it has also been two and four, and a constant in the code
+  /// makes last year's contest unreproducible the moment this year's differs. Stored on the
+  /// contest, so two contests in the same database may disagree about it.
+  ///
+  /// `Json` is `unknown` as far as Prisma is concerned, which makes this a TRUST BOUNDARY IN BOTH
+  /// DIRECTIONS: it is Zod-parsed on the way in, and Zod-parsed again on the way out, because a
+  /// row written by an older build is external data to the build reading it. Never cast.
+  ///
+  /// Null until an organizer plans the sets. A contest with no plan is the normal starting state.
+  setComposition Json?
+
+  /// How many sets the recipe was dealt into: the number of columns on the organizer's sheet.
+  ///
+  /// In practice the size of the largest team, since every member of a team holds a different set.
+  /// Stored alongside the recipe because the two together are what `planSets` consumed, and either
+  /// one alone cannot reproduce the deal.
+  setCount Int?
+
+  /// Seed for the set BUILD: which problems landed in which set.
+  ///
+  /// Distinct from `setAssignmentSeed`, which decides which PLAYER holds which set. Two separate
+  /// shuffles answering two separate questions, and sharing one column would mean re-planning the
+  /// problems silently re-rolled every student's assignment.
+  ///
+  /// Stored for the same reason as the other seed: a disputed set has to be explainable rather
+  /// than argued about (PRD §6.2). With the seed, the recipe and the bank, an organizer can
+  /// re-derive the whole split in front of a room.
+  setPlanSeed String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

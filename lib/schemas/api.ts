@@ -113,6 +113,19 @@ export const API_ROUTES = {
     `/api/admin/contests/${encodeURIComponent(contestId)}/participants`,
   adminAddableUsers: (contestId: string, query: string) =>
     `/api/admin/contests/${encodeURIComponent(contestId)}/participants?q=${encodeURIComponent(query)}`,
+  /**
+   * The contest's SET PLAN: which problems are in set A, B, C, D.
+   *
+   * `GET` reads back the stored recipe and the sets it produced; `POST` previews or applies a new
+   * one. One route for both modes because the preview and the apply must be the same computation:
+   * a preview an organizer approves and an apply that deals differently is the one outcome this
+   * whole screen exists to prevent, and two routes are two chances to diverge.
+   *
+   * Distinct from `/assign-sets`, which decides which PLAYER holds a set. This decides what is IN
+   * one.
+   */
+  adminContestSets: (contestId: string) =>
+    `/api/admin/contests/${encodeURIComponent(contestId)}/sets`,
 } as const;
 
 /**
@@ -985,3 +998,159 @@ export const CreateProblemResponseSchema = z.object({
   title: z.string(),
 });
 export type CreateProblemResponse = z.infer<typeof CreateProblemResponseSchema>;
+
+// ---------------------------------------------------------------------------
+// Building the contest's problem sets (organizer)
+// ---------------------------------------------------------------------------
+
+export const DifficultySchema = z.enum(["E", "M", "H"]);
+
+/**
+ * One line of the recipe: "one Hard", "two Medium", and what a problem on that line is worth.
+ *
+ * `points` is optional and per LINE rather than global, because difficulties are not worth the
+ * same: a set whose Hard scores what its Easy scores is a set nobody has a reason to finish. It
+ * lives inside the composition rather than beside it so the stored recipe is self-describing —
+ * re-reading a contest planned last year yields the points it was actually built with, instead of
+ * whatever the current default happens to be.
+ */
+export const SetCompositionEntrySchema = z.object({
+  difficulty: DifficultySchema,
+  count: z.number().int().min(0).max(20),
+  points: z.number().int().min(0).max(10_000).optional(),
+});
+export type SetCompositionEntryInput = z.infer<typeof SetCompositionEntrySchema>;
+
+/**
+ * The whole recipe for one set.
+ *
+ * At most one line per difficulty: two "Easy" lines would be a recipe with two different answers
+ * for what an Easy is worth, and the arithmetic in a shortfall message would count the same pool
+ * twice. Rejected here rather than merged, because merging silently changes what the organizer
+ * typed.
+ */
+export const SetCompositionSchema = z
+  .array(SetCompositionEntrySchema)
+  .min(1, "Say how many problems of each difficulty a set should hold.")
+  .max(3)
+  .refine(
+    (entries) => new Set(entries.map((entry) => entry.difficulty)).size === entries.length,
+    "Each difficulty may appear once in the recipe.",
+  );
+export type SetCompositionInput = z.infer<typeof SetCompositionSchema>;
+
+/**
+ * `preview` computes and returns; `apply` writes. Two modes on one route rather than two routes,
+ * so the plan an organizer approved is produced by exactly the code that then stores it.
+ */
+export const SetPlanRequestSchema = z.object({
+  composition: SetCompositionSchema,
+  setCount: z
+    .number()
+    .int()
+    .min(1, "Build at least one set.")
+    .max(26, "26 sets is A to Z, and a contest will not need a second row of labels."),
+  mode: z.enum(["preview", "apply"]),
+  /**
+   * An explicit seed, for reproducing a past deal exactly. Omit for a fresh random one.
+   *
+   * The same escape hatch `/assign-sets` has, for the same reason: restoring a plan after a bad
+   * re-plan, or demonstrating the deal on known input.
+   */
+  seed: z.string().min(8).max(64).optional(),
+});
+export type SetPlanRequest = z.infer<typeof SetPlanRequestSchema>;
+
+/** A problem as it sits in a planned set. Enough for the organizer to recognise it on screen. */
+export const PlannedSetProblemSchema = z.object({
+  problemId: z.string(),
+  slug: z.string(),
+  title: z.string(),
+  difficulty: DifficultySchema.nullable(),
+  /** "A-E1", "B-H1". Derived from the set label and the recipe line, and written to the row. */
+  slotLabel: z.string(),
+  basePoints: z.number().int().nonnegative(),
+});
+
+export const PlannedSetSchema = z.object({
+  /** "A", "B", "C", … the column heading on the organizer's sheet. */
+  label: z.string(),
+  problems: z.array(PlannedSetProblemSchema),
+});
+
+/**
+ * One recipe line the bank cannot satisfy, carrying the arithmetic rather than a verdict.
+ *
+ * Four sets needing one Hard each is four DISTINCT Hard problems, because no problem may appear in
+ * two sets. An organizer told only "not enough problems" has to work that out themselves.
+ */
+export const SetShortfallSchema = z.object({
+  difficulty: DifficultySchema,
+  /** `count × setCount`: how many distinct problems of this difficulty the recipe needs. */
+  needed: z.number().int().nonnegative(),
+  /** How many usable ones the bank actually holds. */
+  available: z.number().int().nonnegative(),
+});
+
+/**
+ * The plan, or the refusal.
+ *
+ * A recipe the bank cannot fill is a NORMAL ANSWER rather than an error: the organizer is still
+ * choosing, and the numbers are the useful part of the reply. So it comes back inside a successful
+ * envelope with `ok: false` and the exact shortfalls, and `applied` on the enclosing object says
+ * whether anything was written.
+ */
+export const SetPlanOutcomeSchema = z.discriminatedUnion("ok", [
+  z.object({ ok: z.literal(true), sets: z.array(PlannedSetSchema) }),
+  z.object({
+    ok: z.literal(false),
+    shortfalls: z.array(SetShortfallSchema),
+    message: z.string(),
+  }),
+]);
+export type SetPlanOutcome = z.infer<typeof SetPlanOutcomeSchema>;
+
+export const SetPlanResponseSchema = z.object({
+  contestId: z.string(),
+  mode: z.enum(["preview", "apply"]),
+  /** False for every preview, and for an apply the bank could not fill. Never inferred from `mode`. */
+  applied: z.boolean(),
+  setCount: z.number().int().nonnegative(),
+  /** How many problems one set holds under this recipe. */
+  setSize: z.number().int().nonnegative(),
+  composition: SetCompositionSchema,
+  /** The seed this deal came from. Null when nothing was dealt. */
+  seed: z.string().nullable(),
+  /** How many problems in the bank were usable at all. The denominator behind any shortfall. */
+  poolSize: z.number().int().nonnegative(),
+  plan: SetPlanOutcomeSchema,
+});
+export type SetPlanResponse = z.infer<typeof SetPlanResponseSchema>;
+
+/** A set as it exists in the database now, as opposed to one that has only been planned. */
+export const StoredSetSchema = z.object({
+  setId: z.string(),
+  label: z.string(),
+  problems: z.array(
+    PlannedSetProblemSchema.extend({ contestProblemId: z.string() }),
+  ),
+});
+
+/**
+ * What is already there: the stored recipe and the sets it produced.
+ *
+ * `groupProblemCount` is here because the plan deliberately does not touch GROUP problems, and an
+ * organizer about to re-plan needs to see that the whole-team questions survive it. A number that
+ * does not change across a re-plan is the visible form of that guarantee.
+ */
+export const StoredSetPlanResponseSchema = z.object({
+  contestId: z.string(),
+  contestState: z.string(),
+  composition: SetCompositionSchema.nullable(),
+  setCount: z.number().int().nonnegative().nullable(),
+  seed: z.string().nullable(),
+  poolSize: z.number().int().nonnegative(),
+  sets: z.array(StoredSetSchema),
+  groupProblemCount: z.number().int().nonnegative(),
+});
+export type StoredSetPlanResponse = z.infer<typeof StoredSetPlanResponseSchema>;

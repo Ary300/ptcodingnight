@@ -15,13 +15,18 @@ import { TabStrip, type TabStripItem } from "@/components/ui";
  * list of hrefs to keep in sync — the id is a path segment, so a relative tab cannot lose it, and
  * a future tab cannot forget to append it.
  *
- * ## Six tabs that all do something
+ * ## Seven tabs that all do something
  *
  * HackerRank has ten (Details, Challenges, Advanced Settings, Moderators, Notifications, Signups,
  * Statistics…). Four of those have no meaning here and would be four empty screens, which is worse
  * than not having them. Side activities stays a first-class tab rather than being folded into a
  * settings page, because it is a SCORING INPUT with no submission behind it — the only points on
  * the night that no judge ever sees.
+ *
+ * Sets sits next to Problems because the two answer different halves of one question. Problems is
+ * WHICH questions this contest uses and whether each is worked alone or by the whole team; Sets is
+ * how the individual ones are split into the columns A, B, C, D that one member of every team
+ * holds. Folding them together would put a bulk deal and a per-slot edit behind the same Save.
  *
  * Client-only because it needs `usePathname` to mark the current tab. `TabStrip` marks it with
  * `aria-current="page"` and a lifted edge, never with colour alone.
@@ -42,6 +47,7 @@ export function ContestTabs({ contestId }: { readonly contestId: string }) {
   const items: readonly TabStripItem[] = [
     { href: `${base}/setup`, label: "Setup" },
     { href: `${base}/problems`, label: "Problems" },
+    { href: `${base}/sets`, label: "Sets" },
     { href: `${base}/teams`, label: "Teams" },
     { href: `${base}/side-activities`, label: "Side activities" },
     { href: `${base}/console`, label: "Live console" },

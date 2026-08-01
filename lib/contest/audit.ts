@@ -62,6 +62,12 @@ export const AUDIT_ACTIONS = {
   /// so without it the previous assignment would become unexplainable.
   setAssignment: "contest.assign_sets",
   setReassignment: "contest.reassign_sets",
+  /// The sets were BUILT: which problems went into A, B, C, D. Distinct from the two above, which
+  /// record which PLAYER holds a set. The `after` value carries the seed, the recipe and the set
+  /// count — the three inputs `planSets` consumed — because those together re-derive the deal, and
+  /// applying again overwrites all three on the contest row. Without this the previous split would
+  /// become unexplainable, which is the property the seed exists to provide.
+  setPlanApplied: "contest.build_sets",
   sideActivity: "team.side_activity",
   /// Team formation. A roster change is a SCORE change with extra steps, because team size is
   /// the divisor — so every one of these is recorded with an actor, and the organizer ones with
