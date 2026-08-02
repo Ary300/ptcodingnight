@@ -675,7 +675,7 @@ function ListboxControl({
   );
 
   /*
-    Outside pointer, ancestor scroll and resize all close the list without committing.
+    An outside pointerdown closes the list without committing; scroll and resize follow it instead.
 
     `scroll` is listened for in the CAPTURE phase because a scroll event does not bubble, so a
     listener on `window` would never hear a scrolling DIV. The panel's own scrolling is excluded
@@ -693,15 +693,30 @@ function ListboxControl({
       setBox(null);
       setActiveIndex(-1);
     };
+    /*
+      Scroll and resize REPOSITION the panel; they do not close it.
+
+      Closing on ancestor scroll was the first design and it shipped a real bug: clicking the
+      trigger focuses it, the browser then scrolls the focused button fully into view, and that
+      scroll event lands AFTER the click has opened the list - so on any page where the picker sat
+      low enough for the focus-scroll to move the document, the panel closed in the same frame it
+      opened. Measured on the problem page: pointerdown, focusin, click, scroll(document), closed.
+      The admin form never showed it because its controls sit at the top of a short page.
+
+      Re-measuring against the trigger keeps the panel attached to the control wherever the page
+      goes, which is also what the reference UI does. Outside pointerdown and Escape still close.
+    */
+    const reposition = (): void => {
+      const trigger = triggerRef.current;
+      if (trigger !== null) setBox(measure(trigger, size, options.length));
+    };
     const onScroll = (event: Event): void => {
       const target = event.target;
       if (target instanceof Node && panelRef.current?.contains(target) === true) return;
-      setBox(null);
-      setActiveIndex(-1);
+      reposition();
     };
     const onResize = (): void => {
-      setBox(null);
-      setActiveIndex(-1);
+      reposition();
     };
 
     document.addEventListener("pointerdown", onPointerDown, true);
@@ -712,7 +727,7 @@ function ListboxControl({
       window.removeEventListener("scroll", onScroll, true);
       window.removeEventListener("resize", onResize);
     };
-  }, [open]);
+  }, [open, size, options.length]);
 
   /*
     Keep the active row in view, by scrolling the PANEL and nothing else.

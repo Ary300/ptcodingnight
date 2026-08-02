@@ -17,7 +17,7 @@ and a couple are reachable but wrong on this hardware.
 | T1 | Hints — specified and priced, deliberately unimplemented pending organizer-written content | deferred by decision |
 | T2 | Java time limits — **RESOLVED** by measuring the real host: 38,473 ms → 229 ms, budget 45,000 → 4,000 | resolved |
 | T3 | Verdict latency straddles the G8 threshold — 7.4 s to 22.8 s on the same commit | **high**, hardware |
-| T14 | **G7 FAILS**: the custom listbox broke the language-picker spec, and the fine-detail screenshot findings were audited but never implemented | **high**, open |
+| T14 | ~~G7 listbox failure~~ **fixed** (panel repositions on scroll instead of closing); screenshot findings being worked | in progress |
 | T4 | ~~A submission can fill the judge host's disk~~ **fixed** | resolved |
 | T5 | ~~Re-joining re-rolls the problem set, leaking other sets~~ **fixed**; one residual stated | low |
 | T6 | Monaco is specified but not installed | medium |
@@ -504,7 +504,17 @@ scoring engine and the problem routes already read `round`; the remaining reader
 **Two open gaps, recorded together because both come from the same cause: the agents that would
 have closed them ran out of session budget before they ran.**
 
-### T14a — `tests/e2e/student-gaps.spec.ts` fails. G7 is FAIL.
+### T14a — `tests/e2e/student-gaps.spec.ts` fails. G7 is FAIL. **— FIXED**
+
+**Root cause found by event-logging the E2E run**: clicking the trigger focuses it, the browser
+then scrolls the focused button fully into view, and that scroll lands AFTER the click has opened
+the list — so the close-on-ancestor-scroll listener shut the panel in the same frame it opened.
+The admin page never showed it because its controls sit at the top of a short page. Scroll and
+resize now REPOSITION the panel against the trigger instead of closing it; outside pointerdown and
+Escape still close. The spec reads the picker by role (`combobox` matches both renderings) and all
+14 student-gaps specs pass on both profiles.
+
+#### The original record, for history:
 
 `components/ui/Select.tsx` became a real `role="listbox"` on fine-pointer devices, which was the
 right call (see the commit: HackerRank's dropdowns are not native `<select>`s and ours were, so the
