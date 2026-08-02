@@ -23,7 +23,16 @@ import type { ButtonHTMLAttributes, Ref } from "react";
  * enabled-and-somehow-broken rather than as off — measured on `/sign-in`, where the Sign in
  * button sits disabled until the passcode is typed. DESIGN.md §7 exempts disabled controls from
  * the contrast floor, and axe agrees, but it never exempted them from being legible. Disabled is
- * now a different KIND of object — no fill, no border, muted ink — instead of a faded live one.
+ * a different KIND of object — a drained fill and muted ink — instead of a faded live one.
+ *
+ * The FILL is what carries the state, and it has to be dark enough to still read as a button.
+ * Measured on HackerRank's disabled Sign up (`12.20.45`): fill `#C1C2D4` on a white page, a 24%
+ * step down from the ground, with the label left white. Ours was `bg-ink/8`, which composites to
+ * `#E9E6E5` on paper — a 7% step, so the button stopped being a box at all and a form with a
+ * disabled submit looked like a form with no submit. `bg-ink/20` is an 18% step, close to the
+ * reference. The label goes the other way from HackerRank's, to `text-ink/60` (the documented
+ * muted floor), because white on that fill measures 1.5:1 and their own white-on-`#C1C2D4` is
+ * 1.79:1 — legible is the half of this we are not copying.
  */
 
 export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger" | "quiet";
@@ -47,7 +56,15 @@ export type ButtonSize = "sm" | "md";
  * control box from Select.tsx.
  */
 const VARIANT: Record<ButtonVariant, string> = {
-  primary: "rounded border border-transparent bg-panther font-semibold text-paper hover:bg-panther-deep",
+  /*
+   * The border is `--panther-deep`, not transparent. Every filled button in the reference carries
+   * a 1px rim one shade darker than its own fill: measured on HackerRank's Save Changes
+   * (`12.24.11`), fill `rgb(99,197,112)` with a uniform 1px `rgb(77,165,92)` edge on all four
+   * sides, and again on Submit Code and View all received submissions. It is what stops a filled
+   * button dissolving into a tinted toolbar or a coloured card. `--panther-deep` is already this
+   * button's hover fill, so hover reads as the rim closing over the face.
+   */
+  primary: "rounded border border-panther-deep bg-panther font-semibold text-paper hover:bg-panther-deep",
   /*
    * `bg-paper`, not transparent: HR's secondary buttons (Run Code, Preview Landing Page,
    * Add Challenge) are a white or near-white FILL with a grey border, so on a tinted row or
@@ -74,11 +91,23 @@ const VARIANT: Record<ButtonVariant, string> = {
 /**
  * Padding for the variants that are boxes. `quiet` is text and takes none.
  *
- * Sized against the reference, not against what fits: HR's page CTAs (Sign Up, Save Changes,
- * Submit Code) are ~40-48px tall with generous ~20-24px side padding, and ours measured ~36px,
- * one size class short on every screen. With the pinned line box below, md is now
- * 24 + 16 + 2 = 42px and sm is 20 + 12 + 2 = 34px, which are exactly the md and sm control
- * heights in Select.tsx, so a button sits flush beside a select or an input in the same row.
+ * Sized against the reference, not against what fits: ours measured ~36px, one size class short
+ * on every screen. With the pinned line box below, md is now 24 + 16 + 2 = 42px and sm is
+ * 20 + 12 + 2 = 34px, which are exactly the md and sm control heights in Select.tsx, so a button
+ * sits flush beside a select or an input in the same row.
+ *
+ * Re-measured against the reference by pixel scan, because the number this comment used to quote
+ * ("~20-24px side padding") was not in the screenshots. HackerRank's page CTAs are **40px tall
+ * with 16-17px of side padding**, four of them in agreement: Save Changes 133x40 with padL 16.0
+ * and padR 16.0 (`12.24.11`), the same button on the profile (`12.22.10`), Create & Publish
+ * 166.5x40 padL 17.0 (`12.19.19`), and the modal's Add Challenge 126x40 padL 16.5 (`12.24.25`).
+ *
+ * `md` stays at 42 / 20px anyway, and both deltas are deliberate:
+ *   - the 2px of height is Select.tsx's md control box, and a button that no longer lines up with
+ *     the input beside it costs more than it buys;
+ *   - HackerRank sets its label at 14px and we set ours at `--text-sm` (16px), so 20px of padding
+ *     is 1.25x our type against their 1.14x. Dropping to 16px would make ours proportionally
+ *     TIGHTER than the reference while matching it absolutely.
  */
 const PAD: Record<ButtonSize, string> = {
   sm: "px-3 py-1.5",
@@ -134,7 +163,7 @@ export function Button({
         // back into looking live.
         quiet
           ? "disabled:text-ink/40 disabled:no-underline"
-          : "disabled:border-transparent disabled:bg-ink/8 disabled:text-ink/40",
+          : "disabled:border-transparent disabled:bg-ink/20 disabled:text-ink/60",
         className ?? "",
       ].join(" ")}
       style={{ fontSize: FONT_SIZE[size], ...style }}

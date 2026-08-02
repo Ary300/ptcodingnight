@@ -519,75 +519,141 @@
 }
 
 /* ---------------------------------------------------------------------------
- * The open team's roster strip (TeamRosterStrip).
+ * The open team's breakdown (TeamRosterStrip): THE SAME SHEET IN MINIATURE.
  *
- * A LINE, not a column. Every player of the open team sits on one wrapping band under that team's
- * row, because the alternative — the competitor board's vertical list — is one line per player at
- * the projector's floor size, and the demo contest already has a nine-player team. Nine lines is
- * most of the board.
+ * These are rows of the standings table itself, not a grid inside a spanning cell, so every member
+ * cell inherits the column it belongs to and cannot drift out of alignment with the team row above.
+ * Nothing here sets a width for that reason: a width declared here would be a second opinion about
+ * a column the table has already decided.
  *
- * Everything here is at `--fs-sm`, the floor of the projector scale. That is deliberate: the strip
- * is paid for out of the row budget (`TEAM_EXPANDED_ROW_COST`), so every step up the ladder costs a
- * whole team its place on the wall.
+ * Everything is at `--fs-sm`, one rung down from the team row's `--fs-md` name and the floor of the
+ * projector scale. The step down is what says "individual"; the floor is why it does not step
+ * further. `--text-xs` is 12.8px, a phone size, unreadable past the second row of desks.
+ *
+ * Every value here is spent against the row budget. The block is paid for out of
+ * `TEAM_EXPANDED_ROW_COST`, so a pixel of padding is multiplied by the member count and comes off
+ * the bottom of a canvas that does not scroll. See `MEMBER_ROWS_MAX` for the measurement.
  * ------------------------------------------------------------------------ */
 
-.roster {
-  display: flex;
-  min-width: 0;
-  flex-wrap: wrap;
-  align-items: baseline;
-  column-gap: calc(var(--pad) * 0.9);
-  font-size: var(--fs-sm);
-  row-gap: calc(var(--gap) * 0.6);
+/*
+ * The tint is what groups the block under its team, and it is a SECOND channel rather than the
+ * only one: the rows are half the height of a team row, their names are boxed, and the team's
+ * caret above them has turned. A tint alone would say nothing in greyscale, which this board spends
+ * part of the night in behind the freeze (DESIGN.md §3).
+ */
+.memberRow {
+  /*
+    4%, and the number is a contrast budget rather than a taste. `--panther` is 5.08:1 on paper and
+    every point of tint under it spends some of that: 4% lands the pool label at 4.67:1 and 5% at
+    4.57:1, against a 4.5 floor that applies at 1280x720 where the label is 16px bold and therefore
+    NOT large text. Tint is also not the channel that groups this block: the rows are a third the
+    height of a team row and the names are boxed, both of which survive the greyscale the board
+    spends part of the night in (DESIGN.md §3).
+  */
+  background: color-mix(in srgb, var(--color-ink) 4%, var(--color-paper));
 }
 
 /*
- * `--panther` at FULL strength. It measures 5.08:1 on paper, which passes AA here; any alpha on it
- * does not, so this label is never faded to suggest it is secondary (DESIGN.md §7).
+ * Padding in `em` rather than in `--gap`, so the row height tracks the type size through
+ * `--proj-scale` on its own. Measured on this commit: 20.1px per row at 1280x720 and 28.9px at
+ * 1920x1080, against a team row's 66px and 94px. The 1px rules do NOT scale with `--proj-scale`,
+ * which is why the smaller canvas is tighter than a straight two-thirds and is the one
+ * `MEMBER_BLOCK_ROWS` is measured on.
+ *
+ * SIDE RULES ONLY, no top or bottom. The vertical rules are what carry the column alignment and
+ * they are kept; the horizontal ones separate members, which the boxed names already do, and each
+ * one costs a pixel that does not scale down. Six of them was a member row's worth of height on the
+ * canvas with none to spare.
  */
-.rosterLabel {
+.memberCell {
+  border-top: 0;
+  border-right: 1px solid color-mix(in srgb, var(--color-ink) 20%, transparent);
+  border-bottom: 0;
+  border-left: 1px solid color-mix(in srgb, var(--color-ink) 20%, transparent);
+  font-size: var(--fs-sm, var(--text-proj-sm));
+  font-weight: 400;
+  line-height: 1.05;
+  padding: 0.05em 0.5em;
+  vertical-align: middle;
+}
+
+/*
+ * Indented, so the block reads as belonging to the row above rather than as a peer of it. The
+ * indent is inside the Team column and takes no width from any other column, which is the
+ * difference between an outline and a second table.
+ */
+.memberNameCell {
+  padding-left: calc(var(--pad) * 1.9);
+  text-align: left;
+}
+
+/*
+ * "in a box the team member's name is there". Literally a box: the border is what separates one
+ * person from the next at ten metres, where a change of weight alone does not survive.
+ *
+ * The border is a rule, not text, so a low-alpha ink mix is legal on it. The NAME is full-strength
+ * ink.
+ */
+.memberBox {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--color-ink) 35%, transparent);
+  border-radius: 2px;
+  background: var(--color-paper);
+  font-weight: 700;
+  padding: 0 0.4em;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+/*
+ * The remainder box, when a roster is longer than the block can draw. Dashed, because it stands for
+ * people rather than naming one, and the difference has to be visible from the back of the room.
+ */
+.memberBoxRest {
+  border-style: dashed;
+  font-weight: 400;
+}
+
+/* "no set", next to a name. `--muted` is ink at 72%, above the 57% floor for ink on paper. */
+.memberTag {
+  color: var(--muted);
+  margin-left: 0.5em;
+  white-space: nowrap;
+}
+
+/* A member's own points: the addend. Bold enough to find, ink so it never competes with the red
+   team total two rows of type larger, directly above it in the same column. */
+.memberTotal {
+  font-weight: 700;
+  text-align: right;
+}
+
+.memberNumber {
+  text-align: center;
+}
+
+/*
+ * The subtotal, drawn the way a spreadsheet draws one: a heavier rule above the number it totals.
+ * This is the row that makes the block add up to the team score, so it is the row that gets the
+ * only emphasis in the block.
+ */
+.poolRow > * {
+  border-top: 2px solid color-mix(in srgb, var(--color-ink) 45%, transparent);
+}
+
+/*
+ * `--panther` at FULL strength: 5.08:1 on paper, which passes AA, and any alpha on it does not
+ * (DESIGN.md §7). One accent in the block, on the one label that explains what the block is for.
+ */
+.poolLabel {
   color: var(--color-panther);
   font-weight: 700;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   white-space: nowrap;
-}
-
-.rosterList {
-  display: flex;
-  min-width: 0;
-  flex: 1 1 auto;
-  flex-wrap: wrap;
-  align-items: baseline;
-  column-gap: calc(var(--pad) * 1.1);
-  row-gap: calc(var(--gap) * 0.6);
-}
-
-/*
- * One player never breaks across two lines: a name on one line and its points on the next is a
- * number the room cannot attribute. The whole entry wraps as a unit instead.
- */
-.rosterPlayer {
-  display: flex;
-  align-items: baseline;
-  gap: calc(var(--gap) * 0.8);
-  white-space: nowrap;
-}
-
-.rosterName {
-  font-weight: 700;
-}
-
-.rosterSet {
-  color: var(--muted);
-}
-
-.rosterScore {
-  font-weight: 700;
-}
-
-.rosterNote {
-  color: var(--muted);
 }
 
 /* ---------------------------------------------------------------------------

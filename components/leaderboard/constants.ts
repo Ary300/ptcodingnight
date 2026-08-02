@@ -63,10 +63,25 @@ export const TEAM_VISIBLE_ROWS = 7;
  * | 1920×1080 | 964px          | 48px  |
  * | 1280×720  | 668px          | 6px   |
  *
- * Six pixels. So the strip cannot come out of the slack on the canvas that matters most, and a
+ * Six pixels. So the breakdown cannot come out of the slack on the canvas that matters most, and a
  * board that let it would clip its last row silently against a footnote still claiming to show
- * seven. Two rows buys 186px at 1920 and 130px at 1280, which holds a roster strip of up to four
- * wrapped lines: enough for the largest roster the demo contest has (nine players) with room left.
+ * seven. Two rows buys 186px at 1920 and 130px at 1280.
+ *
+ * **What that budget holds, re-measured after the breakdown became a nested grid.** It was a
+ * wrapped strip of chips; it is now one table row per member, which is the shape the organizer
+ * asked for and costs far more height per player:
+ *
+ * | canvas    | member row | 6-row block | budget  |
+ * |-----------|------------|-------------|---------|
+ * | 1920×1080 | 31.5px     | 188.8px     | 228.7px |
+ * | 1280×720  | 19.9px     | 125.7px     | 131.5px |
+ *
+ * **Nine members do not fit inside two rows and cannot be made to.** Nine member rows plus the
+ * pool row is 201px at 1280×720 against 131.5px available, so `MEMBER_BLOCK_ROWS` caps the block
+ * and the remainder collapses into one "N more players" row that still carries their exact points
+ * per set, so every column reconciles. Raising this constant to 4 would buy 264px and hold all
+ * nine, at the cost of drawing three teams on the wall instead of five. That is a trade about what
+ * the room should see, so it belongs to the organizer rather than to this file.
  *
  * The footnote states the real drawn count and the real total, so the cost is never silent.
  */

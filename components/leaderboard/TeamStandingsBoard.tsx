@@ -47,10 +47,12 @@ import styles from "./leaderboard.module.css";
  * is taken in `getTeamStandings`, not here, because both routes behind this board are
  * unauthenticated and a component gate would leave the data sitting in the network tab.
  *
- * The PROJECTOR has level one and only level one, drawn differently: `TeamRosterStrip`, one
- * wrapping line instead of a column, controlled from `TeamProjectorScreen` because on a wall the
- * open row has to be paid for in rows. Level two never appears there, twice over — the payload
- * sends `null` to an anonymous reader, and the strip has no place to put it.
+ * The PROJECTOR has level one and only level one, drawn differently: `TeamRosterStrip` emits MORE
+ * ROWS OF THIS TABLE, one per member, in these columns and one rung smaller, so the breakdown is
+ * the same sheet in miniature and a member's points sit under the set column they were scored in.
+ * It is controlled from `TeamProjectorScreen` because on a wall the open row has to be paid for in
+ * rows. Level two never appears there, twice over — the payload sends `null` to an anonymous
+ * reader, and the miniature has no column to put it in.
  *
  * This is also where the imitation stops. A CF row is a name and a total, because an individual's
  * score is a sum anyone can add up. A mean is not, so the divisor stays on the row. A board that
@@ -657,32 +659,30 @@ export function TeamStandingsBoard({
 
                 isOpen && projector ? (
                   /*
-                    The wall's breakdown. A different component from the competitor board's, not a
-                    resize of it: `TeamPlayerDetail` renders one line per player and would print
+                    The wall's breakdown: MORE ROWS OF THIS TABLE, one per member, in these columns.
+
+                    Not a component inside a spanning cell, which is what this was. The organizer
+                    asked for "a smaller version of that for each team member" and the whole force
+                    of that is column alignment — a member's points sitting directly under the set
+                    column they were scored in, so a room can read down a column and watch it add up
+                    to the team's cell. A nested grid in a `colSpan` cell can be made to look like
+                    that and cannot be made to STAY like that: it has its own widths, and they drift
+                    the moment a set is added or a name gets longer. Rows of one table cannot drift.
+
+                    Still not `TeamPlayerDetail`: that renders one line per player and would print
                     "Per-problem detail is shown for your own team." under every one of them, since
                     the projector is anonymous and the payload sends `problems: null` to anonymous
                     readers. See TeamRosterStrip for the rest of the reasoning.
                   */
-                  <tr key={`${team.teamId}-detail`} className="bg-ink/5">
-                    <td
-                      className={`border ${grid} ${cellPad}`}
-                      style={{
-                        // The rail is reserved on every rank cell so rows stay the same width.
-                        // This one has no rank in it and still needs the reservation.
-                        borderLeftWidth: "var(--rail-width)",
-                        borderLeftStyle: "solid",
-                        borderLeftColor: mine
-                          ? "var(--color-panther)"
-                          : "transparent",
-                      }}
-                    />
-                    <td
-                      className={`border ${grid} ${cellPad}`}
-                      colSpan={4 + columns.length}
-                    >
-                      <TeamRosterStrip team={team} />
-                    </td>
-                  </tr>
+                  <TeamRosterStrip
+                    key={`${team.teamId}-detail`}
+                    team={team}
+                    /* The BOARD's columns, not this team's. A team that is not in every set would
+                       otherwise get a shorter list and every one of its cells would land a column
+                       to the left of where it belongs. */
+                    columns={columns}
+                    mine={mine}
+                  />
                 ) : isOpen && !projector ? (
                   <tr key={`${team.teamId}-detail`} className="bg-ink/3">
                     <td className={`border ${grid} ${cellPad}`} />

@@ -169,12 +169,24 @@ export function CompetitorChrome({ children }: { children: ReactNode }) {
       */}
       <header className="bg-ink text-paper">
         {/*
-          `items-stretch`, and the nav is the tallest child.
+          `items-stretch`, so the nav is as tall as the bar however tall the bar happens to be.
 
           That is what puts the active tab's underline on the BAR's bottom edge rather than a few
           pixels under its own label — the detail that separates HackerRank's app nav from a row
           of links that happen to be underlined. Centre the items instead and the rule floats in
           the middle of the bar, which reads as decoration rather than as "you are here".
+
+          It was doing neither. `items-stretch` stretches the FLEX ITEMS, and the nav is one; the
+          `ul` inside it is an ordinary block, so it stopped at its own content height and took
+          the links with it. Measured at 1440: header 52px, every nav link 50px, so the underline
+          ended at y=50 with two pixels of bar still below it — a rule under the label, which is
+          exactly the thing this comment says it is not. The mark is the tallest child, not the
+          nav: `py-2.5` around a 32px image is 52px against the links' 50px.
+
+          The `flex` on the nav below is the fix, and it is structural rather than arithmetic: it
+          makes the `ul` a flex item so it stretches to the nav, the `li` stretches to the `ul`,
+          and the link stretches to the `li`. Any future change to the mark's size or the brand
+          link's padding moves the underline with the bar instead of detaching it again.
         */}
         <div className="mx-auto flex w-full max-w-6xl flex-wrap items-stretch gap-x-5 px-4">
           <Link href="/contest" className="order-1 flex items-center gap-2.5 py-2.5">
@@ -210,24 +222,44 @@ export function CompetitorChrome({ children }: { children: ReactNode }) {
             failure, and it is the obvious way to get a responsive nav wrong.
 
             `overflow-x-auto` on the phone row for the same reason TabStrip has it — three tabs at
-            360px are close to the edge, and a wrapped tab row stops reading as tabs.
+            360px are close to the edge, and a wrapped tab row stops reading as tabs. It is also
+            what keeps `flex` here safe: a flex item's automatic minimum size is its content, and
+            the one thing this header must never do is refuse to fit a 360px phone. `overflow-x`
+            other than `visible` sets that minimum to zero, so the nav can still shrink and scroll
+            its own row rather than widening the page.
           */}
           <nav
             aria-label="Competitor"
-            className="order-3 -mx-4 w-full overflow-x-auto px-4 md:order-2 md:mx-0 md:w-auto md:overflow-x-visible md:px-0"
+            className="order-3 -mx-4 flex w-full overflow-x-auto px-4 md:order-2 md:mx-0 md:w-auto md:overflow-x-visible md:px-0"
           >
             <ul className="flex items-stretch gap-1">
               {NAV.map((item) => {
                 const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
                 return (
                   <li key={item.href} className="flex shrink-0">
+                    {/*
+                      `border-b-4`, and the tab box is what carries it.
+
+                      HackerRank's active tab is a 4px rule the full width of the TAB, not of the
+                      label: measured on `12.22.24` at 2x, the green sits at device rows 100-107
+                      (4 CSS px) and runs 99.5 CSS px wide under a 50.5px label, so 24-25px of the
+                      tab's own padding is underlined on each side. A rule that stops where the
+                      word stops is an underlined link; a rule that runs the width of the tab is a
+                      nav. Ours was 2px under a 12px-padded box.
+
+                      `px-2 sm:px-6` rather than a flat 24px: three tabs at 24px come to 409px, and
+                      a 360px phone gives the nav row 328. The row is a scroller and the page does
+                      not widen either way, but a strip that starts out scrolled is a strip whose
+                      third tab is invisible. The phone keeps the 8px it already had and the
+                      reference width applies from `sm` up, where there is room for it.
+                    */}
                     <Link
                       href={item.href}
                       aria-current={active ? "page" : undefined}
                       className={
                         active
-                          ? "flex items-center border-b-2 border-panther px-2 py-3 font-semibold text-paper sm:px-3"
-                          : "flex items-center border-b-2 border-transparent px-2 py-3 text-paper/75 hover:border-paper/30 hover:text-paper sm:px-3"
+                          ? "flex items-center border-b-4 border-panther px-2 py-3 font-semibold text-paper sm:px-6"
+                          : "flex items-center border-b-4 border-transparent px-2 py-3 text-paper/75 hover:border-paper/30 hover:text-paper sm:px-6"
                       }
                       style={{ fontSize: "var(--text-sm)" }}
                     >

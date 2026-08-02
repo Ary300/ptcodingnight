@@ -23,10 +23,16 @@ import { useTeamStandings } from "./useTeamStandings";
  *
  * This screen used to say, in this comment, that the per-player breakdown was deliberately not
  * here. The organizer disagreed, in as many words: "there is no drop down menu in that to show what
- * every individual is contributing to the score there". The old reasoning was half right — twelve
- * players' subtotals as a *column*, at projector size, is not legible — so the breakdown is here
- * now as a wrapping LINE (`TeamRosterStrip`), one team at a time, and the screen pays for it in
- * rows.
+ * every individual is contributing to the score there". So the breakdown is here, one team at a
+ * time, and the screen pays for it in rows.
+ *
+ * It was first built as a wrapped LINE of chips, on the grounds that a column of subtotals would
+ * not be legible at projector size. The organizer looked at that and asked for the column after
+ * all, precisely: "you should have a smaller version of that for each team member, where in a box
+ * the team member's name is there and then to the right there is the scores and it goes down, but
+ * the boxes are smaller to show it's individual". `TeamRosterStrip` now returns rows OF THIS TABLE
+ * rather than a block inside one cell, which is what makes a member's points sit under the same
+ * column heading as the team's, and there is exactly one set of columns so nothing can drift.
  *
  * **One team at a time, not a mode toggle, and not free.** The three options were: expand every
  * team (impossible, the board is already full at seven rows), a separate "breakdown mode" screen

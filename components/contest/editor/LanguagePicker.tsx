@@ -8,9 +8,20 @@ import { LanguageSchema, type Language } from "@/lib/schemas/judge";
 import { LANGUAGE_LABEL } from "./types";
 
 /**
- * A native `<select>`, on purpose: it must work on a phone, and the platform control is already
- * keyboard-complete and screen-reader-labelled — a custom listbox here would be more code and
- * less accessible.
+ * The one dropdown a student touches, and the reason `components/ui/Select` grew a real popup.
+ *
+ * It used to be a native `<select>` on the argument that the platform control is keyboard
+ * complete, screen-reader labelled, and the iOS and Android wheel on a phone. All three of those
+ * were true and none of them are given up: `ui/Select` still renders the native element on a
+ * coarse pointer and through hydration, and implements the full APG combobox keyboard on a fine
+ * one. What the native control could not do was be SEEN. Its open list is an operating-system
+ * window: not in the document, not styleable, not screenshottable, not visible to axe, and not
+ * assertable — a pixel diff of the 700px below an open one differs from the closed capture in
+ * exactly zero pixels. So the control a student uses ten times a night was the one surface of
+ * this product that no gate had ever executed and no reviewer had ever looked at.
+ *
+ * Nothing about THIS file's contract changed in that move: same props, same `onChange`, same
+ * `<option>` children. The trigger's metrics are the same measurements too.
  *
  * The rationale used to read "it is two languages". It is ten — five runtimes and their compile
  * variants (`VARIANTS` in lib/judge/runtimes.ts), six human languages: Python, Java 8/11/17/21,
@@ -24,7 +35,7 @@ import { LANGUAGE_LABEL } from "./types";
  * anywhere in this file: a hardcoded list here would silently disagree with what the judge will
  * actually accept, and the student would find out by having a submission refused.
  *
- * **The box is `components/ui/Select` and no longer drawn here.** It used to be `rounded`
+ * **The control is `components/ui/Select` and no longer drawn here.** It used to be `rounded`
  * (4px) on `border-ink/25` — neither of which is a token: DESIGN.md §5a has three radii and
  * §5b replaced eleven hand-picked `border-ink/N` alphas with three rule weights, and this
  * control was off both scales. Measured against the admin selects on the same commit it was
