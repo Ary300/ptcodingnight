@@ -1,4 +1,5 @@
 import Image from "next/image";
+import Link from "next/link";
 
 /**
  * Token specimen. The reviewable artifact of Phase 4a — it exists so the palette, the type
@@ -44,7 +45,10 @@ export default function DesignSpecimen() {
       <header className="mb-12 flex items-center gap-4">
         <Image src="/brand/pt-crest-color.svg" alt="Park Tudor crest" width={56} height={56} priority />
         <div>
-          <h1 style={{ fontFamily: "var(--font-display)", fontSize: "var(--text-xl)" }}>
+          <Link href="/" className="text-ink/70 underline underline-offset-2 hover:text-panther" style={{ fontSize: "var(--text-xs)" }}>
+            Back to the home page
+          </Link>
+                    <h1 style={{ fontFamily: "var(--font-display)", fontSize: "var(--text-xl)" }}>
             Coding Night design tokens
           </h1>
           <p style={{ fontSize: "var(--text-sm)", opacity: 0.7 }}>
