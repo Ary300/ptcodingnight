@@ -88,13 +88,37 @@ interface Incomplete {
   missing: string[];
 }
 
+/**
+ * Optional slug filter: `npm run test:content -- slug-a slug-b` verifies only those problems.
+ *
+ * The gate stays the gate: a FULL no-argument run is what G13 means in the verify table, and
+ * nothing about a filtered run may claim otherwise (the summary prints how many were skipped
+ * by the filter, so a partial run can never read as a complete one). The filter exists because
+ * the bank is growing by the dozen: re-judging four hundred authored problems to check twelve
+ * new ones is an hour of container time that measures nothing new, and a single Bash timeout
+ * cannot contain it anyway. Naming a slug that has no directory is an error, not a skip, so a
+ * typo cannot silently verify nothing.
+ */
+const SLUG_FILTER = new Set(process.argv.slice(2).filter((arg) => !arg.startsWith("-")));
+
 function discover(): { problems: ProblemMeta[]; incomplete: Incomplete[] } {
   if (!existsSync(CONTENT)) return { problems: [], incomplete: [] };
 
   const problems: ProblemMeta[] = [];
   const incomplete: Incomplete[] = [];
 
+  if (SLUG_FILTER.size > 0) {
+    const known = new Set(readdirSync(CONTENT));
+    const unknown = [...SLUG_FILTER].filter((slug) => !known.has(slug));
+    if (unknown.length > 0) {
+      throw new Error(
+        `slug filter names problems that do not exist under ${CONTENT}: ${unknown.join(", ")}`,
+      );
+    }
+  }
+
   for (const slug of readdirSync(CONTENT).sort()) {
+    if (SLUG_FILTER.size > 0 && !SLUG_FILTER.has(slug)) continue;
     const dir = path.join(CONTENT, slug);
     const missing: string[] = REQUIRED_FILES.filter((f) => !existsSync(path.join(dir, f)));
 
@@ -565,6 +589,14 @@ async function main(): Promise<void> {
   if (failures > 0) {
     console.error(`\nG13 FAIL: ${failures} problem(s) cannot ship.`);
     process.exit(1);
+  }
+  if (SLUG_FILTER.size > 0) {
+    // A filtered run may never impersonate the gate. The verify table's G13 means ALL content.
+    console.log(
+      `\nG13 PARTIAL PASS: ${String(problems.length)} problem(s) matched the slug filter; ` +
+        "the rest were not judged. Run without arguments for the real gate.",
+    );
+    return;
   }
   console.log("\nG13 PASS");
 }

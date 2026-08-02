@@ -25,12 +25,12 @@ a-very-big-sum,A Very Big Sum,warmup,E,general,authored,
 mini-max-sum,Mini-Max Sum,warmup,E,general,authored,
 simple-array-sum,Simple Array Sum,warmup,E,general,authored,
 solve-me-first,Solve Me First,warmup,E,general,authored,
-an-interesting-game-1,Gaming Array,constructive-algorithms,M,general,batch1,spreadsheet history also records H
-bon-appetit,Bill Division,implementation,E,general,batch1,
-larrys-array,Larry's Array,implementation,M,general,batch1,spreadsheet history records H; kept per record
-icecream-parlor,Ice Cream Parlor,search,E,general,batch1,spreadsheet history also records M
-gena,Gena Playing Hanoi,search,M,general,batch1,spreadsheet history records H; kept per record
-swap-case,sWAP cASE,strings,E,general,batch1,spreadsheet history records M; kept per record; not in the current catalog index
+an-interesting-game-1,Gaming Array,constructive-algorithms,M,general,authored,spreadsheet history also records H
+bon-appetit,Bill Division,implementation,E,general,authored,
+larrys-array,Larry's Array,implementation,M,general,authored,spreadsheet history records H; kept per record
+icecream-parlor,Ice Cream Parlor,search,E,general,authored,spreadsheet history also records M
+gena,Gena Playing Hanoi,search,M,general,authored,spreadsheet history records H; kept per record
+swap-case,sWAP cASE,strings,E,general,authored,spreadsheet history records M; kept per record; not in the current catalog index
 flipping-bits,Flipping bits,bit-manipulation,E,general,planned,
 lonely-integer,Lonely Integer,bit-manipulation,E,general,planned,
 maximizing-xor,Maximizing XOR,bit-manipulation,E,general,planned,
