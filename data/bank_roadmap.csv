@@ -1,172 +1,443 @@
-title,topic,difficulty,audience,status,notes
-Solve Me First,warmup,E,general,authored,
-Simple Array Sum,warmup,E,general,batch1,
-Compare the Triplets,warmup,E,general,planned,
-A Very Big Sum,warmup,E,general,authored,
-Diagonal Difference,warmup,E,general,planned,
-Plus Minus,warmup,E,general,planned,
-Staircase,warmup,E,general,planned,
-Mini-Max Sum,warmup,E,general,batch1,
-Birthday Cake Candles,warmup,E,general,planned,
-Time Conversion,warmup,E,general,planned,
-Grading Students,implementation,E,general,planned,
-Apple and Orange,implementation,E,general,authored,
-Number Line Jumps,implementation,E,general,authored,
-Between Two Sets,implementation,E,general,planned,
-Breaking the Records,implementation,E,general,planned,
-Subarray Division,implementation,E,general,planned,
-Divisible Sum Pairs,implementation,E,general,authored,
-Migratory Birds,implementation,E,general,authored,
-Day of the Programmer,implementation,E,general,authored,
-Bill Division,implementation,E,general,batch1,
-Sales by Match,implementation,E,general,authored,
-Drawing Book,implementation,E,general,authored,
-Counting Valleys,implementation,E,general,batch1,spreadsheet history records H; kept per record with needs_review
-Electronics Shop,implementation,E,general,planned,
-Cats and a Mouse,implementation,E,general,authored,
-Forming a Magic Square,implementation,M,general,planned,also appears in seed CSV as Magic Square
-Picking Numbers,implementation,E,general,planned,
-Climbing the Leaderboard,implementation,M,general,batch1,spreadsheet history records E for Advanced; kept per record
-The Hurdle Race,implementation,E,general,planned,
-Designer PDF Viewer,implementation,E,general,authored,
-Utopian Tree,implementation,E,general,planned,
-Angry Professor,implementation,E,general,authored,
-Beautiful Days at the Movies,implementation,E,general,authored,
-Viral Advertising,implementation,E,general,planned,
-Save the Prisoner!,implementation,E,general,authored,authored as save-the-prisoner
-Circular Array Rotation,implementation,E,general,authored,
-Sequence Equation,implementation,E,general,planned,
-Jumping on the Clouds: Revisited,implementation,E,general,planned,
-Find Digits,implementation,E,general,planned,
-Extra Long Factorials,implementation,M,general,planned,
-Append and Delete,implementation,E,general,planned,
-Sherlock and Squares,implementation,E,general,authored,
-Library Fine,implementation,E,general,planned,
-Cut the Sticks,implementation,E,general,authored,
-Non-Divisible Subset,implementation,M,general,planned,
-Repeated String,implementation,E,general,planned,
-Jumping on the Clouds,implementation,E,general,authored,
-Equalize the Array,implementation,E,general,planned,
-Queen's Attack II,implementation,M,general,planned,
-ACM ICPC Team,implementation,E,general,planned,
-Taum and B'day,implementation,E,general,planned,
-Organizing Containers of Balls,implementation,M,general,planned,
-Encryption,implementation,M,general,authored,
-Bigger is Greater,implementation,M,general,batch1,spreadsheet history records H; kept per record
-Modified Kaprekar Numbers,implementation,E,general,planned,
-Beautiful Triplets,implementation,E,general,planned,
-Minimum Distances,implementation,E,general,planned,
-Halloween Sale,implementation,E,general,authored,
-The Time in Words,implementation,M,general,planned,
-Chocolate Feast,implementation,E,general,planned,
-Service Lane,implementation,E,general,planned,
-Lisa's Workbook,implementation,E,general,planned,
-Flatland Space Stations,implementation,E,general,planned,
-Fair Rations,implementation,E,general,planned,
-Cavity Map,implementation,E,general,planned,
-Manasa and Stones,implementation,E,general,planned,
-The Grid Search,implementation,M,general,planned,
-Happy Ladybugs,implementation,E,general,planned,
-Strange Counter,implementation,E,general,planned,
-3D Surface Area,implementation,M,general,planned,
-Absolute Permutation,implementation,M,general,planned,
-The Bomberman Game,implementation,M,general,planned,
-Ema's Supercomputer,implementation,M,general,planned,
-Larry's Array,implementation,M,general,batch1,spreadsheet history records H; kept per record
-Almost Sorted,implementation,M,general,planned,
-Matrix Layer Rotation,implementation,H,advanced,planned,
-Super Reduced String,strings,E,general,planned,
-CamelCase,strings,E,general,planned,
-Strong Password,strings,E,general,planned,
-Two Characters,strings,E,general,planned,
-Caesar Cipher,strings,E,general,planned,
-Mars Exploration,strings,E,general,planned,
-HackerRank in a String!,strings,E,general,planned,retitle to Panthers in a String; note in report
-Pangrams,strings,E,general,planned,
-Weighted Uniform Strings,strings,E,general,planned,
-Separate the Numbers,strings,E,general,planned,
-Funny String,strings,E,general,planned,
-Gemstones,strings,E,general,planned,
-Alternating Characters,strings,E,general,planned,
-Beautiful Binary String,strings,E,general,planned,
-The Love-Letter Mystery,strings,E,general,planned,
-Palindrome Index,strings,E,general,planned,
-Anagram,strings,E,general,planned,
-Making Anagrams,strings,E,general,planned,
-Two Strings,strings,E,general,planned,
-String Construction,strings,E,general,planned,
-Sherlock and the Valid String,strings,M,general,planned,
-Highest Value Palindrome,strings,M,general,planned,
-Maximum Palindromes,strings,M,advanced,planned,
-Sherlock and Anagrams,strings,M,general,planned,
-Common Child,strings,M,general,planned,
-Bear and Steady Gene,strings,M,advanced,planned,
-Morgan and a String,strings,H,advanced,batch1,
-Circular Palindromes,strings,H,advanced,planned,
-Big Sorting,sorting,E,general,planned,
-Insertion Sort Part 1,sorting,E,general,planned,
-Insertion Sort Part 2,sorting,E,general,planned,
-Running Time of Algorithms,sorting,E,general,planned,
-Counting Sort 1,sorting,E,general,planned,
-Counting Sort 2,sorting,E,general,planned,
-The Full Counting Sort,sorting,M,general,planned,
-Closest Numbers,sorting,E,general,planned,
-Find the Median,sorting,E,general,planned,
-Fraudulent Activity Notifications,sorting,M,advanced,planned,spreadsheet history: group problem; H
-Lily's Homework,sorting,M,general,planned,
-Ice Cream Parlor,search,E,general,batch1,spreadsheet history also records M
-Missing Numbers,search,E,general,planned,
-Sherlock and Array,search,E,general,planned,
-Pairs,search,M,general,planned,
-Minimum Time Required,search,M,general,planned,
-Hackerland Radio Transmitters,search,M,general,planned,
-Connected Cells in a Grid,search,M,advanced,planned,
-Red Knight's Shortest Path,search,M,advanced,planned,
-KnightL on a Chessboard,search,M,advanced,planned,
-Count Luck,search,M,general,planned,
-Cut the Tree,search,M,advanced,planned,
-Gena Playing Hanoi,search,M,advanced,batch1,spreadsheet history records H; kept per record
-Making Candies,search,M,general,planned,
-Maximum Subarray Sum,search,H,advanced,planned,
-Even Tree,graphs,M,advanced,planned,
-Snakes and Ladders: The Quickest Way Up,graphs,M,advanced,planned,
-Journey to the Moon,graphs,M,advanced,planned,
-Roads and Libraries,graphs,M,advanced,planned,
-Rust & Murderer,graphs,M,advanced,planned,
-BFS: Shortest Reach in a Graph,graphs,M,advanced,planned,
-Dijkstra: Shortest Reach 2,graphs,M,advanced,planned,
-Kruskal (MST): Really Special Subtree,graphs,M,advanced,planned,
-Prim's (MST): Special Subtree,graphs,M,advanced,planned,
-Minimum Absolute Difference in an Array,greedy,E,general,planned,
-Marc's Cakewalk,greedy,E,general,planned,
-Grid Challenge,greedy,E,general,planned,
-Luck Balance,greedy,E,general,planned,
-Maximum Perimeter Triangle,greedy,E,general,planned,
-Priyanka and Toys,greedy,E,general,planned,
-Largest Permutation,greedy,E,general,planned,
-Jim and the Orders,greedy,E,general,planned,
-Permuting Two Arrays,greedy,E,general,planned,
-Sherlock and The Beast,greedy,M,general,planned,
-Greedy Florist,greedy,M,general,planned,
-Max Min,greedy,M,general,planned,
-Candies,greedy,M,advanced,planned,
-The Coin Change Problem,dp,M,advanced,planned,
-Fibonacci Modified,dp,M,advanced,planned,
-Max Array Sum,dp,M,advanced,planned,
-Abbreviation,dp,M,advanced,planned,
-Sam and substrings,dp,M,advanced,planned,
-Stock Maximize,dp,M,advanced,planned,
-Sherlock and Cost,dp,M,advanced,planned,
-Construct the Array,dp,M,advanced,planned,
-Equal,dp,M,advanced,planned,
-Lonely Integer,bits,E,general,planned,
-Maximizing XOR,bits,E,general,planned,
-Sum vs XOR,bits,E,general,planned,
-Flipping Bits,bits,E,general,planned,
-Counter Game,bits,M,advanced,planned,
-Save Humanity,strings,H,advanced,planned,spreadsheet history: partially solved in past
-Signal Tower,unknown,M,advanced,planned,title from past-contest record; task needs organizer confirmation
-Determining DNA Health,strings,H,advanced,planned,heavy string automaton; advanced only
-The Value of Friendship,graphs,H,advanced,planned,
-Gaming Array,game-theory,M,general,batch1,spreadsheet history also records H
-sWAP cASE,strings,E,general,batch1,spreadsheet history records M; kept per record
+slug,title,topic,difficulty,audience,status,notes
+angry-professor,Angry Professor,implementation,E,general,authored,
+apple-and-orange,Apple and Orange,implementation,E,general,authored,
+beautiful-days-at-the-movies,Beautiful Days at the Movies,implementation,E,general,authored,
+cats-and-a-mouse,Cats and a Mouse,implementation,E,general,authored,
+circular-array-rotation,Circular Array Rotation,implementation,E,general,authored,
+counting-valleys,Counting Valleys,implementation,E,general,authored,spreadsheet history records H; kept per record with needs_review
+cut-the-sticks,Cut the sticks,implementation,E,general,authored,
+day-of-the-programmer,Day of the Programmer,implementation,E,general,authored,
+designer-pdf-viewer,Designer PDF Viewer,implementation,E,general,authored,
+divisible-sum-pairs,Divisible Sum Pairs,implementation,E,general,authored,
+drawing-book,Drawing Book ,implementation,E,general,authored,
+halloween-sale,Halloween Sale,implementation,E,general,authored,
+jumping-on-the-clouds,Jumping on the Clouds,implementation,E,general,authored,
+migratory-birds,Migratory Birds,implementation,E,general,authored,
+kangaroo,Number Line Jumps,implementation,E,general,authored,
+sock-merchant,Sales by Match,implementation,E,general,authored,
+save-the-prisoner,Save the Prisoner!,implementation,E,general,authored,authored as save-the-prisoner
+sherlock-and-squares,Sherlock and Squares,implementation,E,general,authored,
+bigger-is-greater,Bigger is Greater,implementation,M,general,authored,spreadsheet history records H; kept per record
+climbing-the-leaderboard,Climbing the Leaderboard,implementation,M,general,authored,spreadsheet history records E for Advanced; kept per record
+encryption,Encryption,implementation,M,general,authored,
+morgan-and-a-string,Morgan and a String,strings,H,advanced,authored,catalog tier Expert
+a-very-big-sum,A Very Big Sum,warmup,E,general,authored,
+mini-max-sum,Mini-Max Sum,warmup,E,general,authored,
+simple-array-sum,Simple Array Sum,warmup,E,general,authored,
+solve-me-first,Solve Me First,warmup,E,general,authored,
+an-interesting-game-1,Gaming Array,constructive-algorithms,M,general,batch1,spreadsheet history also records H
+bon-appetit,Bill Division,implementation,E,general,batch1,
+larrys-array,Larry's Array,implementation,M,general,batch1,spreadsheet history records H; kept per record
+icecream-parlor,Ice Cream Parlor,search,E,general,batch1,spreadsheet history also records M
+gena,Gena Playing Hanoi,search,M,general,batch1,spreadsheet history records H; kept per record
+swap-case,sWAP cASE,strings,E,general,batch1,spreadsheet history records M; kept per record; not in the current catalog index
+flipping-bits,Flipping bits,bit-manipulation,E,general,planned,
+lonely-integer,Lonely Integer,bit-manipulation,E,general,planned,
+maximizing-xor,Maximizing XOR,bit-manipulation,E,general,planned,
+sum-vs-xor,Sum vs XOR,bit-manipulation,E,general,planned,
+2s-complement,2's complement,bit-manipulation,H,advanced,planned,catalog tier Advanced
+changing-bits,Changing Bits,bit-manipulation,H,advanced,planned,catalog tier Advanced
+hamming-distance,Hamming Distance,bit-manipulation,H,advanced,planned,catalog tier Expert
+iterate-it,Iterate It,bit-manipulation,H,advanced,planned,catalog tier Expert
+manipulative-numbers,Manipulative Numbers,bit-manipulation,H,general,planned,
+maximizing-the-function,Maximizing the Function ,bit-manipulation,H,general,planned,
+pmix,Mixing proteins,bit-manipulation,H,general,planned,
+stonegame,Stone Game,bit-manipulation,H,general,planned,
+string-transmission,String Transmission,bit-manipulation,H,general,planned,
+xor-matrix,XOR Matrix,bit-manipulation,H,general,planned,
+xor-subsequence,XOR Subsequences,bit-manipulation,H,advanced,planned,catalog tier Advanced
+xor-key,XOR key,bit-manipulation,H,advanced,planned,catalog tier Advanced
+xoring-ninja,Xoring Ninja,bit-manipulation,H,general,planned,
+aorb,A or B,bit-manipulation,M,general,planned,
+and-product,AND Product,bit-manipulation,M,general,planned,
+cipher,Cipher,bit-manipulation,M,general,planned,
+counter-game,Counter game,bit-manipulation,M,general,planned,
+sansa-and-xor,Sansa and XOR,bit-manipulation,M,general,planned,
+the-great-xor,The Great XOR,bit-manipulation,M,general,planned,
+whats-next,What's Next?,bit-manipulation,M,general,planned,
+winning-lottery-ticket,Winning Lottery Ticket,bit-manipulation,M,general,planned,
+xor-se,Xor-sequence,bit-manipulation,M,general,planned,
+yet-another-minimax-problem,Yet Another Minimax Problem,bit-manipulation,M,general,planned,
+array-construction,Array Construction,constructive-algorithms,H,advanced,planned,catalog tier Advanced
+beautiful-3-set,Beautiful 3 Set,constructive-algorithms,H,general,planned,
+inverse-rmq,Inverse RMQ,constructive-algorithms,H,general,planned,
+lovely-triplets,Lovely Triplets,constructive-algorithms,H,advanced,planned,catalog tier Advanced
+two-subarrays,Two Subarrays,constructive-algorithms,H,advanced,planned,catalog tier Expert
+kmp-problem,Yet Another KMP Problem,constructive-algorithms,H,general,planned,
+bonetrousle,Bonetrousle,constructive-algorithms,M,general,planned,
+flipping-the-matrix,Flipping the Matrix,constructive-algorithms,M,general,planned,
+lena-sort,Lena Sort,constructive-algorithms,M,general,planned,
+new-year-chaos,New Year Chaos,constructive-algorithms,M,general,planned,
+max-array-sum,Max Array Sum,dp,M,advanced,planned,not in the current catalog index
+a-super-hero,A Super Hero,dynamic-programming,H,advanced,planned,
+alien-languages,Alien Languages,dynamic-programming,H,advanced,planned,
+angry-children-2,Angry Children 2,dynamic-programming,H,advanced,planned,
+animal-transport,Animal Transport,dynamic-programming,H,advanced,planned,
+beautiful-string,Beautiful Strings,dynamic-programming,H,advanced,planned,
+best-spot,Best spot,dynamic-programming,H,advanced,planned,catalog tier Advanced
+billboards,Billboards,dynamic-programming,H,advanced,planned,catalog tier Advanced
+black-n-white-tree-1,Black and White Tree,dynamic-programming,H,advanced,planned,
+brick-tiling,Brick Tiling,dynamic-programming,H,advanced,planned,
+choosing-white-balls,Choosing White Balls,dynamic-programming,H,advanced,planned,
+clues-on-a-binary-path,Clues on a Binary Path,dynamic-programming,H,advanced,planned,
+count-scorecards,Count Scorecards,dynamic-programming,H,advanced,planned,catalog tier Expert
+counting-road-networks,Counting Road Networks,dynamic-programming,H,advanced,planned,catalog tier Expert
+count-ways-1,Counting the Ways,dynamic-programming,H,advanced,planned,catalog tier Expert
+covering-the-stains,Covering the stains,dynamic-programming,H,advanced,planned,
+decibinary-numbers,Decibinary Numbers,dynamic-programming,H,advanced,planned,
+divisible-numbers,Divisible Numbers,dynamic-programming,H,advanced,planned,catalog tier Expert
+dorsey-thief,Dorsey Thief,dynamic-programming,H,advanced,planned,catalog tier Advanced
+dortmund-dilemma,Dortmund Dilemma,dynamic-programming,H,advanced,planned,catalog tier Advanced
+fairy-chess,Fairy Chess,dynamic-programming,H,advanced,planned,catalog tier Advanced
+far-vertices,Far Vertices,dynamic-programming,H,advanced,planned,
+find-the-seed,Find the Seed,dynamic-programming,H,advanced,planned,catalog tier Advanced
+gcd-matrix,GCD Matrix,dynamic-programming,H,advanced,planned,
+hard-drive-disks,Hard Disk Drives,dynamic-programming,H,advanced,planned,catalog tier Expert
+hexagonal-grid,Hexagonal Grid,dynamic-programming,H,advanced,planned,
+hyper-strings,Hyper Strings,dynamic-programming,H,advanced,planned,catalog tier Advanced
+happy-king,King and Four Sons,dynamic-programming,H,advanced,planned,catalog tier Expert
+longest-mod-path,Longest Mod Path,dynamic-programming,H,advanced,planned,
+longest-palindromic-subsequence,Longest Palindromic Subsequence,dynamic-programming,H,advanced,planned,
+lucky-numbers,Lucky Numbers,dynamic-programming,H,advanced,planned,catalog tier Expert
+matrix-land,Matrix Land,dynamic-programming,H,advanced,planned,
+mining,Mining,dynamic-programming,H,advanced,planned,catalog tier Advanced
+modify-the-sequence,Modify The Sequence,dynamic-programming,H,advanced,planned,catalog tier Advanced
+newyear-present,New Year Present,dynamic-programming,H,advanced,planned,
+oil-well,Oil Well,dynamic-programming,H,advanced,planned,
+ones-and-twos,Ones and Twos,dynamic-programming,H,advanced,planned,
+p-sequences,P-sequences,dynamic-programming,H,advanced,planned,
+points-in-a-plane,Points in a Plane,dynamic-programming,H,advanced,planned,catalog tier Advanced
+police-operation,Police Operation,dynamic-programming,H,advanced,planned,
+queens-on-board,Queens on Board,dynamic-programming,H,advanced,planned,
+requirement,Requirement,dynamic-programming,H,advanced,planned,catalog tier Advanced
+road-maintenance,Road Maintenance,dynamic-programming,H,advanced,planned,
+robot,Robot,dynamic-programming,H,advanced,planned,catalog tier Advanced
+separate-the-chocolate,Separate the chocolate,dynamic-programming,H,advanced,planned,catalog tier Expert
+shashank-and-palindromic-strings,Shashank and the Palindromic Strings,dynamic-programming,H,advanced,planned,catalog tier Advanced
+sherlocks-array-merging-algorithm,Sherlock's Array Merging Algorithm,dynamic-programming,H,advanced,planned,
+square-subsequences,Square Subsequences,dynamic-programming,H,advanced,planned,
+string-reduction,String Reduction,dynamic-programming,H,advanced,planned,
+suffix-rotation,Suffix Rotation,dynamic-programming,H,advanced,planned,catalog tier Expert
+super-kth-lis,Super Kth LIS,dynamic-programming,H,advanced,planned,catalog tier Advanced
+superman-celebrates-diwali,Superman Celebrates Diwali ,dynamic-programming,H,advanced,planned,
+taras-beautiful-permutations,Tara's Beautiful Permutations,dynamic-programming,H,advanced,planned,
+the-blacklist,The Blacklist,dynamic-programming,H,advanced,planned,catalog tier Advanced
+longest-increasing-subsequent,The Longest Increasing Subsequence,dynamic-programming,H,advanced,planned,catalog tier Advanced
+tree-pruning,Tree Pruning,dynamic-programming,H,advanced,planned,catalog tier Advanced
+turn-off-the-lights,Turn Off the Lights,dynamic-programming,H,advanced,planned,
+unfair-game,Unfair Game,dynamic-programming,H,advanced,planned,catalog tier Advanced
+unique-divide-and-conquer,Unique Divide And Conquer       ,dynamic-programming,H,advanced,planned,catalog tier Advanced
+vim-war,Vim War,dynamic-programming,H,advanced,planned,catalog tier Advanced
+zurikela,Zurikela's Graph,dynamic-programming,H,advanced,planned,
+abbr,Abbreviation,dynamic-programming,M,advanced,planned,
+play-game,Bricks Game,dynamic-programming,M,advanced,planned,
+candles-2,Candles Counting,dynamic-programming,M,advanced,planned,
+coin-on-the-table,Coin on the Table,dynamic-programming,M,advanced,planned,
+construct-the-array,Construct the Array,dynamic-programming,M,advanced,planned,
+counting-special-sub-cubes,Counting Special Sub-Cubes,dynamic-programming,M,advanced,planned,
+cuttree,Cut Tree,dynamic-programming,M,advanced,planned,
+equal,Equal,dynamic-programming,M,advanced,planned,
+extremum-permutations,Extremum Permutations,dynamic-programming,M,advanced,planned,
+fair-cut,Fair Cut,dynamic-programming,M,advanced,planned,
+fibonacci-modified,Fibonacci Modified,dynamic-programming,M,advanced,planned,
+grid-walking,Grid Walking,dynamic-programming,M,advanced,planned,
+hr-city,HackerRank City,dynamic-programming,M,advanced,planned,
+interval-selection,Interval Selection,dynamic-programming,M,advanced,planned,
+kingdom-division,Kingdom Division,dynamic-programming,M,advanced,planned,
+unbounded-knapsack,Knapsack,dynamic-programming,M,advanced,planned,
+tutzki-and-lcs,LCS Returns,dynamic-programming,M,advanced,planned,
+lego-blocks,Lego Blocks,dynamic-programming,M,advanced,planned,
+mandragora,Mandragora Forest,dynamic-programming,M,advanced,planned,
+mr-k-marsh,Mr K marsh,dynamic-programming,M,advanced,planned,
+array-splitting,Nikita and the Game,dynamic-programming,M,advanced,planned,
+strplay,Play with words,dynamic-programming,M,advanced,planned,
+prime-digit-sums,Prime Digit Sums,dynamic-programming,M,advanced,planned,
+prime-xor,Prime XOR,dynamic-programming,M,advanced,planned,
+red-john-is-back,Red John is Back,dynamic-programming,M,advanced,planned,
+sam-and-substrings,Sam and substrings,dynamic-programming,M,advanced,planned,
+sherlock-and-cost,Sherlock and Cost,dynamic-programming,M,advanced,planned,
+stockmax,Stock Maximize,dynamic-programming,M,advanced,planned,
+substring-diff,Substring Diff,dynamic-programming,M,advanced,planned,
+summing-pieces,Summing Pieces,dynamic-programming,M,advanced,planned,
+swappermutation,Swap Permutation,dynamic-programming,M,advanced,planned,
+coin-change,The Coin Change Problem,dynamic-programming,M,advanced,planned,
+the-indian-job,The Indian Job,dynamic-programming,M,advanced,planned,
+dynamic-programming-classics-the-longest-common-subsequence,The Longest Common Subsequence,dynamic-programming,M,advanced,planned,
+maxsubarray,The Maximum Subarray,dynamic-programming,M,advanced,planned,
+travel-around-the-world,Travel around the world,dynamic-programming,M,advanced,planned,
+two-robots,Two Robots,dynamic-programming,M,advanced,planned,
+wet-shark-and-two-subsequences,Wet Shark and Two Subsequences,dynamic-programming,M,advanced,planned,
+xor-and-sum,Xor and Sum,dynamic-programming,M,advanced,planned,
+a-chessboard-game-1,A Chessboard Game,game-theory,E,advanced,planned,
+game-of-stones-1,Game of Stones,game-theory,E,advanced,planned,
+nim-game-1,Introduction to Nim Game,game-theory,E,advanced,planned,
+misere-nim-1,Misère Nim,game-theory,E,advanced,planned,
+nimble-game-1,Nimble Game,game-theory,E,advanced,planned,
+poker-nim-1,Poker Nim,game-theory,E,advanced,planned,
+tower-breakers-1,Tower Breakers ,game-theory,E,advanced,planned,
+chocolate-game,Chocolate Game,game-theory,H,advanced,planned,
+move-the-coins,Move the Coins,game-theory,H,advanced,planned,
+simple-game,Simple Game,game-theory,H,advanced,planned,
+stone-division,Stone Division,game-theory,H,advanced,planned,
+stone-piles,Stone Piles,game-theory,H,advanced,planned,
+taste-of-win,Tastes Like Winning,game-theory,H,advanced,planned,catalog tier Expert
+the-prime-game,The Prime Game ,game-theory,H,advanced,planned,
+half,A stones game,game-theory,M,advanced,planned,
+alice-and-bobs-silly-game,Alice and Bob's Silly Game,game-theory,M,advanced,planned,
+bob-and-ben,Bob and Ben,game-theory,M,advanced,planned,
+chessboard-game-again-1,"Chessboard Game, Again!",game-theory,M,advanced,planned,
+chocolate-in-box,Chocolate in Box,game-theory,M,advanced,planned,
+deforestation-1,Deforestation,game-theory,M,advanced,planned,
+digits-square-board-1,Digits Square Board,game-theory,M,advanced,planned,
+fun-game-1,Fun Game,game-theory,M,advanced,planned,
+kitty-and-katty,Kitty and Katty,game-theory,M,advanced,planned,
+newyear-game,New Year Game,game-theory,M,advanced,planned,
+permutation-game,Permutation game,game-theory,M,advanced,planned,
+benders-play,Play on benders,game-theory,M,advanced,planned,
+powers-game-1,Powers Game,game-theory,M,advanced,planned,
+tower-breakers-the-final-battle-1,Tower Breakers - The Final Battle,game-theory,M,advanced,planned,
+tower-breakers-again-1,"Tower Breakers, Again!",game-theory,M,advanced,planned,
+tower-breakers-revisited-1,"Tower Breakers, Revisited!",game-theory,M,advanced,planned,
+vertical-rooks,Vertical Rooks,game-theory,M,advanced,planned,
+zero-move-nim,Zero-Move Nim,game-theory,M,advanced,planned,
+airports,Airports,graph-theory,H,advanced,planned,catalog tier Expert
+alex-vs-fedor,Alex vs Fedor,graph-theory,H,advanced,planned,catalog tier Expert
+beadornaments,Bead Ornaments,graph-theory,H,advanced,planned,catalog tier Advanced
+bytelandian-tours,ByteLandian Tours,graph-theory,H,advanced,planned,
+computer-game,Computer Game,graph-theory,H,advanced,planned,
+coprime-paths,Coprime Paths,graph-theory,H,advanced,planned,catalog tier Expert
+dag-queries,DAG Queries,graph-theory,H,advanced,planned,catalog tier Expert
+dfs-edges,DFS Edges,graph-theory,H,advanced,planned,catalog tier Expert
+definite-random-walks,Definite Random Walks,graph-theory,H,advanced,planned,catalog tier Expert
+borrowing-money,Demanding Money,graph-theory,H,advanced,planned,
+diameter-minimization,Diameter Minimization,graph-theory,H,advanced,planned,catalog tier Expert
+dijkstrashortreach,Dijkstra: Shortest Reach 2,graph-theory,H,advanced,planned,
+drive,Drive,graph-theory,H,advanced,planned,catalog tier Expert
+favourite-sequence,Favorite sequence,graph-theory,H,advanced,planned,catalog tier Advanced
+shortest-path,Find the Path,graph-theory,H,advanced,planned,
+floyd-city-of-blinding-lights,Floyd : City of Blinding Lights,graph-theory,H,advanced,planned,
+frog-in-maze,Frog in Maze,graph-theory,H,advanced,planned,
+going-office,Going to the Office,graph-theory,H,advanced,planned,catalog tier Expert
+hacker-country,Hacker Country,graph-theory,H,advanced,planned,
+missile-defend,HackerX,graph-theory,H,advanced,planned,
+huarongdao,Huarongdao,graph-theory,H,advanced,planned,catalog tier Expert
+jim-and-his-lan-party,Jim and his LAN Party,graph-theory,H,advanced,planned,
+cat-jogging,Jogging Cats,graph-theory,H,advanced,planned,catalog tier Advanced
+journey-scheduling,Journey Scheduling,graph-theory,H,advanced,planned,
+jumping-rooks,Jumping Rooks,graph-theory,H,advanced,planned,catalog tier Advanced
+kingdom-connectivity,Kingdom Connectivity,graph-theory,H,advanced,planned,
+kth-ancestor,Kth Ancestor,graph-theory,H,advanced,planned,
+liars,Liars,graph-theory,H,advanced,planned,catalog tier Advanced
+matrix,Matrix,graph-theory,H,advanced,planned,
+minimum-mst-graph,Minimum MST Graph,graph-theory,H,advanced,planned,catalog tier Expert
+problem-solving,Problem solving,graph-theory,H,advanced,planned,
+quadrant-queries,Quadrant Queries,graph-theory,H,advanced,planned,catalog tier Advanced
+real-estate-broker,Real Estate Broker,graph-theory,H,advanced,planned,
+episode-recording,Recording Episodes,graph-theory,H,advanced,planned,
+repair-roads,Repair Roads,graph-theory,H,advanced,planned,
+road-network,Road Network,graph-theory,H,advanced,planned,catalog tier Expert
+savita-and-friends,Savita And Friends,graph-theory,H,advanced,planned,
+subset-component,Subset Component,graph-theory,H,advanced,planned,
+value-of-friendship,The Value of Friendship,graph-theory,H,advanced,planned,
+ticket,Ticket,graph-theory,H,advanced,planned,catalog tier Expert
+toll-cost-digits,Toll Cost Digits,graph-theory,H,advanced,planned,
+training-the-army,Training the army,graph-theory,H,advanced,planned,
+travel-in-hackerland,Travel in HackerLand,graph-theory,H,advanced,planned,
+tsp-grid,Travelling Salesman in a Grid,graph-theory,H,advanced,planned,catalog tier Expert
+tree-flow,Tree Flow,graph-theory,H,advanced,planned,
+tree-splitting,Tree Splitting,graph-theory,H,advanced,planned,catalog tier Advanced
+tripartite-matching,Tripartite Matching,graph-theory,H,advanced,planned,
+vertical-paths,Vertical Paths,graph-theory,H,advanced,planned,catalog tier Expert
+bfsshortreach,Breadth First Search: Shortest Reach,graph-theory,M,advanced,planned,
+clique,Clique,graph-theory,M,advanced,planned,
+crab-graphs,Crab Graphs,graph-theory,M,advanced,planned,
+even-tree,Even Tree,graph-theory,M,advanced,planned,
+jack-goes-to-rapture,Jack goes to Rapture ,graph-theory,M,advanced,planned,
+jeanies-route,Jeanie's Route,graph-theory,M,advanced,planned,
+journey-to-the-moon,Journey to the Moon,graph-theory,M,advanced,planned,
+kruskalmstrsub,Kruskal (MST): Really Special Subtree,graph-theory,M,advanced,planned,
+beautiful-path,Minimum Penalty Path,graph-theory,M,advanced,planned,
+primsmstsub,Prim's (MST) : Special Subtree,graph-theory,M,advanced,planned,
+torque-and-development,Roads and Libraries,graph-theory,M,advanced,planned,
+johnland,Roads in HackerLand,graph-theory,M,advanced,planned,
+rust-murderer,Rust & Murderer,graph-theory,M,advanced,planned,
+the-quickest-way-up,Snakes and Ladders: The Quickest Way Up,graph-theory,M,advanced,planned,
+synchronous-shopping,Synchronous Shopping,graph-theory,M,advanced,planned,
+the-story-of-a-tree,The Story of a Tree,graph-theory,M,advanced,planned,
+bfs-shortest-reach-in-a-graph,BFS: Shortest Reach in a Graph,graphs,M,advanced,planned,not in the current catalog index
+beautiful-pairs,Beautiful Pairs,greedy,E,general,planned,
+grid-challenge,Grid Challenge,greedy,E,general,planned,
+jim-and-the-orders,Jim and the Orders,greedy,E,general,planned,
+largest-permutation,Largest Permutation,greedy,E,general,planned,
+luck-balance,Luck Balance,greedy,E,general,planned,
+marcs-cakewalk,Marc's Cakewalk,greedy,E,general,planned,
+mark-and-toys,Mark and Toys,greedy,E,general,planned,
+maximum-perimeter-triangle,Maximum Perimeter Triangle,greedy,E,general,planned,
+minimum-absolute-difference-in-an-array,Minimum Absolute Difference in an Array,greedy,E,general,planned,
+two-arrays,Permuting Two Arrays,greedy,E,general,planned,
+priyanka-and-toys,Priyanka and Toys,greedy,E,general,planned,
+sherlock-and-the-beast,Sherlock and The Beast,greedy,E,general,planned,
+accessory-collection,Accessory Collection,greedy,H,general,planned,
+chief-hopper,Chief Hopper,greedy,H,general,planned,
+board-cutting,Cutting Boards,greedy,H,general,planned,
+fighting-pits,Fighting Pits,greedy,H,general,planned,
+reverse-shuffle-merge,Reverse Shuffle Merge,greedy,H,advanced,planned,catalog tier Advanced
+sherlock-and-minimax,Sherlock and MiniMax,greedy,H,general,planned,
+team-formation,Team Formation,greedy,H,advanced,planned,catalog tier Advanced
+candies,Candies,greedy,M,general,planned,
+cloudy-day,Cloudy Day ,greedy,M,general,planned,
+pylons,Goodland Electricity,greedy,M,general,planned,
+greedy-florist,Greedy Florist,greedy,M,general,planned,
+angry-children,Max Min,greedy,M,general,planned,
+acm-icpc-team,ACM ICPC Team,implementation,E,general,planned,
+append-and-delete,Append and Delete,implementation,E,general,planned,
+beautiful-triplets,Beautiful Triplets,implementation,E,general,planned,
+between-two-sets,Between Two Sets,implementation,E,general,planned,
+breaking-best-and-worst-records,Breaking the Records,implementation,E,general,planned,
+cavity-map,Cavity Map,implementation,E,general,planned,
+chocolate-feast,Chocolate Feast ,implementation,E,general,planned,
+electronics-shop,Electronics Shop,implementation,E,general,planned,
+equality-in-a-array,Equalize the Array,implementation,E,general,planned,
+fair-rations,Fair Rations,implementation,E,general,planned,
+find-digits,Find Digits,implementation,E,general,planned,
+flatland-space-stations,Flatland Space Stations,implementation,E,general,planned,
+grading,Grading Students,implementation,E,general,planned,
+happy-ladybugs,Happy Ladybugs,implementation,E,general,planned,
+jumping-on-the-clouds-revisited,Jumping on the Clouds: Revisited,implementation,E,general,planned,
+library-fine,Library Fine,implementation,E,general,planned,
+lisa-workbook,Lisa's Workbook,implementation,E,general,planned,
+manasa-and-stones,Manasa and Stones,implementation,E,general,planned,
+minimum-distances,Minimum Distances,implementation,E,general,planned,
+kaprekar-numbers,Modified Kaprekar Numbers,implementation,E,general,planned,
+picking-numbers,Picking Numbers,implementation,E,general,planned,
+repeated-string,Repeated String,implementation,E,general,planned,
+permutation-equation,Sequence Equation,implementation,E,general,planned,
+service-lane,Service Lane,implementation,E,general,planned,
+strange-code,Strange Counter,implementation,E,general,planned,
+the-birthday-bar,Subarray Division,implementation,E,general,planned,
+taum-and-bday,Taum and B'day,implementation,E,general,planned,
+the-hurdle-race,The Hurdle Race,implementation,E,general,planned,
+utopian-tree,Utopian Tree,implementation,E,general,planned,
+strange-advertising,Viral Advertising,implementation,E,general,planned,
+matrix-rotation-algo,Matrix Layer Rotation ,implementation,H,general,planned,
+3d-surface-area,3D Surface Area,implementation,M,general,planned,
+absolute-permutation,Absolute Permutation,implementation,M,general,planned,
+almost-sorted,Almost Sorted,implementation,M,general,planned,
+two-pluses,Ema's Supercomputer,implementation,M,general,planned,
+extra-long-factorials,Extra Long Factorials,implementation,M,general,planned,
+magic-square-forming,Forming a Magic Square,implementation,M,general,planned,also appears in seed CSV as Magic Square
+non-divisible-subset,Non-Divisible Subset,implementation,M,general,planned,
+organizing-containers-of-balls,Organizing Containers of Balls,implementation,M,general,planned,
+queens-attack-2,Queen's Attack II,implementation,M,general,planned,
+bomber-man,The Bomberman Game,implementation,M,general,planned,
+the-grid-search,The Grid Search,implementation,M,general,planned,
+the-time-in-words,The Time in Words,implementation,M,general,planned,
+sams-puzzle,Sam's Puzzle (Approximate),np-complete,H,advanced,planned,catalog tier Advanced
+spies-revised,"Spies, Revised",np-complete,H,advanced,planned,catalog tier Expert
+tbsp,TBS Problem,np-complete,H,advanced,planned,catalog tier Expert
+walking-the-approximate-longest-path,Walking the Approximate Longest Path,np-complete,H,advanced,planned,
+arithmetic-expressions,Arithmetic Expressions,recursion,H,general,planned,
+bowling-pins,Bowling Pins,recursion,H,general,planned,
+k-factorization,K Factorization,recursion,H,general,planned,
+repeat-k-sums,Repetitive K-Sums,recursion,H,advanced,planned,catalog tier Advanced
+simplified-chess-engine-ii,Simplified Chess Engine II,recursion,H,general,planned,
+stone-division-2," Stone Division, Revisited",recursion,M,general,planned,
+crossword-puzzle,Crossword Puzzle,recursion,M,general,planned,
+password-cracker,Password Cracker,recursion,M,general,planned,
+recursive-digit-sum,Recursive Digit Sum,recursion,M,general,planned,
+simplified-chess-engine,Simplified Chess Engine,recursion,M,general,planned,
+the-power-sum,The Power Sum,recursion,M,general,planned,
+missing-numbers,Missing Numbers,search,E,general,planned,
+sherlock-and-array,Sherlock and Array,search,E,general,planned,
+playing-with-numbers,Absolute Element Sums,search,H,general,planned,
+almost-integer-rock-garden,Almost Integer Rock Garden,search,H,advanced,planned,catalog tier Expert
+bike-racers,Bike Racers,search,H,general,planned,
+distant-pairs,Distant Pairs,search,H,advanced,planned,catalog tier Expert
+king-richards-knights,King Richard's Knights,search,H,general,planned,
+making-candies,Making Candies,search,H,general,planned,
+maximizing-mission-points,Maximizing Mission Points,search,H,general,planned,
+maximum-subarray-sum,Maximum Subarray Sum,search,H,general,planned,
+similarpair,Similar Pair,search,H,advanced,planned,catalog tier Advanced
+sorted-subsegments,Sorted Subsegments,search,H,general,planned,
+task-scheduling,Task Scheduling ,search,H,advanced,planned,catalog tier Advanced
+xor-quadruples,Beautiful Quadruples,search,M,general,planned,
+connected-cell-in-a-grid,Connected Cells in a Grid,search,M,general,planned,
+count-luck,Count Luck,search,M,general,planned,
+cut-the-tree,Cut the Tree,search,M,general,planned,
+gridland-metro,Gridland Metro,search,M,general,planned,
+hackerland-radio-transmitters,Hackerland Radio Transmitters,search,M,general,planned,
+knightl-on-chessboard,KnightL on a Chessboard,search,M,general,planned,
+minimum-loss,Minimum Loss,search,M,general,planned,
+minimum-time-required,Minimum Time Required,search,M,general,planned,not in the current catalog index
+pairs,Pairs,search,M,general,planned,
+red-knights-shortest-path,Red Knight's Shortest Path,search,M,general,planned,
+short-palindrome,Short Palindrome,search,M,general,planned,
+big-sorting,Big Sorting,sorting,E,general,planned,
+closest-numbers,Closest Numbers,sorting,E,general,planned,
+correctness-invariant,Correctness and the Loop Invariant,sorting,E,general,planned,
+countingsort1,Counting Sort 1,sorting,E,general,planned,
+countingsort2,Counting Sort 2,sorting,E,general,planned,
+find-the-median,Find the Median,sorting,E,general,planned,
+insertionsort1,Insertion Sort - Part 1,sorting,E,general,planned,
+insertionsort2,Insertion Sort - Part 2,sorting,E,general,planned,
+tutorial-intro,Intro to Tutorial Challenges,sorting,E,general,planned,
+quicksort1,Quicksort 1 - Partition,sorting,E,general,planned,
+runningtime,Running Time of Algorithms,sorting,E,general,planned,
+insertion-sort,Insertion Sort Advanced Analysis,sorting,H,advanced,planned,catalog tier Advanced
+fraudulent-activity-notifications,Fraudulent Activity Notifications,sorting,M,general,planned,spreadsheet history: group problem; H
+lilys-homework,Lily's Homework,sorting,M,general,planned,
+countingsort4,The Full Counting Sort,sorting,M,general,planned,
+alternating-characters,Alternating Characters ,strings,E,general,planned,
+anagram,Anagram,strings,E,general,planned,
+beautiful-binary-string,Beautiful Binary String,strings,E,general,planned,
+caesar-cipher-1,Caesar Cipher,strings,E,general,planned,
+camelcase,CamelCase,strings,E,general,planned,
+funny-string,Funny String,strings,E,general,planned,
+game-of-thrones,Game of Thrones - I,strings,E,general,planned,
+gem-stones,Gemstones,strings,E,general,planned,
+hackerrank-in-a-string,HackerRank in a String!,strings,E,general,planned,retitle to Panthers in a String; note in report
+making-anagrams,Making Anagrams,strings,E,general,planned,
+mars-exploration,Mars Exploration,strings,E,general,planned,
+palindrome-index,Palindrome Index,strings,E,general,planned,
+pangrams,Pangrams,strings,E,general,planned,
+separate-the-numbers,Separate the Numbers,strings,E,general,planned,
+string-construction,String Construction ,strings,E,general,planned,
+strong-password,Strong Password,strings,E,general,planned,
+reduced-string,Super Reduced String,strings,E,general,planned,
+the-love-letter-mystery,The Love-Letter Mystery,strings,E,general,planned,
+two-characters,Two Characters,strings,E,general,planned,
+two-strings,Two Strings,strings,E,general,planned,
+weighted-uniform-string,Weighted Uniform Strings,strings,E,general,planned,
+ashton-and-string,Ashton and String,strings,H,advanced,planned,catalog tier Advanced
+challenging-palindromes,Build a Palindrome,strings,H,advanced,planned,catalog tier Advanced
+build-a-string,Build a String,strings,H,general,planned,
+cards-permutation,Cards Permutation,strings,H,advanced,planned,catalog tier Expert
+circular-palindromes,Circular Palindromes,strings,H,advanced,planned,catalog tier Advanced
+count-strings,Count Strings,strings,H,general,planned,
+determining-dna-health,Determining DNA Health,strings,H,general,planned,heavy string automaton; advanced only
+find-strings,Find Strings,strings,H,advanced,planned,catalog tier Expert
+gridland-provinces,Gridland Provinces,strings,H,general,planned,
+how-many-substrings,How Many Substrings?,strings,H,advanced,planned,catalog tier Expert
+letter-islands,Letter Islands,strings,H,advanced,planned,catalog tier Expert
+palindromic-border,Palindromic Border,strings,H,advanced,planned,catalog tier Expert
+pseudo-isomorphic-substrings,Pseudo-Isomorphic Substrings,strings,H,advanced,planned,catalog tier Expert
+save-humanity,Save Humanity,strings,H,advanced,planned,catalog tier Expert; spreadsheet history: partially solved in past
+similar-strings,Similar Strings,strings,H,advanced,planned,catalog tier Advanced
+string-function-calculation,String Function Calculation,strings,H,advanced,planned,catalog tier Advanced
+string-similarity,String Similarity,strings,H,advanced,planned,catalog tier Expert
+super-functional-strings,Super Functional Strings,strings,H,advanced,planned,catalog tier Advanced
+two-strings-game,Two Strings Game,strings,H,advanced,planned,catalog tier Expert
+two-two,Two Two,strings,H,advanced,planned,catalog tier Advanced
+bear-and-steady-gene,Bear and Steady Gene,strings,M,general,planned,
+common-child,Common Child,strings,M,general,planned,
+richie-rich,Highest Value Palindrome,strings,M,general,planned,
+maximum-palindromes,Maximum Palindromes,strings,M,general,planned,
+sherlock-and-anagrams,Sherlock and Anagrams,strings,M,general,planned,
+sherlock-and-valid-string,Sherlock and the Valid String,strings,M,general,planned,
+signal-tower,Signal Tower,unknown,M,advanced,planned,title from past-contest record; task needs organizer confirmation; not in the current catalog index
+birthday-cake-candles,Birthday Cake Candles,warmup,E,general,planned,
+compare-the-triplets,Compare the Triplets,warmup,E,general,planned,
+diagonal-difference,Diagonal Difference,warmup,E,general,planned,
+plus-minus,Plus Minus,warmup,E,general,planned,
+staircase,Staircase,warmup,E,general,planned,
+time-conversion,Time Conversion,warmup,E,general,planned,
