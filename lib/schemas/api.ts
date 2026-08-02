@@ -82,6 +82,9 @@ export const API_ROUTES = {
   /** Team formation. Contest-scoped like everything else a competitor reaches after joining. */
   myTeam: (contestId: string) =>
     `/api/contests/${encodeURIComponent(contestId)}/teams/mine`,
+  /** Who on my team has attempted this GROUP problem, with what verdict. Empty off group problems. */
+  teamProblemFeed: (contestId: string, slug: string) =>
+    `/api/contests/${encodeURIComponent(contestId)}/problems/${encodeURIComponent(slug)}/team-feed`,
   teamStandings: (contestId: string) =>
     `/api/contests/${encodeURIComponent(contestId)}/team-standings`,
 
@@ -612,23 +615,16 @@ export const AdminAddParticipantRequestSchema = z.object({
 });
 
 /**
- * Every organizer mutation carries a reason, and the schema requires it.
+ * Organizer roster mutations MAY carry a reason; none is demanded.
  *
- * A roster change is a score change with extra steps — moving one participant changes TWO
- * divisors — so "why" is not optional metadata. Making it a required field means the audit row
- * cannot be written without one.
+ * They used to require one, on the argument that a roster change is a score change. The organizer
+ * overruled it from the room: typing a sentence into every assignment while forty students wait
+ * is friction exactly where the night has none to spare. The audit row still records who, what,
+ * before and after - the reason column is just allowed to be empty now, and an organizer who has
+ * something to say still has the field to say it in.
  */
 export const AdminReasonSchema = z.object({
-  /**
-   * The message is on the TYPE as well as the length. `.min(3, msg)` only fires for a value that
-   * is already a string, so omitting the field entirely produced Zod's default "expected string,
-   * received undefined" — which tells an organizer nothing about what the form wants.
-   */
-  reason: z
-    .string({ error: "Give a reason. It goes in the audit log" })
-    .trim()
-    .min(3, "Give a reason. It goes in the audit log")
-    .max(300),
+  reason: z.string().trim().max(300).optional().default(""),
 });
 
 export const AdminCreateTeamRequestSchema = z.object({
@@ -643,6 +639,13 @@ export const AdminMoveParticipantRequestSchema = AdminReasonSchema.extend({
   participantId: z.string().min(1),
   /** Null moves them off every team without deleting anything. */
   teamId: z.string().min(1).nullable(),
+  /**
+   * Set the player's division in the same action. Omitted means "leave it alone"; null means
+   * "no division". This exists because assigning a team and assigning a division were two forms,
+   * and the organizer assigning forty students asked for one: "when we are assigning someone to
+   * a team we want to assign their division then too".
+   */
+  divisionId: z.string().min(1).nullable().optional(),
 });
 
 export const AdminReassignSetRequestSchema = AdminReasonSchema.extend({
@@ -761,6 +764,37 @@ export const ProblemDetailSchema = ProblemSummarySchema.extend({
   starters: z.array(StarterCodeSchema).optional(),
 });
 export type ProblemDetail = z.infer<typeof ProblemDetailSchema>;
+
+/**
+ * One teammate's attempt on a GROUP problem: who, when, what the judge said. Never the code and
+ * never a diff - the feed is ICPC's shared screen recreated for a team on separate laptops, and
+ * its whole job is coordination ("Priya is on it", "the 80 is already banked"), not code review.
+ */
+export const TeamFeedEntrySchema = z.object({
+  submissionId: z.string(),
+  displayName: z.string(),
+  /** True on the viewer's own rows, so the UI can say "you" instead of echoing their name. */
+  mine: z.boolean(),
+  language: LanguageSchema,
+  submittedAt: z.string(),
+  /** Null while the judge is still running. */
+  verdict: VerdictSchema.nullable(),
+  score: z.number().int(),
+});
+
+/**
+ * The team's attempt log for one GROUP problem. The team's score for it is the BEST single
+ * submission here (lib/scoring replays them max-only), so `bestScore` is stated with the feed:
+ * a worse attempt arriving can never lower it, and the row that set it is the one that counts.
+ */
+export const TeamProblemFeedSchema = z.object({
+  /** Null when the viewer is on no team yet - the feed has nobody to show. */
+  teamName: z.string().nullable(),
+  bestScore: z.number().int(),
+  entries: z.array(TeamFeedEntrySchema),
+});
+
+export type TeamProblemFeed = z.infer<typeof TeamProblemFeedSchema>;
 
 // ---------------------------------------------------------------------------
 // Submissions

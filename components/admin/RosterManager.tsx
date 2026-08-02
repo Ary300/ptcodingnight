@@ -33,16 +33,21 @@ import {
  * organizer actually has is "who is not being counted yet", and that is a list — not something to
  * work out by comparing this screen with the leaderboard.
  *
- * ## Why every action asks for a reason, except adding
+ * ## Why no action demands a reason any more
  *
- * **Team size is the divisor.** Moving one person changes TWO team scores: the team they left
- * gets a smaller divisor and the team they joined a larger one, and neither team submitted
- * anything. "Why did our score change" gets asked at 9pm, and the only acceptable answer is the
- * audit row rather than somebody's recollection. The API requires the reason; this form collects
- * it rather than letting the request fail.
+ * Every one of these forms used to refuse to submit until the organizer typed a sentence for the
+ * audit log. The organizer overruled it from the room: typing prose into every assignment while
+ * forty students wait is friction exactly where the night has none to spare. The audit rows still
+ * record who did what, with the before and after; only the prose column is allowed to be empty.
+ * The remove form keeps an optional reason field because deleting submissions is the one action
+ * someone may genuinely have to explain later.
  *
- * Adding somebody is the exception, and deliberately: a new participant has no team, so they are
- * in nobody's divisor and no score can move. There is nothing yet to explain.
+ * ## Why the move form is also the division form
+ *
+ * Assigning a team and assigning a division were two buttons and two panels, and the organizer
+ * assigning forty students asked for one: "when we are assigning someone to a team we want to
+ * assign their division then too". One form, one submit, one audit trail with a row per fact
+ * changed.
  *
  * ## Why the two `window.prompt` dialogs are gone
  *
@@ -93,9 +98,6 @@ export interface RosterManagerProps {
  */
 const UNCHOSEN = "__unchosen__";
 
-/** The API's floor for an audit reason. Stated here so the form refuses before a round trip. */
-const MIN_REASON = 3;
-
 /**
  * How long the search waits after a keystroke.
  *
@@ -119,19 +121,14 @@ export function RosterManager({ contestId }: RosterManagerProps) {
     displayName: string;
   } | null>(null);
   const [moveTarget, setMoveTarget] = useState<string>("");
-  const [reason, setReason] = useState("");
+  // "" is "no division", mirroring the (no division) option; initialised from the person when
+  // the form opens so an untouched dropdown means "leave their division alone" in effect.
+  const [moveDivision, setMoveDivision] = useState<string>("");
   const [settingSet, setSettingSet] = useState<RosterMember | null>(null);
   const [setTarget, setSetTarget] = useState("");
-  const [assignmentReason, setAssignmentReason] = useState("");
-  const [settingDivision, setSettingDivision] = useState<RosterMember | null>(
-    null,
-  );
-  const [divisionTarget, setDivisionTarget] = useState("");
-  const [divisionReason, setDivisionReason] = useState("");
 
   const [teamForm, setTeamForm] = useState<TeamForm>(null);
   const [teamFormName, setTeamFormName] = useState("");
-  const [teamFormReason, setTeamFormReason] = useState("");
 
   const [search, setSearch] = useState("");
   const [candidates, setCandidates] = useState<AddableUser[] | null>(null);
@@ -145,7 +142,6 @@ export function RosterManager({ contestId }: RosterManagerProps) {
   const closeTeamForm = (): void => {
     setTeamForm(null);
     setTeamFormName("");
-    setTeamFormReason("");
   };
 
   const closeRemoveForm = (): void => {
@@ -159,10 +155,6 @@ export function RosterManager({ contestId }: RosterManagerProps) {
     setMoving(null);
     setSettingSet(null);
     setSetTarget("");
-    setAssignmentReason("");
-    setSettingDivision(null);
-    setDivisionTarget("");
-    setDivisionReason("");
     closeTeamForm();
     closeRemoveForm();
   };
@@ -260,7 +252,6 @@ export function RosterManager({ contestId }: RosterManagerProps) {
         return;
       }
       setAttempt((n) => n + 1);
-      setReason("");
       setMoveTarget("");
       setNewTeamName("");
       closeEveryForm();
@@ -405,35 +396,15 @@ export function RosterManager({ contestId }: RosterManagerProps) {
               : `Set ${person.chosenSetLabel} · change`}
           </Button>
         )}
+        {/*
+          Division reads on the row but is CHANGED in the move form: the organizer asked for one
+          assignment action, not two. Plain text rather than a button, so the row offers exactly
+          one place to change it.
+        */}
         {roster.divisions.length > 0 && (
-          <Button
-            type="button"
-            variant="quiet"
-            className="justify-start text-left aria-expanded:font-semibold aria-expanded:text-ink aria-expanded:underline"
-            aria-expanded={
-              settingDivision?.participantId === person.participantId
-            }
-            disabled={busy}
-            onClick={() => {
-              const alreadyOpen =
-                settingDivision?.participantId === person.participantId;
-              closeEveryForm();
-              if (!alreadyOpen) {
-                setSettingDivision(person);
-                setDivisionTarget(person.divisionId ?? "");
-              }
-            }}
-          >
-            {/*
-              The button IS the display: the current division reads in the label the same way the
-              set button reads "Set A · change", so the row never shows a division in one place
-              and offers to change it somewhere else. "No division" is said in words because it is
-              a real state with a real consequence: that player sees only division-null problems.
-            */}
-            {person.divisionName === null
-              ? "No division · change"
-              : `${person.divisionName} · change`}
-          </Button>
+          <span className="text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
+            {person.divisionName ?? "no division"}
+          </span>
         )}
       </div>
 
@@ -455,7 +426,6 @@ export function RosterManager({ contestId }: RosterManagerProps) {
           className="motion-panel-in mt-tight flex flex-col gap-group border-t border-rule-hair pt-3"
           onSubmit={(event) => {
             event.preventDefault();
-            if (removeReason.trim().length < MIN_REASON) return;
             if (person.submissionCount > 0 && !removeConfirmed) return;
             void send(
               API_ROUTES.adminContestParticipants(contestId),
@@ -523,8 +493,7 @@ export function RosterManager({ contestId }: RosterManagerProps) {
           )}
 
           <TextInput
-            label="Reason"
-            required
+            label="Reason (optional)"
             value={removeReason}
             placeholder="Why this person is being removed"
             hint="Goes in the audit log, along with how many submissions went with them."
@@ -536,9 +505,7 @@ export function RosterManager({ contestId }: RosterManagerProps) {
               type="submit"
               variant="danger"
               disabled={
-                busy ||
-                removeReason.trim().length < MIN_REASON ||
-                (person.submissionCount > 0 && !removeConfirmed)
+                busy || (person.submissionCount > 0 && !removeConfirmed)
               }
             >
               {busy ? "Removing…" : "Remove from contest"}
@@ -743,6 +710,7 @@ export function RosterManager({ contestId }: RosterManagerProps) {
                 // Unassigned already: the sentinel below forces a deliberate choice rather
                 // than letting the form submit the state they are already in.
                 setMoveTarget(UNCHOSEN);
+                setMoveDivision(person.divisionId ?? "");
               }),
             )}
           </ul>
@@ -769,7 +737,11 @@ export function RosterManager({ contestId }: RosterManagerProps) {
               void send(API_ROUTES.adminMoveParticipant(contestId), "POST", {
                 participantId: moving.participantId,
                 teamId: moveTarget === "" ? null : moveTarget,
-                reason,
+                // Sent only when this contest has divisions at all; "" is the (no division)
+                // option. The API treats an omitted field as "leave it alone".
+                ...(roster.divisions.length > 0
+                  ? { divisionId: moveDivision === "" ? null : moveDivision }
+                  : {}),
               });
             }}
           >
@@ -795,22 +767,36 @@ export function RosterManager({ contestId }: RosterManagerProps) {
               ))}
             </Select>
 
-            <TextInput
-              label="Reason"
-              required
-              value={reason}
-              placeholder="Why this is being changed"
-              // Team size divides both team scores, so a move shifts two denominators at once.
-              // That is the arithmetic behind the plain warning below.
-              hint="Moving a player changes both teams' scores. The reason goes in the audit log."
-              onChange={(event) => setReason(event.target.value)}
-            />
+            {roster.divisions.length > 0 && (
+              <>
+                <Select
+                  label="Division"
+                  value={moveDivision}
+                  onChange={(event) => setMoveDivision(event.target.value)}
+                >
+                  {/* Brackets rather than dashes: no em dash may appear in text a user reads. */}
+                  <option value="">(no division)</option>
+                  {roster.divisions.map((division) => (
+                    <option key={division.divisionId} value={division.divisionId}>
+                      {division.name}
+                    </option>
+                  ))}
+                </Select>
+                <p className="text-ink/70" style={{ fontSize: "var(--text-xs)" }}>
+                  Division decides which questions this player can open and which
+                  board ranks them. A player with no division sees only the
+                  questions open to every division.
+                </p>
+              </>
+            )}
+
+            <p className="text-ink/70" style={{ fontSize: "var(--text-xs)" }}>
+              Moving a player changes both teams&rsquo; scores, and both changes
+              go in the audit log.
+            </p>
 
             <div className="flex flex-wrap gap-2">
-              <Button
-                type="submit"
-                disabled={busy || reason.trim().length < MIN_REASON}
-              >
+              <Button type="submit" disabled={busy}>
                 {busy ? "Moving…" : "Move"}
               </Button>
               <Button
@@ -836,11 +822,9 @@ export function RosterManager({ contestId }: RosterManagerProps) {
             className="flex flex-col gap-group"
             onSubmit={(event) => {
               event.preventDefault();
-              if (assignmentReason.trim().length < MIN_REASON) return;
               void send(API_ROUTES.adminReassignSet(contestId), "POST", {
                 participantId: settingSet.participantId,
                 setId: setTarget === "" ? null : setTarget,
-                reason: assignmentReason.trim(),
               });
             }}
           >
@@ -865,93 +849,14 @@ export function RosterManager({ contestId }: RosterManagerProps) {
                   : "Players choose independently in this contest format."}
             </p>
 
-            <TextInput
-              label="Reason"
-              required
-              value={assignmentReason}
-              placeholder="Why this assignment is being changed"
-              hint="This can change which questions the student may open, so it is recorded in the audit log."
-              onChange={(event) => setAssignmentReason(event.target.value)}
-            />
-
             <div className="flex flex-wrap gap-2">
-              <Button
-                type="submit"
-                disabled={busy || assignmentReason.trim().length < MIN_REASON}
-              >
+              <Button type="submit" disabled={busy}>
                 {busy ? "Saving…" : "Save set"}
               </Button>
               <Button
                 type="button"
                 variant="quiet"
                 onClick={() => setSettingSet(null)}
-                disabled={busy}
-              >
-                Cancel
-              </Button>
-            </div>
-          </form>
-        </Panel>
-      )}
-
-      {settingDivision !== null && (
-        <Panel
-          className="motion-panel-in"
-          title={`Division for ${settingDivision.displayName}`}
-          level="framed"
-        >
-          <form
-            className="flex flex-col gap-group"
-            onSubmit={(event) => {
-              event.preventDefault();
-              if (divisionReason.trim().length < MIN_REASON) return;
-              void send(API_ROUTES.adminSetDivision(contestId), "POST", {
-                participantId: settingDivision.participantId,
-                divisionId: divisionTarget === "" ? null : divisionTarget,
-                reason: divisionReason.trim(),
-              });
-            }}
-          >
-            <Select
-              label="Division"
-              value={divisionTarget}
-              onChange={(event) => setDivisionTarget(event.target.value)}
-            >
-              {/* Brackets rather than dashes: no em dash may appear in text a user reads. */}
-              <option value="">(no division)</option>
-              {roster.divisions.map((division) => (
-                <option key={division.divisionId} value={division.divisionId}>
-                  {division.name}
-                </option>
-              ))}
-            </Select>
-
-            <p className="text-ink/70" style={{ fontSize: "var(--text-xs)" }}>
-              A player with no division sees only the questions open to every
-              division. Changing division does not change their problem set;
-              check it afterwards if the sets are division-scoped.
-            </p>
-
-            <TextInput
-              label="Reason"
-              required
-              value={divisionReason}
-              placeholder="Why this division is being changed"
-              hint="Division decides which questions this player can open and which board ranks them, so it goes in the audit log."
-              onChange={(event) => setDivisionReason(event.target.value)}
-            />
-
-            <div className="flex flex-wrap gap-2">
-              <Button
-                type="submit"
-                disabled={busy || divisionReason.trim().length < MIN_REASON}
-              >
-                {busy ? "Saving…" : "Save division"}
-              </Button>
-              <Button
-                type="button"
-                variant="quiet"
-                onClick={() => setSettingDivision(null)}
                 disabled={busy}
               >
                 Cancel
@@ -1048,6 +953,7 @@ export function RosterManager({ contestId }: RosterManagerProps) {
                       */
                       setMoving(member);
                       setMoveTarget(team.teamId);
+                      setMoveDivision(member.divisionId ?? "");
                     }),
                   )}
                   {team.members.length === 0 && (
@@ -1116,17 +1022,13 @@ export function RosterManager({ contestId }: RosterManagerProps) {
                     className="motion-panel-in mt-group flex flex-col gap-group border-t border-rule-hair pt-3"
                     onSubmit={(event) => {
                       event.preventDefault();
-                      if (teamFormReason.trim().length < MIN_REASON) return;
                       if (teamForm.kind === "rename") {
                         if (teamFormName.trim() === "") return;
                         void send(API_ROUTES.adminTeam(team.teamId), "PATCH", {
                           name: teamFormName.trim(),
-                          reason: teamFormReason.trim(),
                         });
                       } else {
-                        void send(API_ROUTES.adminTeam(team.teamId), "DELETE", {
-                          reason: teamFormReason.trim(),
-                        });
+                        void send(API_ROUTES.adminTeam(team.teamId), "DELETE", {});
                       }
                     }}
                   >
@@ -1152,17 +1054,6 @@ export function RosterManager({ contestId }: RosterManagerProps) {
                       </p>
                     )}
 
-                    <TextInput
-                      label="Reason"
-                      required
-                      value={teamFormReason}
-                      placeholder="Why this is being changed"
-                      hint="Goes in the audit log. Roster changes can change team scores."
-                      onChange={(event) =>
-                        setTeamFormReason(event.target.value)
-                      }
-                    />
-
                     <div className="flex flex-wrap gap-2">
                       <Button
                         type="submit"
@@ -1171,7 +1062,6 @@ export function RosterManager({ contestId }: RosterManagerProps) {
                         }
                         disabled={
                           busy ||
-                          teamFormReason.trim().length < MIN_REASON ||
                           (teamForm.kind === "rename" &&
                             teamFormName.trim() === "")
                         }

@@ -144,15 +144,9 @@ test.describe("an organizer moves a participant, and the mean follows", () => {
 
     expect(before.teams.length).toBeGreaterThan(0);
 
-    // The reason is REQUIRED. A roster change is a score change with extra steps.
-    const noReason = await readEnvelope(
-      await admin.moveParticipantRaw({
-        participantId: mover.participantId,
-        teamId: to.teamId,
-      }),
-    );
-    expect(noReason.status).toBe(400);
-
+    // The reason is OPTIONAL now - the organizer overruled requiring prose on every assignment -
+    // so a reasonless move must succeed rather than 400. This same move used to be the required-
+    // reason assertion; it is now the proof of the opposite contract.
     const moved = await readOk(
       await admin.moveParticipantRaw({
         participantId: mover.participantId,
@@ -250,15 +244,13 @@ test.describe("an organizer moves a participant, and the mean follows", () => {
     );
     expect(renamed.name).toBe(`${name} renamed`);
 
-    // A rename needs a reason too: the name is what appears on the projector and in the export,
-    // so changing it after the fact changes what the record says happened.
-    expect(
-      (await readEnvelope(await admin.renameTeamRaw(created.teamId, { name: "x" }))).status,
-    ).toBe(400);
-
-    expect(
-      (await readEnvelope(await admin.dissolveTeamRaw(created.teamId, {}))).status,
-    ).toBe(400);
+    // Reasons are OPTIONAL on roster actions now - the organizer overruled requiring prose on
+    // every assignment - so a reasonless rename succeeds and the audit row simply has an empty
+    // reason column. This block used to assert the 400; it now asserts the opposite contract.
+    const reasonless = await okTeam(
+      await admin.renameTeamRaw(created.teamId, { name: `${name} again` }),
+    );
+    expect(reasonless.name).toBe(`${name} again`);
 
     await readOk(
       await admin.dissolveTeamRaw(created.teamId, { reason: "created by mistake" }),
@@ -343,5 +335,110 @@ test.describe("team routes are not reachable without the right session", () => {
     const envelope = await readEnvelope(await student.api.rosterRaw());
     expect(envelope.status).toBeGreaterThanOrEqual(400);
     expect(envelope.status).toBeLessThan(500);
+  });
+});
+
+test.describe("one move assigns the team and the division together", () => {
+  test("a move carrying divisionId changes the division and deals a set OF that division", async ({
+    playwright,
+  }) => {
+    await openFormation(seeded.contestId);
+    const student = await newCompetitor(playwright, uniqueName("OneForm"));
+    const team = await okTeam(
+      await admin.createTeamAsAdminRaw({ name: uniqueName("OneFormTeam") }),
+    );
+
+    const advanced = seeded.divisionIds.get("advanced");
+    expect(advanced, "fixture has no advanced division").toBeDefined();
+
+    const moved = await readOk(
+      await admin.moveParticipantRaw({
+        participantId: student.participantId,
+        teamId: team.teamId,
+        divisionId: advanced,
+      }),
+    );
+    expect(moved.status).toBeLessThan(300);
+
+    const row = await testDb().participant.findUniqueOrThrow({
+      where: { id: student.participantId },
+      select: { divisionId: true, teamId: true, chosenSetId: true },
+    });
+    expect(row.teamId).toBe(team.teamId);
+    expect(row.divisionId).toBe(advanced);
+    // The set is dealt AFTER the division lands, so it is an ADVANCED set - the fixture has
+    // exactly one, which pins the order of operations: division first, then the deal.
+    expect(row.chosenSetId).toBe(seeded.problemSetIds.get("setAdvA"));
+  });
+
+  test("a move with no divisionId leaves the division alone", async ({ playwright }) => {
+    await openFormation(seeded.contestId);
+    const student = await newCompetitor(playwright, uniqueName("Untouched"));
+    const team = await okTeam(
+      await admin.createTeamAsAdminRaw({ name: uniqueName("UntouchedTeam") }),
+    );
+
+    await readOk(
+      await admin.moveParticipantRaw({
+        participantId: student.participantId,
+        teamId: team.teamId,
+      }),
+    );
+
+    const row = await testDb().participant.findUniqueOrThrow({
+      where: { id: student.participantId },
+      select: { divisionId: true },
+    });
+    expect(row.divisionId).toBe(seeded.divisionIds.get("intermediate"));
+  });
+
+  test("re-submitting the same team with a new division is a division change, not a conflict", async ({
+    playwright,
+  }) => {
+    await openFormation(seeded.contestId);
+    const student = await newCompetitor(playwright, uniqueName("SameTeam"));
+
+    /*
+      SCHEDULED for the duration of this spec: the one-form division change re-deals the set,
+      and a set change on a RUNNING contest is deliberately refused (a player mid-problem must
+      not have their questions swapped under them). The flow this spec models - an organizer
+      correcting a division while assigning teams - happens before the start, so the spec puts
+      the contest where that flow lives and restores it after.
+    */
+    await testDb().contest.update({
+      where: { id: seeded.contestId },
+      data: { state: "SCHEDULED" },
+    });
+    const team = await okTeam(
+      await admin.createTeamAsAdminRaw({ name: uniqueName("SameTeamTeam") }),
+    );
+    await readOk(
+      await admin.moveParticipantRaw({
+        participantId: student.participantId,
+        teamId: team.teamId,
+      }),
+    );
+
+    // The one-form flow: the organizer reopens the row, keeps the team, changes the division.
+    const again = await readOk(
+      await admin.moveParticipantRaw({
+        participantId: student.participantId,
+        teamId: team.teamId,
+        divisionId: seeded.divisionIds.get("advanced"),
+      }),
+    );
+    expect(again.status).toBeLessThan(300);
+
+    const row = await testDb().participant.findUniqueOrThrow({
+      where: { id: student.participantId },
+      select: { divisionId: true, teamId: true },
+    });
+    expect(row.teamId).toBe(team.teamId);
+    expect(row.divisionId).toBe(seeded.divisionIds.get("advanced"));
+
+    await testDb().contest.update({
+      where: { id: seeded.contestId },
+      data: { state: "RUNNING" },
+    });
   });
 });

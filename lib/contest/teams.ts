@@ -387,6 +387,13 @@ export async function adminMoveParticipant(
   teamId: string | null,
   actor: string,
   reason: string,
+  /**
+   * Change the player's division in the same organizer action. `undefined` leaves it alone;
+   * `null` clears it. Applied BEFORE the set dealing below, because `ensureSetAssigned` matches
+   * sets to players strictly by division - dealt after, the player would receive a set of the
+   * division they just left.
+   */
+  divisionId?: string | null,
 ): Promise<void> {
   // Contest id is immutable and tells us which advisory lock to take. Every mutable fact is read
   // again after that lock, inside the transaction.
@@ -407,10 +414,15 @@ export async function adminMoveParticipant(
         contestId: true,
         teamId: true,
         chosenSetId: true,
+        divisionId: true,
+        division: { select: { name: true } },
         team: { select: { name: true } },
       },
     });
     if (participant === null) throw new NotFoundError("Participant");
+
+    const divisionChanges =
+      divisionId !== undefined && divisionId !== participant.divisionId;
 
     let target: { id: string; name: string } | null = null;
     if (teamId !== null) {
@@ -425,19 +437,66 @@ export async function adminMoveParticipant(
       target = { id: found.id, name: found.name };
     }
 
-    if (participant.teamId === teamId) {
+    // Same team AND same division is a no-op worth refusing; same team with a NEW division is
+    // the one-form flow working as intended (the organizer re-submitted the row to change the
+    // division alone), so only the true no-op is an error.
+    if (participant.teamId === teamId && !divisionChanges) {
       throw new DomainError("CONFLICT", "That participant is already on that team");
     }
 
     const contest = await contestForTeams(participant.contestId, tx);
     assertCanMutateStandingsInputs(contest, new Date());
+
+    if (divisionChanges) {
+      let targetDivision: { id: string; name: string } | null = null;
+      if (divisionId != null) {
+        const found = await tx.division.findUnique({
+          where: { id: divisionId },
+          select: { id: true, name: true, contestId: true },
+        });
+        if (found === null) throw new NotFoundError("Division");
+        if (found.contestId !== participant.contestId) {
+          throw new ValidationError("That division belongs to a different contest");
+        }
+        targetDivision = { id: found.id, name: found.name };
+      }
+      await tx.participant.update({
+        where: { id: participantId },
+        data: { divisionId: divisionId ?? null },
+      });
+      // Its own audit row, the same one the standalone division action writes: a reader asking
+      // "why is this student suddenly Advanced" should find the answer under the same action
+      // name however the change was made.
+      await writeAudit(
+        {
+          actor,
+          action: AUDIT_ACTIONS.participantDivisionSet,
+          entity: `Participant:${participantId}`,
+          before: {
+            divisionId: participant.divisionId,
+            divisionName: participant.division?.name ?? null,
+          },
+          after: {
+            divisionId: divisionId ?? null,
+            divisionName: targetDivision?.name ?? null,
+            displayName: participant.displayName,
+          },
+          reason,
+        },
+        tx,
+      );
+    }
+
     const fromSize =
       participant.teamId === null
         ? 0
         : await tx.participant.count({ where: { teamId: participant.teamId } });
     const toSize = teamId === null ? 0 : await tx.participant.count({ where: { teamId } });
 
-    await tx.participant.update({ where: { id: participantId }, data: { teamId } });
+    const teamChanges = participant.teamId !== teamId;
+    if (teamChanges) {
+      await tx.participant.update({ where: { id: participantId }, data: { teamId } });
+    }
 
     /*
       Moving somebody ONTO a team assigns their problem set, if they do not have one.
@@ -458,6 +517,7 @@ export async function adminMoveParticipant(
         ? participant.chosenSetId
         : await ensureSetAssigned(tx, contest, participantId, teamId);
 
+    if (teamChanges)
     await writeAudit(
       {
         actor,

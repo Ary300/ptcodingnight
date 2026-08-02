@@ -431,6 +431,17 @@ export async function setContestState(
   next: "SCHEDULED" | "RUNNING" | "ENDED",
   audit: { readonly actor: string; readonly reason: string },
   now: Date = new Date(),
+  options: {
+    /**
+     * Proceed only if the contest is still in this state, answering the current state otherwise.
+     * The clock reconciler passes it because two polls can find the same due transition at once:
+     * the lock serialises them, and without this guard the second would re-anchor the window a
+     * few milliseconds later and write a duplicate audit line for a transition that already
+     * happened. An organizer's button omits it - pressing Start on a RUNNING contest re-anchors
+     * deliberately (the rehearsal case).
+     */
+    readonly onlyFromState?: "SCHEDULED" | "RUNNING" | "FROZEN";
+  } = {},
 ): Promise<{ state: string }> {
   return prisma.$transaction(async (tx) => {
   await lockContestMutations(tx, contestId);
@@ -449,6 +460,10 @@ export async function setContestState(
     },
   });
   if (contest === null) throw new NotFoundError("Contest");
+
+  if (options.onlyFromState !== undefined && contest.state !== options.onlyFromState) {
+    return { state: contest.state };
+  }
 
   if (next !== "ENDED" && contest._count.contestProblems === 0) {
     throw new ValidationError(
@@ -625,4 +640,91 @@ export async function setContestState(
   );
   return { state: updated.state };
   });
+}
+
+/**
+ * Make the stored STATE agree with the stored WINDOW, through the same audited transition the
+ * organizer's buttons use.
+ *
+ * This exists because the organizer scheduled a contest for 6:35, watched 6:37 arrive on a phone
+ * showing "Starting now · 00:00:00", and asked what was up. Nothing was up: the scheduled time
+ * was display-only, and the state column moved only when a person pressed Start. The screens that
+ * poll (the pre-start lobby every few seconds, the projector every five) now call this, so the
+ * clock the students are watching is the thing that opens the contest.
+ *
+ * What it does, and deliberately does not do:
+ * - SCHEDULED with `startsAt` reached and `endsAt` still ahead: start it. The start is the real
+ *   `setContestState` path, so the line-up validation still runs - a contest that a Start press
+ *   would refuse stays SCHEDULED rather than opening broken, and the refusal stays readable on
+ *   the organizer's own Start button.
+ * - SCHEDULED with the whole window in the past is LEFT ALONE. That row is a rehearsal that never
+ *   happened; springing it to life on the next poll would run it now, which nobody asked for.
+ * - RUNNING or FROZEN past `endsAt`: end it. This is what "What happens when the clock hits zero"
+ *   already promises on the lobby, and what the organizer expected of the debris rows that sat
+ *   RUNNING for days ("I think those were supposed to have ended").
+ * - `onlyFromState` guards the race: forty pre-start lobbies poll the same second the gun fires,
+ *   the lock serialises them, and every caller after the first sees the transition already made.
+ *
+ * Failures are swallowed after a log line, because every caller is a read path: a poll that
+ * cannot reconcile must still answer with the state it found.
+ */
+/** `reconcileContestClock` for callers that hold only the id - one light select, then the same. */
+export async function reconcileContestClockById(
+  contestId: string,
+  now: Date = new Date(),
+): Promise<"unchanged" | "started" | "ended"> {
+  const contest = await prisma.contest.findUnique({
+    where: { id: contestId },
+    select: { id: true, state: true, startsAt: true, endsAt: true },
+  });
+  if (contest === null) return "unchanged";
+  return reconcileContestClock(contest, now);
+}
+
+export async function reconcileContestClock(
+  contest: {
+    readonly id: string;
+    readonly state: string;
+    readonly startsAt: Date;
+    readonly endsAt: Date;
+  },
+  now: Date = new Date(),
+): Promise<"unchanged" | "started" | "ended"> {
+  const clock = { actor: "clock", reason: "The scheduled time arrived." };
+  try {
+    if (
+      contest.state === "SCHEDULED" &&
+      contest.startsAt.getTime() <= now.getTime() &&
+      now.getTime() < contest.endsAt.getTime()
+    ) {
+      const result = await setContestState(contest.id, "RUNNING", clock, now, {
+        onlyFromState: "SCHEDULED",
+      });
+      return result.state === "RUNNING" ? "started" : "unchanged";
+    }
+    if (
+      (contest.state === "RUNNING" || contest.state === "FROZEN") &&
+      contest.endsAt.getTime() <= now.getTime()
+    ) {
+      const result = await setContestState(
+        contest.id,
+        "ENDED",
+        { actor: "clock", reason: "The contest's end time arrived." },
+        now,
+        { onlyFromState: contest.state },
+      );
+      return result.state === "ENDED" ? "ended" : "unchanged";
+    }
+  } catch (error: unknown) {
+    console.error(
+      JSON.stringify({
+        level: "error",
+        event: "contest.clockReconcileFailed",
+        contestId: contest.id,
+        from: contest.state,
+        detail: error instanceof Error ? error.message : String(error),
+      }),
+    );
+  }
+  return "unchanged";
 }

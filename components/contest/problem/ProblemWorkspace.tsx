@@ -22,6 +22,7 @@ import { rememberSource } from "../submissions/source-cache";
 import { VerdictPanel } from "../verdict/VerdictPanel";
 import { ProblemBreadcrumb, ProblemMetaRail, ProblemStatusPill, ProblemTabs } from "./ProblemMeta";
 import { SampleIO } from "./SampleIO";
+import { TeamActivity } from "./TeamActivity";
 import { useDraft } from "./useDraft";
 
 /**
@@ -288,6 +289,13 @@ export function ProblemWorkspace({ slug }: ProblemWorkspaceProps) {
         {/* ---- metadata rail ---- */}
         <aside className="min-w-0">
           <ProblemMetaRail detail={detail} />
+          {/*
+            The shared attempt log, group problems only. The route 404s for individual problems,
+            so the gate here is not merely cosmetic - but it IS the reason a student never sees
+            a "team activity" panel on a problem where teammates' verdicts would be answer
+            sharing.
+          */}
+          {detail.isGroupProblem && <TeamActivity slug={slug} />}
         </aside>
       </div>
 

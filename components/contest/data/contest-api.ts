@@ -1,6 +1,7 @@
 import type {
   ProblemDetail,
   ProblemSummary,
+  TeamProblemFeed,
   StandingsResponse,
   SubmissionView,
   SubmitRequest,
@@ -26,6 +27,12 @@ export interface ContestApi {
 
   listProblems(): Promise<ProblemSummary[]>;
   getProblem(slug: string): Promise<ProblemDetail>;
+
+  /**
+   * My team's attempts on one GROUP problem: who, when, what verdict - never code. 404s on an
+   * individual problem, so only group workspaces may call it.
+   */
+  getTeamProblemFeed(slug: string): Promise<TeamProblemFeed>;
 
   /** Free and unjudged — never creates a Submission (PRD §9.1). */
   runSamples(request: SubmitRequest): Promise<RunSamplesResponse>;

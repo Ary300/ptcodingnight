@@ -1,5 +1,6 @@
 import type { ContestPhase, ContestPhaseName } from "@/components/contest/lobby/phase";
 import { prisma } from "@/lib/db";
+import { reconcileContestClock } from "@/lib/contest/contests";
 import { assertCanReadProblems, assertCanSubmit } from "@/lib/contest/gate";
 import { viewerFromCookies } from "@/lib/contest/viewer";
 
@@ -38,11 +39,26 @@ export async function loadContestPhase(): Promise<ContestPhase | null> {
   const viewer = await viewerFromCookies(now);
   if (viewer.kind !== "competitor") return null;
 
-  const contest = await prisma.contest.findUnique({
+  let contest = await prisma.contest.findUnique({
     where: { id: viewer.contestId },
     select: { id: true, name: true, state: true, startsAt: true, endsAt: true, freezeAt: true },
   });
   if (contest === null) return null;
+
+  /*
+    THIS read is the pre-start lobby's poll - the screen that promises "this page checks every
+    few seconds and will open itself". The promise is kept here: when the scheduled time has
+    arrived, the poll itself makes the audited transition, and the re-read below returns the
+    window the transition anchored. Without this the promise was false, and the organizer read
+    "Starting now - 00:00:00" on a phone for two minutes past the scheduled start.
+  */
+  if (await reconcileContestClock(contest, now) !== "unchanged") {
+    contest = await prisma.contest.findUnique({
+      where: { id: viewer.contestId },
+      select: { id: true, name: true, state: true, startsAt: true, endsAt: true, freezeAt: true },
+    });
+    if (contest === null) return null;
+  }
 
   const participant = await prisma.participant.findFirst({
     where: { id: viewer.participantId, contestId: contest.id },

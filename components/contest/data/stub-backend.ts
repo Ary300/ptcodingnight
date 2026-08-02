@@ -1,5 +1,6 @@
 import type {
   ProblemDetail,
+  TeamProblemFeed,
   ProblemSummary,
   PublicTestResult,
   StandingsResponse,
@@ -374,6 +375,14 @@ export const stubContestApi: ContestApi = {
     const { hiddenCaseCount, ...detail } = findBySlug(slug);
     void hiddenCaseCount;
     return detail;
+  },
+
+  async getTeamProblemFeed(slug: string): Promise<TeamProblemFeed> {
+    await sleep(STUB_LATENCY_MS);
+    // The stub has no teams, which is also a real state the panel must draw: signed in, on no
+    // team yet. Slug is validated so a typo'd route fails here the way the server would 404.
+    findBySlug(slug);
+    return { teamName: null, bestScore: 0, entries: [] };
   },
 
   async runSamples(request: SubmitRequest): Promise<RunSamplesResponse> {

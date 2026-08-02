@@ -1,5 +1,6 @@
 import type { NextResponse } from "next/server";
 
+import { reconcileContestClockById } from "@/lib/contest/contests";
 import { ContestIdParamsSchema, NO_STORE, handle, jsonOk, readParams } from "@/lib/contest/http";
 import { getStandings } from "@/lib/contest/standings";
 import { viewerFromRequest } from "@/lib/contest/viewer";
@@ -24,6 +25,10 @@ export async function GET(
     const now = new Date();
     const { id } = await readParams(context.params, ContestIdParamsSchema);
     const viewer = await viewerFromRequest(request, now);
+
+    // Polled by the individual boards the same way the projector polls team-standings: when the
+    // window says the contest should have started or ended, the poll makes it true.
+    await reconcileContestClockById(id, now);
 
     return jsonOk(await getStandings(id, viewer, now), NO_STORE);
   });

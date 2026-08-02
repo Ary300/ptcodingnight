@@ -20,9 +20,12 @@ import { actorLabel, requireAdmin, viewerFromRequest } from "@/lib/contest/viewe
  * person changes TWO team scores: the team they left gets a smaller divisor, the team they joined
  * a larger one. Neither team submitted anything, and both their scores move.
  *
- * That is why `reason` is required by the schema rather than optional — the audit row records the
- * sizes on both sides as they were before the move, so "why did our score change" has an answer
- * that is not somebody's memory.
+ * The audit row records the sizes on both sides as they were before the move, so "why did our
+ * score change" has an answer that is not somebody's memory. The reason is optional - the
+ * organizer overruled requiring prose on every assignment - but recorded whenever given.
+ *
+ * A `divisionId` in the same request sets the player's division in the same organizer action,
+ * before their set is dealt, so the set they receive belongs to the division they now hold.
  *
  * Returns the whole roster, so the screen cannot show a stale count of the thing it just changed.
  */
@@ -45,6 +48,7 @@ export async function POST(
       input.teamId,
       actorLabel(admin),
       input.reason,
+      input.divisionId,
     );
 
     return jsonOk(AdminRosterSchema.parse(await adminRoster(id)), NO_STORE);

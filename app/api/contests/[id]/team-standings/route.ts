@@ -1,5 +1,6 @@
 import type { NextResponse } from "next/server";
 
+import { reconcileContestClockById } from "@/lib/contest/contests";
 import { ContestIdParamsSchema, NO_STORE, handle, jsonOk, readParams } from "@/lib/contest/http";
 import { getTeamStandings } from "@/lib/contest/standings";
 import { viewerFromRequest } from "@/lib/contest/viewer";
@@ -27,6 +28,10 @@ export async function GET(
     const now = new Date();
     const { id } = await readParams(context.params, ContestIdParamsSchema);
     const viewer = await viewerFromRequest(request, now);
+
+    // The projector polls this every five seconds, which makes it a clock the room is watching:
+    // when the window says the contest should have started or ended, this poll makes it true.
+    await reconcileContestClockById(id, now);
 
     // NO_STORE, matching the individual board: the response DIFFERS BY VIEWER — an organizer sees
     // through a freeze and nobody else does — so a shared cache would eventually serve an admin's

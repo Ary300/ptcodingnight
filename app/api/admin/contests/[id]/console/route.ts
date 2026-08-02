@@ -2,6 +2,7 @@ import type { NextResponse } from "next/server";
 
 import { AdminConsoleViewSchema } from "@/lib/schemas/api";
 import { adminConsole } from "@/lib/contest/console";
+import { reconcileContestClockById } from "@/lib/contest/contests";
 import {
   ContestIdParamsSchema,
   NO_STORE,
@@ -38,8 +39,13 @@ export async function GET(
   context: { params: Promise<unknown> },
 ): Promise<NextResponse> {
   return handle(async () => {
+    const now = new Date();
     const { id } = await readParams(context.params, ContestIdParamsSchema);
-    requireAdmin(await viewerFromRequest(request, new Date()));
+    requireAdmin(await viewerFromRequest(request, now));
+
+    // The console polls too, so the organizer's own screen reflects an auto-started or
+    // auto-ended contest without anyone pressing the button that used to be the only mover.
+    await reconcileContestClockById(id, now);
 
     return jsonOk(AdminConsoleViewSchema.parse(await adminConsole(id)), NO_STORE);
   });

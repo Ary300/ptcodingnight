@@ -9,6 +9,7 @@ import {
   ProblemSummarySchema,
   type ProblemDetail,
   type ProblemSummary,
+  type TeamProblemFeed,
 } from "@/lib/schemas/api";
 import { SignatureSchema } from "@/lib/schemas/seed";
 import { CLASSIC_PRESET } from "@/lib/types/scoring";
@@ -418,4 +419,94 @@ async function readIfPresent(absolutePath: string): Promise<string> {
     );
     return "";
   }
+}
+
+/**
+ * The team's shared attempt log for one GROUP problem: who submitted, when, and what the judge
+ * said. ICPC gets this for free by putting three people behind one keyboard; a team on separate
+ * laptops gets it here instead, so "is anyone on the group problem" has an answer that is not
+ * shouting across the room.
+ *
+ * What it deliberately is NOT:
+ * - Not code sharing. Verdict, score and time only - never source, never a diff. Teammates
+ *   coordinate through it; they do not review each other's submissions through it.
+ * - Not a standings read. It shows the viewer's OWN team only, so a freeze has nothing to hide
+ *   here - a team always knows what it just did.
+ * - Not available on individual problems. Requesting one answers 404, because a feed of
+ *   teammates' attempts on a problem the round says is personal would be a form of answer
+ *   sharing ("she got AC, go ask her").
+ *
+ * A viewer on no team gets `teamName: null` and an empty log rather than an error: the screen
+ * renders "join a team" copy instead of failing a poll.
+ */
+export async function getTeamProblemFeed(
+  contestId: string,
+  slug: string,
+  viewer: Viewer,
+  now: Date,
+): Promise<TeamProblemFeed> {
+  const contest = await prisma.contest.findUnique({
+    where: { id: contestId },
+    select: { id: true, state: true, startsAt: true, endsAt: true, freezeAt: true },
+  });
+  if (contest === null) throw new NotFoundError("Contest");
+
+  const scope = await scopeFor(contestId, viewer);
+  if (!scope.admin) assertCanReadProblems(contest, now);
+
+  const contestProblem = await prisma.contestProblem.findFirst({
+    where: { contestId, problem: { slug } },
+    select: { id: true, round: true, problem: { select: { state: true, slug: true } } },
+  });
+  if (contestProblem === null || contestProblem.round !== "GROUP") {
+    throw new NotFoundError("Problem");
+  }
+  if (!scope.admin) {
+    assertProblemIsLive(contestProblem.problem.state, contestProblem.problem.slug);
+  }
+
+  const me =
+    scope.participantId === null
+      ? null
+      : await prisma.participant.findUnique({
+          where: { id: scope.participantId },
+          select: { teamId: true, team: { select: { name: true } } },
+        });
+  if (me === null || me.teamId === null) {
+    return { teamName: null, bestScore: 0, entries: [] };
+  }
+
+  const rows = await prisma.submission.findMany({
+    where: {
+      contestProblemId: contestProblem.id,
+      participant: { teamId: me.teamId },
+    },
+    orderBy: { submittedAt: "desc" },
+    take: 50,
+    select: {
+      id: true,
+      language: true,
+      submittedAt: true,
+      verdict: true,
+      score: true,
+      participantId: true,
+      participant: { select: { displayName: true } },
+    },
+  });
+
+  return {
+    teamName: me.team?.name ?? null,
+    // The same rule the scoring engine applies: best single submission, never a merge. Stated
+    // here so the panel can print the banked score without re-deriving scoring client-side.
+    bestScore: rows.reduce((best, row) => Math.max(best, row.score), 0),
+    entries: rows.map((row) => ({
+      submissionId: row.id,
+      displayName: row.participant.displayName,
+      mine: row.participantId === scope.participantId,
+      language: row.language,
+      submittedAt: row.submittedAt.toISOString(),
+      verdict: row.verdict,
+      score: row.score,
+    })),
+  };
 }

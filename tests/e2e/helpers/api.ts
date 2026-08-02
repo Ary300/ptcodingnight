@@ -312,8 +312,17 @@ export class ContestApi {
     participantId: string;
     teamId: string | null;
     reason?: string;
+    /** Set the division in the same move; omitted leaves it alone, null clears it. */
+    divisionId?: string | null;
   }): Promise<APIResponse> {
     return this.req().post(`/api/admin/contests/${this.contestId}/roster/move`, { data: body });
+  }
+
+  /** My team's attempts on one GROUP problem. 404s on individual problems by design. */
+  teamProblemFeedRaw(slug: string): Promise<APIResponse> {
+    return this.req().get(
+      `/api/contests/${this.contestId}/problems/${encodeURIComponent(slug)}/team-feed`,
+    );
   }
 
   reassignSetRaw(body: {

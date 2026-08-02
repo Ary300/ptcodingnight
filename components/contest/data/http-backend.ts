@@ -3,11 +3,13 @@ import { z } from "zod";
 import {
   API_ROUTES,
   ProblemDetailSchema,
+  TeamProblemFeedSchema,
   ProblemSummarySchema,
   RunSamplesResponseSchema,
   StandingsResponseSchema,
   SubmissionViewSchema,
   type ProblemDetail,
+  type TeamProblemFeed,
   type ProblemSummary,
   type StandingsResponse,
   type SubmissionView,
@@ -155,6 +157,13 @@ export const httpContestApi: ContestApi = {
 
   async getProblem(slug: string): Promise<ProblemDetail> {
     return request(API_ROUTES.problem(await currentContestId(), slug), ProblemDetailSchema);
+  },
+
+  async getTeamProblemFeed(slug: string): Promise<TeamProblemFeed> {
+    return request(
+      API_ROUTES.teamProblemFeed(await currentContestId(), slug),
+      TeamProblemFeedSchema,
+    );
   },
 
   runSamples(request_: SubmitRequest): Promise<RunSamplesResponse> {
