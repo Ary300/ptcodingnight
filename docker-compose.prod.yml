@@ -52,7 +52,12 @@ services:
       # Caddy proxies by HOSTNAME, so a request to localhost matches no site block in the
       # Caddyfile and 404s no matter what path it asks for. Ask Caddy about ITSELF instead:
       # the admin API on 2019 answers only on loopback and is the honest "is Caddy running".
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:2019/config/"]
+      #
+      # 127.0.0.1 BY NUMBER, never "localhost": the admin endpoint binds 127.0.0.1 only,
+      # and this image resolves localhost to ::1 first, so the spelled-out name reported a
+      # perfectly healthy Caddy as unhealthy on every probe (measured: connection refused
+      # against a listener netstat showed on 127.0.0.1:2019).
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:2019/config/"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -209,7 +214,10 @@ services:
       - ${JUDGE_HOST_ROOT:?set JUDGE_HOST_ROOT in .env}:${JUDGE_HOST_ROOT:?set JUDGE_HOST_ROOT in .env}
     healthcheck:
       # The worker holds no port, so "is the process alive" is the honest question to ask.
-      test: ["CMD-SHELL", "pgrep -f worker/index.ts > /dev/null"]
+      # Asked through /proc rather than pgrep, because the slim image has no procps and the
+      # pgrep version exited 127 on every probe - a healthcheck that cannot run reports a
+      # healthy worker as unhealthy forever, which trains people to ignore the column.
+      test: ["CMD-SHELL", "grep -qa worker/index.ts /proc/*/cmdline"]
       interval: 30s
       timeout: 5s
       retries: 3
