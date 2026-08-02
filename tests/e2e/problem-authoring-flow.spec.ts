@@ -42,7 +42,9 @@ test("an organizer previews and creates a coding question", async ({ page }, tes
       .getByLabel("Problem statement")
       .fill("Read two integers from standard input and print their sum.");
 
-    await page.getByRole("button", { name: "Preview question" }).click();
+    // "See student preview", not HackerRank's "See candidate preview" and not the planned
+    // "Preview question": the builder names the reader a student, which is who sits the contest.
+    await page.getByRole("button", { name: "See student preview" }).click();
     const preview = page.getByRole("dialog", { name: "Question preview" });
     await expect(preview.getByRole("heading", { name: title })).toBeVisible();
     await expect(preview).toContainText("Read two integers");
