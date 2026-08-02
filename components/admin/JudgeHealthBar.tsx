@@ -1,7 +1,7 @@
 import { judgeHealthLevel, type JudgeHealth, type JudgeHealthLevel } from "@/components/admin/contract";
 
 /**
- * Judge health and queue depth.
+ * Judge health, alarmed on facts rather than inferences.
  *
  * Two renderings, chosen by the health level, and the difference is the point:
  *
@@ -13,17 +13,38 @@ import { judgeHealthLevel, type JudgeHealth, type JudgeHealthLevel } from "@/com
  *    thing on the page, permanently, above a submissions table that is the screen's actual
  *    subject; six quiet figures in a row still answer "is it fine?" at a glance, and the page's
  *    lead goes back to the feed. The plate earns its size by being rare.
+ *
+ * The loudest state is `offline`: zero live worker heartbeats. It used to be an inference from
+ * the queue's shape and sat unnoticed for 12 minutes; the heartbeat makes it a positive fact,
+ * so the heading can say what is true and what to do about it without hedging.
  */
 
-const LEVEL_COPY: Record<JudgeHealthLevel, string> = {
-  ok: "Judge healthy",
-  watch: "Judge needs a look",
-  // The one state with a full sentence for a heading, on purpose. This exact condition sat
-  // unnoticed on the dev machine and turned a 5 s verdict into a 12 minute one, so the words
-  // that matter have to be readable from across the room, not in a body paragraph.
-  stalled: "Submissions are queueing and no judge is taking them. Is the worker running?",
-  down: "Judge is not running",
-};
+/** "3 minutes", never "180000 ms" — the lagging heading is read aloud across a room. */
+function formatWaitMinutes(ms: number): string {
+  const minutes = Math.max(1, Math.round(ms / 60_000));
+  return minutes === 1 ? "1 minute" : `${minutes} minutes`;
+}
+
+/**
+ * The lagging heading carries the measured age, so the copy cannot be a static record — every
+ * other level's words are fixed.
+ */
+function headingFor(level: JudgeHealthLevel, health: JudgeHealth): string {
+  switch (level) {
+    case "ok":
+      return "Judge healthy";
+    case "watch":
+      return "Judge needs a look";
+    case "lagging":
+      return `Submissions are waiting ${formatWaitMinutes(health.oldestWaitingMs ?? 0)}. The judge is running but not keeping up.`;
+    // The one condition where nothing at all will happen until a human acts, so the words
+    // that matter have to be readable from across the room, not in a body paragraph.
+    case "offline":
+      return "No judge is running. Nothing will be judged until one starts.";
+    case "unreachable":
+      return "The judge queue cannot be reached";
+  }
+}
 
 function formatMs(ms: number | null): string {
   if (ms === null) return "-";
@@ -71,20 +92,20 @@ export function JudgeHealthBar({ health }: { health: JudgeHealth }) {
 
   if (level === "ok") {
     // No alarm styling in this branch by construction: any figure that would warrant it —
-    // failed jobs, a starved queue, no workers — moves the level off "ok" before render.
+    // failed jobs, an aging queue, no live worker — moves the level off "ok" before render.
     return (
       <section
         aria-label="Judge health"
         className="flex flex-wrap items-baseline gap-x-8 gap-y-tight rounded-panel border border-rule-edge bg-paper px-4 py-3"
       >
         <p role="status" className="font-bold" style={{ fontSize: "var(--text-sm)" }}>
-          {LEVEL_COPY.ok}
+          {headingFor("ok", health)}
         </p>
         <div className="flex flex-wrap items-baseline gap-x-6 gap-y-tight">
           <InlineStat value={String(health.queueDepth)} label="queued" />
           <InlineStat value={String(health.active)} label="judging now" />
           <InlineStat value={String(health.failed)} label="failed jobs" />
-          <InlineStat value={String(health.workersOnline)} label="workers online" />
+          <InlineStat value={String(health.workerCount)} label="workers alive" />
           <InlineStat value={formatMs(health.oldestWaitingMs)} label="oldest wait" />
           <InlineStat value={health.reachable ? "yes" : "NO"} label="queue reachable" />
         </div>
@@ -92,14 +113,15 @@ export function JudgeHealthBar({ health }: { health: JudgeHealth }) {
     );
   }
 
+  // Watch is a look-when-you-can gold; everything above it is a red-rail alarm.
+  const severe = level !== "watch";
+
   return (
     <section
       aria-label="Judge health"
       className="rounded-panel bg-ink p-5 text-paper"
       style={{
-        borderLeft: `var(--rail-width) solid ${
-          level === "down" || level === "stalled" ? "var(--color-fall)" : "var(--color-gold)"
-        }`,
+        borderLeft: `var(--rail-width) solid ${severe ? "var(--color-fall)" : "var(--color-gold)"}`,
       }}
     >
       <p
@@ -107,38 +129,35 @@ export function JudgeHealthBar({ health }: { health: JudgeHealth }) {
         className="mb-group font-bold"
         style={{
           fontSize: "var(--text-md)",
-          color:
-            level === "down" || level === "stalled" ? "var(--color-fall)" : "var(--color-gold)",
+          color: severe ? "var(--color-fall)" : "var(--color-gold)",
         }}
       >
-        {LEVEL_COPY[level]}
+        {headingFor(level, health)}
       </p>
 
       <div className="flex flex-wrap gap-x-10 gap-y-group">
-        {/*
-          When stalled, the two figures that ARE the condition go red together: a nonzero
-          queue beside a zero "judging now" is the whole finding, and the pairing is what
-          points at the worker rather than at load.
-        */}
         <Stat
           value={String(health.queueDepth)}
           label="queued"
-          alarm={level === "stalled" || health.queueDepth > 25}
+          alarm={level === "offline" || health.queueDepth > 25}
         />
-        <Stat value={String(health.active)} label="judging now" alarm={level === "stalled"} />
+        <Stat value={String(health.active)} label="judging now" alarm={level === "offline"} />
         <Stat value={String(health.failed)} label="failed jobs" alarm={health.failed > 0} />
-        <Stat
-          value={String(health.workersOnline)}
-          label="workers online"
-          alarm={health.workersOnline === 0}
-        />
-        <Stat value={formatMs(health.oldestWaitingMs)} label="oldest wait" />
         {/*
-          Was "last heartbeat", against a field nothing ever wrote — it rendered a dash on every
-          load and looked like a judge that had never checked in. What is actually knowable is
-          whether the queue answered at all, and that is the distinction an organizer needs:
-          "no workers" means start one, "no queue" means Redis is gone.
+          Live heartbeat keys, not Redis's client list. Zero here is the worker itself having
+          stopped saying "I am alive" for 30 seconds — the figure the offline heading stands on,
+          so it goes red together with it.
         */}
+        <Stat
+          value={String(health.workerCount)}
+          label="workers alive"
+          alarm={health.workerCount === 0}
+        />
+        <Stat
+          value={formatMs(health.oldestWaitingMs)}
+          label="oldest wait"
+          alarm={level === "lagging"}
+        />
         <Stat
           value={health.reachable ? "yes" : "NO"}
           label="queue reachable"
@@ -146,20 +165,31 @@ export function JudgeHealthBar({ health }: { health: JudgeHealth }) {
         />
       </div>
 
-      {level === "stalled" && (
+      {level === "offline" && (
         <p className="mt-group max-w-[70ch]" style={{ fontSize: "var(--text-sm)" }}>
-          The queue is reachable and still accepting, so no student work is lost, but nothing
-          has taken a job for over 30 seconds. Check the worker process first: on the dev
-          machine it is started by hand (npm run worker), not as a service. This exact
-          condition once sat unnoticed here until a verdict took 12 minutes.
+          No worker heartbeat is live. Submissions are still accepted and queued, so no student
+          work is lost, but nothing will be judged until a worker starts. On the dev machine
+          start one by hand: npm run worker. On a deployed host it is the worker service:
+          docker compose up -d worker.
         </p>
       )}
 
-      {level === "down" && (
+      {level === "lagging" && (
         <p className="mt-group max-w-[70ch]" style={{ fontSize: "var(--text-sm)" }}>
-          {health.reachable
-            ? "Nothing is being judged. Submissions are still being accepted and queued, so no student work is lost, but no verdict will land until a worker comes back."
-            : "The judge queue cannot be reached, so submissions are being refused, not queued. A student pressing Submit gets an error. Check Redis first. The zeros above mean there was nothing to ask, not an empty queue."}
+          A judge is alive and taking work, but the oldest submission has been waiting longer
+          than anything healthy should. Age is the signal here, not depth: a deep queue that
+          drains in seconds is fine, and even a short one going stale is not. Check whether the
+          judge host is overloaded, and whether one submission is compiling at the limit ahead
+          of everything else.
+        </p>
+      )}
+
+      {level === "unreachable" && (
+        <p className="mt-group max-w-[70ch]" style={{ fontSize: "var(--text-sm)" }}>
+          Submissions are being refused, not queued: a student pressing Submit gets an error.
+          Check Redis first. The zeros above mean there was nothing to ask, not an empty queue.
+          That includes the worker count, so whether a judge is running is unknowable from here
+          until the queue answers.
         </p>
       )}
     </section>

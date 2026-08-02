@@ -7,6 +7,7 @@ import type {
   JudgeHealthView,
 } from "@/lib/schemas/api";
 import { JudgeTimingsSchema, type Language, type Verdict } from "@/lib/schemas/judge";
+import { countLiveWorkers } from "@/lib/judge/heartbeat";
 import { isPublicBoardFrozen } from "./gate";
 import { judgeQueue } from "./queue";
 import { reconcile } from "./submissions";
@@ -208,9 +209,14 @@ function toRow(row: {
 export async function judgeHealth(): Promise<JudgeHealthView> {
   try {
     const queue = judgeQueue();
-    const [counts, workers, waiting] = await Promise.all([
+    const client = await queue.client;
+    const [counts, workerCount, waiting] = await Promise.all([
       queue.getJobCounts("waiting", "active", "failed", "delayed"),
-      queue.getWorkers(),
+      // Live heartbeat keys, not `queue.getWorkers()`. The client list shows a connection for
+      // a wedged worker and can show a stale one for a dead worker; the heartbeat is written
+      // by the worker itself and expires 30 s after the worker stops writing it, so zero here
+      // is a positive fact the alarm can stand on rather than an inference to hedge.
+      countLiveWorkers(client),
       // `asc: true`, and it is load-bearing. BullMQ's default order for the wait list is
       // NEWEST first (verified empirically on bullmq 5.x: enqueue first/second/third, read
       // back ["third", "second", "first"]), so without the flag this measured the age of the
@@ -227,7 +233,7 @@ export async function judgeHealth(): Promise<JudgeHealthView> {
       queueDepth: (counts.waiting ?? 0) + (counts.delayed ?? 0),
       active: counts.active ?? 0,
       failed: counts.failed ?? 0,
-      workersOnline: workers.length,
+      workerCount,
       oldestWaitingMs: oldest === undefined ? null : Math.max(0, Date.now() - oldest),
     };
   } catch {
@@ -236,7 +242,7 @@ export async function judgeHealth(): Promise<JudgeHealthView> {
       queueDepth: 0,
       active: 0,
       failed: 0,
-      workersOnline: 0,
+      workerCount: 0,
       oldestWaitingMs: null,
     };
   }

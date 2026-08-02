@@ -2,20 +2,19 @@ import { describe, expect, it } from "vitest";
 
 import {
   judgeHealthLevel,
-  STALLED_AFTER_MS,
+  LAGGING_AFTER_MS,
 } from "@/components/admin/contract";
 import type { JudgeHealthView } from "@/lib/schemas/api";
 
 /**
- * The worker-down alarm's decision table.
+ * The alarm ladder, now standing on the heartbeat.
  *
- * The case that earns this file is "stalled": jobs waiting, zero active, oldest past 30 s.
- * That exact condition sat unnoticed on the dev machine - the worker is a hand-started
- * process here, nobody had started one, and a submission waited 12 minutes for a verdict
- * while every individual number on the health bar looked explicable. The level has to go to
- * the loudest state on the numbers alone, including when Redis's client list still shows a
- * worker connection, because a wedged or half-dead worker keeps its connection while taking
- * nothing.
+ * The case that earns this file used to be inferred: jobs waiting, zero active, oldest past a
+ * grace, and the inference sat unnoticed on the dev machine for 12 minutes. `workerCount` is
+ * now a positive fact (live heartbeat keys, lib/judge/heartbeat.ts), so the decision table is
+ * simpler and louder: zero live workers IS the emergency, with an empty queue or a full one.
+ * The second rung is age with workers alive — the judge running but not keeping up — because
+ * age, not depth, is what distinguishes a catastrophic queue from a healthy burst.
  */
 
 function health(overrides: Partial<JudgeHealthView> = {}): JudgeHealthView {
@@ -24,7 +23,7 @@ function health(overrides: Partial<JudgeHealthView> = {}): JudgeHealthView {
     queueDepth: 0,
     active: 0,
     failed: 0,
-    workersOnline: 1,
+    workerCount: 1,
     oldestWaitingMs: null,
     ...overrides,
   };
@@ -35,52 +34,62 @@ describe("judgeHealthLevel", () => {
     expect(judgeHealthLevel(health())).toBe("ok");
   });
 
-  it("reports stalled when jobs queue, none is active, and the oldest is past the grace", () => {
+  it("reports offline the moment no heartbeat is live, before any job has aged", () => {
+    // The positive fact needs no corroborating queue shape: a dead judge over an empty queue
+    // is exactly as dead, and the alarm must not wait for the first student to submit.
+    expect(judgeHealthLevel(health({ workerCount: 0 }))).toBe("offline");
+  });
+
+  it("reports offline over any queue shape, including one that looks busy", () => {
+    // `active` can be nonzero with no live worker: a job left active by a worker that died
+    // mid-judge. The heartbeat outranks the inference that something is being worked on.
+    const view = health({ workerCount: 0, queueDepth: 12, active: 3, failed: 2 });
+    expect(judgeHealthLevel(view)).toBe("offline");
+  });
+
+  it("reports lagging when workers are alive but the oldest submission is past the threshold", () => {
     const view = health({
       queueDepth: 3,
-      active: 0,
-      oldestWaitingMs: STALLED_AFTER_MS + 1,
+      active: 1,
+      oldestWaitingMs: LAGGING_AFTER_MS + 1,
     });
-    expect(judgeHealthLevel(view)).toBe("stalled");
+    expect(judgeHealthLevel(view)).toBe("lagging");
   });
 
-  it("reports stalled even while Redis still lists a worker connection", () => {
-    // A wedged worker keeps its connection. The observed condition outranks the inferred one.
+  it("lags on AGE, not depth: three stale jobs alarm while three hundred fresh ones do not", () => {
+    expect(
+      judgeHealthLevel(health({ queueDepth: 3, oldestWaitingMs: LAGGING_AFTER_MS + 1 })),
+    ).toBe("lagging");
+    expect(
+      // Deep but draining: a burst just went in and the oldest job is seconds old. Watch-level
+      // by depth, never the not-keeping-up alarm.
+      judgeHealthLevel(health({ queueDepth: 300, active: 2, oldestWaitingMs: 4_000 })),
+    ).toBe("watch");
+  });
+
+  it("does not lag inside the threshold, when a full slate plus a Go compile is legitimate", () => {
+    const view = health({ queueDepth: 3, active: 1, oldestWaitingMs: LAGGING_AFTER_MS - 1 });
+    expect(judgeHealthLevel(view)).toBe("ok");
+  });
+
+  it("offline outranks lagging: a dead judge must not read as a slow one", () => {
     const view = health({
-      queueDepth: 5,
-      active: 0,
-      workersOnline: 2,
-      oldestWaitingMs: STALLED_AFTER_MS + 1,
+      workerCount: 0,
+      queueDepth: 3,
+      oldestWaitingMs: LAGGING_AFTER_MS + 1,
     });
-    expect(judgeHealthLevel(view)).toBe("stalled");
+    expect(judgeHealthLevel(view)).toBe("offline");
   });
 
-  it("does not report stalled inside the 30 s grace, when a worker may be between jobs", () => {
-    const view = health({ queueDepth: 3, active: 0, oldestWaitingMs: STALLED_AFTER_MS - 1 });
-    // Falls through to the ordinary ladder; with a worker online and a young queue this is ok.
-    expect(judgeHealthLevel(view)).toBe("ok");
+  it("reports unreachable when Redis is gone, whatever the zeros claim", () => {
+    // `workerCount: 0` here means "could not count", not "no worker" — sending the organizer
+    // to restart a worker when Redis is down would be the wrong fix, loudly.
+    const view = health({ reachable: false, workerCount: 0 });
+    expect(judgeHealthLevel(view)).toBe("unreachable");
   });
 
-  it("does not report stalled while something is actually being judged", () => {
-    // A 90 s Go compile can legitimately age the queue past 30 s with active >= 1.
-    const view = health({ queueDepth: 3, active: 1, oldestWaitingMs: 45_000 });
-    expect(judgeHealthLevel(view)).toBe("ok");
-  });
-
-  it("reports down when no worker is online, before any job has aged", () => {
-    expect(judgeHealthLevel(health({ workersOnline: 0 }))).toBe("down");
-  });
-
-  it("reports down when Redis is unreachable, whatever the zeros claim", () => {
-    const view = health({ reachable: false, workersOnline: 0 });
-    expect(judgeHealthLevel(view)).toBe("down");
-  });
-
-  it("keeps the watch states for failed jobs and slow-but-moving queues", () => {
+  it("keeps the watch states for failed jobs and deep-but-moving queues", () => {
     expect(judgeHealthLevel(health({ failed: 1 }))).toBe("watch");
-    expect(judgeHealthLevel(health({ active: 1, queueDepth: 2, oldestWaitingMs: 61_000 }))).toBe(
-      "watch",
-    );
     expect(judgeHealthLevel(health({ active: 1, queueDepth: 26 }))).toBe("watch");
   });
 });

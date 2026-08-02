@@ -188,38 +188,43 @@ export function referenceRunFailures(
 export type { AdminSubmissionRow } from "@/lib/schemas/api";
 export type { JudgeHealthView as JudgeHealth } from "@/lib/schemas/api";
 
-export type JudgeHealthLevel = "ok" | "watch" | "stalled" | "down";
+export type JudgeHealthLevel = "ok" | "watch" | "lagging" | "offline" | "unreachable";
 
 /**
- * Jobs queued, nothing active, and the oldest has waited this long: past it, nobody is taking
- * work and the bar goes to its loudest state. 30 s is long enough that a worker between jobs
- * (active drops to 0 for a moment while it takes the next one) cannot trip it, and short
- * enough that an organizer hears about a dead worker before the first student walks over.
+ * A submission that has waited this long, while workers ARE alive, means the judge is not
+ * keeping up. Age, not depth, is the input on purpose: three jobs with no consumer is
+ * catastrophic, three hundred draining in seconds is a healthy burst. 60 s clears the longest
+ * legitimate single wait (a Go compile behind a full concurrency slate) on a healthy host.
  */
-export const STALLED_AFTER_MS = 30_000;
+export const LAGGING_AFTER_MS = 60_000;
 
-/** One place decides what "the judge is unhealthy" means, so the console cannot disagree with itself. */
+/**
+ * One place decides what "the judge is unhealthy" means, so the console cannot disagree with
+ * itself.
+ *
+ * This ladder used to infer a dead worker from the queue's shape (`waiting > 0 && active === 0`
+ * past a grace), because Redis's client list was the only other witness and it lies both ways —
+ * a wedged worker keeps its connection, a dead one can leave a stale registration. The worker
+ * now writes a heartbeat key with a 30 s expiry (lib/judge/heartbeat.ts), so "no judge is
+ * running" is `workerCount === 0`: a positive fact, and a positive fact beats an inference.
+ * The exact condition the heuristic existed for — jobs waiting, nothing taking them, nobody
+ * noticing for 12 minutes — now trips the LOUDEST state within one heartbeat TTL, with zero
+ * jobs queued or three hundred.
+ */
 export function judgeHealthLevel(health: JudgeHealthView): JudgeHealthLevel {
-  // Redis unreachable outranks everything: with no queue to ask, every other number below is
-  // zero, and a screen reading "0 queued, 0 failed" is the picture of a healthy contest.
-  if (!health.reachable) return "down";
-  // Stalled outranks even "no workers online", because it is the OBSERVED failure, not the
-  // inferred one: submissions are queueing and none is being taken. `workersOnline` comes
-  // from Redis's client list, which can show a connection for a worker that is wedged or a
-  // stale registration for one that is gone - this exact condition (jobs waiting, zero
-  // active, no one noticing) sat for 12 minutes on the dev machine, and it is the one state
-  // where the words on the bar have to say what to check first: the worker process.
-  if (
-    health.queueDepth > 0 &&
-    health.active === 0 &&
-    health.oldestWaitingMs !== null &&
-    health.oldestWaitingMs > STALLED_AFTER_MS
-  ) {
-    return "stalled";
+  // Unreachable is checked first not because it is louder in principle but because it is
+  // BLINDING: with no Redis to ask, `workerCount` is a zero that means "could not count",
+  // and rendering it as "no judge is running" would send the organizer to restart a worker
+  // when the thing to check is Redis.
+  if (!health.reachable) return "unreachable";
+  // The absolute loudest knowable state. Nothing will be judged until a worker starts, and
+  // the copy on the bar names the fix.
+  if (health.workerCount === 0) return "offline";
+  // Workers alive but the oldest submission is aging: running, not keeping up.
+  if (health.oldestWaitingMs !== null && health.oldestWaitingMs > LAGGING_AFTER_MS) {
+    return "lagging";
   }
-  if (health.workersOnline === 0) return "down";
   if (health.failed > 0) return "watch";
-  if (health.oldestWaitingMs !== null && health.oldestWaitingMs > 60_000) return "watch";
   if (health.queueDepth > 25) return "watch";
   return "ok";
 }

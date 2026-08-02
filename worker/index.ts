@@ -1,9 +1,12 @@
 // Standalone tsx entrypoint — load .env before anything reads process.env.
 import "dotenv/config";
 
+import { hostname } from "node:os";
+
 import { Worker, type Job } from "bullmq";
 import IORedis from "ioredis";
 
+import { startWorkerHeartbeat } from "@/lib/judge/heartbeat";
 import { JudgeJobSchema, type JudgeResult } from "@/lib/schemas/judge";
 import { JUDGE_QUEUE_NAME, MAX_JOB_ATTEMPTS, STALLED_JOB_GRACE_MS } from "@/lib/judge/queue";
 import { parseServerEnv } from "@/lib/schemas/env";
@@ -139,10 +142,17 @@ async function main(): Promise<void> {
     );
   });
 
+  // Assigned right after judge.started below; the shutdown handler closes over the holder so
+  // registration order does not matter.
+  let stopHeartbeat: (() => Promise<void>) | null = null;
+
   const shutdown = async (signal: string) => {
     console.warn(`${signal} received; draining judge worker`);
     await worker.close();
     await sweepJudgeContainers();
+    // Before the connection closes, because the stop DELETES the heartbeat key — an orderly
+    // shutdown reads as "no worker" immediately rather than after a 30 s TTL of doubt.
+    await stopHeartbeat?.();
     await connection.quit();
     process.exit(0);
   };
@@ -175,6 +185,23 @@ async function main(): Promise<void> {
       ),
     }),
   );
+
+  /*
+    "A judge is alive" as a positive, queryable fact — started only now, AFTER judge.started,
+    because the heartbeat is a claim to be consuming and everything above this line can still
+    refuse the boot. It rides the same Redis connection the queue uses (BullMQ issues its
+    blocking reads on its own duplicate, so plain SETs here do not contend), and a worker that
+    dies without cleanup stops renewing the key, which expires 30 s later: "no worker" becomes
+    visible to the console without anyone having been able to log it.
+  */
+  stopHeartbeat = startWorkerHeartbeat(connection, {
+    // Hostname plus pid: unique per process, so two workers are two keys — and the key name
+    // itself says where to go looking when one of them stops beating.
+    workerId: `${hostname()}-${process.pid}`,
+    startedAt: new Date().toISOString(),
+    pid: process.pid,
+    concurrency,
+  });
 }
 
 main().catch((error: unknown) => {

@@ -1,6 +1,7 @@
 import { Queue, type Job } from "bullmq";
 import IORedis from "ioredis";
 
+import { countLiveWorkers } from "@/lib/judge/heartbeat";
 import { JUDGE_JOB_OPTIONS, JUDGE_QUEUE_NAME } from "@/lib/judge/queue";
 import type { QueuePosition } from "@/lib/schemas/api";
 import { JudgeResultSchema, type JudgeJob, type JudgeResult } from "@/lib/schemas/judge";
@@ -109,11 +110,32 @@ export function jobsAheadInWaitList(ids: readonly string[], jobId: string): numb
 }
 
 /**
+ * The offline override: with zero live worker heartbeats, every position is a lie.
+ *
+ * A queue position that never moves is the WORST display, because it looks like working —
+ * "3 ahead of yours" invites a student to wait politely on a queue nothing is draining. So a
+ * positive "no worker is alive" outranks any position, including "active": a job left active
+ * by a worker that died mid-judge is exactly the case where "the judge is working on yours"
+ * would be the most convincing false thing on the screen.
+ *
+ * `null` (the count could not be read) claims nothing and lets the ordinary position stand:
+ * an unknown must never render as the loudest possible state.
+ *
+ * Pure and exported for the precedence test; `queuePositionOf` is the only production caller.
+ */
+export function offlineQueuePosition(workerCount: number | null): QueuePosition | null {
+  if (workerCount === 0) return { state: "offline", ahead: 0 };
+  return null;
+}
+
+/**
  * Where a submission's job stands, as the waiting student may be told.
  *
  * Best-effort by contract: every failure path returns `null`, which the read path turns into
  * an OMITTED field. A slow submission must look slow, never broken - and a position read that
  * could throw would break the verdict read it decorates, which is the one read that matters.
+ * That contract covers the heartbeat read too: it degrades to "no claim" on its own, inside
+ * the same try, so it can never break the verdict read it rides on.
  *
  * The wait list is read as raw ids with LRANGE rather than through `getJobs`, because a judge
  * job's payload carries the student's full source code and test paths; hydrating every queued
@@ -122,6 +144,13 @@ export function jobsAheadInWaitList(ids: readonly string[], jobId: string): numb
 export async function queuePositionOf(jobId: string): Promise<QueuePosition | null> {
   try {
     const queue = judgeQueue();
+
+    // Degrades separately from the position read: `null` means "could not ask", and the
+    // ordinary position (or silence) stands. Only a POSITIVE zero flips the display.
+    const workerCount = await countLiveWorkers(await queue.client).catch(() => null);
+    const offline = offlineQueuePosition(workerCount);
+    if (offline !== null) return offline;
+
     const job = await queue.getJob(jobId);
     if (job === undefined) return null;
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { jobsAheadInWaitList } from "@/lib/contest/queue";
+import { jobsAheadInWaitList, offlineQueuePosition } from "@/lib/contest/queue";
 
 /**
  * The direction of the wait list is the whole content of this function, and it is the part a
@@ -36,5 +36,28 @@ describe("jobsAheadInWaitList", () => {
 
   it("handles an empty list", () => {
     expect(jobsAheadInWaitList([], "anything")).toBeNull();
+  });
+});
+
+/**
+ * The offline override's precedence, pinned as a pure decision. The three inputs mean three
+ * different things and only ONE of them may flip the student's display: a POSITIVE zero (no
+ * live heartbeat) becomes "offline", a positive count lets the ordinary position stand, and
+ * `null` (the count could not be read) claims nothing — an unknown must never render as the
+ * loudest state, and a Redis hiccup on the heartbeat read must not break the position it
+ * decorates, let alone the verdict read underneath.
+ */
+describe("offlineQueuePosition", () => {
+  it("turns a positive zero into the offline state", () => {
+    expect(offlineQueuePosition(0)).toEqual({ state: "offline", ahead: 0 });
+  });
+
+  it("claims nothing while any worker is alive", () => {
+    expect(offlineQueuePosition(1)).toBeNull();
+    expect(offlineQueuePosition(3)).toBeNull();
+  });
+
+  it("claims nothing when the count could not be read: unknown is not offline", () => {
+    expect(offlineQueuePosition(null)).toBeNull();
   });
 });

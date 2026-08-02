@@ -218,8 +218,12 @@ export function VerdictPanel({
           Which test is executing and how many wait behind it — not a spinner. A sample run
           is a single request with no per-case progress to report, so it says only what is
           true: the run is in flight. See `judgingProgressLabel` for the two honesty rules.
+
+          Suppressed entirely when the judge is offline: "running the first test…" beside
+          "the judge is offline" is the exact false working line the offline state exists to
+          remove, and the offline sentence below carries everything the student needs.
         */}
-        {busy && (
+        {busy && queuePosition?.state !== "offline" && (
           <span className="text-paper/60" style={{ fontSize: "var(--text-xs)" }}>
             {mode === "samples"
               ? "Running the samples…"

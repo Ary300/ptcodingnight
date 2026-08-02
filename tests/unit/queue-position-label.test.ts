@@ -32,4 +32,15 @@ describe("queuePositionLabel", () => {
       "7 submissions ahead of yours in the queue.",
     );
   });
+
+  it("says offline plainly, with no number: a position nobody is draining is not a position", () => {
+    // Whatever `ahead` claims. A frozen "3 ahead of yours" is the worst display there is,
+    // because it looks like working; the offline line promises the work is saved instead.
+    expect(queuePositionLabel({ state: "offline", ahead: 0 })).toBe(
+      "The judge is offline. An organizer has been told; your submission is saved and will be judged when it returns.",
+    );
+    expect(queuePositionLabel({ state: "offline", ahead: 3 })).toBe(
+      "The judge is offline. An organizer has been told; your submission is saved and will be judged when it returns.",
+    );
+  });
 });

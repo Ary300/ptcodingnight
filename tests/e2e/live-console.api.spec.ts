@@ -78,7 +78,7 @@ test.describe("the live console reads the server", () => {
         health.queueDepth,
         "an unreachable queue must not report a depth",
       ).toBe(0);
-      expect(health.workersOnline).toBe(0);
+      expect(health.workerCount).toBe(0);
     }
   });
 

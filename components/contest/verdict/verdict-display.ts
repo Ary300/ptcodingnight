@@ -65,8 +65,16 @@ export function problemStatusLabel(solved: boolean, bestScore: number | null): s
  * queue of 3 can be 15 seconds of Python or 4 minutes of Go compiles. The field this renders
  * is optional on the wire; when the server could not ask the queue, the panel says nothing
  * rather than something invented, and this function is simply not called.
+ *
+ * "offline" is the one state that is not a position at all: zero live worker heartbeats, so
+ * any number here would be a queue position that never moves — the worst possible display,
+ * because it looks like working. The student is told the truth and, more importantly, that
+ * their work is safe and needs nothing from them.
  */
 export function queuePositionLabel(position: QueuePosition): string {
+  if (position.state === "offline") {
+    return "The judge is offline. An organizer has been told; your submission is saved and will be judged when it returns.";
+  }
   if (position.state === "active") return "The judge is working on yours now.";
   if (position.ahead === 0) return "Yours is next in the queue.";
   if (position.ahead === 1) return "1 submission ahead of yours in the queue.";

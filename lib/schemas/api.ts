@@ -323,7 +323,20 @@ export const JudgeHealthViewSchema = z.object({
   queueDepth: z.number().int().nonnegative(),
   active: z.number().int().nonnegative(),
   failed: z.number().int().nonnegative(),
-  workersOnline: z.number().int().nonnegative(),
+  /**
+   * Live worker HEARTBEAT keys, not Redis's client list. This field replaced `workersOnline`,
+   * which counted connections — a wedged worker keeps its connection and a freshly dead one can
+   * leave a stale registration, so the old number could say "1" over a queue nothing was
+   * draining. A heartbeat is written by the worker itself every 10 s with a 30 s expiry
+   * (lib/judge/heartbeat.ts): zero here is the positive fact "no judge is running", within one
+   * TTL of it becoming true.
+   */
+  workerCount: z.number().int().nonnegative(),
+  /**
+   * Age of the OLDEST waiting job; null when nothing waits. Age, not depth, is the alarm
+   * input: three jobs with no consumer is catastrophic, three hundred draining in seconds
+   * is a healthy burst.
+   */
   oldestWaitingMs: z.number().int().nonnegative().nullable(),
 });
 export type JudgeHealthView = z.infer<typeof JudgeHealthViewSchema>;
@@ -754,9 +767,15 @@ export type PublicTestResult = z.infer<typeof PublicTestResultSchema>;
  * (`ahead` is 0 when it is next, and always 0 for "active"). The point of the field is that a
  * slow submission must look SLOW, never broken: a student staring at a spinner with no idea
  * whether the judge has forgotten them is the 12-minute-verdict failure mode, worn client-side.
+ *
+ * "offline" means zero live worker heartbeats (lib/judge/heartbeat.ts): the submission is
+ * saved and queued, and nothing will judge it until a worker returns. It outranks a position,
+ * because a queue position that never moves is the worst possible display — it looks like
+ * working. `ahead` is always 0 for "offline"; a count of jobs nobody is taking is not a
+ * position, it is a countdown with no clock.
  */
 export const QueuePositionSchema = z.object({
-  state: z.enum(["waiting", "active"]),
+  state: z.enum(["waiting", "active", "offline"]),
   ahead: z.number().int().nonnegative(),
 });
 export type QueuePosition = z.infer<typeof QueuePositionSchema>;
