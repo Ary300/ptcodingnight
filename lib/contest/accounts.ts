@@ -3,7 +3,7 @@ import { Prisma } from "@prisma/client";
 
 import { DomainError } from "@/lib/errors";
 import { prisma } from "@/lib/db";
-import { verifyPassword } from "@/lib/contest/password";
+import { hashPassword, passwordComplaint, verifyPassword } from "@/lib/contest/password";
 import type { OAuthIdentity, OAuthProvider } from "@/lib/contest/oauth";
 
 /**
@@ -345,4 +345,72 @@ function displayNameFor(identity: OAuthIdentity, verifiedEmail: string | null): 
 
 export function providerLabel(provider: OAuthProvider): string {
   return provider === "google" ? "Google" : "GitHub";
+}
+
+/* --------------------------------------------------------------------------
+ * Self-serve sign-up
+ * ------------------------------------------------------------------------ */
+
+export const SignupSchema = z.object({
+  fullName: z
+    .string()
+    .trim()
+    .min(1, "Enter your name")
+    .max(40, "Keep your name to 40 characters or fewer"),
+  email: z.string().trim().toLowerCase().pipe(z.email("That does not look like an email address")),
+  password: z.string().max(400),
+});
+export type Signup = z.infer<typeof SignupSchema>;
+
+/**
+ * Create a competitor account from the sign-up form.
+ *
+ * ## Why the duplicate-email answer is HONEST here, unlike sign-in
+ *
+ * `authenticateWithPassword` makes its failures indistinguishable because a LOGIN form that says
+ * "no such account" is an account enumerator. A SIGN-UP form is the opposite case: the person in
+ * front of it owns the address they typed, the useful answer is "you already have an account, log
+ * in instead", and hiding that behind a generic error strands a student who forgot they signed up
+ * with Google last year. The audience is a school event, not the open internet, and the login form
+ * remains as tight as it ever was.
+ *
+ * The password is hashed BEFORE the row is created and the unique constraint on `email` is the
+ * arbiter of duplicates, so two simultaneous sign-ups with one address race safely: one wins,
+ * the other gets the duplicate answer rather than a half-created account.
+ */
+export async function createCompetitorAccount(input: Signup): Promise<AuthenticatedUser> {
+  const complaint = passwordComplaint(input.password);
+  if (complaint !== null) {
+    throw new DomainError("VALIDATION", complaint);
+  }
+
+  const passwordHash = await hashPassword(input.password);
+
+  try {
+    const user = await prisma.user.create({
+      data: {
+        email: input.email,
+        displayName: input.fullName,
+        role: "COMPETITOR",
+        passwordHash,
+      },
+      select: { id: true, displayName: true },
+    });
+    return { userId: user.id, displayName: user.displayName, role: "COMPETITOR" };
+  } catch (error: unknown) {
+    // P2002 is Prisma's unique-constraint violation; on this model that is only `email`.
+    if (
+      typeof error === "object" &&
+      error !== null &&
+      "code" in error &&
+      (error as { code: unknown }).code === "P2002"
+    ) {
+      throw new DomainError(
+        "CONFLICT",
+        "An account with this email already exists. Log in instead, or use Google or GitHub if " +
+          "that is how you first signed in.",
+      );
+    }
+    throw error;
+  }
 }

@@ -237,7 +237,7 @@ export default async function Home() {
                   Log in
                 </Link>
                 <Link
-                  href="/sign-in"
+                  href="/sign-up"
                   className="rounded-chip bg-panther px-3 py-1.5 font-semibold whitespace-nowrap text-paper hover:bg-panther-deep"
                   style={{ fontSize: "var(--text-xs)" }}
                 >

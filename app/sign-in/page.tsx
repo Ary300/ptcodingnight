@@ -159,6 +159,16 @@ export default async function SignInPage({
               initialError={error}
               providerAvailability={providerAvailability}
             />
+
+            <p className="mt-6 text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
+              New here?{" "}
+              <Link
+                href="/sign-up"
+                className="font-semibold text-panther underline underline-offset-2"
+              >
+                Create your account
+              </Link>
+            </p>
           </div>
         </div>
       </main>
