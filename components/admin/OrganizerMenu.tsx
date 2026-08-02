@@ -63,7 +63,10 @@ export function OrganizerMenu({ displayName }: OrganizerMenuProps) {
       // Leave anyway. Somebody walking away from a shared laptop must not be held on the page by
       // a failed request.
     } finally {
-      window.location.assign("/sign-in");
+      // Home, not the login form. Signing out is leaving, and the page for someone who has
+        // left is the front door - which greets a signed-out visitor properly. Landing a person
+        // who just chose to LEAVE on a form asking them to come back reads as a refusal to let go.
+        window.location.assign("/");
     }
   }, []);
 
