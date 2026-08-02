@@ -154,7 +154,16 @@ export function Button({
   return (
     <button
       className={[
-        "inline-flex items-center justify-center gap-2 transition-colors",
+        /*
+          The press state. `active:scale-[0.97]` over 100ms is the difference between a control
+          that physically acknowledges a press and one where the new state simply appears in the
+          same frame - which the eye cannot follow, so it reads as a glitch. Transform rides the
+          same transition as the colours; `--motion-press` is the scale's floor and this is the
+          only place it is spent. Reduced motion flattens it globally (globals.css).
+        */
+        "inline-flex items-center justify-center gap-2",
+        "transition-[color,background-color,border-color,transform] duration-[var(--motion-press)]",
+        "active:scale-[0.97] disabled:active:scale-100",
         // A text button still has to be hittable on a phone: 32px of height without a box.
         quiet ? "min-h-8" : `${PAD[size]} ${LEADING[size]}`,
         VARIANT[variant],

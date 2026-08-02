@@ -121,7 +121,7 @@ function TestRow({ result }: { result: PublicTestResult }) {
   const name = result.isSample ? `Sample ${result.ordinal}` : `Test case ${result.ordinal}`;
 
   return (
-    <li className="border-t border-rule-hair-inverse py-2 first:border-t-0">
+    <li className="motion-swap-in border-t border-rule-hair-inverse py-2 first:border-t-0">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <CaseMark tone={presentation.tone} />
         <span className="numeric text-paper/85" style={{ fontSize: "var(--text-xs)" }}>
@@ -332,7 +332,13 @@ export function VerdictPanel({
       )}
 
       {safeResults.length > 0 && (
-        <ul className={mode === "samples" && busy ? "mt-3 opacity-50" : "mt-3"}>
+        /*
+          `motion-stagger` + each row's own `motion-swap-in`: results land 35ms apart instead of
+          appearing in one frame, which is the difference between "the judge answered" and "the
+          page glitched". The stagger is keyed off nth-child, so streamed rows appearing one at a
+          time each animate once and never re-run the ones above.
+        */
+        <ul className={mode === "samples" && busy ? "motion-stagger mt-3 opacity-50" : "motion-stagger mt-3"}>
           {safeResults.map((result) => (
             <TestRow key={`${result.isSample ? "s" : "h"}-${result.ordinal}`} result={result} />
           ))}

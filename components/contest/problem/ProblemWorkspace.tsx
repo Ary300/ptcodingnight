@@ -347,22 +347,35 @@ export function ProblemWorkspace({ slug }: ProblemWorkspaceProps) {
           />
 
           <div className="flex flex-wrap items-center gap-3">
+            {/*
+              Both buttons are sized by their WIDEST label, not their current one. "Submit for
+              judging" collapsing to the shorter "Submitting…" mid-press resized the control under
+              the student's cursor, which is the loudest possible layout jump: the thing being
+              touched. An invisible copy of the long label holds the width; the visible label swaps
+              on top of it.
+            */}
             <Button
               type="button"
               variant="secondary"
-              className="whitespace-nowrap"
+              className="relative whitespace-nowrap"
               onClick={() => void runSamples()}
               disabled={sampleBusy || submitBusy}
             >
-              {sampleBusy ? "Running…" : "Run samples"}
+              <span aria-hidden="true" className="invisible">Run samples</span>
+              <span className="absolute inset-0 flex items-center justify-center">
+                {sampleBusy ? "Running…" : "Run samples"}
+              </span>
             </Button>
             <Button
               type="button"
-              className="whitespace-nowrap"
+              className="relative whitespace-nowrap"
               onClick={() => void submit()}
               disabled={submitBusy || sampleBusy || judging}
             >
-              {submitBusy ? "Submitting…" : "Submit for judging"}
+              <span aria-hidden="true" className="invisible">Submit for judging</span>
+              <span className="absolute inset-0 flex items-center justify-center">
+                {submitBusy ? "Submitting…" : "Submit for judging"}
+              </span>
             </Button>
           </div>
         </div>

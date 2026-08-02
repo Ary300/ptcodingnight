@@ -143,7 +143,7 @@ function ProblemCard({ problem }: { problem: ProblemSummary }) {
       // rendered illegible. The state is already carried by the "Locked" badge and the rail,
       // which is what a screen reader gets anyway; dimming it was decoration that cost
       // legibility. Muted-on-paper floor is /60, applied once, never stacked.
-      <li className="flex items-stretch">
+      <li className="motion-swap-in flex items-stretch">
         <Rail state="brand" />
         {body}
         <span
@@ -157,7 +157,7 @@ function ProblemCard({ problem }: { problem: ProblemSummary }) {
   }
 
   return (
-    <li className="flex items-stretch">
+    <li className="motion-swap-in flex items-stretch">
       <Rail state="brand" />
       <Link
         data-problem-row
@@ -199,7 +199,10 @@ export function ProblemList({ problems }: ProblemListProps) {
     // whichever list happens to be first on a page that also carries standings.
     <ul
       aria-label="Problems"
-      className="divide-y divide-rule-hair overflow-hidden rounded-panel border border-rule-edge bg-paper"
+      // motion-stagger: rows land 35ms apart on first paint instead of in one frame. The list is
+      // the first thing a student sees after signing in; arriving in sequence reads as loading
+      // having FINISHED, where a single-frame appearance reads as a flicker.
+      className="motion-stagger divide-y divide-rule-hair overflow-hidden rounded-panel border border-rule-edge bg-paper"
     >
       {problems.map((problem) => (
         <ProblemCard key={problem.contestProblemId} problem={problem} />
