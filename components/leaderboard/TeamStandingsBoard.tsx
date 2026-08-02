@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useLayoutEffect, useRef, useState } from "react";
+import { formatEventTime } from "@/lib/contest/event-time";
 
 import type {
   TeamPlayerProblem,
@@ -130,7 +131,7 @@ function formatScore(score: number): string {
 function timeOfDay(iso: string): string {
   const at = new Date(iso);
   if (Number.isNaN(at.getTime())) return "";
-  return at.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return formatEventTime(at);
 }
 
 interface PlayerProblemListProps {

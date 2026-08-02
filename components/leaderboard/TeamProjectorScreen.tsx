@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { formatEventTime } from "@/lib/contest/event-time";
 
 import { TEAM_EXPANDED_ROW_COST, TEAM_VISIBLE_ROWS } from "./constants";
 import { Countdown } from "./Countdown";
@@ -65,7 +66,7 @@ export interface TeamProjectorScreenProps {
 function timeOfDay(iso: string): string {
   const parsed = Date.parse(iso);
   if (Number.isNaN(parsed)) return "--:--";
-  return new Date(parsed).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return formatEventTime(new Date(parsed));
 }
 
 export function TeamProjectorScreen({

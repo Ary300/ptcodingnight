@@ -1,6 +1,7 @@
 "use client";
 
 import { Button, Delta, Rail, TBody, TD, TH, THead, TR, Table, railStateForDelta } from "@/components/ui";
+import { formatEventStamp } from "@/lib/contest/event-time";
 import { Panel } from "@/components/admin/Panel";
 import {
   downloadBlob,
@@ -34,7 +35,7 @@ import type { StandingsResponse } from "@/lib/schemas/api";
  *
  * Once off a projector, then again on paper — so it is laid out the way Codeforces lays out its
  * final standings page: the contest's NAME centred at the top, a "Final results" line under it,
- * and the moment the numbers describe, stamped in UTC. The name used to appear only in the
+ * and the moment the numbers describe, stamped in Eastern. The name used to appear only in the
  * export's filename; a printed sheet with no contest name on it cannot be filed, and a sheet
  * with no timestamp cannot be trusted against a later reprint.
  *
@@ -52,14 +53,13 @@ export interface AwardsBoardProps {
 
 /**
  * Fixed timezone, same reasoning as the submission feed: the projector copy and the paper copy
- * must not disagree about the moment they describe, and the stamp says UTC out loud.
+ * must not disagree about the moment they describe. The stamp is Eastern, the room's own clock.
  */
-function stampUtc(iso: string): string {
-  const parsed = new Date(iso);
+function stampEastern(iso: string): string {
   // An unparseable stamp is printed verbatim rather than as "Invalid Date" on a results sheet.
-  if (Number.isNaN(parsed.getTime())) return iso;
-  const s = parsed.toISOString();
-  return `${s.slice(0, 10)} ${s.slice(11, 16)} UTC`;
+  // Eastern by organizer decree: the sheet is read in the room the contest happened in, and a
+  // stamp the reader has to convert is a stamp somebody converts wrongly.
+  return formatEventStamp(iso);
 }
 
 export function AwardsBoard({ standings, contestName }: AwardsBoardProps) {
@@ -92,7 +92,7 @@ export function AwardsBoard({ standings, contestName }: AwardsBoardProps) {
           {standings.frozen ? "Provisional standings (board frozen)" : "Final results"}
         </p>
         <p className="numeric mt-tight text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
-          Standings as of {stampUtc(standings.asOf)}
+          Standings as of {stampEastern(standings.asOf)}
         </p>
       </header>
 
@@ -102,7 +102,7 @@ export function AwardsBoard({ standings, contestName }: AwardsBoardProps) {
           className="rounded-chip border border-panther px-3 py-2 font-semibold text-panther"
           style={{ fontSize: "var(--text-sm)" }}
         >
-          The board is still frozen. These are the standings as of {stampUtc(standings.asOf)},
+          The board is still frozen. These are the standings as of {stampEastern(standings.asOf)},
           not the final result. Unfreeze in the live console first.
         </p>
       )}

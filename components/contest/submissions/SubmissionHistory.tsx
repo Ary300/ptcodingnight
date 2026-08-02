@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { formatEventTimeSeconds } from "@/lib/contest/event-time";
 import { Fragment, useCallback, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui";
@@ -65,9 +66,9 @@ import { recallSource } from "./source-cache";
  */
 
 function formatTime(iso: string): string {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return "-";
-  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  if (Number.isNaN(new Date(iso).getTime())) return "-";
+  // The event's clock, not the browser's: every time on this platform is Eastern.
+  return formatEventTimeSeconds(iso);
 }
 
 /**

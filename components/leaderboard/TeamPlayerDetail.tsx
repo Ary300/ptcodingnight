@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { formatEventTime } from "@/lib/contest/event-time";
 
 import type { TeamPlayerProblem, TeamPlayerRow } from "@/lib/schemas/api";
 
@@ -63,7 +64,7 @@ const NOT_YOURS = "Per-problem detail is shown for your own team.";
 function clockTime(iso: string): string {
   const at = new Date(iso);
   if (Number.isNaN(at.getTime())) return "";
-  return at.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return formatEventTime(at);
 }
 
 interface ProblemLineProps {

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { formatEventDateParts } from "@/lib/contest/event-time";
 
 import { Button, Stacked, TBody, TD, TH, THead, TR, Table } from "@/components/ui";
 import { Select, TextInput } from "@/components/admin/Field";
@@ -95,13 +96,11 @@ function unwrap(body: unknown): unknown {
 
 /**
  * Fixed timezone, like the submission feed: two laptops in the same room must not disagree about
- * when something was entered. The heading says UTC out loud rather than letting 23:41 be read as
+ * when something was entered, in the room's own clock (Eastern), so 7:41 PM reads as
  * half past eleven at night in Indianapolis.
  */
 function enteredAtParts(iso: string): { date: string; time: string } {
-  const d = new Date(iso);
-  const stamp = d.toISOString();
-  return { date: stamp.slice(0, 10), time: stamp.slice(11, 16) };
+  return formatEventDateParts(iso);
 }
 
 /**
@@ -499,7 +498,7 @@ export function SideActivityEntry({ contestId }: SideActivityEntryProps) {
               >
                 <THead>
                   <TR>
-                    <TH numeric>Entered (UTC)</TH>
+                    <TH numeric>Entered (ET)</TH>
                     <TH>Activity</TH>
                     <TH numeric>Points</TH>
                     <TH>By</TH>

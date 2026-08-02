@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { formatEventTimeSeconds } from "@/lib/contest/event-time";
 
 import { ConfirmButton } from "@/components/admin/ConfirmButton";
 import { JudgeHealthBar } from "@/components/admin/JudgeHealthBar";
@@ -132,7 +133,7 @@ export function LiveConsole({ contestId }: LiveConsoleProps) {
         id: `${String(previous.length)}-${text.slice(0, 12)}`,
         // UTC on purpose, matching the feed's time column: the whole point of this log is
         // pairing "the thing I pressed" with the row it changed, and two clocks break that.
-        at: new Date().toISOString().slice(11, 19),
+        at: formatEventTimeSeconds(new Date()),
         text,
         failed: failure !== undefined,
         detail: failure ?? null,
@@ -419,7 +420,7 @@ export function LiveConsole({ contestId }: LiveConsoleProps) {
                   {/* nowrap: this column is exactly eight mono digits wide, and letting the
                       heading fold to two lines makes the header row the tallest row on screen. */}
                   <TH numeric className="whitespace-nowrap">
-                    Time (UTC)
+                    Time (ET)
                   </TH>
                   <TH>Result</TH>
                   <TH>Action</TH>

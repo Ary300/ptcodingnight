@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useState } from "react";
+import { formatEventTimeSeconds } from "@/lib/contest/event-time";
 
 import { Button, Stacked, TBody, TD, TH, THead, TR, Table } from "@/components/ui";
 import { OverrideForm } from "@/components/admin/OverrideForm";
@@ -71,10 +72,10 @@ export interface SubmissionFeedProps {
 }
 
 function timeOf(iso: string): string {
-  // Fixed locale and timezone: a feed that renders differently on the organiser's laptop
-  // and the projector laptop is a support call nobody has time for on the night. The column
-  // heading says UTC out loud rather than letting an organiser read 23:41 as local time.
-  return new Date(iso).toISOString().slice(11, 19);
+  // Fixed locale and timezone, for the original reason (two laptops must render one feed the
+  // same way), but pinned to the EVENT's clock now rather than UTC: the organizer read 23:41 on
+  // a screen at half past seven and overruled the honesty argument. Eastern, everywhere, always.
+  return formatEventTimeSeconds(iso);
 }
 
 /**
@@ -190,7 +191,7 @@ export function SubmissionFeed({
           <Table caption="Live submissions feed" className="min-w-[46rem]">
             <THead>
               <TR>
-                <TH numeric>Time (UTC)</TH>
+                <TH numeric>Time (ET)</TH>
                 <TH>Participant</TH>
                 <TH>Problem</TH>
                 <TH numeric>Score</TH>

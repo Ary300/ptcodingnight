@@ -34,6 +34,7 @@ services:
       - "80:80"
       - "443:443"
     environment:
+      TZ: America/Indiana/Indianapolis
       # Read by the Caddyfile's `email` directive. Caddy substitutes it at PARSE time, so this
       # must reach the container as an environment variable rather than only living in .env.
       ACME_EMAIL: ${ACME_EMAIL:-}
@@ -65,6 +66,7 @@ services:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
+      TZ: America/Indiana/Indianapolis
       POSTGRES_USER: ptcn
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
       POSTGRES_DB: ptcn
