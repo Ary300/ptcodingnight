@@ -76,7 +76,9 @@ const MESSAGES: Readonly<Record<SignInErrorCode, (provider: string) => string>> 
   provider_unknown: () =>
     "That is not a sign-in provider this server offers. Use an available option, or ask an " +
     "organizer to sign you in.",
-  cancelled: (p) => `You cancelled the ${p} sign-in before it finished. Press the button to try again.`,
+  // Provider-initial on purpose: with `?provider=` absent the label degrades to "That provider",
+  // and the old mid-sentence phrasing rendered "You cancelled the That provider sign-in".
+  cancelled: (p) => `${p} sign-in was cancelled before it finished. Press the button to try again.`,
   start_failed: (p) =>
     `${p} sign-in could not be started. That is our configuration, not your account. An ` +
     `organizer can sign you in instead.`,

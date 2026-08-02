@@ -332,7 +332,7 @@ test.describe("OAuth callback", () => {
       const page = await context.get(location);
       const html = await page.text();
       expect(page.status()).toBe(200);
-      expect(html).toContain("You cancelled the Google sign-in");
+      expect(html).toContain("Google sign-in was cancelled before it finished");
       expect(html).toContain('role="alert"');
     }
   });

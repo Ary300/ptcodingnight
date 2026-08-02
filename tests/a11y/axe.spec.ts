@@ -52,7 +52,7 @@ test.describe("axe-core: zero critical or serious", () => {
     // By text, not by role: Next.js renders its own `role="alert"` route announcer on every
     // page, so `getByRole("alert")` is two elements here and neither strict mode nor a reader
     // of this test can tell which one was meant.
-    await expect(page.getByText("You cancelled the Google sign-in")).toBeVisible();
+    await expect(page.getByText("Google sign-in was cancelled before it finished")).toBeVisible();
     await auditPage(page, "/sign-in (provider error)");
   });
 
