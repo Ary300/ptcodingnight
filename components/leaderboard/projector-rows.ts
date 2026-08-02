@@ -29,6 +29,57 @@ export interface DrawnRows {
 }
 
 /**
+ * Member rows per team row of height. 93px/31px at 1920×1080; 1280×720 measures 65px/20.2px,
+ * which is slightly roomier, so 3 is the conservative bound on both canvases.
+ */
+export const MEMBER_ROWS_PER_TEAM_ROW = 3;
+
+/** The measured full-size block: `TEAM_EXPANDED_ROW_COST` team rows' worth of member rows. */
+export const MEMBER_ROWS_FULL_BLOCK = 6;
+
+/** The remainder row plus the pool row — the smallest block that still reconciles. */
+export const MEMBER_ROWS_MIN_BLOCK = 2;
+
+/**
+ * How many rows one open team's breakdown may occupy — members, remainder and pool together —
+ * given how many breakdowns are open at once.
+ *
+ * ## Why the block SHRINKS instead of the board scrolling
+ *
+ * The wall's whole budget is `maxRows` team rows, and a member row measures a third of a team row
+ * (93px vs 31px at 1920×1080, 65px vs 20.2px at 1280×720 — the 1920 ratio of exactly 3 is the
+ * binding one). One open team therefore fits a 6-row block by giving up two team rows
+ * (`TEAM_EXPANDED_ROW_COST`), and two open teams still balance: 3 team rows + 12 member rows = 7.
+ *
+ * Three do not. 3 team rows + 3 six-row blocks is 9 team rows of height on a 7-row wall, and the
+ * board's only escape used to be vertical scroll — measured 894px of table against a 794px canvas
+ * at 1920×1080, on a screen nobody can scroll. So beyond the break-even point the BLOCKS pay
+ * instead of the wall: the leftover height under the drawn team rows is split evenly between the
+ * open teams, and `TeamRosterStrip`'s remainder row keeps every shorter block reconciling with the
+ * team row above it.
+ *
+ * The floor is 2, because that is the smallest complete block — the "N more players" row and the
+ * pool row — below which the breakdown stops adding up. When even 2-row blocks cannot fit (five or
+ * more open teams on this geometry), the board scrolls rather than clipping open content; that
+ * case is unreachable by clicking on a 9-team field, because the drawn set converges to the open
+ * set at three.
+ *
+ * @param maxRows        the wall's measured team-row budget (`TEAM_VISIBLE_ROWS`)
+ * @param drawnTeamCount how many team rows are actually drawn (from `drawnTeamRows`)
+ * @param openCount      how many breakdowns are open
+ */
+export function memberBlockBudget(
+  maxRows: number,
+  drawnTeamCount: number,
+  openCount: number,
+): number {
+  if (openCount <= 0) return MEMBER_ROWS_FULL_BLOCK;
+  const spareMemberRows = Math.max(0, maxRows - drawnTeamCount) * MEMBER_ROWS_PER_TEAM_ROW;
+  const perTeam = Math.floor(spareMemberRows / openCount);
+  return Math.min(MEMBER_ROWS_FULL_BLOCK, Math.max(MEMBER_ROWS_MIN_BLOCK, perTeam));
+}
+
+/**
  * @param total       how many teams the payload ranks
  * @param cap         how many team rows fit right now, every open roster already deducted
  * @param openIndices indices of all open teams

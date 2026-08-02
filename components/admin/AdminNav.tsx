@@ -62,9 +62,12 @@ export function AdminNav() {
                 href={link.href}
                 aria-current={active ? "page" : undefined}
                 className={
+                  // py-1.5, like the marketing header's links: at 360 the bare text box measured
+                  // 23px tall, under the 24px target floor (WCAG 2.5.8), and a thumb on a phone
+                  // is how this bar gets used on the night.
                   active
-                    ? "inline-block border-b-2 border-panther pb-0.5 font-semibold text-paper"
-                    : "inline-block border-b-2 border-transparent pb-0.5 text-paper/75 hover:text-paper"
+                    ? "inline-block border-b-2 border-panther py-1.5 font-semibold text-paper"
+                    : "inline-block border-b-2 border-transparent py-1.5 text-paper/75 hover:text-paper"
                 }
                 style={{ fontSize: "var(--text-xs)" }}
               >

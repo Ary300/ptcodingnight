@@ -24,7 +24,14 @@ import type { Language } from "@/lib/schemas/judge";
  * is precisely what the compiler is about to say.
  */
 
-export type TokenKind = "plain" | "keyword" | "string" | "number" | "comment" | "punctuation";
+export type TokenKind =
+  | "plain"
+  | "keyword"
+  | "type"
+  | "string"
+  | "number"
+  | "comment"
+  | "punctuation";
 
 export interface Token {
   readonly kind: TokenKind;
@@ -38,6 +45,16 @@ interface Grammar {
   /** Longest first, so `"""` is tried before `"`. */
   readonly stringDelimiters: readonly string[];
   readonly keywords: ReadonlySet<string>;
+  /**
+   * Library types and everyday builtins — `size_t`, `vector`, `String`, `fmt`, `len`.
+   *
+   * A separate kind from keywords because keyword-sparse languages read near-monochrome
+   * without it: a C or Go solution is mostly types and library calls, and colouring only
+   * `for`/`return` left `NULL`, `malloc` and `printf` indistinguishable from the student's
+   * own identifiers. Rendered by WEIGHT rather than a new hue (DESIGN.md §3), so the check
+   * is "does the word stand up", not "is it the right colour".
+   */
+  readonly types: ReadonlySet<string>;
 }
 
 /**
@@ -65,6 +82,10 @@ const PYTHON: Grammar = {
     "lambda", "None", "nonlocal", "not", "or", "pass", "raise", "return", "True", "try", "while",
     "with", "yield",
   ]),
+  types: new Set([
+    "abs", "bool", "dict", "enumerate", "float", "input", "int", "len", "list", "map", "max",
+    "min", "open", "print", "range", "set", "sorted", "str", "sum", "tuple", "zip",
+  ]),
 };
 
 const C_FAMILY: Grammar = {
@@ -72,6 +93,16 @@ const C_FAMILY: Grammar = {
   blockComments: [["/*", "*/"]],
   stringDelimiters: ['"', "'"],
   keywords: new Set([...C_LIKE_SHARED, "auto", "bool", "false", "inline", "nullptr", "true"]),
+  // One list serves C and C++, like the keyword set above it: the C-only rows (`malloc`,
+  // `printf`) are legal identifiers in C++ nobody shadows, and vice versa.
+  types: new Set([
+    "NULL", "EOF", "FILE", "std", "size_t", "ssize_t", "wchar_t",
+    "int8_t", "int16_t", "int32_t", "int64_t", "uint8_t", "uint16_t", "uint32_t", "uint64_t",
+    "string", "vector", "pair", "map", "set", "queue", "deque", "stack", "priority_queue",
+    "unordered_map", "unordered_set", "array", "tuple",
+    "cin", "cout", "cerr", "endl", "printf", "scanf", "malloc", "calloc", "free",
+    "memset", "memcpy", "strlen", "strcmp", "sort", "swap", "min", "max", "abs",
+  ]),
 };
 
 const JAVA: Grammar = {
@@ -79,6 +110,11 @@ const JAVA: Grammar = {
   blockComments: [["/*", "*/"]],
   stringDelimiters: ['"', "'"],
   keywords: new Set([...C_LIKE_SHARED, "abstract", "boolean", "false", "instanceof", "null", "true"]),
+  types: new Set([
+    "String", "Integer", "Long", "Double", "Boolean", "Character", "Object", "Math", "System",
+    "Scanner", "BufferedReader", "InputStreamReader", "StringBuilder", "List", "ArrayList",
+    "Map", "HashMap", "Set", "HashSet", "Arrays", "Collections", "Comparator", "Exception",
+  ]),
 };
 
 const JAVASCRIPT: Grammar = {
@@ -92,6 +128,10 @@ const JAVASCRIPT: Grammar = {
     "import", "in", "instanceof", "let", "new", "null", "of", "return", "static", "switch", "this",
     "throw", "true", "try", "typeof", "undefined", "var", "void", "while", "yield",
   ]),
+  types: new Set([
+    "Array", "Object", "String", "Number", "Boolean", "Math", "JSON", "Map", "Set", "Promise",
+    "Symbol", "BigInt", "console", "parseInt", "parseFloat", "require", "process",
+  ]),
 };
 
 const GO: Grammar = {
@@ -102,6 +142,12 @@ const GO: Grammar = {
     "break", "case", "chan", "const", "continue", "default", "defer", "else", "fallthrough",
     "false", "for", "func", "go", "goto", "if", "import", "interface", "map", "nil", "package",
     "range", "return", "select", "struct", "switch", "true", "type", "var",
+  ]),
+  types: new Set([
+    "bool", "byte", "error", "float32", "float64", "int", "int8", "int16", "int32", "int64",
+    "rune", "string", "uint", "uint8", "uint16", "uint32", "uint64",
+    "append", "cap", "copy", "delete", "len", "make", "new", "panic", "recover",
+    "fmt", "bufio", "os", "strconv", "strings", "sort", "math",
   ]),
 };
 
@@ -224,7 +270,12 @@ export function tokenize(source: string, language: Language): readonly Token[] {
       let end = index;
       while (end < source.length && isIdentifierPart(source[end] ?? "")) end += 1;
       const word = source.slice(index, end);
-      push(grammar.keywords.has(word) ? "keyword" : "plain", word);
+      // Keywords win over types where a word is in both sets (Go's `map` is a keyword; the
+      // C family's `int` is a declaration), so growing a types list can never demote one.
+      push(
+        grammar.keywords.has(word) ? "keyword" : grammar.types.has(word) ? "type" : "plain",
+        word,
+      );
       index = end;
       continue;
     }

@@ -48,38 +48,52 @@ export function FilterRail({ groups, selected, onChange, footer }: FilterRailPro
       className="flex h-fit flex-col gap-5 rounded border border-ink/15 bg-paper p-4"
     >
       {groups.map((group, index) => (
-        <fieldset
-          key={group.id}
-          className={index === 0 ? "" : "border-t border-ink/12 pt-5"}
-        >
-          <legend
-            className="mb-2 text-ink/60 uppercase"
-            style={{ fontSize: "var(--text-xs)", letterSpacing: "0.08em" }}
-          >
-            {group.label}
-          </legend>
+        /*
+          The group divider lives on a plain wrapper, never on the fieldset. A <legend> punches a
+          hole through its fieldset's own border box (that is what legends are for on a framed
+          fieldset), so `border-t` on the fieldset painted only the stub to the RIGHT of the
+          label — measured 62.5px of a 160px rail, vertically centred on the word instead of
+          above it. The wrapper draws the full-width rule the reference shows; the fieldset stays
+          inside for the group semantics it was there for.
+        */
+        <div key={group.id} className={index === 0 ? "" : "border-t border-ink/12 pt-5"}>
+          <fieldset>
+            {/*
+              One mb on the legend is the whole spacing story. When the fieldset carried the
+              border, the legend sat ON the border line and the fieldset's pt-5 stacked under it,
+              so the two groups showed different label-to-first-option gaps (measured 8px vs
+              28px). The reference runs ~28px on both; mb-7 is that number, applied once.
+            */}
+            <legend
+              className="mb-7 text-ink/60 uppercase"
+              style={{ fontSize: "var(--text-xs)", letterSpacing: "0.08em" }}
+            >
+              {group.label}
+            </legend>
 
-          <div className="flex flex-col gap-1.5">
-            {group.options.map((option) => {
-              const checked = (selected[group.id] ?? []).includes(option.value);
-              return (
-                <label
-                  key={option.value}
-                  className="flex cursor-pointer items-center gap-2"
-                  style={{ fontSize: "var(--text-sm)" }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={checked}
-                    onChange={(event) => onChange(group.id, option.value, event.target.checked)}
-                    className="h-4 w-4 shrink-0 accent-panther"
-                  />
-                  {option.label}
-                </label>
-              );
-            })}
-          </div>
-        </fieldset>
+            {/* 20px boxes on a 34px pitch, the reference's density; 16px on 30px read cramped. */}
+            <div className="flex flex-col gap-2.5">
+              {group.options.map((option) => {
+                const checked = (selected[group.id] ?? []).includes(option.value);
+                return (
+                  <label
+                    key={option.value}
+                    className="flex cursor-pointer items-center gap-2"
+                    style={{ fontSize: "var(--text-sm)" }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={(event) => onChange(group.id, option.value, event.target.checked)}
+                      className="h-5 w-5 shrink-0 accent-panther"
+                    />
+                    {option.label}
+                  </label>
+                );
+              })}
+            </div>
+          </fieldset>
+        </div>
       ))}
 
       {footer !== undefined && (

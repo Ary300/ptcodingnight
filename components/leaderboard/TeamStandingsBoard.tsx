@@ -115,6 +115,12 @@ export interface TeamStandingsBoardProps {
   openTeamIds?: ReadonlySet<string>;
   /** Projector only. Absent means the board is not expandable at all. */
   onToggleTeam?: (teamId: string) => void;
+  /**
+   * Projector only: rows each open roster strip may occupy, decided by the same screen that owns
+   * `openTeamIds` — the strips share one measured height, so each one's share depends on how many
+   * are open (`memberBlockBudget` in `projector-rows.ts`). Undefined means the full block.
+   */
+  memberBlockRows?: number;
 }
 
 function formatScore(score: number): string {
@@ -270,6 +276,7 @@ export function TeamStandingsBoard({
   highlightTeamId = null,
   openTeamIds = new Set(),
   onToggleTeam,
+  memberBlockRows,
 }: TeamStandingsBoardProps) {
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
   const [expandedPlayers, setExpandedPlayers] = useState<ReadonlySet<string>>(
@@ -739,6 +746,7 @@ export function TeamStandingsBoard({
                       columns={columns}
                       mine={mine}
                       groupPointsInsideMean={groupPointsInsideMean}
+                      blockRows={memberBlockRows}
                     />
                   ) : (
                     <>

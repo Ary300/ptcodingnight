@@ -84,6 +84,11 @@ export const TEAM_VISIBLE_ROWS = 7;
  * nine, at the cost of drawing three teams on the wall instead of five. That is a trade about what
  * the room should see, so it belongs to the organizer rather than to this file.
  *
+ * **This cost balances for at most two open breakdowns on a seven-row wall.** Beyond that the
+ * two-row price and the six-row block cannot both hold — three open teams at full size measure
+ * 894px of table on a 794px canvas — so `memberBlockBudget` (`projector-rows.ts`) shrinks every
+ * open block to an equal share of the leftover height instead of letting the wall scroll.
+ *
  * The footnote states the real drawn count and the real total, so the cost is never silent.
  */
 export const TEAM_EXPANDED_ROW_COST = 2;

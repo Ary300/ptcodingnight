@@ -14,9 +14,10 @@ export const metadata: Metadata = {
 /**
  * Sign-in for everyone, on the same split-screen as `/join`.
  *
- * This used to be organizer-only, with students entering through a join code. Students now sign
- * up with Google or GitHub — the first sign-in creates their account — and an organizer places
- * them on a team afterwards. The join code survives as break-glass, not as the front door.
+ * This used to be organizer-only, with students entering through a join code. The join code is
+ * gone: students sign up with Google or GitHub — the first sign-in creates their account — and an
+ * organizer places them on a team afterwards. The break-glass path is the organizer passcode at
+ * the bottom of the form, which works when OAuth does not.
  *
  * Outside the `(competitor)` route group on purpose: that group's chrome carries the competitor
  * nav and a contest countdown, neither of which belongs on the page an organizer reaches before
@@ -59,8 +60,8 @@ export default async function SignInPage({
         </p>
         <p className="mt-3 text-paper/75" style={{ fontSize: "var(--text-sm)" }}>
           {studentSignInAvailable
-            ? "Use an available account to compete. Organizers sign in here too."
-            : "Organizer sign-in is available. Student provider sign-in is not configured on this server."}
+            ? "Sign in to find your team and your problems for the night."
+            : "Student sign-in is not set up on this server. Organizers can sign in below."}
         </p>
       </BrandPanel>
 

@@ -332,7 +332,7 @@ export default async function Home() {
 
             {!signedIn && (
               <p className="mt-4 text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
-                Sign in with Google or GitHub. New accounts are created automatically.
+                First time here? Signing in with Google or GitHub creates your account.
               </p>
             )}
           </div>

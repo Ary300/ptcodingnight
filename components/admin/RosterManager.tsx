@@ -698,7 +698,7 @@ export function RosterManager({ contestId }: RosterManagerProps) {
               <option value="">(remove from their team)</option>
               {roster.teams.map((team: RosterTeam) => (
                 <option key={team.teamId} value={team.teamId}>
-                  {team.name} ({team.memberCount} members)
+                  {team.name} ({team.memberCount} {team.memberCount === 1 ? "member" : "members"})
                 </option>
               ))}
             </Select>

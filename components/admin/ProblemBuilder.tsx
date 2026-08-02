@@ -15,11 +15,14 @@ import {
 import { Select, TextArea, TextInput } from "@/components/admin/Field";
 import { Markdown } from "@/components/contest/markdown/Markdown";
 import { Button } from "@/components/ui";
+import { LANGUAGE_IDS, VARIANTS, type LanguageId } from "@/lib/judge/runtimes";
+import { starterFor } from "@/lib/judge/starters";
 import {
   API_ROUTES,
   CreateProblemResponseSchema,
   type CreateProblemRequest,
 } from "@/lib/schemas/api";
+import { SignatureSchema, type Signature } from "@/lib/schemas/seed";
 
 /**
  * Write a coding question, the Park Tudor way: HackerRank's wizard with the two steps we do not
@@ -79,6 +82,17 @@ interface DraftCase {
 }
 
 type StepKey = "details" | "starter" | "tests";
+
+/**
+ * What the student preview can say about starter code. Four honest states, because the preview
+ * must never render a stub the save would not produce: `locked` is a stored harness this flat
+ * form cannot express, and `invalid` is a signature the schema (or an emitter) would refuse.
+ */
+type PreviewStarter =
+  | { readonly kind: "off" }
+  | { readonly kind: "locked" }
+  | { readonly kind: "invalid" }
+  | { readonly kind: "ready"; readonly signature: Signature };
 
 const STEPS: readonly { key: StepKey; title: string; blurb: string }[] = [
   {
@@ -185,6 +199,49 @@ export function ProblemBuilder({ edit }: ProblemBuilderProps = {}) {
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The receipt for "Create and add another": the title just saved, shown in the footer of the
+  // freshly reset form so the organizer knows the save landed before typing the next question.
+  const [created, setCreated] = useState<string | null>(null);
+
+  /**
+   * The signature as the student preview will generate stubs from it, validated by the SAME
+   * schema the server uses. The array-count wiring here mirrors `buildSignature` in
+   * `lib/contest/problem-author.ts` line for line — that module is server-only (it imports
+   * node:fs), so the wiring is restated rather than imported; if you change one, change both.
+   */
+  const previewStarter = useMemo<PreviewStarter>(() => {
+    if (signatureLocked) return { kind: "locked" };
+    if (!wantStarter) return { kind: "off" };
+
+    const fields: {
+      name: string;
+      type: SignatureType;
+      length?: string;
+      passed?: boolean;
+    }[] = [];
+    for (const param of params) {
+      const name = param.name.trim();
+      if (name === "") continue;
+      if (param.type.endsWith("[]")) {
+        const countName = `${name}Count`;
+        fields.push({ name: countName, type: "int", passed: false });
+        fields.push({ name, type: param.type, length: countName });
+      } else {
+        fields.push({ name, type: param.type });
+      }
+    }
+    const candidate = {
+      name: fnName.trim(),
+      returns: returns.endsWith("[]")
+        ? { type: returns, join: " " }
+        : { type: returns },
+      params: fields,
+    };
+    const parsed = SignatureSchema.safeParse(candidate);
+    return parsed.success
+      ? { kind: "ready", signature: parsed.data }
+      : { kind: "invalid" };
+  }, [signatureLocked, wantStarter, fnName, returns, params]);
 
   const sampleCount = useMemo(
     () => cases.filter((c) => c.isSample).length,
@@ -200,9 +257,15 @@ export function ProblemBuilder({ edit }: ProblemBuilderProps = {}) {
     signatureLocked || !wantStarter || fnName.trim() !== "";
   const stepIndex = STEPS.findIndex((entry) => entry.key === step);
 
-  const save = useCallback(async () => {
+  /**
+   * `andAnother` is HackerRank's "Save & Create Another": the same POST, but on success the form
+   * resets to blank for the next question instead of navigating to the bank. Create-mode only —
+   * an edit has exactly one question to land on.
+   */
+  const save = useCallback(async (andAnother: boolean) => {
     setSubmitting(true);
     setError(null);
+    setCreated(null);
     try {
       const common = {
         title: title.trim(),
@@ -259,6 +322,26 @@ export function ProblemBuilder({ edit }: ProblemBuilderProps = {}) {
       const parsed = CreateProblemResponseSchema.safeParse(data);
       if (!parsed.success) {
         setError("The server returned an unexpected response.");
+        return;
+      }
+      if (edit === undefined && andAnother) {
+        // Saved; now hand back a blank form. Every field returns to its create-mode default,
+        // and the footer names what was just created so the save is visibly not lost.
+        setCreated(title.trim());
+        setTitle("");
+        setStatementMd("");
+        setInputSpec("");
+        setOutputSpec("");
+        setConstraints("");
+        setDifficulty("E");
+        setWantStarter(false);
+        setFnName("solve");
+        setReturns("int");
+        setParams([{ id: makeId(), name: "n", type: "int" }]);
+        setCases([{ id: makeId(), input: "", expectedOutput: "", isSample: true }]);
+        setStep("details");
+        window.scrollTo({ top: 0 });
+        router.refresh();
         return;
       }
       // A create lands on the bank, where the new question is now listed and cleared for a
@@ -374,16 +457,17 @@ export function ProblemBuilder({ edit }: ProblemBuilderProps = {}) {
                 : "Add the sample and hidden cases that the judge will run."
           }
           action={
-            step === "details" ? (
-              <PreviewButton
-                title={title}
-                statementMd={statementMd}
-                inputSpec={inputSpec}
-                outputSpec={outputSpec}
-                constraints={constraints}
-                cases={cases}
-              />
-            ) : undefined
+            // On every step, not only Details: the preview is most useful from the Starter and
+            // Tests steps, where the stub and the samples it renders are being written.
+            <PreviewButton
+              title={title}
+              statementMd={statementMd}
+              inputSpec={inputSpec}
+              outputSpec={outputSpec}
+              constraints={constraints}
+              cases={cases}
+              starter={previewStarter}
+            />
           }
         />
 
@@ -437,6 +521,15 @@ export function ProblemBuilder({ edit }: ProblemBuilderProps = {}) {
             >
               {error}
             </p>
+          ) : created !== null ? (
+            <p
+              role="status"
+              className="font-semibold"
+              style={{ fontSize: "var(--text-sm)" }}
+            >
+              Created &ldquo;{created}&rdquo;. The form is reset for the next
+              question.
+            </p>
           ) : (
             <p className="text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
               {!detailsComplete
@@ -485,24 +578,43 @@ export function ProblemBuilder({ edit }: ProblemBuilderProps = {}) {
                 Next: {STEPS[stepIndex + 1]?.title}
               </Button>
             ) : (
-              <Button
-                type="button"
-                disabled={
-                  submitting ||
-                  !detailsComplete ||
-                  !starterComplete ||
-                  !testsComplete
-                }
-                onClick={() => void save()}
-              >
-                {edit === undefined
-                  ? submitting
-                    ? "Creating..."
-                    : "Create question"
-                  : submitting
-                    ? "Saving..."
-                    : "Save changes"}
-              </Button>
+              <>
+                {/* HackerRank's "Save & Create Another", for the night an organizer types in a
+                    whole round: the same save, then a blank form instead of the bank. */}
+                {edit === undefined && (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    disabled={
+                      submitting ||
+                      !detailsComplete ||
+                      !starterComplete ||
+                      !testsComplete
+                    }
+                    onClick={() => void save(true)}
+                  >
+                    Create and add another
+                  </Button>
+                )}
+                <Button
+                  type="button"
+                  disabled={
+                    submitting ||
+                    !detailsComplete ||
+                    !starterComplete ||
+                    !testsComplete
+                  }
+                  onClick={() => void save(false)}
+                >
+                  {edit === undefined
+                    ? submitting
+                      ? "Creating..."
+                      : "Create question"
+                    : submitting
+                      ? "Saving..."
+                      : "Save changes"}
+                </Button>
+              </>
             )}
           </div>
         </div>
@@ -986,6 +1098,10 @@ function TestsStep({
                 label="Expected output (stdout)"
                 mono
                 required
+                // HackerRank lets a case omit its output, and then "candidates see only their
+                // own output". Our judge compares byte for byte, so the output is required; the
+                // hint says WHY rather than leaving "required" to read as arbitrary.
+                hint="The judge compares the program's output to this text byte for byte, so every case needs one. Samples show students the full diff; hidden cases reveal pass or fail only."
                 value={testCase.expectedOutput}
                 rows={6}
                 placeholder="Exact expected output"
@@ -1109,6 +1225,7 @@ interface PreviewProps {
   outputSpec: string;
   constraints: string;
   cases: readonly DraftCase[];
+  starter: PreviewStarter;
 }
 
 function PreviewButton(props: PreviewProps) {
@@ -1124,13 +1241,15 @@ function PreviewButton(props: PreviewProps) {
 
   return (
     <>
+      {/* HackerRank's "See candidate preview"; ours says student because that is who sits the
+          contest, and it is the word every other sentence on this surface already uses. */}
       <Button
         type="button"
         variant="secondary"
         size="sm"
         onClick={() => setOpen(true)}
       >
-        Preview question
+        See student preview
       </Button>
       <dialog
         ref={dialogRef}
@@ -1145,7 +1264,7 @@ function PreviewButton(props: PreviewProps) {
               className="text-paper/70 uppercase"
               style={{ fontSize: "var(--text-xs)", letterSpacing: "0.1em" }}
             >
-              Competitor view
+              Student view
             </p>
             <h2
               id="question-preview-title"
@@ -1180,6 +1299,7 @@ function ProblemPreview({
   outputSpec,
   constraints,
   cases,
+  starter,
 }: PreviewProps) {
   const samples = cases.filter((testCase) => testCase.isSample);
 
@@ -1242,7 +1362,108 @@ function ProblemPreview({
           </div>
         )}
       </section>
+
+      <StarterPreview starter={starter} />
     </article>
+  );
+}
+
+/**
+ * The starter code exactly as it will land in the student's editor, generated by the SAME
+ * emitters (`lib/judge/starters/`) the save will run. Before this existed the first time an
+ * organizer saw the generated stub was on the saved question's page, after the fact.
+ */
+function StarterPreview({ starter }: { starter: PreviewStarter }) {
+  const [language, setLanguage] = useState<LanguageId>("PYTHON_312");
+
+  const code = useMemo(() => {
+    if (starter.kind !== "ready") return null;
+    try {
+      return starterFor(starter.signature, language);
+    } catch {
+      // An emitter refusing a schema-valid signature is the server's save-time check firing
+      // early; the preview says "not valid yet" rather than rendering a stub the save would not.
+      return null;
+    }
+  }, [starter, language]);
+
+  return (
+    <section className="mt-section">
+      <h4
+        className="font-display font-bold"
+        style={{ fontSize: "var(--text-lg)" }}
+      >
+        Starter code
+      </h4>
+      {starter.kind === "off" ? (
+        <p
+          className="mt-tight text-ink/50"
+          style={{ fontSize: "var(--text-sm)" }}
+        >
+          Starter code is off. Students begin with an empty editor and read
+          stdin themselves.
+        </p>
+      ) : starter.kind === "locked" ? (
+        <p
+          className="mt-tight text-ink/50"
+          style={{ fontSize: "var(--text-sm)" }}
+        >
+          This question keeps its stored starter code. Open the question page
+          to see it; the builder cannot edit its advanced harness.
+        </p>
+      ) : starter.kind === "invalid" || code === null ? (
+        <p
+          className="mt-tight text-ink/50"
+          style={{ fontSize: "var(--text-sm)" }}
+        >
+          The starter code signature is not valid yet. Name the function and
+          every parameter on the Starter code step to preview the generated
+          file.
+        </p>
+      ) : (
+        <div className="mt-group flex flex-col gap-group">
+          {/*
+            A pressed-button row, not `components/ui/Select`: that Select portals its listbox to
+            `<body>`, and this preview is a `<dialog>` in the top layer, which paints over and
+            blocks clicks to everything portalled beneath it. Ten labels also compare better in
+            a row than behind a dropdown when the question is "does each language's stub read
+            right".
+          */}
+          <fieldset>
+            <legend
+              className="mb-1 font-semibold"
+              style={{ fontSize: "var(--text-sm)" }}
+            >
+              Language
+            </legend>
+            <div className="flex flex-wrap gap-2">
+              {LANGUAGE_IDS.map((id) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setLanguage(id)}
+                  aria-pressed={language === id}
+                  className={`rounded border px-3 py-1.5 font-semibold ${
+                    language === id
+                      ? "border-panther bg-panther text-paper"
+                      : "border-rule-edge text-ink/75 hover:border-rule-firm"
+                  }`}
+                  style={{ fontSize: "var(--text-xs)" }}
+                >
+                  {VARIANTS[id].label}
+                </button>
+              ))}
+            </div>
+          </fieldset>
+          <pre
+            className="numeric overflow-x-auto rounded-panel border border-rule-edge bg-ink/[0.035] p-4"
+            style={{ fontSize: "var(--text-xs)", lineHeight: "1.6" }}
+          >
+            {code}
+          </pre>
+        </div>
+      )}
+    </section>
   );
 }
 

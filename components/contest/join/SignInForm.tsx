@@ -279,8 +279,8 @@ export function SignInForm({
           </div>
 
           <p className="mt-3 text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
-            Students do not need a code. Use an available account above. Signing in creates your
-            account the first time, and an organizer puts you on a team.
+            Students do not need a code. Your first sign-in creates your account, and an organizer
+            puts you on a team.
           </p>
         </>
       ) : (

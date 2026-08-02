@@ -7,7 +7,7 @@ import { Countdown } from "./Countdown";
 import { CrestWatermark } from "./CrestWatermark";
 import { FrozenPlate } from "./FrozenPlate";
 import styles from "./leaderboard.module.css";
-import { drawnTeamRows } from "./projector-rows";
+import { drawnTeamRows, memberBlockBudget } from "./projector-rows";
 import { TeamStandingsBoard } from "./TeamStandingsBoard";
 import { useTeamStandings } from "./useTeamStandings";
 
@@ -140,14 +140,23 @@ export function TeamProjectorScreen({
 
   /*
    * Every roster costs two collapsed team rows. The minimum preserves the stronger promise that
-   * an open control always has its content on screen. If enough rosters are opened to exceed the
-   * measured wall budget, the board scrolls vertically instead of clipping open content.
+   * an open control always has its content on screen.
    */
   const cap = Math.max(
     openIndices.length,
     maxRows - openIndices.length * TEAM_EXPANDED_ROW_COST,
   );
   const { indices, jumped } = drawnTeamRows(teams.length, cap, openIndices);
+
+  /*
+   * Past the point where two-row costs balance (three open on a seven-row wall), the strips
+   * themselves shrink to share the leftover height, so the wall still does not scroll — measured
+   * 894px of table against a 794px canvas at 1920×1080 before this arithmetic existed. The
+   * remainder row inside each strip keeps a shorter block reconciling with its team row.
+   * Vertical scroll survives only as the last resort for states this cannot satisfy (five or
+   * more open blocks at their two-row floor), which clicking cannot reach on this geometry.
+   */
+  const blockRows = memberBlockBudget(maxRows, indices.length, openIndices.length);
   const visible = indices.flatMap((at) => {
     const team = teams[at];
     return team === undefined ? [] : [team];
@@ -257,6 +266,7 @@ export function TeamProjectorScreen({
               groupPointsInsideMean={standings?.groupPointsInsideMean ?? true}
               sideActivitiesFlat={standings?.sideActivitiesFlat ?? true}
               variant="projector"
+              memberBlockRows={blockRows}
               openTeamIds={validOpenTeamIds}
               onToggleTeam={(teamId) => {
                 setOpenTeamIds((current) => {

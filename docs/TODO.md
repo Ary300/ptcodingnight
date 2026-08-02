@@ -17,7 +17,7 @@ and a couple are reachable but wrong on this hardware.
 | T1 | Hints — specified and priced, deliberately unimplemented pending organizer-written content | deferred by decision |
 | T2 | Java time limits — **RESOLVED** by measuring the real host: 38,473 ms → 229 ms, budget 45,000 → 4,000 | resolved |
 | T3 | Verdict latency straddles the G8 threshold — 7.4 s to 22.8 s on the same commit | **high**, hardware |
-| T14 | ~~G7 listbox failure~~ **fixed** (panel repositions on scroll instead of closing); screenshot findings being worked | in progress |
+| T14 | ~~G7 listbox failure~~ **fixed**; ~~screenshot findings unimplemented~~ **worked**: 46 verified items implemented across five surfaces, each with a before/after measurement, spot-checked by an independent verifier | resolved |
 | T4 | ~~A submission can fill the judge host's disk~~ **fixed** | resolved |
 | T5 | ~~Re-joining re-rolls the problem set, leaking other sets~~ **fixed**; one residual stated | low |
 | T6 | Monaco is specified but not installed | medium |
@@ -546,7 +546,15 @@ not simply broken. The competitor problem page is the case that has not been rep
 **Until this is understood, treat the language picker as unverified end to end.** It is the control
 a student touches on every submission.
 
-### T14b — The per-screenshot fine-detail findings were audited, never implemented
+### T14b — The per-screenshot fine-detail findings were audited, never implemented **— RESOLVED**
+
+The 435 raw findings were deduplicated and re-verified against the then-current tree down to 46
+items that still reproduced (the rest had been fixed by later waves, contradicted the measured
+contrast facts, or required product decisions first). All 46 were implemented across five surface
+agents, each change reported as a before/after measurement, and an independent verifier
+spot-checked eleven of them with getComputedStyle: every value matched.
+
+#### The original record, for history:
 
 Roughly thirty agents each took one reference screenshot from
 `Hackerrank:CF images for Frontend/`, opened the corresponding screen of ours at 1440 and 360, and

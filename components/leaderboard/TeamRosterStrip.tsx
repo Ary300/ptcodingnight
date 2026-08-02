@@ -3,6 +3,7 @@
 import type { TeamStandingRow } from "@/lib/schemas/api";
 
 import styles from "./leaderboard.module.css";
+import { MEMBER_ROWS_FULL_BLOCK } from "./projector-rows";
 
 /**
  * Who added what, for ONE team, on the wall: THE SAME SHEET IN MINIATURE.
@@ -94,6 +95,15 @@ export interface TeamRosterStripProps {
   groupPointsInsideMean: boolean;
   /** The viewer's own team, so the rail stays lit down the whole block rather than stopping. */
   mine: boolean;
+  /**
+   * How many rows this block may occupy, members, remainder and pool together.
+   *
+   * Owned by the screen that owns the wall budget, because it is a function of how many OTHER
+   * breakdowns are open: one open team gets the full measured block, three get four rows each,
+   * and the arithmetic that decides is `memberBlockBudget` in `projector-rows.ts`. Defaults to
+   * the full block for callers with no budget to keep (the interactive board scrolls the page).
+   */
+  blockRows?: number;
 }
 
 /**
@@ -122,21 +132,29 @@ export interface TeamRosterStripProps {
  * visible rule rather than an overflow: a team with more members than fit gets one summarising row
  * that prints the exact number of players it stands for and their exact points, per set, so every
  * column still reconciles with the team row above.
+ *
+ * The measurement now lives with the budget arithmetic it feeds (`projector-rows.ts`), because the
+ * block is no longer a constant size: several breakdowns open at once split the same measured
+ * height between them rather than pushing the wall into scroll.
  */
-export const MEMBER_BLOCK_ROWS = 6;
+export const MEMBER_BLOCK_ROWS = MEMBER_ROWS_FULL_BLOCK;
 
 /**
- * How many members get a row of their own, given how many there are.
+ * How many members get a row of their own, given how many there are and how many rows the block
+ * has been budgeted.
  *
  * Not a constant, because the remainder row only exists when it has something to say: a five-player
- * team fills the block exactly and never sees one, and reserving its row unconditionally would cost
- * that team a named player for nothing.
+ * team fills a full block exactly and never sees one, and reserving its row unconditionally would
+ * cost that team a named player for nothing.
  */
-export function drawnMemberCount(playerCount: number): number {
+export function drawnMemberCount(
+  playerCount: number,
+  blockRows: number = MEMBER_BLOCK_ROWS,
+): number {
   // Every member, plus the pool row.
-  if (playerCount <= MEMBER_BLOCK_ROWS - 1) return playerCount;
+  if (playerCount <= blockRows - 1) return playerCount;
   // Members, the remainder row, and the pool row.
-  return MEMBER_BLOCK_ROWS - 2;
+  return Math.max(0, blockRows - 2);
 }
 
 /** The rail (DESIGN.md §5) is reserved on every row so no row is a rail-width wider than another. */
@@ -154,10 +172,11 @@ export function TeamRosterStrip({
   columns,
   mine,
   groupPointsInsideMean,
+  blockRows = MEMBER_BLOCK_ROWS,
 }: TeamRosterStripProps) {
   const players = team.players;
 
-  const drawnCount = drawnMemberCount(players.length);
+  const drawnCount = drawnMemberCount(players.length, blockRows);
   const drawn = players.slice(0, drawnCount);
   const rest = players.slice(drawnCount);
   const restPoints = rest.reduce((sum, player) => sum + player.score, 0);

@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { drawnTeamRows } from "@/components/leaderboard/projector-rows";
+import {
+  MEMBER_ROWS_FULL_BLOCK,
+  MEMBER_ROWS_MIN_BLOCK,
+  MEMBER_ROWS_PER_TEAM_ROW,
+  drawnTeamRows,
+  memberBlockBudget,
+} from "@/components/leaderboard/projector-rows";
 
 /**
  * The projector's row budget.
@@ -99,5 +105,60 @@ describe("drawnTeamRows", () => {
       indices: [2, 6],
       jumped: true,
     });
+  });
+});
+
+describe("memberBlockBudget", () => {
+  /**
+   * The wall geometry these tests are written against: TEAM_VISIBLE_ROWS = 7 team rows, and a
+   * member row is a third of a team row. The failure guarded is the one this file exists for,
+   * one level down: three full-size blocks measure 894px of table on a 794px canvas, and the
+   * overflow does not announce itself — the board scrolls on a screen nobody can scroll.
+   */
+  const WALL = 7;
+
+  it("gives a lone open team the full measured block", () => {
+    // 1 open on a 9-team field: cap 5 drawn, (7-5)*3 = 6 spare member rows for one team.
+    expect(memberBlockBudget(WALL, 5, 1)).toBe(MEMBER_ROWS_FULL_BLOCK);
+  });
+
+  it("still affords full blocks at two open, which is where the two-row cost balances", () => {
+    // 2 open: cap 3 drawn, (7-3)*3 = 12 spare, 6 each.
+    expect(memberBlockBudget(WALL, 3, 2)).toBe(MEMBER_ROWS_FULL_BLOCK);
+  });
+
+  it("shrinks every block at three open instead of letting the wall scroll", () => {
+    // 3 open: only the open teams are drawn, (7-3)*3 = 12 spare, 4 each. Full blocks would be
+    // 18 member rows = 6 team rows of breakdown under 3 team rows of teams: 9 rows on a 7-row wall.
+    expect(memberBlockBudget(WALL, 3, 3)).toBe(4);
+  });
+
+  it("never shrinks a block below the remainder-plus-pool floor", () => {
+    // Pathological: more open teams than the leftover can hold at any size. The floor keeps the
+    // block a block; the screen's scroll fallback owns whatever the floor cannot absorb.
+    expect(memberBlockBudget(WALL, 6, 6)).toBe(MEMBER_ROWS_MIN_BLOCK);
+    expect(memberBlockBudget(WALL, 7, 4)).toBe(MEMBER_ROWS_MIN_BLOCK);
+  });
+
+  it("never exceeds the measured full block however much room is spare", () => {
+    expect(memberBlockBudget(WALL, 1, 1)).toBe(MEMBER_ROWS_FULL_BLOCK);
+    expect(memberBlockBudget(20, 1, 1)).toBe(MEMBER_ROWS_FULL_BLOCK);
+  });
+
+  it("answers the full block when nothing is open, so a stale caller cannot divide by zero", () => {
+    expect(memberBlockBudget(WALL, 7, 0)).toBe(MEMBER_ROWS_FULL_BLOCK);
+  });
+
+  it("keeps the whole drawn board within the wall budget wherever the floor is not binding", () => {
+    // The invariant the arithmetic exists for, sweep-checked in team-row units: drawn team rows
+    // plus every open block's share must fit inside the wall whenever blocks are above the floor.
+    for (let drawn = 1; drawn <= WALL; drawn += 1) {
+      for (let open = 1; open <= drawn; open += 1) {
+        const block = memberBlockBudget(WALL, drawn, open);
+        if (block === MEMBER_ROWS_MIN_BLOCK) continue; // the floor may legitimately overflow
+        const totalTeamRowUnits = drawn + (open * block) / MEMBER_ROWS_PER_TEAM_ROW;
+        expect(totalTeamRowUnits).toBeLessThanOrEqual(WALL);
+      }
+    }
   });
 });

@@ -108,6 +108,10 @@ const SHARED_TEXT = {
 const TOKEN_CLASS: Readonly<Record<TokenKind, string>> = {
   plain: "text-paper",
   keyword: "font-semibold text-gold",
+  // Weight only, no new hue: types and builtins must stand out from the student's own
+  // identifiers in keyword-sparse code (C, Go), and DESIGN.md §3 says distinctions carry in
+  // weight before they carry in colour. Paper at 600 next to paper at 400 does exactly that.
+  type: "font-semibold text-paper",
   string: "text-rise",
   number: "text-fall",
   comment: "text-paper/65 italic",

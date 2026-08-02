@@ -1,8 +1,8 @@
 # SCORING — how a team's score is computed
 
 Written to be checkable by the organizer without reading code. Every number below is reproduced
-exactly by `lib/scoring/` and pinned in `fixtures/expected-standings.json`; if this document and the
-code ever disagree, that is a bug in one of them and the fixture says which.
+exactly by `lib/scoring/` and pinned in `fixtures/expected-team-standings.json`; if this document
+and the code ever disagree, that is a bug in one of them and the fixture says which.
 
 **Confirmed by the organizer:** group problem points go **inside** the per-player mean, and side
 activity points are added **flat**. The alternate readings remain implemented as config flags so
@@ -63,7 +63,7 @@ under-credited by 31.25 points.
 
 This is not a rounding disagreement or a difference of interpretation. It is a spreadsheet formula
 that missed a cell, and it is the exact class of error this platform exists to eliminate. It is
-therefore pinned in `fixtures/expected-standings.json` as a **named wrong answer**, with a test
+therefore pinned in `fixtures/expected-team-standings.json` as a **named wrong answer**, with a test
 asserting the engine does **not** reproduce it. A regression that silently reintroduced the old
 behaviour would otherwise look like agreement with history.
 
@@ -101,7 +101,8 @@ is displayed as one — §5.
 
 ## 4. Config flags and their arithmetic
 
-All four are `Contest.config`. The defaults are the organizer-confirmed reading; the alternates
+All four are columns on `Contest` (`prisma/schema.prisma`, the scoring-config block). The defaults
+are the organizer-confirmed reading; the alternates
 exist so a future organizer can change the format without changing code, and each has its own
 golden-fixture variant so switching one is provably correct.
 
@@ -159,8 +160,9 @@ projector tells the room.
 
 ## 6. Fixture variants
 
-`fixtures/expected-standings.json` carries every result above as a named variant, so flipping a
-config flag is a provable change rather than a hoped-for one:
+`fixtures/expected-team-standings.json` carries every result above, each config reading as a named
+variant and the spreadsheet's wrong answer as a separately pinned value, so flipping a config flag
+is a provable change rather than a hoped-for one:
 
 | Variant | Config | Expected |
 |---|---|---|

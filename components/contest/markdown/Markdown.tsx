@@ -69,7 +69,12 @@ function renderBlock(block: Block, key: string): ReactNode {
         {
           key,
           className: "mt-8 mb-3 font-display font-bold text-ink first:mt-0",
-          style: { fontSize: block.level <= 3 ? "var(--text-lg)" : "var(--text-md)" },
+          // `--text-md`, not `--text-lg`: a statement's headings are section labels inside a
+          // document whose title already used the display sizes. The schema-driven sections
+          // (Input/Output/Constraints in ProblemWorkspace) set their h2s at `--text-md`, and an
+          // authored `## Input` must not outrank the same heading arriving through the other
+          // channel — 28px vs 20px for the same rank on one page was the measured drift.
+          style: { fontSize: block.level <= 3 ? "var(--text-md)" : "var(--text-sm)" },
         },
         renderInline(block.children, key),
       );
@@ -85,7 +90,12 @@ function renderBlock(block: Block, key: string): ReactNode {
       return (
         <pre
           key={key}
-          className="my-5 overflow-x-auto rounded bg-ink p-4 text-paper"
+          // A pale tint on the statement's own paper, not a `bg-ink` slab. The dark-editor
+          // rationale (gold/rise/fall are AAA only on ink) is about SYNTAX colour, and these
+          // blocks carry none — so full-width dark bands here were polarity for nothing, where
+          // the reference sits its code quietly inside a white statement. Same tint as
+          // SampleIO's blocks, so the statement's two kinds of code read as one surface.
+          className="my-5 overflow-x-auto rounded bg-ink/[0.04] p-4 text-ink"
           // Long sample blocks scroll inside their own box; the page never scrolls sideways.
           tabIndex={0}
           role="region"

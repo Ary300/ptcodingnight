@@ -10,11 +10,15 @@ export const metadata: Metadata = {
 
 export default function SubmissionsPage() {
   return (
-    // Capped at the measure the problem list uses. Full-width rows on a 1440px laptop put the
-    // verdict a hand's width from the title, which is the one pairing this page exists to show.
-    <div className="max-w-4xl">
+    // No width cap of its own: the chrome's max-w-6xl column IS the measure here, as it is on
+    // the reference. An extra max-w-4xl left a 384px band of bare ground at 1440 while the
+    // reference's table fills its column; the verdict-next-to-title pairing survives because the
+    // table's own columns hold their x-positions at any width.
+    <div>
       <Crumbs trail={[{ href: "/contest", label: "Coding Night" }, { label: "My submissions" }]} />
-      <h1 className="mt-1 font-display font-bold" style={{ fontSize: "var(--text-xl)" }}>
+      {/* Steps down to --text-lg below `sm` (the pattern ProblemWorkspace set): a flat 40px h1
+          wraps at 360 and spends 120px of the first screen before any content. */}
+      <h1 className="mt-1 font-display font-bold text-[length:var(--text-lg)] sm:text-[length:var(--text-xl)]">
         My submissions
       </h1>
       <p className="mt-1 mb-4 text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
