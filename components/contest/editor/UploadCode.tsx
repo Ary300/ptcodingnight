@@ -144,9 +144,12 @@ export function UploadCode({ language, onLoaded, disabled = false }: UploadCodeP
       </Button>
 
       {note !== null && (
+        /* Mount-time rise; the animation never delays the mount, so the alert/status role
+           announces exactly as before. Keyed so a re-upload's fresh note rises again. */
         <p
+          key={note.text}
           role={note.kind === "error" ? "alert" : "status"}
-          className={note.kind === "error" ? "text-panther" : "text-ink/70"}
+          className={note.kind === "error" ? "motion-swap-in text-panther" : "motion-swap-in text-ink/70"}
           style={{ fontSize: "var(--text-xs)" }}
         >
           {note.text}

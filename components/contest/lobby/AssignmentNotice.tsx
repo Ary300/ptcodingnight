@@ -72,14 +72,23 @@ function groupPhrase(count: number): string {
   return count === 1 ? "group problem" : `${String(count)} group problems`;
 }
 
-function Panel({ children }: { children: React.ReactNode }) {
+/**
+ * `swapKey` names which of the three states the panel is showing. The background session poll
+ * swaps the whole sentence set in place when a team or set assignment lands, on a screen that
+ * says "This page updates automatically" — so the content div is keyed on the state and rises
+ * in over --motion-swap when it changes, instead of the words silently being different. The
+ * section and its rail stay mounted; only the words move, transform-only, ink on paper.
+ */
+function Panel({ swapKey, children }: { swapKey: string; children: React.ReactNode }) {
   return (
     <section
       aria-label="Your assignment"
       className="flex items-stretch overflow-hidden rounded-panel border border-rule-edge bg-paper"
     >
       <Rail state="brand" />
-      <div className="flex-1 px-4 py-3">{children}</div>
+      <div key={swapKey} className="motion-swap-in flex-1 px-4 py-3">
+        {children}
+      </div>
     </section>
   );
 }
@@ -96,7 +105,7 @@ export function AssignmentNotice({
 
   if (needsTeam) {
     return (
-      <Panel>
+      <Panel swapKey="needs-team">
         {/*
           A heading, not a live region. `role` on an `h2` REPLACES the heading role, which would
           take the one line that explains the whole screen out of the heading outline — and there
@@ -126,7 +135,7 @@ export function AssignmentNotice({
 
   if (setLabel === null) {
     return (
-      <Panel>
+      <Panel swapKey="no-set">
         <h2 className="font-display font-bold" style={{ fontSize: "var(--text-sm)" }}>
           No problem set assigned yet
         </h2>
@@ -144,7 +153,7 @@ export function AssignmentNotice({
   }
 
   return (
-    <Panel>
+    <Panel swapKey={`set-${setLabel}`}>
       <h2 className="font-display font-bold" style={{ fontSize: "var(--text-sm)" }}>
         Your problem set is{" "}
         <span className="numeric text-panther">{setLabel}</span>

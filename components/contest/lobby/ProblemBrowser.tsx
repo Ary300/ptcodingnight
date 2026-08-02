@@ -86,9 +86,22 @@ export function ProblemBrowser({ problems }: ProblemBrowserProps) {
 
   const filtering = (selected.status ?? []).length > 0 || (selected.difficulty ?? []).length > 0;
 
-  const footer = filtering
+  const footerText = filtering
     ? `Showing ${String(visible.length)} of ${String(problems.length)}`
     : `${String(problems.length)} problems`;
+
+  /*
+    The count line swapped its text in the same frame the rows vanished, so the one line that
+    explains an emptied list arrived unannounced by the eye. The keyed span remounts on every
+    text change and rises in over --motion-swap; the role=status wrapper it lands inside stays
+    mounted, so screen readers keep hearing each new count. `inline-block` because transform
+    does not apply to inline boxes.
+  */
+  const footer = (
+    <span key={footerText} className="motion-swap-in inline-block">
+      {footerText}
+    </span>
+  );
 
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_11rem]">
@@ -122,9 +135,11 @@ export function ProblemBrowser({ problems }: ProblemBrowserProps) {
         {visible.length === 0 && filtering ? (
           // Housed in the same bordered paper card the list itself uses when empty. Bare text on
           // the tinted ground was a second, different empty grammar on the same screen.
+          // `motion-swap-in` because the card replaces the whole list in one keystroke; the rise
+          // is transform-only so the alpha'd ink text never dips below its contrast floor.
           <p
             role="status"
-            className="rounded-panel border border-rule-edge bg-paper p-4 py-8 text-center text-ink/70"
+            className="motion-swap-in rounded-panel border border-rule-edge bg-paper p-4 py-8 text-center text-ink/70"
             style={{ fontSize: "var(--text-sm)" }}
           >
             No problems match those filters. Untick one to widen the list.

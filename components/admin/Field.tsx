@@ -142,11 +142,15 @@ export function Field({ label, hint, error, required = false, wide = false, chil
               {hint}
             </p>
           )}
+          {/* Rendered only when invalid — no space is reserved — so the entrance animates a line
+              that genuinely arrives, not a box that was already there. This one class covers the
+              refusal lines of every admin form that builds on Field. Transform-only, so the
+              `role="alert"` announcement is untouched. */}
           {invalid && (
             <p
               id={errorId}
               role="alert"
-              className="font-semibold text-panther"
+              className="motion-swap-in font-semibold text-panther"
               style={{ fontSize: "var(--text-xs)" }}
             >
               {error}

@@ -148,7 +148,7 @@ export function SubmissionFeed({
   return (
     <div className="flex min-w-0 flex-col gap-group">
       {participantFilter !== null && (
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="motion-swap-in flex flex-wrap items-center gap-3">
           <p className="font-semibold" style={{ fontSize: "var(--text-sm)" }}>
             Showing {visible[0]?.displayName ?? "one participant"} only
           </p>
@@ -161,7 +161,7 @@ export function SubmissionFeed({
       {internalErrors.length > 0 && (
         <p
           role="alert"
-          className="rounded-chip border border-panther px-3 py-2 font-semibold text-panther"
+          className="motion-swap-in rounded-chip border border-panther px-3 py-2 font-semibold text-panther"
           style={{ fontSize: "var(--text-sm)" }}
         >
           {internalErrors.length} submission{internalErrors.length === 1 ? "" : "s"} ended in
@@ -209,13 +209,25 @@ export function SubmissionFeed({
                       : null;
 
                 return (
+                  /*
+                    New rows land at the top per 3-second poll, in the same frame. submissionId
+                    keys are stable across polls, so mount-once is automatic: a row rises exactly
+                    once, on the poll that delivered it. The class sits on the block content of
+                    each cell, never on the `<tr>` (transform on `display: table-row` is
+                    unreliable in WebKit). A filter toggle remounts what it reveals, which IS
+                    content replacing content; no stagger here, fourteen rows cascading on every
+                    toggle would be more motion than the change deserves.
+                  */
                   <Fragment key={submission.submissionId}>
                     <TR>
                       <TD numeric className="whitespace-nowrap align-top">
-                        {timeOf(submission.submittedAt)}
+                        <span className="motion-swap-in block">
+                          {timeOf(submission.submittedAt)}
+                        </span>
                       </TD>
                       <TD className="align-top">
                         <Stacked
+                          className="motion-swap-in"
                           value={
                             <button
                               type="button"
@@ -236,6 +248,7 @@ export function SubmissionFeed({
                           the way an organizer asks the question.
                         */}
                         <Stacked
+                          className="motion-swap-in"
                           value={
                             <>
                               <span className="numeric">{submission.slotLabel}</span>{" "}
@@ -259,7 +272,7 @@ export function SubmissionFeed({
                         */}
                         {submission.timings !== null && (
                           <p
-                            className="numeric text-ink/60"
+                            className="motion-swap-in numeric text-ink/60"
                             style={{ fontSize: "var(--text-xs)" }}
                           >
                             {timingsLine(submission.timings)}
@@ -272,14 +285,16 @@ export function SubmissionFeed({
                           detail={
                             submission.runtimeMs === null ? undefined : `${submission.runtimeMs} ms`
                           }
-                          className="items-end"
+                          className="motion-swap-in items-end"
                         />
                       </TD>
                       <TD className="align-top">
-                        <VerdictPill verdict={submission.verdict} />
+                        <span className="motion-swap-in block">
+                          <VerdictPill verdict={submission.verdict} />
+                        </span>
                       </TD>
                       <TD className="align-top">
-                        <div className="flex flex-wrap gap-x-3 gap-y-1">
+                        <div className="motion-swap-in flex flex-wrap gap-x-3 gap-y-1">
                           <Button
                             type="button"
                             variant="quiet"
@@ -311,6 +326,15 @@ export function SubmissionFeed({
                     {openForm !== null && (
                       <tr>
                         <td colSpan={6} className="bg-ink/[0.02] px-3 py-3">
+                          {/*
+                            The entrance is on a div INSIDE the `<td>`, not on the `<tr>` (the
+                            WebKit table-row caveat), and it is keyed by which form is open so
+                            that Rejudge→Override — two simultaneous jumps, one form closing as
+                            the other opens — re-runs it. A whole form surface arriving is the
+                            panel duration. Paper ground, full-strength text: transform-only is
+                            safe and required.
+                          */}
+                          <div key={openForm} className="motion-panel-in">
                           {openForm === "override" ? (
                             <OverrideForm
                               submission={submission}
@@ -381,6 +405,7 @@ export function SubmissionFeed({
                               </div>
                             </form>
                           )}
+                          </div>
                         </td>
                       </tr>
                     )}

@@ -288,7 +288,7 @@ export function LiveConsole({ contestId }: LiveConsoleProps) {
       {loadError !== null && (
         <p
           role="status"
-          className="rounded-chip border border-panther px-3 py-2 font-semibold text-panther"
+          className="motion-swap-in rounded-chip border border-panther px-3 py-2 font-semibold text-panther"
           style={{ fontSize: "var(--text-sm)" }}
         >
           Not updating: {loadError} What is below is the last successful read.
@@ -303,25 +303,34 @@ export function LiveConsole({ contestId }: LiveConsoleProps) {
         that says what everyone is currently seeing, not from a toolbar button an organiser
         could catch with a stray click.
       */}
+      {/*
+        `motion-panel-in` on a WRAPPER, and it is transform-only by construction: the plate is
+        `bg-ink` holding `text-paper/70`, so any opacity on this wrapper would drag that text
+        below its contrast floor for the length of the animation — the exact failure G9 measured
+        at 4.16:1 the first time an entrance here shipped with a fade. A whole dark surface
+        arriving is the panel duration (300ms), not the content-swap one.
+      */}
       {frozen && (
-        <AlertPlate
-          tone="notice"
-          title="The public board is frozen"
-          actions={
-            <ConfirmButton
-              label="Unfreeze and reveal"
-              confirmLabel="Reveal the final board"
-              variant="primary"
-              onConfirm={() => setFreeze(false)}
-              disabled={busy}
-            />
-          }
-        >
-          Students and the projector still see the standings as they were at
-          the freeze. Judging keeps running, and the console below stays live.
-          Unfreezing reveals the final board, so do it when the room is
-          watching.
-        </AlertPlate>
+        <div className="motion-panel-in">
+          <AlertPlate
+            tone="notice"
+            title="The public board is frozen"
+            actions={
+              <ConfirmButton
+                label="Unfreeze and reveal"
+                confirmLabel="Reveal the final board"
+                variant="primary"
+                onConfirm={() => setFreeze(false)}
+                disabled={busy}
+              />
+            }
+          >
+            Students and the projector still see the standings as they were at
+            the freeze. Judging keeps running, and the console below stays live.
+            Unfreezing reveals the final board, so do it when the room is
+            watching.
+          </AlertPlate>
+        </div>
       )}
 
       {/*
@@ -373,15 +382,20 @@ export function LiveConsole({ contestId }: LiveConsoleProps) {
                 ? "Unfreeze from the notice above, when the room is watching."
                 : "Freezing holds the public standings in place while judging continues. You will still see live results here."}
             </p>
+            {/* Unfreezing puts this button back in the same frame the plate above vanishes; the
+                rise is on a wrapper so the arm/disarm swap inside ConfirmButton keeps its own
+                (single) entrance. */}
             {!frozen && (
-              <ConfirmButton
-                label="Freeze the public board"
-                confirmLabel="Freeze now"
-                variant="secondary"
-                size="sm"
-                onConfirm={() => setFreeze(true)}
-                disabled={busy}
-              />
+              <span className="motion-swap-in inline-block">
+                <ConfirmButton
+                  label="Freeze the public board"
+                  confirmLabel="Freeze now"
+                  variant="secondary"
+                  size="sm"
+                  onConfirm={() => setFreeze(true)}
+                  disabled={busy}
+                />
+              </span>
             )}
           </div>
 
@@ -413,7 +427,7 @@ export function LiveConsole({ contestId }: LiveConsoleProps) {
             a word, and the server's reply is quoted under the action instead of glued onto it.
             `relative` + `min-w-0` for the same reason as the feed's scroller (sr-only spans).
           */
-          <div className="relative w-full min-w-0 overflow-x-auto">
+          <div className="motion-swap-in relative w-full min-w-0 overflow-x-auto">
             <Table caption="Activity log">
               <THead>
                 <TR>
@@ -427,28 +441,38 @@ export function LiveConsole({ contestId }: LiveConsoleProps) {
                 </TR>
               </THead>
               <TBody>
+                {/*
+                  Each server answer PREPENDS a row in the same frame. Keys are stable, so a row
+                  animates exactly once, on the answer that created it, and a poll re-render moves
+                  nothing. The class rides on block content INSIDE the cells, never on the `<tr>`:
+                  transform animation on `display: table-row` is unreliable in WebKit.
+                */}
                 {log.map((entry) => (
                   <TR key={entry.id}>
                     <TD numeric className="whitespace-nowrap align-top">
-                      {entry.at}
+                      <span className="motion-swap-in block">{entry.at}</span>
                     </TD>
                     <TD className="align-top">
-                      <ResultToken failed={entry.failed} />
+                      <span className="motion-swap-in block">
+                        <ResultToken failed={entry.failed} />
+                      </span>
                     </TD>
                     <TD className="w-full align-top">
-                      <p
-                        className={`min-w-0 break-words ${entry.failed ? "font-semibold" : ""}`}
-                      >
-                        {entry.text}
-                      </p>
-                      {entry.detail !== null && (
+                      <div className="motion-swap-in">
                         <p
-                          className="mt-0.5 min-w-0 break-words text-ink/70"
-                          style={{ fontSize: "var(--text-xs)" }}
+                          className={`min-w-0 break-words ${entry.failed ? "font-semibold" : ""}`}
                         >
-                          Server said: {entry.detail}
+                          {entry.text}
                         </p>
-                      )}
+                        {entry.detail !== null && (
+                          <p
+                            className="mt-0.5 min-w-0 break-words text-ink/70"
+                            style={{ fontSize: "var(--text-xs)" }}
+                          >
+                            Server said: {entry.detail}
+                          </p>
+                        )}
+                      </div>
                     </TD>
                   </TR>
                 ))}

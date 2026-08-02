@@ -578,8 +578,14 @@ export function ContestLineup({
           <span className="text-ink/70" style={{ fontSize: "var(--text-xs)" }}>
             {slots.length} {slots.length === 1 ? "problem" : "problems"}
             {/* The draft flag rides with the count so it stays visible when the Save row has
-                scrolled away under a long table. Words, not colour: DESIGN.md §3. */}
-            {dirty ? " (not saved yet)" : ""}
+                scrolled away under a long table. Words, not colour: DESIGN.md §3. The rise is
+                on its own inline-block (transforms do not apply to plain inline text), and the
+                flag mounts once per dirty spell, so it cannot pulse per keystroke. */}
+            {dirty && (
+              <span className="motion-swap-in inline-block">
+                &nbsp;(not saved yet)
+              </span>
+            )}
           </span>
         }
         description="Individual questions belong to one set. Group questions are shared by every team. Saving updates the full line-up."
@@ -620,13 +626,25 @@ export function ContestLineup({
                   const invalid = slotInvalid(slot);
                   const setMissing = setInvalid(slot);
                   const divisionConflict = divisionInvalid(slot);
+                  /*
+                    Only rows ADDED THIS SESSION rise in (rowId `added-*`): stored rows arrive
+                    with the page and are covered by the template's page-level rise, so a class
+                    here would double their entrance on every mount. The class rides on the
+                    CONTENT inside each cell, never on the `<tr>` — `animation` with `transform`
+                    on `display: table-row` is unreliable in WebKit.
+                  */
+                  const entrance = slot.rowId.startsWith("added-")
+                    ? "motion-swap-in"
+                    : "";
                   return (
                     <TR key={slot.rowId}>
-                      <TD className="font-semibold">{slot.title}</TD>
+                      <TD className="font-semibold">
+                        <span className={`block ${entrance}`}>{slot.title}</span>
+                      </TD>
                       {/* Widths live on a wrapper: CONTROL_SURFACE already says `w-full`, and
                           two width utilities on one element resolve by emission order. */}
                       <TD>
-                        <span className="inline-block w-20 align-middle">
+                        <span className={`inline-block w-20 align-middle ${entrance}`}>
                           <input
                             aria-label={`Slot label for ${rowName(slot)}`}
                             aria-invalid={invalid || undefined}
@@ -645,7 +663,7 @@ export function ContestLineup({
                         </span>
                       </TD>
                       <TD>
-                        <span className="inline-block w-24 align-middle">
+                        <span className={`inline-block w-24 align-middle ${entrance}`}>
                           <input
                             aria-label={`Base points for ${rowName(slot)}`}
                             type="number"
@@ -663,6 +681,9 @@ export function ContestLineup({
                       </TD>
                       {divisions.length > 0 && (
                         <TD>
+                          {/* The entrance wrapper is a block span AROUND the Select, because the
+                              Select's own shell is frozen furniture and a transform belongs to
+                              the arriving row, not to the control. */}
                           {/*
                             "All divisions" is the empty string on the wire of this control and
                             null in the data, converted at this edge and nowhere else. The
@@ -671,38 +692,40 @@ export function ContestLineup({
                             division; pointing at the label column would send the organizer to
                             fix the one column that is already right.
                           */}
-                          <Select
-                            size="sm"
-                            shellClassName="w-40"
-                            aria-label={`Division for ${slot.title}`}
-                            invalid={divisionConflict}
-                            aria-describedby={
-                              divisionConflict ? lineupErrorId : undefined
-                            }
-                            value={slot.divisionId ?? ""}
-                            onChange={(e) =>
-                              patch(slot.rowId, {
-                                divisionId:
-                                  e.target.value === ""
-                                    ? null
-                                    : e.target.value,
-                              })
-                            }
-                          >
-                            <option value="">All divisions</option>
-                            {divisions.map((division) => (
-                              <option
-                                key={division.divisionId}
-                                value={division.divisionId}
-                              >
-                                {division.name}
-                              </option>
-                            ))}
-                          </Select>
+                          <span className={`block ${entrance}`}>
+                            <Select
+                              size="sm"
+                              shellClassName="w-40"
+                              aria-label={`Division for ${slot.title}`}
+                              invalid={divisionConflict}
+                              aria-describedby={
+                                divisionConflict ? lineupErrorId : undefined
+                              }
+                              value={slot.divisionId ?? ""}
+                              onChange={(e) =>
+                                patch(slot.rowId, {
+                                  divisionId:
+                                    e.target.value === ""
+                                      ? null
+                                      : e.target.value,
+                                })
+                              }
+                            >
+                              <option value="">All divisions</option>
+                              {divisions.map((division) => (
+                                <option
+                                  key={division.divisionId}
+                                  value={division.divisionId}
+                                >
+                                  {division.name}
+                                </option>
+                              ))}
+                            </Select>
+                          </span>
                         </TD>
                       )}
                       <TD>
-                        <span className="flex items-center gap-2">
+                        <span className={`flex items-center gap-2 ${entrance}`}>
                           <Select
                             size="sm"
                             shellClassName="w-32"
@@ -767,14 +790,16 @@ export function ContestLineup({
                       <TD align="end">
                         {/* Text, not a box: an in-row action never competes with the page's one
                             primary action (components/ui/Button.tsx). */}
-                        <Button
-                          type="button"
-                          variant="quiet"
-                          size="sm"
-                          onClick={() => remove(slot.rowId)}
-                        >
-                          Remove
-                        </Button>
+                        <span className={`block ${entrance}`}>
+                          <Button
+                            type="button"
+                            variant="quiet"
+                            size="sm"
+                            onClick={() => remove(slot.rowId)}
+                          >
+                            Remove
+                          </Button>
+                        </span>
                       </TD>
                     </TR>
                   );
@@ -791,7 +816,8 @@ export function ContestLineup({
           <p
             id={lineupErrorId}
             role="alert"
-            className="mt-4 font-semibold text-panther"
+            // The rise is theatre only: `role="alert"` announcement is unaffected by transform.
+            className="motion-swap-in mt-4 font-semibold text-panther"
             style={{ fontSize: "var(--text-sm)" }}
           >
             {duplicates.length > 0 &&
@@ -823,7 +849,7 @@ export function ContestLineup({
         {error !== null && (
           <p
             role="alert"
-            className="mt-4 font-semibold text-panther"
+            className="motion-swap-in mt-4 font-semibold text-panther"
             style={{ fontSize: "var(--text-sm)" }}
           >
             {error}
@@ -850,10 +876,14 @@ export function ContestLineup({
             draft state is now named the moment the list differs from what the server holds, and
             the message says what is at stake rather than just waving a flag.
           */}
+          {/* Both status lines pop from nothing in the same frame as the edit or the save that
+              causes them; `motion-swap-in` makes the swap followable without delaying the
+              `role="status"` announcement. `inline-block`, because a transform does nothing on
+              plain inline text. */}
           {dirty && !busy && (
             <span
               role="status"
-              className="font-semibold"
+              className="motion-swap-in inline-block font-semibold"
               style={{ fontSize: "var(--text-sm)" }}
             >
               Not saved yet. Add, Remove and edits change only this list until
@@ -863,7 +893,7 @@ export function ContestLineup({
           {!dirty && saved && (
             <span
               role="status"
-              className="font-semibold"
+              className="motion-swap-in inline-block font-semibold"
               style={{ fontSize: "var(--text-sm)" }}
             >
               Saved. Publish it from the Setup tab when the line-up is settled.

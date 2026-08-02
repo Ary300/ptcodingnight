@@ -228,6 +228,43 @@ body {
   animation: motion-swap-in var(--motion-swap) var(--motion-ease) both;
 }
 
+/* A whole surface arriving: the same transform-only rise as `motion-swap-in`,
+   at the panel duration and a slightly longer travel, because a bigger thing
+   moving the same distance in more time reads as slower than the small ones.
+   The contrast law holds here with more force, not less: panels are where the
+   dark plates live, and a dark plate holds alpha'd text, so this keyframe must
+   never grow an opacity leg. */
+@keyframes motion-panel-in {
+  from {
+    transform: translateY(6px);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+.motion-panel-in {
+  animation: motion-panel-in var(--motion-panel) var(--motion-ease) both;
+}
+
+/* `<dialog>` renders in the top layer, and a keyframe on the element alone does
+   not reliably run when `showModal()` flips it open — the animation has to sit
+   on the `[open]` state so every open (first and re-open) starts it fresh. The
+   backdrop MAY fade: it is the one surface guaranteed to contain no text. */
+dialog.motion-panel-in[open] {
+  animation: motion-panel-in var(--motion-panel) var(--motion-ease) both;
+}
+@keyframes motion-backdrop-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+dialog.motion-panel-in[open]::backdrop {
+  animation: motion-backdrop-in var(--motion-panel) var(--motion-ease) both;
+}
+
 /* Staggered list entrance: each row lands 35ms after the one above, capped at
    ten rows so a long list does not turn into a slideshow. One class on the
    PARENT; the children need `motion-swap-in`. */
@@ -246,7 +283,10 @@ body {
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
-  *::after {
+  *::after,
+  /* `*` never matches a pseudo-element, so the dialog backdrop needs naming or
+     its fade would outlive the flattening that reaches everything else. */
+  *::backdrop {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;

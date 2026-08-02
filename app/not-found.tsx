@@ -13,8 +13,14 @@ import Link from "next/link";
  * breaks, so it depends on nothing.
  */
 export default function NotFound() {
+  /*
+    `motion-swap-in` on the page root, not a template: this page is outside both route groups, so
+    the group templates never wrap it, and a not-found is always a fresh mount of this component -
+    there is no same-segment renavigation for a template to catch. Transform-only rise, per the
+    entrance rule.
+  */
   return (
-    <div className="flex min-h-full flex-col items-center justify-center gap-6 bg-ink/[0.035] px-4 py-16">
+    <div className="motion-swap-in flex min-h-full flex-col items-center justify-center gap-6 bg-ink/[0.035] px-4 py-16">
       <p className="numeric font-display font-bold text-panther" style={{ fontSize: "var(--text-xl)" }}>
         404
       </p>

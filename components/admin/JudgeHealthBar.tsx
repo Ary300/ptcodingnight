@@ -94,9 +94,16 @@ export function JudgeHealthBar({ health }: { health: JudgeHealth }) {
     // No alarm styling in this branch by construction: any figure that would warrant it —
     // failed jobs, an aging queue, no live worker — moves the level off "ok" before render.
     return (
+      /*
+        Keyed by LEVEL, on both branches: recovering to healthy swaps a large dark plate for
+        this one-line strip in a single frame, and without the key React would reuse the
+        `<section>` and the entrance would never re-run. Never keyed by anything that changes
+        per poll — the numbers tick every 3 seconds and must not pulse.
+      */
       <section
+        key="ok"
         aria-label="Judge health"
-        className="flex flex-wrap items-baseline gap-x-8 gap-y-tight rounded-panel border border-rule-edge bg-paper px-4 py-3"
+        className="motion-swap-in flex flex-wrap items-baseline gap-x-8 gap-y-tight rounded-panel border border-rule-edge bg-paper px-4 py-3"
       >
         <p role="status" className="font-bold" style={{ fontSize: "var(--text-sm)" }}>
           {headingFor("ok", health)}
@@ -117,9 +124,17 @@ export function JudgeHealthBar({ health }: { health: JudgeHealth }) {
   const severe = level !== "watch";
 
   return (
+    /*
+      The alarm arriving with a 6px transform-only rise is fine; an alarm that FADED in would be
+      a G9 failure — this plate is `bg-ink` holding `text-paper/70` labels, and any opacity here
+      drags them below the contrast floor mid-animation. Panel duration, because a strip
+      inverting to a large dark plate is a whole surface arriving. The key re-runs it when the
+      level worsens between the plate states (watch → offline) too.
+    */
     <section
+      key={level}
       aria-label="Judge health"
-      className="rounded-panel bg-ink p-5 text-paper"
+      className="motion-panel-in rounded-panel bg-ink p-5 text-paper"
       style={{
         borderLeft: `var(--rail-width) solid ${severe ? "var(--color-fall)" : "var(--color-gold)"}`,
       }}

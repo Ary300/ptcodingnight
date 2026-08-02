@@ -49,8 +49,16 @@ export default async function SignInPage({
   const providerAvailability = oauthProviderAvailability();
   const studentSignInAvailable = providerAvailability.google || providerAvailability.github;
 
+  /*
+    Arrival motion via a class on the page root, not a template. This page is outside both route
+    groups, so the group templates never wrap it - and a root `app/template.tsx` is the wrong fix,
+    because it would nest a second rise inside the group templates on every navigation and put an
+    entrance on the projector. Every way onto this page mounts this component fresh (the OAuth
+    `?error=` redirects are full document navigations), so a class re-runs everywhere a template
+    would. `motion-stagger` on the grid: the brand panel lands first, the form column 35ms behind.
+  */
   return (
-    <div className="grid min-h-screen lg:grid-cols-2">
+    <div className="motion-stagger grid min-h-screen lg:grid-cols-2">
       <BrandPanel>
         <p className="font-display" style={{ fontSize: "var(--text-md)" }}>
           Welcome back to
@@ -79,7 +87,7 @@ export default async function SignInPage({
         beside it (585px of bare ground at 985px wide). 448px centred lands within 7px of the
         reference's measured 441px column.
       */}
-      <main className="flex flex-col justify-center px-4 py-10 lg:px-14">
+      <main className="motion-swap-in flex flex-col justify-center px-4 py-10 lg:px-14">
         <div className="mx-auto w-full max-w-md">
           {/*
             The way out.

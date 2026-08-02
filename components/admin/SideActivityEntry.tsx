@@ -386,9 +386,11 @@ export function SideActivityEntry({ contestId }: SideActivityEntryProps) {
             every keystroke, and a screen reader user hears the same facts once, from the
             confirmation, after submitting.
           */}
+          {/* The echo animates on MOUNT only — the moment a team is chosen. It then rewrites per
+              keystroke, and the element staying mounted is what keeps it from pulsing. */}
           {selected !== undefined && (
             <p
-              className="rounded-chip border border-rule-edge bg-ink/[0.02] px-3 py-2"
+              className="motion-swap-in rounded-chip border border-rule-edge bg-ink/[0.02] px-3 py-2"
               style={{ fontSize: "var(--text-sm)" }}
             >
               {previewValue === null ? (
@@ -418,7 +420,11 @@ export function SideActivityEntry({ contestId }: SideActivityEntryProps) {
             field above; this slot is for the ones that belong to the form as a whole.
           */}
           {formError !== null && (
-            <p role="alert" className="font-semibold text-panther" style={{ fontSize: "var(--text-sm)" }}>
+            <p
+              role="alert"
+              className="motion-swap-in font-semibold text-panther"
+              style={{ fontSize: "var(--text-sm)" }}
+            >
               {formError}
             </p>
           )}
@@ -428,10 +434,13 @@ export function SideActivityEntry({ contestId }: SideActivityEntryProps) {
             cannot be mistaken for an alarm: `AlertPlate`'s dark plate is for things going wrong,
             and this is the one message on the screen that means everything went right.
           */}
+          {/* The entrance is keyed to the receipt EXISTING, not to its text: the second-stage
+              rewrite (the refreshed total landing) updates the mounted element in place, so the
+              receipt does not visibly re-enter twice for one award. */}
           {confirmation !== null && (
             <p
               role="status"
-              className="rounded-chip border border-rule-firm bg-ink/[0.04] px-3 py-2"
+              className="motion-swap-in rounded-chip border border-rule-firm bg-ink/[0.04] px-3 py-2"
               style={{ fontSize: "var(--text-sm)" }}
             >
               <strong>Recorded:</strong> {confirmation}
@@ -486,7 +495,15 @@ export function SideActivityEntry({ contestId }: SideActivityEntryProps) {
                 : "Nothing awarded yet."}
             </p>
           ) : (
-            <div className="relative w-full min-w-0 overflow-x-auto">
+            /*
+              Keyed by team: picking a different team swaps the whole history body in one frame,
+              and the key re-runs the rise per swap. Row updates for the SAME team (an award
+              landing) keep the key and move nothing.
+            */
+            <div
+              key={teamId}
+              className="motion-swap-in relative w-full min-w-0 overflow-x-auto"
+            >
               {/*
                 A modest width floor, like the submission feed's. Four columns squeezed into 360px
                 broke "Rubik's cube relay" over three lines and split the actor reference across

@@ -300,17 +300,23 @@ export function SettingsView() {
           Profile picture
         </h2>
         <div className="mt-4 flex flex-wrap items-center gap-5">
+          {/*
+            Keyed on the version so a fresh upload rises in instead of the pixels silently
+            being different; the disc and the img are different elements, so the disc-to-image
+            swap remounts (and animates) on its own.
+          */}
           {hasAvatar && profile !== null ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
+              key={avatarVersion}
               src={API_ROUTES.userAvatar(profile.userId, avatarVersion)}
               alt="Your current profile picture"
-              className="h-24 w-24 shrink-0 rounded-full object-cover"
+              className="motion-swap-in h-24 w-24 shrink-0 rounded-full object-cover"
             />
           ) : (
             <span
               aria-hidden="true"
-              className="flex h-24 w-24 shrink-0 items-center justify-center rounded-full bg-panther font-display font-bold text-paper"
+              className="motion-swap-in flex h-24 w-24 shrink-0 items-center justify-center rounded-full bg-panther font-display font-bold text-paper"
               style={{ fontSize: "var(--text-xl)" }}
             >
               {initial}
@@ -319,18 +325,29 @@ export function SettingsView() {
 
           <div className="flex flex-col gap-2">
             <div className="flex flex-wrap gap-2">
+              {/*
+                Width held by the widest of the three labels so the button cannot resize
+                under the cursor when "Working…" lands; the keyed span makes the swap a rise.
+              */}
               <Button
                 type="button"
                 variant="secondary"
                 size="sm"
+                className="relative whitespace-nowrap"
                 disabled={avatarBusy}
                 onClick={() => fileInput.current?.click()}
               >
-                {avatarBusy
-                  ? "Working…"
-                  : hasAvatar
-                    ? "Change picture"
-                    : "Upload a picture"}
+                <span aria-hidden="true" className="invisible">Upload a picture</span>
+                <span
+                  key={avatarBusy ? "busy" : hasAvatar ? "change" : "upload"}
+                  className="motion-swap-in absolute inset-0 flex items-center justify-center"
+                >
+                  {avatarBusy
+                    ? "Working…"
+                    : hasAvatar
+                      ? "Change picture"
+                      : "Upload a picture"}
+                </span>
               </Button>
               {hasAvatar && (
                 <Button
@@ -361,12 +378,14 @@ export function SettingsView() {
           </div>
         </div>
         {avatarFeedback !== null && (
+          /* Mount-time rise only: the animation never delays the mount, so the live region
+             announces exactly as before. Transform-only, per the entrance rule. */
           <p
             role={avatarFeedback.kind === "error" ? "alert" : "status"}
             className={
               avatarFeedback.kind === "error"
-                ? "mt-3 text-panther"
-                : "mt-3 text-ink/75"
+                ? "motion-swap-in mt-3 text-panther"
+                : "motion-swap-in mt-3 text-ink/75"
             }
             style={{ fontSize: "var(--text-xs)" }}
           >
@@ -402,6 +421,7 @@ export function SettingsView() {
           />
           <Button
             type="button"
+            className="relative whitespace-nowrap"
             disabled={
               nameBusy ||
               name.trim() === "" ||
@@ -409,7 +429,13 @@ export function SettingsView() {
             }
             onClick={() => void saveName()}
           >
-            {nameBusy ? "Saving…" : "Save"}
+            <span aria-hidden="true" className="invisible">Saving…</span>
+            <span
+              key={nameBusy ? "busy" : "idle"}
+              className="motion-swap-in absolute inset-0 flex items-center justify-center"
+            >
+              {nameBusy ? "Saving…" : "Save"}
+            </span>
           </Button>
         </div>
         {nameFeedback !== null && (
@@ -417,8 +443,8 @@ export function SettingsView() {
             role={nameFeedback.kind === "error" ? "alert" : "status"}
             className={
               nameFeedback.kind === "error"
-                ? "mt-3 text-panther"
-                : "mt-3 text-ink/75"
+                ? "motion-swap-in mt-3 text-panther"
+                : "motion-swap-in mt-3 text-ink/75"
             }
             style={{ fontSize: "var(--text-xs)" }}
           >

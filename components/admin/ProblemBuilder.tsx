@@ -203,6 +203,19 @@ export function ProblemBuilder({ edit }: ProblemBuilderProps = {}) {
   // freshly reset form so the organizer knows the save landed before typing the next question.
   const [created, setCreated] = useState<string | null>(null);
 
+  /*
+    Which repeatable cards were created AFTER this form mounted. Stored rows arrive with the
+    page (covered by the template's page-level rise), so animating them too would be a double
+    entrance on every mount; only a card the organizer just added should rise. State, not a ref,
+    because it is read during render and the React Compiler rules refuse ref reads there. The
+    initializer runs after the `params`/`cases` initializers above, so it captures the counter
+    with every initial card already minted.
+  */
+  const [freshFrom, setFreshFrom] = useState(() => nextId);
+  /* Bumped by "Create and add another": the whole section body re-keys so the reset form (and
+     its receipt) arrives as one followable change rather than a same-frame blanking. */
+  const [resetCount, setResetCount] = useState(0);
+
   /**
    * The signature as the student preview will generate stubs from it, validated by the SAME
    * schema the server uses. The array-count wiring here mirrors `buildSignature` in
@@ -339,6 +352,11 @@ export function ProblemBuilder({ edit }: ProblemBuilderProps = {}) {
         setReturns("int");
         setParams([{ id: makeId(), name: "n", type: "int" }]);
         setCases([{ id: makeId(), input: "", expectedOutput: "", isSample: true }]);
+        // The reset's default cards were just minted above, and they are furniture, not
+        // additions: move the freshness line past them so they do not rise inside the body
+        // that is already rising.
+        setFreshFrom(nextId);
+        setResetCount((n) => n + 1);
         setStep("details");
         window.scrollTo({ top: 0 });
         router.refresh();
@@ -471,7 +489,16 @@ export function ProblemBuilder({ edit }: ProblemBuilderProps = {}) {
           }
         />
 
-        <div className="flex flex-col gap-group p-5 sm:p-8">
+        {/*
+          Keyed so the entrance re-runs on every step switch (the wizard body swaps wholesale,
+          several times per question) and once more on the "Create and add another" reset, whose
+          receipt lands at the top the same scroll already goes to. Without the key the class
+          would animate exactly once, on mount.
+        */}
+        <div
+          key={`${step}-${String(resetCount)}`}
+          className="motion-swap-in flex flex-col gap-group p-5 sm:p-8"
+        >
           {step === "details" && (
             <DetailsStep
               title={title}
@@ -500,6 +527,7 @@ export function ProblemBuilder({ edit }: ProblemBuilderProps = {}) {
               setReturns={setReturns}
               params={params}
               setParams={setParams}
+              freshFrom={freshFrom}
             />
           )}
 
@@ -508,15 +536,18 @@ export function ProblemBuilder({ edit }: ProblemBuilderProps = {}) {
               cases={cases}
               setCases={setCases}
               sampleCount={sampleCount}
+              freshFrom={freshFrom}
             />
           )}
         </div>
 
         <div className="sticky bottom-0 z-10 flex flex-wrap items-center justify-between gap-3 border-t border-rule-edge bg-paper/95 px-5 py-4 backdrop-blur sm:px-8">
+          {/* The footer line swaps between three states in the same frame as the save or the
+              refusal; the rise makes the swap legible and leaves the announcement alone. */}
           {error !== null ? (
             <p
               role="alert"
-              className="font-semibold text-panther"
+              className="motion-swap-in font-semibold text-panther"
               style={{ fontSize: "var(--text-sm)" }}
             >
               {error}
@@ -524,7 +555,7 @@ export function ProblemBuilder({ edit }: ProblemBuilderProps = {}) {
           ) : created !== null ? (
             <p
               role="status"
-              className="font-semibold"
+              className="motion-swap-in font-semibold"
               style={{ fontSize: "var(--text-sm)" }}
             >
               Created &ldquo;{created}&rdquo;. The form is reset for the next
@@ -797,6 +828,7 @@ function StarterStep({
   setReturns,
   params,
   setParams,
+  freshFrom,
 }: {
   signatureLocked: boolean;
   wantStarter: boolean;
@@ -807,6 +839,8 @@ function StarterStep({
   setReturns: (value: SignatureType) => void;
   params: DraftParam[];
   setParams: Dispatch<SetStateAction<DraftParam[]>>;
+  /** Cards with an id past this line were added this session and get an entrance. */
+  freshFrom: number;
 }) {
   const signature = `${returns} ${fnName.trim() || "solve"}(${params
     .filter((param) => param.name.trim() !== "")
@@ -858,8 +892,11 @@ function StarterStep({
         </label>
       )}
 
+      {/* Checking the box lands a whole sub-form in one frame: a genuine surface arrival, so it
+          rises in. Unchecking just removes it. The wrapper div exists to give the fragment's
+          contents one entrance instead of three. */}
       {!signatureLocked && wantStarter && (
-        <>
+        <div className="motion-swap-in flex flex-col gap-group">
           <div className="grid gap-group sm:grid-cols-2">
             <TextInput
               label="Function name"
@@ -919,7 +956,9 @@ function StarterStep({
                 params.map((param, index) => (
                   <div
                     key={param.id}
-                    className="rounded-panel border border-rule-hair p-4"
+                    className={`rounded-panel border border-rule-hair p-4 ${
+                      param.id > freshFrom ? "motion-swap-in" : ""
+                    }`}
                   >
                     <div className="mb-tight flex items-center justify-between gap-3">
                       <span
@@ -990,7 +1029,7 @@ function StarterStep({
               {signature}
             </code>
           </div>
-        </>
+        </div>
       )}
     </BuilderSection>
   );
@@ -1000,10 +1039,13 @@ function TestsStep({
   cases,
   setCases,
   sampleCount,
+  freshFrom,
 }: {
   cases: DraftCase[];
   setCases: Dispatch<SetStateAction<DraftCase[]>>;
   sampleCount: number;
+  /** Cards with an id past this line were added this session and get an entrance. */
+  freshFrom: number;
 }) {
   return (
     <BuilderSection
@@ -1014,7 +1056,9 @@ function TestsStep({
         {cases.map((testCase, index) => (
           <section
             key={testCase.id}
-            className="overflow-hidden rounded-panel border border-rule-edge"
+            className={`overflow-hidden rounded-panel border border-rule-edge ${
+              testCase.id > freshFrom ? "motion-swap-in" : ""
+            }`}
           >
             <header className="flex flex-wrap items-center justify-between gap-3 border-b border-rule-hair bg-ink/[0.025] px-4 py-3">
               <div className="flex items-center gap-3">
@@ -1251,11 +1295,21 @@ function PreviewButton(props: PreviewProps) {
       >
         See student preview
       </Button>
+      {/*
+        `motion-panel-in` on a `<dialog>` runs from globals.css's `dialog.motion-panel-in[open]`
+        rule — the top layer needs the keyframe on the [open] state, so both open paths (first
+        open and re-open) start it fresh. The panel TRANSLATES only, never fades: its header is
+        `bg-ink` with `text-paper/70` inside, and any wrapper opacity would carry that text below
+        its contrast floor mid-animation. The ::backdrop may fade because it holds no text, and
+        the reduced-motion flattening reaches both (globals.css names `*::backdrop` explicitly).
+        Close stays instant: `close()` removes it from the top layer the same frame, and a
+        control returning to rest should just return.
+      */}
       <dialog
         ref={dialogRef}
         onCancel={() => setOpen(false)}
         onClose={() => setOpen(false)}
-        className="max-h-[calc(100vh-2rem)] w-[min(64rem,calc(100vw-2rem))] max-w-none overflow-hidden rounded-panel border border-rule-edge bg-paper p-0 text-ink shadow-2xl backdrop:bg-ink/65"
+        className="motion-panel-in max-h-[calc(100vh-2rem)] w-[min(64rem,calc(100vw-2rem))] max-w-none overflow-hidden rounded-panel border border-rule-edge bg-paper p-0 text-ink shadow-2xl backdrop:bg-ink/65"
         aria-labelledby="question-preview-title"
       >
         <header className="flex items-center justify-between gap-4 border-b border-rule-edge bg-ink px-5 py-4 text-paper">
@@ -1455,8 +1509,11 @@ function StarterPreview({ starter }: { starter: PreviewStarter }) {
               ))}
             </div>
           </fieldset>
+          {/* Keyed by language: each stub swap is content replacing content and re-runs the
+              rise, which is what makes ten near-identical stubs comparable by click. */}
           <pre
-            className="numeric overflow-x-auto rounded-panel border border-rule-edge bg-ink/[0.035] p-4"
+            key={language}
+            className="motion-swap-in numeric overflow-x-auto rounded-panel border border-rule-edge bg-ink/[0.035] p-4"
             style={{ fontSize: "var(--text-xs)", lineHeight: "1.6" }}
           >
             {code}

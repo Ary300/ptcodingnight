@@ -63,7 +63,12 @@ function BoardPreview() {
   const widest = Math.max(...BOARD_PREVIEW.map((row) => row.sets.length));
 
   return (
-    <div className="overflow-hidden rounded-panel border border-rule-edge bg-paper shadow-[0_1px_2px_color-mix(in_srgb,var(--color-ink)_6%,transparent),0_8px_24px_-12px_color-mix(in_srgb,var(--color-ink)_25%,transparent)]">
+    /*
+      `motion-swap-in` so the panel takes the second slot of the hero's `motion-stagger` (the
+      copy column is the first). Transform-only: the caption and the set cells are alpha'd ink,
+      which is exactly the text the entrance rule forbids fading over.
+    */
+    <div className="motion-swap-in overflow-hidden rounded-panel border border-rule-edge bg-paper shadow-[0_1px_2px_color-mix(in_srgb,var(--color-ink)_6%,transparent),0_8px_24px_-12px_color-mix(in_srgb,var(--color-ink)_25%,transparent)]">
       <div className="flex items-center justify-between border-b border-rule-hair bg-ink px-4 py-2.5 text-paper">
         <span className="font-display font-bold" style={{ fontSize: "var(--text-sm)" }}>
           Team standings
@@ -282,8 +287,16 @@ export default async function Home() {
 
           Stacks below `lg`, copy first.
         */}
-        <div className="relative mx-auto grid w-full max-w-6xl items-center gap-10 px-4 py-14 sm:py-20 lg:grid-cols-[minmax(0,1fr)_minmax(0,26rem)]">
-          <div>
+        {/*
+          `motion-stagger` on the hero grid: the copy lands first, the board panel 35ms behind.
+          A class here rather than a root template, because this page is outside both route
+          groups (their templates never reach it) and a root `app/template.tsx` would nest a
+          second rise inside the group templates on every navigation and animate the projector.
+          The header above stays still - chrome does not arrive, content does, which is the same
+          split the route groups make between layout and template.
+        */}
+        <div className="motion-stagger relative mx-auto grid w-full max-w-6xl items-center gap-10 px-4 py-14 sm:py-20 lg:grid-cols-[minmax(0,1fr)_minmax(0,26rem)]">
+          <div className="motion-swap-in">
             <p
               className="text-ink/60 uppercase"
               style={{ fontSize: "var(--text-xs)", letterSpacing: "0.14em" }}
@@ -352,9 +365,11 @@ export default async function Home() {
           you on a team. Numbering something that is merely a list is decoration; numbering this is
           information.
         */}
-        <ol className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {/* The four steps land 35ms apart, left to right - the stagger follows the reading
+            order the numbering already asserts. */}
+        <ol className="motion-stagger mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {HOW.map((step) => (
-            <li key={step.n} className="rounded-panel border border-rule-hair bg-paper p-4">
+            <li key={step.n} className="motion-swap-in rounded-panel border border-rule-hair bg-paper p-4">
               {/*
                 Ink, not panther: DESIGN.md §2 names these step numbers as a place the accent was
                 specifically dropped - the sequence differentiates by weight and size alone.

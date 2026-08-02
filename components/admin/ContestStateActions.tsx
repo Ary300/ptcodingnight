@@ -136,7 +136,11 @@ export function ContestStateActions({ contestId, state, onChanged }: ContestStat
       )}
 
       {error !== null && (
-        <p role="alert" className="font-semibold text-panther" style={{ fontSize: "var(--text-xs)" }}>
+        <p
+          role="alert"
+          className="motion-swap-in font-semibold text-panther"
+          style={{ fontSize: "var(--text-xs)" }}
+        >
           {error}
         </p>
       )}

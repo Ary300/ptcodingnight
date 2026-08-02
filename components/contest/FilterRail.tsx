@@ -76,9 +76,15 @@ export function FilterRail({ groups, selected, onChange, footer }: FilterRailPro
               {group.options.map((option) => {
                 const checked = (selected[group.id] ?? []).includes(option.value);
                 return (
+                  /*
+                    The press state a native checkbox does not give you: the whole label row
+                    dips 2% for the duration of the press, so ticking a box is acknowledged by
+                    the control under the finger rather than only by rows vanishing elsewhere.
+                    Same scale and duration as every Button.
+                  */
                   <label
                     key={option.value}
-                    className="flex cursor-pointer items-center gap-2"
+                    className="flex cursor-pointer items-center gap-2 transition-transform duration-[var(--motion-press)] active:scale-[0.98]"
                     style={{ fontSize: "var(--text-sm)" }}
                   >
                     <input

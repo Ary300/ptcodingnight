@@ -82,12 +82,14 @@ export function SignUpForm({ providerAvailability }: SignUpFormProps) {
             navigations to routes that 302 to another origin, which a client-side <Link> cannot
             follow. The first OAuth sign-in creates the account, so these ARE sign-up buttons here.
           */}
-          <div className="flex flex-col gap-2">
+          {/* The same 35ms landing the login page's provider buttons get, so the pair reads
+              identically on both pages. Transform-only rises, per the entrance rule. */}
+          <div className="motion-stagger flex flex-col gap-2">
             {providerAvailability.google && (
               // eslint-disable-next-line @next/next/no-html-link-for-pages -- OAuth start: must be a document navigation
               <a
                 href="/api/auth/google"
-                className="flex items-center justify-center gap-2.5 rounded-chip border border-rule-firm px-3 py-2 font-semibold hover:border-ink hover:bg-ink/[0.03]"
+                className="motion-swap-in flex items-center justify-center gap-2.5 rounded-chip border border-rule-firm px-3 py-2 font-semibold transition-[color,background-color,border-color,transform] duration-[var(--motion-press)] hover:border-ink hover:bg-ink/[0.03] active:scale-[0.97]"
                 style={{ fontSize: "var(--text-sm)" }}
               >
                 <GoogleMark />
@@ -98,7 +100,7 @@ export function SignUpForm({ providerAvailability }: SignUpFormProps) {
               // eslint-disable-next-line @next/next/no-html-link-for-pages -- OAuth start: must be a document navigation
               <a
                 href="/api/auth/github"
-                className="flex items-center justify-center gap-2.5 rounded-chip border border-rule-firm px-3 py-2 font-semibold hover:border-ink hover:bg-ink/[0.03]"
+                className="motion-swap-in flex items-center justify-center gap-2.5 rounded-chip border border-rule-firm px-3 py-2 font-semibold transition-[color,background-color,border-color,transform] duration-[var(--motion-press)] hover:border-ink hover:bg-ink/[0.03] active:scale-[0.97]"
                 style={{ fontSize: "var(--text-sm)" }}
               >
                 <GitHubMark />
@@ -167,18 +169,30 @@ export function SignUpForm({ providerAvailability }: SignUpFormProps) {
         </label>
 
         {error !== null && (
-          <p role="alert" className="text-panther" style={{ fontSize: "var(--text-xs)" }}>
+          /* Mounts on a failed submit; the rise makes the arrival followable. Transform-only. */
+          <p role="alert" className="motion-swap-in text-panther" style={{ fontSize: "var(--text-xs)" }}>
             {error}
           </p>
         )}
 
+        {/*
+          Width held by the widest label ("Creating your account…") so the control cannot
+          resize under the cursor mid-press, and the press itself is acknowledged over 100ms
+          like every other button. The keyed span makes the label swap a rise, not a flicker.
+        */}
         <button
           type="submit"
           disabled={busy || fullName.trim() === "" || email === "" || password === ""}
-          className="rounded bg-panther px-4 py-2.5 font-semibold text-paper hover:bg-panther-deep disabled:cursor-not-allowed disabled:bg-ink/25"
+          className="relative whitespace-nowrap rounded bg-panther px-4 py-2.5 font-semibold text-paper transition-[background-color,transform] duration-[var(--motion-press)] hover:bg-panther-deep active:scale-[0.97] disabled:cursor-not-allowed disabled:bg-ink/25 disabled:active:scale-100"
           style={{ fontSize: "var(--text-sm)" }}
         >
-          {busy ? "Creating your account…" : "Sign up"}
+          <span aria-hidden="true" className="invisible">Creating your account…</span>
+          <span
+            key={busy ? "busy" : "idle"}
+            className="motion-swap-in absolute inset-0 flex items-center justify-center"
+          >
+            {busy ? "Creating your account…" : "Sign up"}
+          </span>
         </button>
       </form>
 

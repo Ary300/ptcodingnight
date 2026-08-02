@@ -87,7 +87,11 @@ export function OrganizerMenu({ displayName }: OrganizerMenuProps) {
       {open && (
         // `text-ink` on the panel: it is a paper surface inside a `text-paper` header, and without
         // this every item inherits near-white on near-white and the menu opens invisible.
-        <div className="absolute right-0 z-50 mt-1 w-56 rounded-panel border border-rule-edge bg-paper text-ink shadow-lg">
+        //
+        // `motion-swap-in` (200ms): a menu is content arriving, not a whole surface, and the
+        // proven listbox is the reference interaction — this component adopts the utility
+        // directly because that file is frozen. Close stays instant.
+        <div className="motion-swap-in absolute right-0 z-50 mt-1 w-56 rounded-panel border border-rule-edge bg-paper text-ink shadow-lg">
           <ul role="menu" className="py-1">
             <li role="none">
               <Link

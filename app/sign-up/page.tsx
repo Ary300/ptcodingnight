@@ -23,8 +23,13 @@ export const metadata: Metadata = {
 export default function SignUpPage() {
   const providerAvailability = oauthProviderAvailability();
 
+  /*
+    Arrival motion via a class on the page root, not a template - same decision as `/sign-in`,
+    for the same reasons: outside both route groups, always a fresh mount on every way in, and a
+    root template would double the rise inside the groups and animate the projector.
+  */
   return (
-    <div className="grid min-h-screen lg:grid-cols-2">
+    <div className="motion-stagger grid min-h-screen lg:grid-cols-2">
       <BrandPanel>
         <p className="font-display" style={{ fontSize: "var(--text-md)" }}>
           Join
@@ -37,7 +42,7 @@ export default function SignUpPage() {
         </p>
       </BrandPanel>
 
-      <main className="flex items-center justify-center px-4 py-10">
+      <main className="motion-swap-in flex items-center justify-center px-4 py-10">
         <div className="w-full max-w-md">
           <Link
             href="/"

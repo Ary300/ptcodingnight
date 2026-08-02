@@ -51,7 +51,7 @@ function renderInline(nodes: readonly Inline[], prefix: string): ReactNode[] {
           <a
             key={key}
             href={node.href}
-            className="text-panther underline underline-offset-2 hover:text-panther-deep"
+            className="text-panther underline underline-offset-2 transition-colors duration-[var(--motion-press)] hover:text-panther-deep"
             rel="noopener noreferrer"
           >
             {renderInline(node.children, key)}

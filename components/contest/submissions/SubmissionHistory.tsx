@@ -199,7 +199,7 @@ function Row({ submission, title, open, onToggle }: RowProps) {
         name's chevron, colour change and focus ring. The negative margin trades the cell's own
         padding back into the button, so the touch target keeps the full row height.
       */}
-      <tr className="first:border-t-0 border-t border-rule-hair hover:bg-ink/[0.03]">
+      <tr className="first:border-t-0 border-t border-rule-hair transition-colors duration-[var(--motion-press)] hover:bg-ink/[0.03]">
         <td className="px-3 py-2.5 sm:px-4">
           {/*
             `title === null` means the problem list did not load, so this submission's problem
@@ -215,7 +215,7 @@ function Row({ submission, title, open, onToggle }: RowProps) {
             className={
               title === null
                 ? "-my-2.5 py-2.5 text-left text-ink/60"
-                : "-my-2.5 py-2.5 text-left font-display font-bold hover:text-panther"
+                : "-my-2.5 py-2.5 text-left font-display font-bold transition-colors duration-[var(--motion-press)] hover:text-panther"
             }
             style={{ fontSize: "var(--text-sm)" }}
           >
@@ -265,7 +265,14 @@ function Row({ submission, title, open, onToggle }: RowProps) {
       {open && (
         <tr id={detailId} className="bg-ink/[0.02]">
           <td colSpan={5} className="px-3 pt-2 pb-3 sm:px-4">
-            <SubmissionDetail submission={submission} />
+            {/*
+              The rise lives on a div INSIDE the cell, never on the tr. A transformed table row
+              breaks row painting in some engines (borders and backgrounds detach from the
+              moved content), so the tr mounts still and its content arrives.
+            */}
+            <div className="motion-swap-in">
+              <SubmissionDetail submission={submission} />
+            </div>
           </td>
         </tr>
       )}
@@ -352,7 +359,7 @@ function Card({ submission, title, open, onToggle }: RowProps) {
       </button>
 
       {open && (
-        <div id={detailId} className="bg-ink/[0.02] px-3 pt-2 pb-3">
+        <div id={detailId} className="motion-swap-in bg-ink/[0.02] px-3 pt-2 pb-3">
           <SubmissionDetail submission={submission} />
         </div>
       )}
@@ -440,7 +447,7 @@ export function SubmissionHistory() {
         second sentence answers the question a student actually has here after pressing "Run
         samples" three times: sample runs are free, unjudged, and never listed.
       */
-      <div>
+      <div className="motion-swap-in">
         <p
           className="rounded-panel border border-dashed border-rule-edge bg-paper px-4 py-10 text-center text-ink/70"
           style={{ fontSize: "var(--text-sm)" }}
@@ -464,7 +471,11 @@ export function SubmissionHistory() {
   }
 
   return (
-    <div>
+    /*
+      "Loading your submissions…" is replaced by the whole table in one client-side swap;
+      the rise makes the arrival followable. Transform-only, as everywhere.
+    */
+    <div className="motion-swap-in">
       {/*
         The problem list failed, so the rows below have verdicts and scores but no names. Say so
         once, at the top, rather than letting six identical "Problem name unavailable" lines be

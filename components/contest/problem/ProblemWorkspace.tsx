@@ -212,7 +212,13 @@ export function ProblemWorkspace({ slug }: ProblemWorkspaceProps) {
   const judging = stream.status === "waiting";
 
   return (
-    <div>
+    /*
+      "Loading problem…" is replaced by the whole workspace in one client-side swap, after the
+      page's own arrival animation has long finished. The rise makes the statement's arrival
+      followable instead of a same-frame pop. Transform only: the ink-on-paper text inside is
+      full strength, but the rule is cheaper to keep than to re-derive per surface.
+    */
+    <div className="motion-swap-in">
       {/*
         Breadcrumb, title with its status pill, tabs — HackerRank's header, spanning the full
         width above the split. The limits line that used to live under the title has moved into

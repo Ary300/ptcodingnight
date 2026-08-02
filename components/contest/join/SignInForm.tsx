@@ -216,7 +216,13 @@ export function SignInForm({
             message under the threshold, which is the wrong trade for the one sentence on this page
             somebody has to be able to read.
           */
-          className="mb-4 rounded-chip border border-panther/40 bg-panther/[0.06] px-3 py-2.5 text-panther"
+          /*
+            `motion-swap-in` runs on mount, which covers both ways this banner exists: rendered
+            into the server HTML from `?error=` (first paint) and conditionally mounted when a
+            fetch path sets it. Transform-only rise - never a fade, the message is the one
+            sentence on this page somebody has to be able to read mid-animation too.
+          */
+          className="motion-swap-in mb-4 rounded-chip border border-panther/40 bg-panther/[0.06] px-3 py-2.5 text-panther"
           style={{ fontSize: "var(--text-sm)" }}
         >
           <p>{pageError}</p>
@@ -245,7 +251,12 @@ export function SignInForm({
       */}
       {studentSignInAvailable ? (
         <>
-          <div className="flex flex-col gap-2">
+          {/*
+            `motion-stagger` here, `motion-swap-in` on each anchor: the two primary actions land
+            35ms apart inside the column's own arrival, the same nesting the problem list uses
+            inside the competitor template's rise.
+          */}
+          <div className="motion-stagger flex flex-col gap-2">
             {providerAvailability.google && (
               // eslint-disable-next-line @next/next/no-html-link-for-pages -- OAuth start: must be a document navigation
               <a
@@ -258,7 +269,13 @@ export function SignInForm({
                   `py-2` rather than `py-2.5` so the links stand 42px like the inputs below: one
                   control height per column, not three.
                 */
-                className="flex items-center justify-center gap-2.5 rounded-chip border border-rule-firm px-3 py-2 font-semibold hover:border-ink hover:bg-ink/[0.03]"
+                /*
+                  These two anchors are the first controls every student touches all night, and
+                  they were the only button-shaped things on the site whose hover and press
+                  changed in the same frame. Same grammar as ui/Button: colours and the 3% dip
+                  on one 100ms transition.
+                */
+                className="motion-swap-in flex items-center justify-center gap-2.5 rounded-chip border border-rule-firm px-3 py-2 font-semibold transition-[color,background-color,border-color,transform] duration-[var(--motion-press)] hover:border-ink hover:bg-ink/[0.03] active:scale-[0.97]"
                 style={{ fontSize: "var(--text-sm)" }}
               >
                 <GoogleMark />
@@ -269,7 +286,7 @@ export function SignInForm({
               // eslint-disable-next-line @next/next/no-html-link-for-pages -- OAuth start: must be a document navigation
               <a
                 href="/api/auth/github"
-                className="flex items-center justify-center gap-2.5 rounded-chip border border-rule-firm px-3 py-2 font-semibold hover:border-ink hover:bg-ink/[0.03]"
+                className="motion-swap-in flex items-center justify-center gap-2.5 rounded-chip border border-rule-firm px-3 py-2 font-semibold transition-[color,background-color,border-color,transform] duration-[var(--motion-press)] hover:border-ink hover:bg-ink/[0.03] active:scale-[0.97]"
                 style={{ fontSize: "var(--text-sm)" }}
               >
                 <GitHubMark />
@@ -354,15 +371,31 @@ export function SignInForm({
           <p
             id="password-form-error"
             role="alert"
-            className="text-panther"
+            /* Mounts on a failed submit; the rise makes the arrival followable. Transform-only. */
+            className="motion-swap-in text-panther"
             style={{ fontSize: "var(--text-xs)" }}
           >
             {passwordError}
           </p>
         )}
 
-        <Button type="submit" disabled={passwordBusy || email === "" || password === ""}>
-          {passwordBusy ? "Signing in…" : "Sign in"}
+        {/*
+          Sized by the widest label so "Sign in" swapping to "Signing in…" cannot resize the
+          control mid-press (the Run/Submit pattern). The swap is keyed so the new word rises
+          in rather than flickering into place.
+        */}
+        <Button
+          type="submit"
+          className="relative whitespace-nowrap"
+          disabled={passwordBusy || email === "" || password === ""}
+        >
+          <span aria-hidden="true" className="invisible">Signing in…</span>
+          <span
+            key={passwordBusy ? "busy" : "idle"}
+            className="motion-swap-in absolute inset-0 flex items-center justify-center"
+          >
+            {passwordBusy ? "Signing in…" : "Sign in"}
+          </span>
         </Button>
       </form>
 
@@ -403,15 +436,28 @@ export function SignInForm({
             <p
               id="passcode-form-error"
               role="alert"
-              className="text-panther"
+              /* Same as the password error above: a mount-time rise, never a fade. */
+              className="motion-swap-in text-panther"
               style={{ fontSize: "var(--text-xs)" }}
             >
               {passcodeError}
             </p>
           )}
 
-          <Button type="submit" variant="secondary" disabled={passcodeBusy || passcode === ""}>
-            {passcodeBusy ? "Checking…" : "Open the organizer console"}
+          {/* Width held by the longest label, same as the student button above. */}
+          <Button
+            type="submit"
+            variant="secondary"
+            className="relative whitespace-nowrap"
+            disabled={passcodeBusy || passcode === ""}
+          >
+            <span aria-hidden="true" className="invisible">Open the organizer console</span>
+            <span
+              key={passcodeBusy ? "busy" : "idle"}
+              className="motion-swap-in absolute inset-0 flex items-center justify-center"
+            >
+              {passcodeBusy ? "Checking…" : "Open the organizer console"}
+            </span>
           </Button>
 
           <p className="text-ink/60" style={{ fontSize: "var(--text-xs)" }}>

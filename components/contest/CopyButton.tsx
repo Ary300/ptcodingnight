@@ -48,15 +48,26 @@ export function CopyButton({ value, what }: CopyButtonProps) {
 
   return (
     <>
+      {/*
+        Sized by the WIDEST label ("Select it manually"), not the current one: "Copy" swapping
+        to "Copied" and back two seconds later resized the control under the student's cursor,
+        during the one workflow (samples) where this button is pressed constantly. An invisible
+        copy of the long label holds the width; the visible label swaps on top of it, keyed so
+        each state change rises in over --motion-swap instead of appearing mid-frame. The
+        sr-only live region below is separate and unaffected.
+      */}
       <Button
         type="button"
         variant="ghost"
         onClick={() => void copy()}
         aria-label={`Copy ${what}`}
-        className="px-2 py-1"
+        className="relative whitespace-nowrap px-2 py-1"
         style={{ fontSize: "var(--text-xs)" }}
       >
-        {text}
+        <span aria-hidden="true" className="invisible">Select it manually</span>
+        <span key={state} className="motion-swap-in absolute inset-0 flex items-center justify-center">
+          {text}
+        </span>
       </Button>
       <span className="sr-only" aria-live="polite">
         {state === "copied" ? `${what} copied.` : state === "failed" ? `Could not copy ${what}.` : ""}

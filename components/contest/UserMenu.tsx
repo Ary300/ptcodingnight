@@ -192,7 +192,7 @@ export function UserMenu({
           accessible name does not change with the viewport.
         */
         aria-label={`Account: ${displayName}`}
-        className="flex min-w-0 items-center gap-2 rounded-chip px-1.5 py-1 text-paper/85 hover:text-paper"
+        className="flex min-w-0 items-center gap-2 rounded-chip px-1.5 py-1 text-paper/85 transition-colors duration-[var(--motion-press)] hover:text-paper"
         style={{ fontSize: "var(--text-sm)" }}
       >
         <Avatar displayName={displayName} userId={userId} version={avatarVersion} />
@@ -209,7 +209,12 @@ export function UserMenu({
         >
           {displayName}
         </span>
-        <span aria-hidden="true" className={open ? "shrink-0 rotate-180" : "shrink-0"}>
+        {/* The chevron TURNS to its new state instead of snapping; it is a flex item, so the
+            transform applies. Same 100ms as every other press acknowledgment. */}
+        <span
+          aria-hidden="true"
+          className={`shrink-0 transition-transform duration-[var(--motion-press)] ${open ? "rotate-180" : ""}`}
+        >
           &#9662;
         </span>
       </button>
@@ -225,12 +230,28 @@ export function UserMenu({
             Stating the colour at the surface, rather than on each item, is what stops the next
             item added here from disappearing.
           */
+          /*
+            The entrance is the shared 3px transform-only rise at the PANEL duration (300ms,
+            not the 200ms content step) because this is a whole surface arriving, and bigger
+            things move slower. Transform-only matters even on paper: the header behind is
+            text-paper on ink, and a wrapper fade here would be a habit the next dark panel
+            copies. On the phone sheet `top` is a measured fixed offset, so a translate is
+            safe; the scroll-close never fights the entrance because scrolling closes it
+            outright rather than animating it away.
+          */
           className={
             sheetTop !== null
-              ? "fixed inset-x-0 z-50 overflow-hidden border-y border-rule-edge bg-paper text-ink shadow-lg"
-              : "absolute right-0 z-50 mt-2 w-64 overflow-hidden rounded-panel border border-rule-edge bg-paper text-ink shadow-lg"
+              ? "motion-swap-in fixed inset-x-0 z-50 overflow-hidden border-y border-rule-edge bg-paper text-ink shadow-lg"
+              : "motion-swap-in absolute right-0 z-50 mt-2 w-64 overflow-hidden rounded-panel border border-rule-edge bg-paper text-ink shadow-lg"
           }
-          style={sheetTop !== null ? { top: sheetTop } : undefined}
+          style={{
+            // Inline, not a Tailwind arbitrary property: `.motion-swap-in`'s animation
+            // SHORTHAND lives in globals.css after the utilities layer, so a
+            // `[animation-duration:...]` class loses the cascade to it (measured: the panel
+            // ran at 200ms). The inline declaration always wins.
+            animationDuration: "var(--motion-panel)",
+            ...(sheetTop !== null ? { top: sheetTop } : {}),
+          }}
         >
           {/*
             The highlighted slot. Panther red with paper text rather than red text on paper: at
@@ -294,7 +315,7 @@ export function UserMenu({
                   href={item.href}
                   role="menuitem"
                   onClick={() => setOpen(false)}
-                  className="block px-3.5 py-2.5 hover:bg-ink/5"
+                  className="block px-3.5 py-2.5 transition-colors duration-[var(--motion-press)] hover:bg-ink/5"
                   style={{ fontSize: "var(--text-sm)" }}
                 >
                   {item.label}
@@ -315,7 +336,7 @@ export function UserMenu({
                   setOpen(false);
                   onSignOut();
                 }}
-                className="block w-full px-3.5 py-2.5 text-left hover:bg-ink/5"
+                className="block w-full px-3.5 py-2.5 text-left transition-colors duration-[var(--motion-press)] hover:bg-ink/5"
                 style={{ fontSize: "var(--text-sm)" }}
               >
                 Sign out

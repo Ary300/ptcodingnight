@@ -448,9 +448,11 @@ export function RosterManager({ contestId }: RosterManagerProps) {
         </span>
       )}
 
+      {/* An inline confirm form expanding inside the row: panel duration, transform-only.
+          Paper ground, so the contrast law is satisfied without argument. */}
       {removing !== null && removing.participantId === person.participantId && (
         <form
-          className="mt-tight flex flex-col gap-group border-t border-rule-hair pt-3"
+          className="motion-panel-in mt-tight flex flex-col gap-group border-t border-rule-hair pt-3"
           onSubmit={(event) => {
             event.preventDefault();
             if (removeReason.trim().length < MIN_REASON) return;
@@ -582,7 +584,7 @@ export function RosterManager({ contestId }: RosterManagerProps) {
           {searchError !== null && (
             <p
               role="alert"
-              className="font-semibold text-panther"
+              className="motion-swap-in font-semibold text-panther"
               style={{ fontSize: "var(--text-sm)" }}
             >
               {searchError}
@@ -604,11 +606,16 @@ export function RosterManager({ contestId }: RosterManagerProps) {
                 : "No account outside this contest matches that."}
             </p>
           ) : (
-            <ul className="flex flex-col gap-tight">
+            /*
+              Candidate keys are the account, so a debounce redraw animates only rows that are
+              NEW to the list, and "Add" deleting a row moves nothing else. The stagger caps at
+              ten by construction of the utility.
+            */
+            <ul className="motion-stagger flex flex-col gap-tight">
               {candidates.map((candidate) => (
                 <li
                   key={candidate.userId}
-                  className="flex min-w-0 flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b border-rule-hair pb-2"
+                  className="motion-swap-in flex min-w-0 flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b border-rule-hair pb-2"
                 >
                   <div className="flex min-w-0 flex-col">
                     <span
@@ -742,8 +749,16 @@ export function RosterManager({ contestId }: RosterManagerProps) {
         )}
       </Panel>
 
+      {/* These three Panels are whole page sections appearing from nothing mid-session, so they
+          arrive at the panel duration. Transform-only: they are paper surfaces, but the rule is
+          the same everywhere. The roster lists themselves stay still on refetch — the moved
+          person's continuity is a FLIP-class problem, noted rather than improvised here. */}
       {moving !== null && (
-        <Panel title={`Move ${moving.displayName}`} level="framed">
+        <Panel
+          className="motion-panel-in"
+          title={`Move ${moving.displayName}`}
+          level="framed"
+        >
           <form
             className="flex flex-col gap-group"
             onSubmit={(event) => {
@@ -813,6 +828,7 @@ export function RosterManager({ contestId }: RosterManagerProps) {
 
       {settingSet !== null && (
         <Panel
+          className="motion-panel-in"
           title={`Problem set for ${settingSet.displayName}`}
           level="framed"
         >
@@ -880,6 +896,7 @@ export function RosterManager({ contestId }: RosterManagerProps) {
 
       {settingDivision !== null && (
         <Panel
+          className="motion-panel-in"
           title={`Division for ${settingDivision.displayName}`}
           level="framed"
         >
@@ -1091,9 +1108,12 @@ export function RosterManager({ contestId }: RosterManagerProps) {
                   </Button>
                 </div>
 
+                {/* Same treatment as the remove form: the rename/dissolve form pops open inside
+                    the card, and `key` re-runs the entrance when one swaps for the other. */}
                 {teamForm !== null && teamForm.teamId === team.teamId && (
                   <form
-                    className="mt-group flex flex-col gap-group border-t border-rule-hair pt-3"
+                    key={teamForm.kind}
+                    className="motion-panel-in mt-group flex flex-col gap-group border-t border-rule-hair pt-3"
                     onSubmit={(event) => {
                       event.preventDefault();
                       if (teamFormReason.trim().length < MIN_REASON) return;
@@ -1179,7 +1199,7 @@ export function RosterManager({ contestId }: RosterManagerProps) {
         {error !== null && (
           <p
             role="alert"
-            className="mt-group font-semibold text-panther"
+            className="motion-swap-in mt-group font-semibold text-panther"
             style={{ fontSize: "var(--text-sm)" }}
           >
             {error}

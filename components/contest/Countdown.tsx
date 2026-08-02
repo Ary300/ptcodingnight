@@ -69,15 +69,26 @@ export function Countdown({ endsAt, label = "Time remaining" }: CountdownProps) 
       object without introducing a third colour into the bar.
     */
     <div className="inline-flex shrink-0 items-center gap-2.5 rounded-chip border border-rule-edge-inverse bg-paper/10 px-2.5 py-1">
+      {/* "Time remaining" flips to "Finished" exactly once, at zero. Keyed so the new word
+          rises in; it is a flex item, so the transform applies. */}
       <span
-        className="whitespace-nowrap text-paper/75 uppercase"
+        key={over ? "finished" : "running"}
+        className="motion-swap-in whitespace-nowrap text-paper/75 uppercase"
         style={{ fontSize: "var(--text-xs)", letterSpacing: "0.08em" }}
       >
         {over ? "Finished" : label}
       </span>
+      {/*
+        The paper-to-gold flip at 5:00 is the tensest state change in the room, and it used to
+        happen between two frames. The colour now crosses over --motion-swap, which reads as
+        the clock changing state rather than glitching. Nothing animates per second: the
+        colour value is constant between the two threshold flips, so the transition only ever
+        runs at 5:00 and at zero. Gold is 13.44:1 on this dark chip, full-strength text, so a
+        colour transition here never passes through a failing ratio.
+      */}
       <span
         aria-hidden="true"
-        className="numeric font-semibold whitespace-nowrap"
+        className="numeric font-semibold whitespace-nowrap transition-colors duration-[var(--motion-swap)]"
         style={{
           fontSize: "var(--text-md)",
           color: urgent ? "var(--color-gold)" : "var(--color-paper)",

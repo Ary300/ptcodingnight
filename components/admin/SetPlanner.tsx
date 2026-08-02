@@ -813,7 +813,7 @@ export function SetPlanner({
           {crowdedTeams.length > 0 && (
             <p
               role="alert"
-              className="max-w-[70ch] font-semibold text-panther"
+              className="motion-swap-in max-w-[70ch] font-semibold text-panther"
               style={{ fontSize: "var(--text-xs)" }}
             >
               Add more sets before building.{" "}
@@ -892,22 +892,33 @@ export function SetPlanner({
         </div>
       </Panel>
 
+      {/*
+        Both plates appear from nothing mid-session, so each rises in at the panel duration on a
+        WRAPPER, transform-only: they are `bg-ink` with alpha'd text inside, and any opacity on
+        the wrapper fails the contrast floor mid-animation — the same law as the frozen plate on
+        the console. The `live={false}` plates above render on arrival and are covered by the
+        page-level template rise.
+      */}
       {preview !== null && !preview.plan.ok && (
-        // The engine's sentence, verbatim. It already carries the arithmetic, and a second
-        // wording here would be a second answer free to disagree with the route.
-        <AlertPlate tone="alarm" title="These sets cannot be built yet">
-          <p>{preview.plan.message}</p>
-          <p className="mt-tight">
-            Publish more questions in the bank, or ask for fewer of that
-            difficulty in each set.
-          </p>
-        </AlertPlate>
+        <div className="motion-panel-in">
+          {/* The engine's sentence, verbatim. It already carries the arithmetic, and a second
+              wording here would be a second answer free to disagree with the route. */}
+          <AlertPlate tone="alarm" title="These sets cannot be built yet">
+            <p>{preview.plan.message}</p>
+            <p className="mt-tight">
+              Publish more questions in the bank, or ask for fewer of that
+              difficulty in each set.
+            </p>
+          </AlertPlate>
+        </div>
       )}
 
       {previewError !== null && (
-        <AlertPlate tone="alarm" title="The split could not be worked out">
-          {previewError}
-        </AlertPlate>
+        <div className="motion-panel-in">
+          <AlertPlate tone="alarm" title="The split could not be worked out">
+            {previewError}
+          </AlertPlate>
+        </div>
       )}
 
       <Panel
@@ -920,7 +931,7 @@ export function SetPlanner({
         aside={
           previewing || (formValid && !previewMatches) ? (
             <span
-              className="text-ink/60"
+              className="motion-swap-in inline-block text-ink/60"
               style={{ fontSize: "var(--text-xs)" }}
             >
               Working it out…
@@ -929,44 +940,56 @@ export function SetPlanner({
         }
       >
         <div className="flex flex-col gap-group">
-          {!loaded ? (
-            <p className="text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
-              Reading the contest…
-            </p>
-          ) : shownSets.length === 0 ? (
-            <SetGrid
-              sets={shownSets}
-              caption={
-                showStored
-                  ? "The questions in each set, as they are stored"
-                  : "The questions each set would hold"
-              }
-            />
-          ) : (
-            // One grid per division: the organizer's sheet is per division once divisions
-            // exist, and "Set A" means a different column in each.
-            groupSetsByDivision(shownSets).map((group) => (
-              <div key={group.divisionName ?? ""} className="flex flex-col gap-tight">
-                {group.divisionName !== null && (
-                  <h3
-                    className="font-display font-bold"
-                    style={{ fontSize: "var(--text-sm)" }}
-                  >
-                    {group.divisionName}
-                  </h3>
-                )}
-                <SetGrid
-                  sets={group.sets}
-                  caption={
-                    (showStored
-                      ? "The questions in each set, as they are stored"
-                      : "The questions each set would hold") +
-                    (group.divisionName === null ? "" : ` for ${group.divisionName}`)
-                  }
-                />
-              </div>
-            ))
-          )}
+          {/*
+            Keyed by which DEAL is on screen — the stored one, or a proposal named by its seed —
+            so a new deal rises once and the debounced idle re-renders (same seed, same deal)
+            move nothing. Every keystroke re-rendering an identical grid with an entrance would
+            be motion fighting the keystroke cadence. The class is on this scroll wrapper, never
+            on `<tr>`s (the WebKit table-row caveat).
+          */}
+          <div
+            key={showStored ? "stored" : (preview?.seed ?? "proposal")}
+            className="motion-swap-in flex flex-col gap-group"
+          >
+            {!loaded ? (
+              <p className="text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
+                Reading the contest…
+              </p>
+            ) : shownSets.length === 0 ? (
+              <SetGrid
+                sets={shownSets}
+                caption={
+                  showStored
+                    ? "The questions in each set, as they are stored"
+                    : "The questions each set would hold"
+                }
+              />
+            ) : (
+              // One grid per division: the organizer's sheet is per division once divisions
+              // exist, and "Set A" means a different column in each.
+              groupSetsByDivision(shownSets).map((group) => (
+                <div key={group.divisionName ?? ""} className="flex flex-col gap-tight">
+                  {group.divisionName !== null && (
+                    <h3
+                      className="font-display font-bold"
+                      style={{ fontSize: "var(--text-sm)" }}
+                    >
+                      {group.divisionName}
+                    </h3>
+                  )}
+                  <SetGrid
+                    sets={group.sets}
+                    caption={
+                      (showStored
+                        ? "The questions in each set, as they are stored"
+                        : "The questions each set would hold") +
+                      (group.divisionName === null ? "" : ` for ${group.divisionName}`)
+                    }
+                  />
+                </div>
+              ))
+            )}
+          </div>
 
           <TeamQuestionList
             rows={teamQuestions}
@@ -1028,7 +1051,7 @@ export function SetPlanner({
           {applyError !== null && (
             <p
               role="alert"
-              className="max-w-[70ch] font-semibold text-panther"
+              className="motion-swap-in max-w-[70ch] font-semibold text-panther"
               style={{ fontSize: "var(--text-sm)" }}
             >
               {applyError}
@@ -1037,15 +1060,18 @@ export function SetPlanner({
           {applied !== null && (
             <p
               role="status"
-              className="max-w-[70ch] font-semibold"
+              className="motion-swap-in max-w-[70ch] font-semibold"
               style={{ fontSize: "var(--text-sm)" }}
             >
               {applied}
             </p>
           )}
 
+          {/* The inline confirmation replaces the Build button with a paragraph and a danger
+              button in one frame — a whole surface swap, so it arrives at the panel duration.
+              Cancelling back to the button is instant on purpose. */}
           {confirming ? (
-            <div className="flex flex-col gap-tight">
+            <div className="motion-panel-in flex flex-col gap-tight">
               <p
                 className="max-w-[70ch]"
                 style={{ fontSize: "var(--text-sm)" }}

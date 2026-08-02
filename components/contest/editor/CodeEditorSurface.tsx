@@ -472,7 +472,12 @@ export function CodeEditorSurface({
         <div className="min-w-0 flex-1">{toolbarStart}</div>
 
         {confirmingReset ? (
-          <span className="flex flex-wrap items-center justify-end gap-2" role="group" aria-label="Confirm reset">
+          /*
+            The confirm strip replaces the icon in one keystroke, so it rises in over
+            --motion-swap. An animation delays paint, never mount: "Keep my code" receives
+            focus in the same frame it always did, the entrance just makes the swap readable.
+          */
+          <span className="motion-swap-in flex flex-wrap items-center justify-end gap-2" role="group" aria-label="Confirm reset">
             <span className="text-ink/70" style={{ fontSize: "var(--text-xs)" }}>
               Replace your code with the starter template?
             </span>
@@ -500,7 +505,10 @@ export function CodeEditorSurface({
             onClick={() => setConfirmingReset(true)}
             aria-label="Reset the editor to the starter template"
             title="Reset to the starter template"
-            className="inline-flex h-7 w-7 items-center justify-center rounded-chip text-ink/70 hover:bg-ink/10 hover:text-ink disabled:cursor-not-allowed disabled:text-ink/30 disabled:hover:bg-transparent"
+            // The same press grammar as ui/Button: colours and the 3% dip ride one 100ms
+            // transition, so the icon buttons stop being the only controls on the page that
+            // change state in the same frame as the click.
+            className="inline-flex h-7 w-7 items-center justify-center rounded-chip text-ink/70 transition-[color,background-color,transform] duration-[var(--motion-press)] hover:bg-ink/10 hover:text-ink active:scale-[0.97] disabled:cursor-not-allowed disabled:text-ink/30 disabled:hover:bg-transparent disabled:active:scale-100"
           >
             <svg
               width="14"
@@ -526,7 +534,7 @@ export function CodeEditorSurface({
             onClick={toggleFullscreen}
             aria-label={isFullscreen ? "Exit full screen" : "Enter full screen"}
             title={isFullscreen ? "Exit full screen" : "Full screen"}
-            className="inline-flex h-7 w-7 items-center justify-center rounded-chip text-ink/70 hover:bg-ink/10 hover:text-ink disabled:cursor-not-allowed disabled:text-ink/30 disabled:hover:bg-transparent"
+            className="inline-flex h-7 w-7 items-center justify-center rounded-chip text-ink/70 transition-[color,background-color,transform] duration-[var(--motion-press)] hover:bg-ink/10 hover:text-ink active:scale-[0.97] disabled:cursor-not-allowed disabled:text-ink/30 disabled:hover:bg-transparent disabled:active:scale-100"
           >
             {isFullscreen ? (
               <svg

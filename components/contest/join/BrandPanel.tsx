@@ -23,7 +23,14 @@ export function BrandPanel({ children }: { children?: React.ReactNode }) {
   return (
     <aside
       aria-label="Coding Night welcome"
-      className="relative hidden flex-col justify-between overflow-hidden bg-ink px-10 pt-10 pb-14 text-paper lg:flex"
+      /*
+        `motion-swap-in`: the entry pages sit outside both route groups, so the group templates'
+        arrival never wraps them. The panel rises with the form column beside it (the page root
+        carries `motion-stagger`, so the form lands 35ms behind). Transform-only on purpose: the
+        welcome copy in here is `text-paper/75`, and a wrapper fade would drag it below its
+        contrast floor for the length of the animation.
+      */
+      className="motion-swap-in relative hidden flex-col justify-between overflow-hidden bg-ink px-10 pt-10 pb-14 text-paper lg:flex"
     >
       {/*
         The panther, oversized and bled off the corner at low opacity. HackerRank uses a dark

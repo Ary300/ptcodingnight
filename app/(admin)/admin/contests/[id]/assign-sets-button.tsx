@@ -60,7 +60,11 @@ export function AssignSetsButton({ contestId }: { readonly contestId: string }) 
         {busy ? "Assigning…" : "Assign problem sets"}
       </Button>
       {error !== null && (
-        <p role="alert" className="font-semibold text-panther" style={{ fontSize: "var(--text-xs)" }}>
+        <p
+          role="alert"
+          className="motion-swap-in font-semibold text-panther"
+          style={{ fontSize: "var(--text-xs)" }}
+        >
           {error}
         </p>
       )}

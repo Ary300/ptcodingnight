@@ -149,8 +149,10 @@ export function ContestPicker({ tab = "", purpose, variant = "picker" }: Contest
   }
 
   if (load.status === "error" || load.data === null) {
+    // The template's rise covered the page's arrival; this card settles AFTER it, replacing
+    // "Loading contests…" in one frame, so it carries its own entrance.
     return (
-      <div className="rounded-panel border border-rule-edge bg-paper p-5">
+      <div className="motion-swap-in rounded-panel border border-rule-edge bg-paper p-5">
         <p role="alert" className="text-panther" style={{ fontSize: "var(--text-sm)" }}>
           {load.error ?? "Those contests could not be loaded."}
         </p>
@@ -168,7 +170,7 @@ export function ContestPicker({ tab = "", purpose, variant = "picker" }: Contest
 
   if (load.data.contests.length === 0) {
     return (
-      <div className="rounded-panel border border-rule-edge bg-paper p-5">
+      <div className="motion-swap-in rounded-panel border border-rule-edge bg-paper p-5">
         <p style={{ fontSize: "var(--text-sm)" }}>
           There are no contests yet. Make one first: {purpose} needs a contest to act on.
         </p>
@@ -193,8 +195,13 @@ export function ContestPicker({ tab = "", purpose, variant = "picker" }: Contest
     <section
       // The picker variant keeps its old accessible name, because "choose a contest" is what the
       // flat routes still ask and what the a11y suite audits them by.
+      //
+      // The fetch settles AFTER page arrival, so the loading→list swap was naked: the section
+      // rises once when it mounts, and the lifecycle groups inside stagger under it (the header
+      // is child one and stays still, so the cascade starts at the first group; capped at ten
+      // by the utility).
       aria-label={variant === "list" ? "All contests" : "Choose a contest"}
-      className="rounded-panel border border-rule-edge bg-paper"
+      className="motion-swap-in motion-stagger rounded-panel border border-rule-edge bg-paper"
     >
       <div className="flex flex-wrap items-center justify-between gap-x-4 border-b border-rule-edge px-5 py-3">
         <h2 className="font-display font-bold" style={{ fontSize: "var(--text-md)" }}>
@@ -220,7 +227,7 @@ export function ContestPicker({ tab = "", purpose, variant = "picker" }: Contest
       </div>
 
       {groups.map((group) => (
-        <div key={group.state}>
+        <div key={group.state} className="motion-swap-in">
           <h3
             className="border-b border-rule-hair bg-ink/[0.03] px-5 py-1.5 font-semibold tracking-wide uppercase text-ink/60"
             style={{ fontSize: "var(--text-xs)" }}

@@ -344,7 +344,7 @@ export function ContestBuilder({ initial = EMPTY_DRAFT }: ContestBuilderProps) {
         {divisionError !== undefined && (
           <p
             role="alert"
-            className="mt-3 font-semibold text-panther"
+            className="motion-swap-in mt-3 font-semibold text-panther"
             style={{ fontSize: "var(--text-xs)" }}
           >
             {divisionError}
@@ -370,7 +370,7 @@ export function ContestBuilder({ initial = EMPTY_DRAFT }: ContestBuilderProps) {
         {errorCount > 0 && (
           <p
             role="alert"
-            className="font-semibold text-panther"
+            className="motion-swap-in font-semibold text-panther"
             style={{ fontSize: "var(--text-sm)" }}
           >
             This contest will not save yet: fix the {errorCount} marked field
@@ -381,7 +381,7 @@ export function ContestBuilder({ initial = EMPTY_DRAFT }: ContestBuilderProps) {
         {formError !== null && (
           <p
             role="alert"
-            className="font-semibold text-panther"
+            className="motion-swap-in font-semibold text-panther"
             style={{ fontSize: "var(--text-sm)" }}
           >
             {formError}

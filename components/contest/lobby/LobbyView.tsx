@@ -135,7 +135,14 @@ export function LobbyView({ phase = null, viewerKind }: LobbyViewProps) {
   const titlesWithheld = visibleProblems.some((problem) => problem.slug === "");
 
   return (
-    <div className="grid gap-8 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+    /*
+      "Checking your sign-in…" is replaced by the whole lobby in one client-side swap. The
+      rise on the arriving grid makes that swap followable. TRANSFORM ONLY is load-bearing
+      here: StandingsCard inside is bg-ink full of text-paper/50-60, and a wrapper opacity
+      fade would drag all of it below its contrast floor mid-animation (the measured 4.16:1
+      failure).
+    */
+    <div className="motion-swap-in grid gap-8 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
       <section className="min-w-0">
         <Crumbs
           trail={[
@@ -317,7 +324,7 @@ function OrganizerViewingNotice() {
       </p>
       <Link
         href="/admin"
-        className="mt-4 inline-block rounded-chip bg-panther px-4 py-2 font-semibold text-paper hover:bg-panther-deep"
+        className="mt-4 inline-block rounded-chip bg-panther px-4 py-2 font-semibold text-paper transition-[background-color,transform] duration-[var(--motion-press)] hover:bg-panther-deep active:scale-[0.97]"
         style={{ fontSize: "var(--text-sm)" }}
       >
         Back to the organizer console

@@ -55,7 +55,7 @@ function Chip({ verdict }: { verdict: Verdict }) {
   const presentation = VERDICT_DISPLAY[verdict];
   return (
     <span
-      className="rounded-chip px-2 py-0.5 font-semibold"
+      className="motion-swap-in rounded-chip px-2 py-0.5 font-semibold"
       style={{
         fontSize: "var(--text-xs)",
         color: TONE_COLOR[presentation.tone],
@@ -156,7 +156,7 @@ function TestRow({ result }: { result: PublicTestResult }) {
       {result.isSample && result.diffSnippet !== null && (
         <details className="mt-2" open={passed ? undefined : true}>
           <summary
-            className="cursor-pointer text-paper/70 hover:text-paper"
+            className="cursor-pointer text-paper/70 transition-colors duration-[var(--motion-press)] hover:text-paper"
             style={{ fontSize: "var(--text-xs)" }}
           >
             Difference from the expected output
@@ -197,19 +197,37 @@ export function VerdictPanel({
   const heading = mode === "samples" ? "Sample run" : "Verdict";
 
   return (
+    /*
+      The panel's arrival is the most frequent state change in the product: every "Run
+      samples" and every Submit mounts it. `motion-swap-in` is TRANSFORM ONLY, which on this
+      surface is a hard requirement, not a preference — the panel is `bg-ink` full of alpha'd
+      paper text, and a wrapper opacity fade takes all of it below its contrast floor for the
+      length of the animation (the measured 4.16:1 failure). The sr-only live regions inside
+      are unaffected: an animation delays paint, never mount, so they announce immediately.
+    */
     <section
       aria-label={heading}
-      className="rounded-panel border border-rule-edge bg-ink p-4 text-paper"
+      className="motion-swap-in rounded-panel border border-rule-edge bg-ink p-4 text-paper"
     >
       <header className="flex flex-wrap items-center gap-3">
         <h2 className="font-display font-bold" style={{ fontSize: "var(--text-md)" }}>
           {heading}
         </h2>
 
-        {verdict !== null && <Chip verdict={verdict} />}
+        {/*
+          The chip and the score are THE answer the student has been staring at this panel
+          for, so they get their own entrance instead of popping in mid-frame. Keyed on the
+          verdict so a rejudge that changes the answer re-runs the rise; a re-render that
+          does not change it stays still.
+        */}
+        {verdict !== null && <Chip key={verdict} verdict={verdict} />}
 
         {mode === "judged" && score !== null && verdict !== null && (
-          <span className="numeric text-paper/80" style={{ fontSize: "var(--text-sm)" }}>
+          <span
+            key={`${verdict}-${score}`}
+            className="motion-swap-in numeric text-paper/80"
+            style={{ fontSize: "var(--text-sm)" }}
+          >
             {score} pts
           </span>
         )}
@@ -266,7 +284,11 @@ export function VerdictPanel({
       </p>
 
       {verdict !== null && (
-        <p className="mt-2 text-paper/75" style={{ fontSize: "var(--text-xs)" }}>
+        <p
+          key={verdict}
+          className="motion-swap-in mt-2 text-paper/75"
+          style={{ fontSize: "var(--text-xs)" }}
+        >
           {VERDICT_DISPLAY[verdict].detail}
         </p>
       )}

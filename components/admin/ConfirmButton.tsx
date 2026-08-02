@@ -65,9 +65,13 @@ export function ConfirmButton({
   }
 
   return (
+    // `motion-swap-in`: arming swaps the label for a confirm cluster in the same frame, and a
+    // 3px transform-only rise makes that swap followable. Disarming is deliberately instant — a
+    // control returning to rest should just return. The rise does not disturb the focus move in
+    // the effect above, and the Buttons inside carry full-strength text on their own ground.
     <span
       ref={armedRef}
-      className="inline-flex items-center gap-2"
+      className="motion-swap-in inline-flex items-center gap-2"
       onKeyDown={(event) => {
         if (event.key === "Escape") {
           event.stopPropagation();
