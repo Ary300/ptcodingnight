@@ -3,6 +3,10 @@ import { randomUUID } from "node:crypto";
 import { NotFoundError, ValidationError } from "@/lib/errors";
 import { prisma } from "@/lib/db";
 import { lockContestMutations, lockProblemMutations } from "@/lib/contest/locks";
+import {
+  problemDivisionConflicts,
+  slotLabelDivisionConflicts,
+} from "@/lib/contest/lineup-validation";
 import { AUDIT_ACTIONS, writeAudit } from "@/lib/contest/audit";
 
 import type { AdminContestList } from "@/lib/schemas/api";
@@ -66,6 +70,30 @@ export async function contestNameFor(contestId: string): Promise<string | null> 
     select: { name: true },
   });
   return contest?.name ?? null;
+}
+
+/**
+ * A contest's divisions, for any screen that offers "this division or all of them" as a choice.
+ *
+ * Ordered by the organizer's own `sortOrder`, with `id` breaking ties so the list is stable
+ * across reads. Returns an empty array for a contest with no divisions, which is a normal
+ * configuration, not an error: the line-up screen renders no division control at all in that
+ * case rather than a dropdown with one dead option.
+ */
+export interface ContestDivisionOption {
+  readonly divisionId: string;
+  readonly name: string;
+}
+
+export async function listContestDivisions(
+  contestId: string,
+): Promise<readonly ContestDivisionOption[]> {
+  const rows = await prisma.division.findMany({
+    where: { contestId },
+    orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
+    select: { id: true, name: true },
+  });
+  return rows.map((row) => ({ divisionId: row.id, name: row.name }));
 }
 
 /**
@@ -193,18 +221,37 @@ export async function setContestProblems(
     setLabel: entry.setLabel?.trim() ?? null,
   }));
 
-  const entryKeys = normalized.map(
-    (entry) => `${entry.problemId}\u0000${entry.divisionId ?? ""}`,
-  );
-  if (new Set(entryKeys).size !== entryKeys.length) {
+  /*
+    Duplicates are judged by SCOPE OVERLAP, not by problemId, and not by exact
+    (problemId, divisionId) pairs either. The same problem in two different divisions is legal
+    and historically real (Bill Division: Intermediate/M and Advanced/E). But a division-null row
+    is in every player's scope (`inScope`, lib/contest/problems.ts), so null-plus-scoped for one
+    problem would show a student the same question in two slots at once. The database constraint
+    permits that pair; this refusal is what stops it. The rules live in
+    `lib/contest/lineup-validation.ts`, shared with the editor screen, so Save cannot pass
+    client-side and then be refused here with a different opinion.
+  */
+  if (problemDivisionConflicts(normalized).length > 0) {
     throw new ValidationError(
-      "The same problem appears twice for the same division in this line-up",
+      "The same problem appears twice for the same players in this line-up. A problem may " +
+        "repeat only when each copy is scoped to a different division.",
     );
   }
 
-  const slotKeys = normalized.map((entry) => entry.slotLabel.toLowerCase());
-  if (slotKeys.some((label) => label === "") || new Set(slotKeys).size !== slotKeys.length) {
-    throw new ValidationError("Every problem needs its own unique slot label");
+  if (normalized.some((entry) => entry.slotLabel === "")) {
+    throw new ValidationError("Every problem needs a slot label");
+  }
+  // Slot labels follow the same overlap rule: unique among rows one player could see. "E1" in
+  // Intermediate and "E1" in Advanced never share a screen, and nothing keys on a slot label
+  // (the standings mapper sorts by the pair (slotLabel, contestProblemId) for exactly this
+  // reason), so forbidding the share would only force renumbering the organizer's sheet.
+  const labelConflicts = slotLabelDivisionConflicts(normalized);
+  if (labelConflicts.labels.length > 0) {
+    const quoted = labelConflicts.labels.map((label) => `"${label}"`).join(", ");
+    throw new ValidationError(
+      `Slot label ${quoted} is on two problems the same players can see. A label may repeat ` +
+        "only across different divisions.",
+    );
   }
 
   for (const entry of normalized) {
@@ -228,7 +275,7 @@ export async function setContestProblems(
       where: { id: contestId },
       select: {
         state: true,
-        problemSets: { select: { label: true } },
+        problemSets: { select: { id: true, label: true, divisionId: true } },
       },
     });
     if (contest === null) throw new NotFoundError("Contest");
@@ -265,40 +312,62 @@ export async function setContestProblems(
 
     await tx.contestProblem.deleteMany({ where: { contestId } });
 
-    // Sets first, because every problem row needs its id. `upsert` rather than `create`: a
-    // previous call may have made them, and the unique key is (contestId, label).
-    const labels = new Set(
-      normalized
-        .map((entry) => entry.setLabel)
-        .filter((label): label is string => label !== null),
-    );
+    /*
+      Sets first, because every problem row needs its id, and DIVISION-SCOPED: the unique key is
+      (contestId, divisionId, label), NULLS NOT DISTINCT, so "Intermediate A" and "Advanced A"
+      are two different sets that share a letter. A set inherits the division OF THE ROW THAT
+      NAMES IT. An Advanced individual row with set "A" therefore attaches to Advanced's own
+      "A", never to a division-null set spanning both rooms; assignment hands members a set of
+      their own division and the letter alone stops identifying one once divisions exist.
+
+      Find-then-create rather than `upsert`, because Prisma's compound unique input cannot carry
+      the null that division-null sets need. The contest advisory lock held above is what makes
+      the read-then-write race-free. A cuid never contains ":", so the joined key is unambiguous.
+    */
+    const setKey = (divisionId: string | null, label: string): string =>
+      `${divisionId ?? ""}:${label}`;
+    const wantedSets = new Map<string, { label: string; divisionId: string | null }>();
+    for (const entry of normalized) {
+      if (entry.setLabel === null) continue;
+      wantedSets.set(setKey(entry.divisionId, entry.setLabel), {
+        label: entry.setLabel,
+        divisionId: entry.divisionId,
+      });
+    }
+
     const setIds = new Map<string, string>();
-    for (const label of labels) {
-      const set = await tx.problemSet.upsert({
-        where: { contestId_label: { contestId, label } },
-        create: { contestId, label },
-        update: {},
+    for (const existing of contest.problemSets) {
+      setIds.set(setKey(existing.divisionId, existing.label), existing.id);
+    }
+    for (const [key, wanted] of wantedSets) {
+      if (setIds.has(key)) continue;
+      const created = await tx.problemSet.create({
+        data: { contestId, label: wanted.label, divisionId: wanted.divisionId },
         select: { id: true },
       });
-      setIds.set(label, set.id);
+      setIds.set(key, created.id);
     }
 
     // A PUT replaces the line-up, including its set columns. Keeping an old ProblemSet row would
     // let assignment hand somebody a set with no questions in it. Deleting it is safe and honest:
     // `Participant.chosenSetId` uses SetNull, so the organizer sees that assignment must be run
-    // again instead of carrying a ghost column into the contest.
+    // again instead of carrying a ghost column into the contest. Deletion is by id so that a
+    // surviving "A" in one division cannot shield a doomed "A" in another.
+    const keepSetIds = [...wantedSets.keys()].flatMap((key) => {
+      const id = setIds.get(key);
+      return id === undefined ? [] : [id];
+    });
     await tx.problemSet.deleteMany({
-      where:
-        labels.size === 0
-          ? { contestId }
-          : { contestId, label: { notIn: [...labels] } },
+      where: { contestId, id: { notIn: keepSetIds } },
     });
 
-    const previousLabels = new Set(contest.problemSets.map((set) => set.label));
-    const labelsChanged =
-      previousLabels.size !== labels.size ||
-      [...labels].some((label) => !previousLabels.has(label));
-    if (labelsChanged) {
+    const previousKeys = new Set(
+      contest.problemSets.map((set) => setKey(set.divisionId, set.label)),
+    );
+    const setsChanged =
+      previousKeys.size !== wantedSets.size ||
+      [...wantedSets.keys()].some((key) => !previousKeys.has(key));
+    if (setsChanged) {
       // Assignment is a seeded function of the available set ids. Once that input changes, the
       // old seed no longer explains the stored result. Clearing it also makes the setup screen's
       // first-run assignment button a real repair path instead of a guaranteed conflict.
@@ -314,7 +383,10 @@ export async function setContestProblems(
         problemId: entry.problemId,
         divisionId: entry.divisionId,
         round: entry.round,
-        setId: entry.setLabel === null ? null : (setIds.get(entry.setLabel) ?? null),
+        setId:
+          entry.setLabel === null
+            ? null
+            : (setIds.get(setKey(entry.divisionId, entry.setLabel)) ?? null),
         slotLabel: entry.slotLabel,
         basePoints: entry.basePoints,
       })),

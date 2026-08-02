@@ -19,28 +19,39 @@ import { createHash } from "node:crypto";
  *     both work set A;
  *   - sets differ FROM EACH OTHER, so A, B, C and D are twelve distinct problems under a
  *     one-of-each recipe;
- *   - GROUP problems sit outside this entirely: the whole team works them together and every team
- *     gets the same ones (`ContestProblem.setId = null`, `ProblemRound.GROUP`).
+ *   - GROUP problems sit outside the columns: the whole team works them together and every team
+ *     gets the same ones (`ContestProblem.setId = null`, `ProblemRound.GROUP`). The recipe's
+ *     `groupCount` says how many of those to draw, AFTER every division's sets are dealt, from
+ *     problems no set anywhere took.
  *
- * This file's job is only the first and fourth points: build N sets whose problems do not overlap,
- * to a recipe. Who holds which set is `set-assignment.ts`, unchanged and still correct.
+ * ## Divisions
  *
- * The recipe is historically one Easy, one Medium and one Hard, but it is an input rather than a
- * constant because the format has changed between years.
+ * When the contest has divisions, each division is dealt INDEPENDENTLY, to the same recipe, from
+ * the FULL pool: the same problem may appear in two divisions (the seed history has exactly that
+ * case: Bill Division was Intermediate/M and Advanced/E), but never twice within one division,
+ * because within a division the deal is still without replacement. A contest with no divisions is
+ * a single deal whose sets carry no division, and its shuffle keys are unchanged from before
+ * divisions existed, so a stored seed still reproduces the same historical split byte for byte.
  *
  * ## Pure, seeded, and re-derivable
  *
- * No I/O, no `Date.now()`, no `Math.random()`. Same seed, same pool, same plan, byte for byte.
- * **A disputed set has to be explainable rather than argued about** (PRD §6.2): with the seed
- * stored, an organizer can re-derive the whole split in front of a room and show it was fixed
- * before anyone knew who would be holding which column.
+ * No I/O, no `Date.now()`, no `Math.random()`. Same seed, same divisions, same pool, same plan,
+ * byte for byte. **A disputed set has to be explainable rather than argued about** (PRD §6.2):
+ * with the seed stored, an organizer can re-derive the whole split in front of a room and show it
+ * was fixed before anyone knew who would be holding which column.
  *
  * ## Feasibility is answered BEFORE anything is written
  *
- * Four sets needing one Hard each is four distinct Hard problems. A bank with two cannot do it,
- * and the useful moment to say so is while the organizer is still choosing the recipe, not after
- * half the sets exist. `planSets` therefore returns a refusal carrying the exact arithmetic rather
- * than throwing something vague.
+ * Four sets needing one Hard each is four distinct Hard problems, per division. A bank with two
+ * cannot do it, and the useful moment to say so is while the organizer is still choosing the
+ * recipe, not after half the sets exist. `planSets` therefore returns a refusal carrying the
+ * exact arithmetic rather than throwing something vague — and it reports EVERY shortfall at
+ * once, group questions included.
+ *
+ * The group-question check is deliberately worst-case: it assumes the divisions' deals do not
+ * overlap at all, so `poolSize - divisions × setSize × setCount` problems remain. The actual
+ * deal can only leave MORE than that, which makes the guarantee structural: a recipe that passes
+ * the check can always draw its group questions, whatever the seed happens to deal.
  */
 
 export type Difficulty = "E" | "M" | "H";
@@ -71,25 +82,41 @@ export interface AvailableProblem {
   readonly difficulty: Difficulty | null;
 }
 
+/** A division the plan must deal for. The id salts the shuffle; the name is for sentences. */
+export interface PlanDivision {
+  readonly id: string;
+  readonly name: string;
+}
+
 export interface PlannedSet {
   /** "A", "B", "C", … in deal order. The column heading on the organizer's sheet. */
   readonly label: string;
+  /** Null for a contest with no divisions. Labels restart at "A" within each division. */
+  readonly divisionId: string | null;
+  readonly divisionName: string | null;
   readonly problems: readonly AvailableProblem[];
 }
 
-/** One recipe line the pool cannot satisfy, with the arithmetic that says why. */
+/**
+ * One demand the pool cannot satisfy, with the arithmetic that says why.
+ *
+ * `difficulty: null` is the team-question line: group questions have no difficulty constraint,
+ * they only need problems no set took. `divisionName` names whose demand went short; null for a
+ * contest with no divisions, and always null on the team-question line, which is contest-wide.
+ */
 export interface Shortfall {
-  readonly difficulty: Difficulty;
-  /** `count × setCount` — how many distinct problems of this difficulty the recipe needs. */
+  readonly difficulty: Difficulty | null;
+  readonly divisionName: string | null;
+  /** How many distinct problems this demand needs. */
   readonly needed: number;
-  /** How many the pool actually holds. */
+  /** How many the pool can offer it. */
   readonly available: number;
 }
 
 export interface SetPlanInput {
   readonly seed: string;
   /**
-   * How many sets to build: the number of columns on the sheet.
+   * How many sets to build PER DIVISION: the number of columns on the organizer's sheet.
    *
    * In practice this is the size of the largest team, because every member of a team holds a
    * different set. Four members means four sets, and a fifth member would have to repeat a
@@ -98,10 +125,20 @@ export interface SetPlanInput {
   readonly setCount: number;
   readonly composition: SetComposition;
   readonly pool: readonly AvailableProblem[];
+  /** The contest's divisions, in board order. Empty (or absent) means the contest has none. */
+  readonly divisions?: readonly PlanDivision[];
+  /** How many whole-team questions to draw after all divisions are dealt. Absent means none. */
+  readonly groupCount?: number;
 }
 
 export type SetPlanResult =
-  | { readonly ok: true; readonly sets: readonly PlannedSet[] }
+  | {
+      readonly ok: true;
+      /** Every division's columns, flat, in division order then label order. */
+      readonly sets: readonly PlannedSet[];
+      /** The whole-team questions, drawn from problems no set in any division took. */
+      readonly groupProblems: readonly AvailableProblem[];
+    }
   | { readonly ok: false; readonly shortfalls: readonly Shortfall[]; readonly message: string };
 
 /** Deterministic 32-bit hash. Stable, not secret. */
@@ -144,7 +181,12 @@ export function setSize(composition: SetComposition): number {
 }
 
 /**
- * Check a recipe against a pool WITHOUT building anything.
+ * Check a recipe against a pool WITHOUT building anything, for one division (or for the whole
+ * contest when it has none: pass null).
+ *
+ * Each division is checked against the FULL pool, because divisions deal independently and may
+ * reuse each other's problems; depletion only enters the arithmetic for group questions, which
+ * `checkGroupFeasibility` covers.
  *
  * Returns every shortfall rather than the first, because an organizer fixing one line at a time
  * against a form that only ever reports one problem is the slow way to discover they need six more
@@ -154,44 +196,86 @@ export function checkFeasibility(
   composition: SetComposition,
   pool: readonly AvailableProblem[],
   setCount: number,
+  divisionName: string | null = null,
 ): Shortfall[] {
   const shortfalls: Shortfall[] = [];
   for (const entry of composition) {
     if (entry.count <= 0) continue;
     const needed = entry.count * setCount;
     const available = pool.filter((problem) => problem.difficulty === entry.difficulty).length;
-    if (available < needed) shortfalls.push({ difficulty: entry.difficulty, needed, available });
+    if (available < needed) {
+      shortfalls.push({ difficulty: entry.difficulty, divisionName, needed, available });
+    }
   }
   return shortfalls;
+}
+
+/**
+ * Whether the pool can still yield `groupCount` team questions after every division is dealt.
+ *
+ * Worst case on purpose: assumes the divisions' deals never overlap, so the remainder is the
+ * smallest it can be. Seed-independent — a recipe must not be feasible under one seed and short
+ * under another, or the refusal stops being explainable arithmetic and becomes luck.
+ */
+export function checkGroupFeasibility(
+  composition: SetComposition,
+  pool: readonly AvailableProblem[],
+  setCount: number,
+  divisionCount: number,
+  groupCount: number,
+): Shortfall[] {
+  if (groupCount <= 0) return [];
+  const rated = pool.filter((problem) => problem.difficulty !== null).length;
+  const dealtWorstCase = Math.max(1, divisionCount) * setSize(composition) * setCount;
+  const available = Math.max(0, rated - dealtWorstCase);
+  if (available >= groupCount) return [];
+  return [{ difficulty: null, divisionName: null, needed: groupCount, available }];
 }
 
 /** The sentence an organizer reads when a recipe cannot be built. Names the exact arithmetic. */
 export function shortfallMessage(shortfalls: readonly Shortfall[], setCount: number): string {
   const parts = shortfalls.map((shortfall) => {
-    const label = DIFFICULTY_LABEL[shortfall.difficulty];
     const short = shortfall.needed - shortfall.available;
-    return (
+    if (shortfall.difficulty === null) {
+      // The team-question line: its arithmetic is depletion, because group questions draw from
+      // what remains after every division's sets are dealt.
+      return (
+        `${String(shortfall.needed)} team ${shortfall.needed === 1 ? "question is" : "questions are"} ` +
+        `needed and at most ${String(shortfall.available)} ${shortfall.available === 1 ? "problem remains" : "problems remain"} ` +
+        `after the sets are dealt, so ${String(short)} more ` +
+        `${short === 1 ? "problem is" : "problems are"} required`
+      );
+    }
+    const label = DIFFICULTY_LABEL[shortfall.difficulty];
+    const sentence =
       `${String(shortfall.needed)} ${label} problems are needed for ${String(setCount)} sets ` +
       `and the bank has ${String(shortfall.available)}, so ${String(short)} more ` +
-      `${label} ${short === 1 ? "problem is" : "problems are"} required`
-    );
+      `${label} ${short === 1 ? "problem is" : "problems are"} required`;
+    return shortfall.divisionName === null ? sentence : `${shortfall.divisionName}: ${sentence}`;
   });
   return `This split cannot be built: ${parts.join("; ")}.`;
 }
 
 /**
- * Build the contest's sets from the pool, to the recipe.
+ * Build the contest's sets from the pool, to the recipe, one deal per division.
  *
- * Every problem is used at most once across all sets, so no two SETS ever share a question, and
- * therefore no two members of a team are ever handed the same problem. That is guaranteed
- * structurally: each difficulty's candidates are shuffled once and then DEALT without replacement,
- * so a repeat is not merely unlikely, it is unrepresentable.
+ * Within a division every problem is used at most once across its sets, so no two SETS of one
+ * division ever share a question, and therefore no two members of a team are ever handed the same
+ * problem. That is guaranteed structurally: each difficulty's candidates are shuffled once per
+ * division and then DEALT without replacement, so a repeat is not merely unlikely, it is
+ * unrepresentable. Different divisions MAY receive the same problem; their players never see each
+ * other's sets, and the seed history did exactly this.
+ *
+ * Group questions are drawn last, from problems no division's sets took, so a whole-team question
+ * can never also be somebody's individual question.
  *
  * Within a set, problems are ordered as the recipe lists them, which is how the organizer wrote it
  * and therefore how they will read it back.
  */
 export function planSets(input: SetPlanInput): SetPlanResult {
   const { seed, setCount, composition, pool } = input;
+  const divisions = input.divisions ?? [];
+  const groupCount = input.groupCount ?? 0;
 
   if (setCount <= 0) {
     return {
@@ -210,34 +294,73 @@ export function planSets(input: SetPlanInput): SetPlanResult {
     };
   }
 
-  const shortfalls = checkFeasibility(effective, pool, setCount);
+  // One deal per division; a contest with no divisions is one deal that carries none. The null
+  // scope keeps the pre-division shuffle keys, so an already-stored seed replays byte-identically.
+  const scopes: readonly (PlanDivision | null)[] = divisions.length > 0 ? divisions : [null];
+
+  const shortfalls = [
+    ...scopes.flatMap((scope) =>
+      checkFeasibility(effective, pool, setCount, scope?.name ?? null),
+    ),
+    ...checkGroupFeasibility(effective, pool, setCount, scopes.length, groupCount),
+  ];
   if (shortfalls.length > 0) {
     return { ok: false, shortfalls, message: shortfallMessage(shortfalls, setCount) };
   }
 
-  // Shuffle each difficulty's candidates ONCE, then deal. Dealing from a per-difficulty queue is
-  // what makes the no-repeat property structural rather than checked afterwards.
-  const queues = new Map<Difficulty, AvailableProblem[]>();
-  for (const entry of effective) {
-    if (queues.has(entry.difficulty)) continue;
-    const candidates = pool.filter((problem) => problem.difficulty === entry.difficulty);
-    queues.set(
-      entry.difficulty,
-      seededShuffle(candidates, `${seed}:${entry.difficulty}`, (problem) => problem.problemId),
-    );
+  const sets: PlannedSet[] = [];
+  const dealt = new Set<string>();
+
+  for (const scope of scopes) {
+    // Shuffle each difficulty's candidates ONCE per division, then deal. Dealing from a
+    // per-difficulty queue is what makes the no-repeat property structural rather than checked
+    // afterwards. The division id salts the shuffle so two divisions do not receive mirror decks.
+    const saltFor = (difficulty: Difficulty): string =>
+      scope === null ? `${seed}:${difficulty}` : `${seed}:${scope.id}:${difficulty}`;
+
+    const queues = new Map<Difficulty, AvailableProblem[]>();
+    for (const entry of effective) {
+      if (queues.has(entry.difficulty)) continue;
+      const candidates = pool.filter((problem) => problem.difficulty === entry.difficulty);
+      queues.set(
+        entry.difficulty,
+        seededShuffle(candidates, saltFor(entry.difficulty), (problem) => problem.problemId),
+      );
+    }
+
+    for (let index = 0; index < setCount; index += 1) {
+      const problems: AvailableProblem[] = [];
+      for (const entry of effective) {
+        const queue = queues.get(entry.difficulty)!;
+        for (let n = 0; n < entry.count; n += 1) {
+          // Non-null by construction: feasibility already proved the queue is long enough.
+          const problem = queue.shift()!;
+          problems.push(problem);
+          dealt.add(problem.problemId);
+        }
+      }
+      sets.push({
+        label: setLabelAt(index),
+        divisionId: scope?.id ?? null,
+        divisionName: scope?.name ?? null,
+        problems,
+      });
+    }
   }
 
-  const sets: PlannedSet[] = Array.from({ length: setCount }, (_unused, index) => {
-    const problems: AvailableProblem[] = [];
-    for (const entry of effective) {
-      const queue = queues.get(entry.difficulty)!;
-      for (let n = 0; n < entry.count; n += 1) {
-        // Non-null by construction: feasibility already proved the queue is long enough.
-        problems.push(queue.shift()!);
-      }
-    }
-    return { label: setLabelAt(index), problems };
-  });
+  // Team questions last, from what no set anywhere took. Only rated problems: a group question
+  // still needs a difficulty to be priced. Feasibility already proved the remainder is large
+  // enough, worst case, so the slice below can never come up short.
+  const groupProblems =
+    groupCount <= 0
+      ? []
+      : seededShuffle(
+          pool.filter(
+            (problem) => problem.difficulty !== null && !dealt.has(problem.problemId),
+          ),
+          `${seed}:group`,
+          (problem) => problem.problemId,
+        ).slice(0, groupCount);
 
-  return { ok: true, sets };
+  return { ok: true, sets, groupProblems };
 }

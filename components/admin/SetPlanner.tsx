@@ -56,12 +56,20 @@ import {
  * can change the split. An organizer who opens this tab, changes nothing and presses Build gets
  * back what they already had.
  *
- * ## Group problems are not here, and that is worth one sentence
+ * ## Divisions get one grid each
+ *
+ * When the contest has divisions, the same recipe is dealt once per division and the preview is
+ * one grid per division, because that is what the organizer's sheet becomes: "Intermediate A" and
+ * "Advanced A" are different columns that happen to share a letter. A contest with no divisions
+ * is one grid, exactly as before.
+ *
+ * ## Team questions are half here, and the half matters
  *
  * A GROUP problem belongs to no set: the whole team works it and every team gets the same ones.
- * They are neither dealt nor deleted by this screen, which is why the count of them is shown
- * beside the split. An organizer who comes here looking for them is pointed at the Problems tab,
- * where a question is designated Group or Individual.
+ * The recipe's team-question count deals them from problems no set uses, and rebuilding replaces
+ * only the ones the plan dealt. A question an organizer marks Group BY HAND on the Problems tab
+ * is never dealt into a set and never deleted by this screen, and the list below the grid says
+ * which is which.
  */
 
 type Difficulty = "E" | "M" | "H";
@@ -115,6 +123,10 @@ export interface SetPlannerTeam {
    * Derived from the roster on every read, never a stored count: a stored size is a second source
    * of truth that drifts from the thing it describes. Here it decides how many columns are needed,
    * which makes a wrong size a wrong contest rather than a wrong label.
+   *
+   * When the contest has divisions this is the team's largest single-division bunch rather than
+   * its head count, because members draw only from their own division's columns; the page
+   * computes it and says why.
    */
   readonly size: number;
 }
@@ -196,7 +208,38 @@ interface GridProblem {
 
 interface GridSet {
   readonly label: string;
+  readonly divisionName: string | null;
   readonly problems: readonly GridProblem[];
+}
+
+/**
+ * One grid per division, in the order the server sent the sets. The organizer's sheet is per
+ * division once divisions exist: "Intermediate A" and "Advanced A" are different columns that
+ * happen to share a letter, and folding them into one table would show a letter twice with two
+ * different contents.
+ */
+function groupSetsByDivision(
+  sets: readonly GridSet[],
+): readonly { readonly divisionName: string | null; readonly sets: readonly GridSet[] }[] {
+  const groups: { divisionName: string | null; sets: GridSet[] }[] = [];
+  for (const set of sets) {
+    const last = groups[groups.length - 1];
+    if (last !== undefined && last.divisionName === set.divisionName) {
+      last.sets.push(set);
+    } else {
+      groups.push({ divisionName: set.divisionName, sets: [set] });
+    }
+  }
+  return groups;
+}
+
+/** A whole-team question as either half of the screen shows it. */
+interface TeamQuestionRow {
+  readonly title: string;
+  readonly slotLabel: string;
+  readonly basePoints: number;
+  /** False for a question placed by hand on the Problems tab; the plan never touches those. */
+  readonly dealtByPlan: boolean;
 }
 
 /**
@@ -220,6 +263,39 @@ function rowHeadings(sets: readonly GridSet[]): readonly string[] {
         : DIFFICULTY_LABEL[problem.difficulty];
     return `${label} ${String(n)}`;
   });
+}
+
+function TeamQuestionList({
+  rows,
+  heading,
+}: {
+  readonly rows: readonly TeamQuestionRow[];
+  readonly heading: string;
+}) {
+  if (rows.length === 0) return null;
+  return (
+    <div>
+      <h3 className="font-semibold" style={{ fontSize: "var(--text-sm)" }}>
+        {heading}
+      </h3>
+      <ul className="mt-tight flex flex-col gap-tight">
+        {rows.map((row) => (
+          <li key={row.slotLabel} style={{ fontSize: "var(--text-sm)" }}>
+            <span className="font-semibold">{row.title}</span>
+            <span
+              className="numeric ml-2 text-ink/60"
+              style={{ fontSize: "var(--text-xs)" }}
+            >
+              {row.slotLabel} · {String(row.basePoints)} points
+              {/* The distinction an organizer needs before pressing Build: the plan replaces its
+                  own deals and never touches a question placed by hand on the Problems tab. */}
+              {row.dealtByPlan ? "" : " · picked by hand"}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
 }
 
 function SetGrid({
@@ -320,6 +396,12 @@ export function SetPlanner({
     ...DEFAULT_COUNTS,
   });
   /**
+   * How many whole-team questions the plan deals. Part of the recipe, and zero by default,
+   * because most of what this screen builds is the individual columns; team questions are the
+   * addition the organizer asks for by name.
+   */
+  const [groupCountText, setGroupCountText] = useState("0");
+  /**
    * The set count this contest was last BUILT with, once the stored plan has been adopted.
    *
    * Kept separately from the box because the hint under it has to say which of the two numbers the
@@ -375,11 +457,15 @@ export function SetPlanner({
     H: perLineError(counts.H),
   };
   const setsError = setCountError(setCountText);
+  // The same bounds as a difficulty line: zero is a normal answer, 20 is the route's ceiling.
+  const groupError = perLineError(groupCountText);
   const formValid =
     setsError === null &&
+    groupError === null &&
     DIFFICULTIES.every((difficulty) => countErrors[difficulty] === null);
 
   const setCount = parseWhole(setCountText) ?? 0;
+  const groupCount = parseWhole(groupCountText) ?? 0;
   const perSet = composition.reduce((total, line) => total + line.count, 0);
 
   /** Teams with more members than there are columns. The split cannot preserve distinct sets. */
@@ -435,6 +521,7 @@ export function SetPlanner({
             adopted[line.difficulty] = String(line.count);
           setCounts(adopted);
         }
+        setGroupCountText(String(data.groupCount));
         seedRef.current = data.seed;
         setDirty(false);
         setLoaded(true);
@@ -471,6 +558,7 @@ export function SetPlanner({
               mode: "preview",
               composition,
               setCount,
+              groupCount,
               ...(seed === null ? {} : { seed }),
             }),
           });
@@ -501,12 +589,37 @@ export function SetPlanner({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [contestId, composition, setCount, formValid, loaded, reroll]);
+  }, [contestId, composition, setCount, groupCount, formValid, loaded, reroll]);
 
   const storedSets = stored?.sets ?? [];
   const showStored = !dirty && storedSets.length > 0;
   const plannedSets =
     preview !== null && preview.plan.ok ? preview.plan.sets : [];
+
+  const shownSets: readonly GridSet[] = showStored ? storedSets : plannedSets;
+  /** How many division grids the screen is showing. 1 for a contest with no divisions. */
+  const divisionsOnScreen = Math.max(
+    1,
+    new Set(shownSets.map((set) => set.divisionName ?? "")).size,
+  );
+
+  /*
+    The team questions beside the grid. The stored view shows the rows as they stand. The
+    proposal view shows what an apply would leave behind: the plan's own draws, PLUS the
+    hand-picked questions from the Problems tab, because an apply never touches those and a
+    proposal that hid them would look like it deletes them.
+  */
+  const handPickedTeamQuestions = (stored?.groupProblems ?? []).filter(
+    (row) => !row.dealtByPlan,
+  );
+  const teamQuestions: readonly TeamQuestionRow[] = showStored
+    ? (stored?.groupProblems ?? [])
+    : [
+        ...(preview !== null && preview.plan.ok
+          ? preview.plan.groupProblems.map((row) => ({ ...row, dealtByPlan: true }))
+          : []),
+        ...handPickedTeamQuestions,
+      ];
 
   /**
    * Whether the split on screen is a split of what is in the boxes RIGHT NOW. The preview is
@@ -520,6 +633,7 @@ export function SetPlanner({
     preview !== null &&
     formValid &&
     preview.setCount === setCount &&
+    preview.groupCount === groupCount &&
     sameComposition(preview.composition, composition);
   const buildable =
     previewMatches &&
@@ -547,10 +661,10 @@ export function SetPlanner({
     ? adoptedCount !== null
       ? rosterDefault === null
         ? `This contest was last built with ${String(adoptedCount)} sets, and nobody is on a team yet. ${why}`
-        : `This contest was last built with ${String(adoptedCount)} sets, and your largest team (${teamName}) has ${String(rosterDefault)}. ${why}`
+        : `This contest was last built with ${String(adoptedCount)} sets, and the most teammates sharing one division (on ${teamName}) is ${String(rosterDefault)}. ${why}`
       : rosterDefault === null
         ? `There is nobody on a team yet, so this starts at ${String(FALLBACK_SET_COUNT)}. ${why}`
-        : `Starts at ${String(rosterDefault)}, the size of your largest team (${teamName}). ${why}`
+        : `Starts at ${String(rosterDefault)}, the most teammates sharing one division (on ${teamName}). ${why}`
     : adoptedCount === null
       ? `Starts at ${String(FALLBACK_SET_COUNT)}. ${setCountPurpose}`
       : `This contest was last built with ${String(adoptedCount)} sets. ${setCountPurpose}`;
@@ -585,6 +699,7 @@ export function SetPlanner({
           mode: "apply",
           composition: preview.composition,
           setCount: preview.setCount,
+          groupCount: preview.groupCount,
           // The seed of the deal ON SCREEN, never a fresh one. This is the whole reason the
           // preview hands its seed back.
           ...(preview.seed === null ? {} : { seed: preview.seed }),
@@ -613,9 +728,16 @@ export function SetPlanner({
         return;
       }
       setConfirming(false);
+      const divisionCount = data.plan.ok
+        ? new Set(data.plan.sets.map((set) => set.divisionId ?? "")).size
+        : 1;
       setApplied(
-        `Built ${String(data.setCount)} sets of ${String(data.setSize)} questions each. ` +
-          `Seed ${data.seed ?? "unknown"}.`,
+        `Built ${String(data.setCount)} sets of ${String(data.setSize)} questions each` +
+          (divisionCount > 1 ? ` in each of ${String(divisionCount)} divisions` : "") +
+          (data.groupCount > 0
+            ? `, plus ${String(data.groupCount)} team ${data.groupCount === 1 ? "question" : "questions"}`
+            : "") +
+          `. Seed ${data.seed ?? "unknown"}.`,
       );
       setAttempt((n) => n + 1);
     } catch {
@@ -726,17 +848,39 @@ export function SetPlanner({
             />
           ))}
 
+          <TextInput
+            label="Team questions"
+            numeric
+            inputMode="numeric"
+            value={groupCountText}
+            error={groupError}
+            onChange={(event) => {
+              setGroupCountText(event.target.value);
+              edited();
+            }}
+            hint={
+              "Questions the whole team works together. Every team gets the same ones, in " +
+              "every division. They are dealt from questions no set uses. 0 means none."
+            }
+          />
+
           <p className="max-w-[70ch]" style={{ fontSize: "var(--text-sm)" }}>
             {formValid ? (
               <>
                 <strong>
                   {String(perSet)} {perSet === 1 ? "question" : "questions"} per
-                  set, {String(setCount)} {setCount === 1 ? "set" : "sets"},{" "}
+                  set, {String(setCount)} {setCount === 1 ? "set" : "sets"}
+                  {divisionsOnScreen > 1 ? " per division" : ""},{" "}
                   {String(perSet * setCount)} distinct{" "}
-                  {perSet * setCount === 1 ? "question" : "questions"} needed.
+                  {perSet * setCount === 1 ? "question" : "questions"} needed
+                  {divisionsOnScreen > 1 ? " in each division" : ""}
+                  {groupCount > 0
+                    ? `, plus ${String(groupCount)} team ${groupCount === 1 ? "question" : "questions"}`
+                    : ""}
+                  .
                 </strong>{" "}
-                No question appears in two sets, which is why the total
-                multiplies.
+                No question appears in two sets of the same division, which is
+                why the total multiplies.
                 {stored !== null && (
                   <> The bank has {String(stored.poolSize)} to draw on.</>
                 )}
@@ -789,16 +933,49 @@ export function SetPlanner({
             <p className="text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
               Reading the contest…
             </p>
-          ) : (
+          ) : shownSets.length === 0 ? (
             <SetGrid
-              sets={showStored ? storedSets : plannedSets}
+              sets={shownSets}
               caption={
                 showStored
                   ? "The questions in each set, as they are stored"
                   : "The questions each set would hold"
               }
             />
+          ) : (
+            // One grid per division: the organizer's sheet is per division once divisions
+            // exist, and "Set A" means a different column in each.
+            groupSetsByDivision(shownSets).map((group) => (
+              <div key={group.divisionName ?? ""} className="flex flex-col gap-tight">
+                {group.divisionName !== null && (
+                  <h3
+                    className="font-display font-bold"
+                    style={{ fontSize: "var(--text-sm)" }}
+                  >
+                    {group.divisionName}
+                  </h3>
+                )}
+                <SetGrid
+                  sets={group.sets}
+                  caption={
+                    (showStored
+                      ? "The questions in each set, as they are stored"
+                      : "The questions each set would hold") +
+                    (group.divisionName === null ? "" : ` for ${group.divisionName}`)
+                  }
+                />
+              </div>
+            ))
           )}
+
+          <TeamQuestionList
+            rows={teamQuestions}
+            heading={
+              showStored
+                ? "Team questions, as they are stored"
+                : "Team questions this plan would leave in place"
+            }
+          />
 
           <div className="flex flex-wrap items-center gap-3">
             <Button
@@ -828,18 +1005,19 @@ export function SetPlanner({
             className="max-w-[70ch] text-ink/70"
             style={{ fontSize: "var(--text-sm)" }}
           >
-            Group questions are not part of any set. Every team works the same
-            ones together, so nothing on this screen touches them
-            {stored === null
-              ? ""
-              : ` (there ${stored.groupProblemCount === 1 ? "is" : "are"} ${String(stored.groupProblemCount)} of them)`}
-            . You mark a question Group or Individual on the{" "}
+            Team questions are not part of any set: every team works the same
+            ones together. The recipe above deals them, and rebuilding replaces
+            only the ones it dealt. Questions you mark Group by hand on the{" "}
             <Link
               href={`/admin/contests/${contestId}/problems`}
               className="font-semibold underline underline-offset-2"
             >
               Problems tab
-            </Link>
+            </Link>{" "}
+            are never touched by this screen
+            {stored === null
+              ? ""
+              : ` (there ${stored.groupProblemCount === 1 ? "is" : "are"} ${String(stored.groupProblemCount)} team ${stored.groupProblemCount === 1 ? "question" : "questions"} right now)`}
             .
           </p>
         </div>
@@ -875,8 +1053,9 @@ export function SetPlanner({
                 <strong>This replaces the split that is there now.</strong> The
                 columns keep their names, so a student already holding set B
                 still holds set B, but every question inside every column
-                changes. Group questions are not touched. It is recorded in the
-                audit log with your name on it.
+                changes. Team questions dealt by the previous plan are replaced
+                too; the ones you placed by hand are not touched. It is
+                recorded in the audit log with your name on it.
               </p>
               <div className="flex flex-wrap gap-3">
                 <Button

@@ -79,6 +79,10 @@ export const AUDIT_ACTIONS = {
   teamDissolved: "team.dissolved",
   /// The one that moves TWO divisors at once: the team left shrinks, the team joined grows.
   teamMemberMoved: "team.member_moved",
+  /// An organizer put a participant in a division, or took them out of one. A division decides
+  /// which problems the player may open and which board ranks them, so the row carries a reason
+  /// the same way a team move does — "why is this student suddenly Advanced" is asked at 9pm too.
+  participantDivisionSet: "participant.division_set",
   /// A human overriding the seeded set derivation. After this, reDeriveAssignment reports
   /// matchesStored: false for the contest, and whoever shows a student "here is why you got set
   /// C" needs to know that happened.

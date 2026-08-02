@@ -1,4 +1,5 @@
 import { ContestLineup } from "@/components/admin/ContestLineup";
+import { listContestDivisions } from "@/lib/contest/contests";
 
 import { contestLineup } from "../contest-setup";
 
@@ -24,7 +25,13 @@ export default async function ContestProblemsPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const existing = await contestLineup(id);
+  // Divisions ride down beside the stored slots: the Division control on each line-up row needs
+  // the contest's own divisions to offer, and reading them here keeps the editor off the network
+  // for data the server already has in hand.
+  const [existing, divisions] = await Promise.all([
+    contestLineup(id),
+    listContestDivisions(id),
+  ]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -37,7 +44,7 @@ export default async function ContestProblemsPage({
         </p>
       </header>
 
-      <ContestLineup contestId={id} initial={existing} />
+      <ContestLineup contestId={id} initial={existing} divisions={divisions} />
     </div>
   );
 }

@@ -34,19 +34,41 @@ export default async function ContestSetsPage({
     where: { id },
     select: {
       setSelection: true,
+      _count: { select: { divisions: true } },
       teams: {
         orderBy: { name: "asc" },
-        select: { id: true, name: true, _count: { select: { members: true } } },
+        select: {
+          id: true,
+          name: true,
+          members: { select: { divisionId: true } },
+        },
       },
     },
   });
   const rows = contest?.teams ?? [];
+  const contestHasDivisions = (contest?._count.divisions ?? 0) > 0;
 
-  const teams: readonly SetPlannerTeam[] = rows.map((row) => ({
-    teamId: row.id,
-    name: row.name,
-    size: row._count.members,
-  }));
+  /*
+    `size` is the team's largest single-division bunch, not its head count, because that is the
+    number the set count has to cover: members draw only from their own division's columns, so
+    a team split 3 and 2 across two divisions fits in three sets. A contest with no divisions
+    has one bunch, which is the whole team, exactly as before. Members with no division in a
+    contest that HAS divisions are not counted; they have no columns to draw from, and the
+    server-side build check skips them for the same reason.
+  */
+  const teams: readonly SetPlannerTeam[] = rows.map((row) => {
+    const byDivision = new Map<string, number>();
+    for (const member of row.members) {
+      if (contestHasDivisions && member.divisionId === null) continue;
+      const key = member.divisionId ?? "";
+      byDivision.set(key, (byDivision.get(key) ?? 0) + 1);
+    }
+    return {
+      teamId: row.id,
+      name: row.name,
+      size: Math.max(0, ...byDivision.values()),
+    };
+  });
 
   return (
     <div className="flex flex-col gap-6">

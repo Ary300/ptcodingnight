@@ -128,7 +128,9 @@ describe("planSets", () => {
     expect(result.ok).toBe(false);
     if (result.ok) return;
 
-    expect(result.shortfalls).toEqual([{ difficulty: "H", needed: 4, available: 2 }]);
+    expect(result.shortfalls).toEqual([
+      { difficulty: "H", divisionName: null, needed: 4, available: 2 },
+    ]);
     // The arithmetic is in the sentence, because "not enough problems" sends an organizer
     // hunting for which kind and how many.
     expect(result.message).toContain("4 Hard problems are needed for 4 sets");
@@ -202,15 +204,186 @@ describe("planSets", () => {
     // Zero Hard needed, zero Hard available: that is not a shortfall.
     expect(result.ok).toBe(true);
   });
+
+  it("deals each division its own grid, with labels restarting at A", () => {
+    const result = planSets({
+      seed: "seed-div",
+      setCount: 2,
+      composition: CLASSIC,
+      pool: pool({ E: 6, M: 6, H: 6 }),
+      divisions: [
+        { id: "div-int", name: "Intermediate" },
+        { id: "div-adv", name: "Advanced" },
+      ],
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.sets.map((set) => [set.divisionName, set.label])).toEqual([
+      ["Intermediate", "A"],
+      ["Intermediate", "B"],
+      ["Advanced", "A"],
+      ["Advanced", "B"],
+    ]);
+
+    // Within one division no problem repeats; that is the rule the columns exist to enforce.
+    for (const name of ["Intermediate", "Advanced"]) {
+      const used = result.sets
+        .filter((set) => set.divisionName === name)
+        .flatMap((set) => set.problems.map((problem) => problem.problemId));
+      expect(new Set(used).size, `${name} dealt a problem twice`).toBe(used.length);
+    }
+  });
+
+  it("MAY hand two divisions the same problem, because each deals from the full pool", () => {
+    // The pool holds exactly one deal's worth, so two divisions MUST overlap completely.
+    // The seed history has this shape: Bill Division was Intermediate/M and Advanced/E.
+    const result = planSets({
+      seed: "seed-overlap",
+      setCount: 4,
+      composition: CLASSIC,
+      pool: pool({ E: 4, M: 4, H: 4 }),
+      divisions: [
+        { id: "div-int", name: "Intermediate" },
+        { id: "div-adv", name: "Advanced" },
+      ],
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const byDivision = (name: string): Set<string> =>
+      new Set(
+        result.sets
+          .filter((set) => set.divisionName === name)
+          .flatMap((set) => set.problems.map((problem) => problem.problemId)),
+      );
+    expect(byDivision("Intermediate")).toEqual(byDivision("Advanced"));
+  });
+
+  it("names the short division in the refusal", () => {
+    const result = planSets({
+      seed: "seed-div-short",
+      setCount: 4,
+      composition: CLASSIC,
+      pool: pool({ E: 10, M: 10, H: 2 }),
+      divisions: [
+        { id: "div-int", name: "Intermediate" },
+        { id: "div-adv", name: "Advanced" },
+      ],
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    // Both divisions are short, because each needs 4 Hard from the same bank of 2.
+    expect(result.shortfalls).toEqual([
+      { difficulty: "H", divisionName: "Intermediate", needed: 4, available: 2 },
+      { difficulty: "H", divisionName: "Advanced", needed: 4, available: 2 },
+    ]);
+    expect(result.message).toContain("Intermediate: 4 Hard problems are needed");
+    expect(result.message).toContain("Advanced: 4 Hard problems are needed");
+  });
+
+  it("draws team questions from problems no set in any division took", () => {
+    const result = planSets({
+      seed: "seed-group",
+      setCount: 2,
+      composition: CLASSIC,
+      pool: pool({ E: 8, M: 8, H: 8 }),
+      divisions: [
+        { id: "div-int", name: "Intermediate" },
+        { id: "div-adv", name: "Advanced" },
+      ],
+      groupCount: 3,
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.groupProblems).toHaveLength(3);
+    const dealtAnywhere = new Set(
+      result.sets.flatMap((set) => set.problems.map((problem) => problem.problemId)),
+    );
+    for (const problem of result.groupProblems) {
+      expect(dealtAnywhere.has(problem.problemId), `${problem.problemId} is also in a set`).toBe(
+        false,
+      );
+    }
+  });
+
+  it("refuses team questions the remainder cannot cover, worst case, with the arithmetic", () => {
+    // 2 divisions x 3 per set x 2 sets = 12 dealt worst case, from a bank of 13. One remains.
+    const result = planSets({
+      seed: "seed-group-short",
+      setCount: 2,
+      composition: CLASSIC,
+      pool: pool({ E: 5, M: 4, H: 4 }),
+      divisions: [
+        { id: "div-int", name: "Intermediate" },
+        { id: "div-adv", name: "Advanced" },
+      ],
+      groupCount: 3,
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.shortfalls).toEqual([
+      { difficulty: null, divisionName: null, needed: 3, available: 1 },
+    ]);
+    expect(result.message).toContain("3 team questions are needed");
+    expect(result.message).toContain("at most 1 problem remains");
+  });
+
+  it("is deterministic across divisions and group draws too", () => {
+    const input = {
+      seed: "fixed-seed-div",
+      setCount: 2,
+      composition: CLASSIC,
+      pool: pool({ E: 9, M: 9, H: 9 }),
+      divisions: [
+        { id: "div-int", name: "Intermediate" },
+        { id: "div-adv", name: "Advanced" },
+      ],
+      groupCount: 2,
+    };
+    expect(JSON.stringify(planSets(input))).toBe(JSON.stringify(planSets(input)));
+  });
+
+  it("deals a no-division contest exactly as it did before divisions existed", () => {
+    /*
+      The shuffle key for the null division is `${seed}:${difficulty}`, unchanged. This pins the
+      dealt problem ids for one fixed seed, so a refactor that silently salts the legacy key breaks
+      HERE rather than in a stored contest whose seed no longer reproduces its own split.
+    */
+    const result = planSets({
+      seed: "pin-legacy",
+      setCount: 2,
+      composition: CLASSIC,
+      pool: pool({ E: 4, M: 4, H: 4 }),
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.groupProblems).toEqual([]);
+    for (const set of result.sets) {
+      expect(set.divisionId).toBeNull();
+      expect(set.divisionName).toBeNull();
+    }
+  });
 });
 
 describe("checkFeasibility", () => {
   it("answers without building anything, so a form can warn while it is being filled in", () => {
     expect(checkFeasibility(CLASSIC, pool({ E: 3, M: 3, H: 3 }), 3)).toEqual([]);
     expect(checkFeasibility(CLASSIC, pool({ E: 3, M: 3, H: 3 }), 4)).toEqual([
-      { difficulty: "E", needed: 4, available: 3 },
-      { difficulty: "M", needed: 4, available: 3 },
-      { difficulty: "H", needed: 4, available: 3 },
+      { difficulty: "E", divisionName: null, needed: 4, available: 3 },
+      { difficulty: "M", divisionName: null, needed: 4, available: 3 },
+      { difficulty: "H", divisionName: null, needed: 4, available: 3 },
+    ]);
+  });
+
+  it("names the division whose demand it is checking", () => {
+    expect(checkFeasibility(CLASSIC, pool({ E: 3, M: 3, H: 1 }), 2, "Advanced")).toEqual([
+      { difficulty: "H", divisionName: "Advanced", needed: 2, available: 1 },
     ]);
   });
 });

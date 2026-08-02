@@ -45,6 +45,13 @@ export interface ContestSetup {
   readonly unassignedCount: number;
   /** Players with no Round 1 set. They can open group problems and nothing else. */
   readonly unassignedSetCount: number;
+  /** How many divisions this contest has. Zero means division warnings do not apply. */
+  readonly divisionCount: number;
+  /**
+   * Players in no division. Only a warning when the contest HAS divisions: such a player sees
+   * only division-null problems, which in a divided contest is usually close to nothing.
+   */
+  readonly noDivisionCount: number;
 }
 
 export async function contestSetup(contestId: string): Promise<ContestSetup | null> {
@@ -58,14 +65,17 @@ export async function contestSetup(contestId: string): Promise<ContestSetup | nu
       endsAt: true,
       freezeAt: true,
       setSelection: true,
-      _count: { select: { contestProblems: true, teams: true, participants: true } },
+      _count: {
+        select: { contestProblems: true, teams: true, participants: true, divisions: true },
+      },
     },
   });
   if (contest === null) return null;
 
-  const [unassigned, unassignedSet] = await Promise.all([
+  const [unassigned, unassignedSet, noDivision] = await Promise.all([
     prisma.participant.count({ where: { contestId, teamId: null } }),
     prisma.participant.count({ where: { contestId, chosenSetId: null } }),
+    prisma.participant.count({ where: { contestId, divisionId: null } }),
   ]);
 
   return {
@@ -81,6 +91,8 @@ export async function contestSetup(contestId: string): Promise<ContestSetup | nu
     participantCount: contest._count.participants,
     unassignedCount: unassigned,
     unassignedSetCount: unassignedSet,
+    divisionCount: contest._count.divisions,
+    noDivisionCount: noDivision,
   };
 }
 
@@ -100,6 +112,8 @@ export interface LineupSlot {
   readonly round: "INDIVIDUAL" | "GROUP";
   /** Empty for a group problem. The round itself is stored separately and is authoritative. */
   readonly setLabel: string;
+  /** Null means every division sees it, which is what `inScope` does with a null row. */
+  readonly divisionId: string | null;
 }
 
 export async function contestLineup(contestId: string): Promise<readonly LineupSlot[]> {
@@ -113,6 +127,7 @@ export async function contestLineup(contestId: string): Promise<readonly LineupS
       slotLabel: true,
       basePoints: true,
       round: true,
+      divisionId: true,
       set: { select: { label: true } },
       problem: { select: { title: true } },
     },
@@ -125,5 +140,6 @@ export async function contestLineup(contestId: string): Promise<readonly LineupS
     basePoints: row.basePoints,
     round: row.round,
     setLabel: row.set?.label ?? "",
+    divisionId: row.divisionId,
   }));
 }

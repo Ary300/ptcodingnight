@@ -56,7 +56,8 @@ interface ContestForTeams {
   readonly maxTeamSize: number;
   readonly setSelection: string;
   readonly setAssignmentSeed: string | null;
-  readonly problemSets: readonly { id: string; label: string }[];
+  readonly problemSets: readonly { id: string; label: string; divisionId: string | null }[];
+  readonly divisions: readonly { id: string; name: string }[];
 }
 
 async function contestForTeams(contestId: string, db: Db = prisma): Promise<ContestForTeams> {
@@ -72,7 +73,16 @@ async function contestForTeams(contestId: string, db: Db = prisma): Promise<Cont
       maxTeamSize: true,
       setSelection: true,
       setAssignmentSeed: true,
-      problemSets: { select: { id: true, label: true }, orderBy: { label: "asc" } },
+      problemSets: {
+        select: { id: true, label: true, divisionId: true },
+        orderBy: { label: "asc" },
+      },
+      // `sortOrder` first because it is the board's order; name breaks ties because it is unique
+      // per contest, so the list can never reshuffle between two reads.
+      divisions: {
+        select: { id: true, name: true },
+        orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+      },
     },
   });
   if (contest === null) throw new NotFoundError("Contest");
@@ -118,8 +128,15 @@ async function ensureSetAssigned(
 ): Promise<string | null> {
   const participant = await db.participant.findUnique({
     where: { id: participantId },
-    select: { chosenSetId: true },
+    select: { chosenSetId: true, divisionId: true },
   });
+
+  // A member may only hold a set of their own division, and a member with no division only a
+  // division-null set. For a contest with no divisions every set is division-null, so this
+  // filter is the identity there and the behaviour is exactly what it was before divisions.
+  const candidateSets = contest.problemSets.filter(
+    (set) => set.divisionId === (participant?.divisionId ?? null),
+  );
 
   // The two alternate formats intentionally do not impose per-teammate uniqueness here:
   // PLAYER_CHOOSES permits independent choices, and ONE_SET_PER_TEAM requires teammates to share.
@@ -143,7 +160,7 @@ async function ensureSetAssigned(
           })
         ).flatMap((p) => (p.chosenSetId === null ? [] : [p.chosenSetId]));
 
-  const validSetIds = new Set(contest.problemSets.map((set) => set.id));
+  const validSetIds = new Set(candidateSets.map((set) => set.id));
   if (
     participant?.chosenSetId != null &&
     validSetIds.has(participant.chosenSetId) &&
@@ -166,7 +183,7 @@ async function ensureSetAssigned(
 
   if (
     contest.setAssignmentSeed === null ||
-    contest.problemSets.length === 0
+    candidateSets.length === 0
   ) {
     if (participant?.chosenSetId != null && takenInTeam.includes(participant.chosenSetId)) {
       throw new DomainError(
@@ -179,7 +196,7 @@ async function ensureSetAssigned(
 
   const chosenSetId = assignSetForOne({
     seed: contest.setAssignmentSeed,
-    setIds: contest.problemSets.map((set) => set.id),
+    setIds: candidateSets.map((set) => set.id),
     participantId,
     takenInTeam,
   });
@@ -523,6 +540,96 @@ export async function adminDissolveTeam(
     await tx.team.delete({ where: { id: teamId } });
   });
 
+  invalidateScoringInput(owner.contestId);
+}
+
+/**
+ * Put a participant in a division, or in none with `divisionId: null`.
+ *
+ * The same discipline as `adminMoveParticipant`, because it is the same kind of change: division
+ * decides which problems this player may open (`inScope` filters reads by it) and which board
+ * ranks them, so "why is this student suddenly Advanced" needs an audit-row answer exactly the
+ * way "why did our score change" does.
+ *
+ * **Deliberately does not touch `chosenSetId`.** When sets are division-scoped, a player who
+ * changes division may be holding a set of the wrong division afterwards — but silently swapping
+ * their set here would be a second, unrequested mutation hiding inside this one. Re-planning or
+ * reassigning sets is its own explicit, audited action, and the roster screen is where an
+ * organizer can see both facts side by side.
+ */
+export async function adminSetParticipantDivision(
+  participantId: string,
+  divisionId: string | null,
+  actor: string,
+  reason: string,
+): Promise<void> {
+  // Contest id is immutable and names the advisory lock. Every mutable fact is read again after
+  // that lock, inside the transaction — the same shape as the team move above.
+  const owner = await prisma.participant.findUnique({
+    where: { id: participantId },
+    select: { contestId: true },
+  });
+  if (owner === null) throw new NotFoundError("Participant");
+
+  await prisma.$transaction(async (tx) => {
+    await lockContestMutations(tx, owner.contestId);
+
+    const participant = await tx.participant.findUnique({
+      where: { id: participantId },
+      select: {
+        id: true,
+        displayName: true,
+        contestId: true,
+        divisionId: true,
+        division: { select: { name: true } },
+      },
+    });
+    if (participant === null) throw new NotFoundError("Participant");
+
+    let target: { id: string; name: string } | null = null;
+    if (divisionId !== null) {
+      const found = await tx.division.findUnique({
+        where: { id: divisionId },
+        select: { id: true, name: true, contestId: true },
+      });
+      if (found === null) throw new NotFoundError("Division");
+      if (found.contestId !== participant.contestId) {
+        throw new ValidationError("That division belongs to a different contest");
+      }
+      target = { id: found.id, name: found.name };
+    }
+
+    if (participant.divisionId === divisionId) {
+      throw new DomainError("CONFLICT", "That participant is already in that division");
+    }
+
+    const contest = await contestForTeams(participant.contestId, tx);
+    assertCanMutateStandingsInputs(contest, new Date());
+
+    await tx.participant.update({ where: { id: participantId }, data: { divisionId } });
+
+    await writeAudit(
+      {
+        actor,
+        action: AUDIT_ACTIONS.participantDivisionSet,
+        entity: `Participant:${participantId}`,
+        before: {
+          divisionId: participant.divisionId,
+          divisionName: participant.division?.name ?? null,
+        },
+        after: {
+          divisionId,
+          divisionName: target?.name ?? null,
+          displayName: participant.displayName,
+        },
+        reason,
+      },
+      tx,
+    );
+  });
+
+  // Division is a scoring input: the per-division boards partition players by it, so the cached
+  // standings for this contest are stale the moment the row changes — same as a team move.
   invalidateScoringInput(owner.contestId);
 }
 
@@ -974,6 +1081,13 @@ export interface RosterMember {
   readonly submissionCount: number;
   readonly chosenSetId: string | null;
   readonly chosenSetLabel: string | null;
+  /**
+   * Which division this player competes in, or null for none. Not cosmetic: a player with no
+   * division sees only division-null problems, so the roster is where an organizer notices the
+   * student who will open the contest and find almost nothing in it.
+   */
+  readonly divisionId: string | null;
+  readonly divisionName: string | null;
 }
 
 /** The organizer's roster: every team, its members, and everybody on no team at all. */
@@ -982,6 +1096,7 @@ export async function adminRoster(contestId: string): Promise<{
   readonly formationOpen: boolean;
   readonly setSelection: "RANDOM_ASSIGNED" | "PLAYER_CHOOSES" | "ONE_SET_PER_TEAM";
   readonly problemSets: readonly { readonly setId: string; readonly label: string }[];
+  readonly divisions: readonly { readonly divisionId: string; readonly name: string }[];
   readonly teams: readonly (Omit<TeamView, "members"> & {
     readonly memberCount: number;
     readonly members: readonly RosterMember[];
@@ -997,6 +1112,8 @@ export async function adminRoster(contestId: string): Promise<{
     user: { select: { email: true } },
     chosenSetId: true,
     chosenSet: { select: { label: true } },
+    divisionId: true,
+    division: { select: { name: true } },
     _count: { select: { submissions: true } },
   } as const;
 
@@ -1008,6 +1125,8 @@ export async function adminRoster(contestId: string): Promise<{
     _count: { submissions: number };
     chosenSetId: string | null;
     chosenSet: { label: string } | null;
+    divisionId: string | null;
+    division: { name: string } | null;
   };
 
   const toMember = (row: MemberRow): RosterMember => ({
@@ -1018,6 +1137,8 @@ export async function adminRoster(contestId: string): Promise<{
     submissionCount: row._count.submissions,
     chosenSetId: row.chosenSetId,
     chosenSetLabel: row.chosenSet?.label ?? null,
+    divisionId: row.divisionId,
+    divisionName: row.division?.name ?? null,
   });
 
   const [teams, unassigned] = await Promise.all([
@@ -1046,6 +1167,10 @@ export async function adminRoster(contestId: string): Promise<{
       | "PLAYER_CHOOSES"
       | "ONE_SET_PER_TEAM",
     problemSets: contest.problemSets.map((set) => ({ setId: set.id, label: set.label })),
+    divisions: contest.divisions.map((division) => ({
+      divisionId: division.id,
+      name: division.name,
+    })),
     teams: teams.map((team) => ({
       teamId: team.id,
       name: team.name,

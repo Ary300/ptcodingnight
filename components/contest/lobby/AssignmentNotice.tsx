@@ -159,7 +159,7 @@ export function AssignmentNotice({
         An organizer assigned it, and it is fixed for the round.{" "}
         {groupOnly
           ? "Your set and the rows marked group are what you see below."
-          : "You can open and submit to every problem below, including the other sets. They are all yours to score on."}
+          : "Every problem listed below is open to you and yours to score on."}
       </p>
     </Panel>
   );

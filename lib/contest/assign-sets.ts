@@ -24,7 +24,53 @@ import { actorLabel, type AdminViewer } from "@/lib/contest/viewer";
  *
  * `reassign` exists because a roster changes: someone arrives late, someone swaps teams. It takes a
  * new seed by default and audits the change, so a re-run is visible rather than silent.
+ *
+ * ## Divisions partition the assignment, and the partitioning lives HERE, not in the pure half
+ *
+ * A member is only ever handed a set of their own division, and a member with no division only a
+ * division-null set. That is a filtering of database rows, so it belongs in this file: the pure
+ * `assignSets` stays a function of "these sets, these people", called once per division, and its
+ * balancing stays byte-identical for a contest with no divisions, because that contest is exactly
+ * one partition holding every set — the same call it has always been. Teammates in different
+ * divisions draw from different set pools, so their sets differ by construction; the within-team
+ * balancing only has work to do among teammates who share a division, which is what calling it
+ * per partition gives.
+ *
+ * A scope with no sets to offer (a member with no division in a contest whose sets are all
+ * division-scoped) is SKIPPED rather than refused: those members stay unassigned and the summary's
+ * `assigned` count and distribution say so. Refusing would block the whole room's assignment on
+ * the one student whose division the organizer has not picked yet.
  */
+
+/** Participants and sets that may be matched: same division, or both division-null. */
+interface AssignmentScope {
+  readonly divisionId: string | null;
+  readonly divisionName: string | null;
+  readonly setIds: readonly string[];
+}
+
+function scopesFor(
+  problemSets: readonly { id: string; divisionId: string | null }[],
+  participants: readonly { divisionId: string | null }[],
+  divisionName: ReadonlyMap<string, string>,
+): AssignmentScope[] {
+  const keys = [...new Set(participants.map((p) => p.divisionId ?? ""))].sort();
+  return keys.map((key) => {
+    const divisionId = key === "" ? null : key;
+    return {
+      divisionId,
+      divisionName: divisionId === null ? null : (divisionName.get(divisionId) ?? null),
+      setIds: problemSets
+        .filter((set) => set.divisionId === divisionId)
+        .map((set) => set.id),
+    };
+  });
+}
+
+/** "A" for a division-null set; "Advanced A" once divisions exist and letters repeat. */
+function qualifiedLabel(divisionName: string | null, label: string): string {
+  return divisionName === null ? label : `${divisionName} ${label}`;
+}
 
 export interface AssignmentSummary {
   readonly contestId: string;
@@ -65,9 +111,10 @@ export async function runSetAssignment(
         state: true,
         setSelection: true,
         setAssignmentSeed: true,
-        problemSets: { select: { id: true, label: true } },
-        participants: { select: { id: true, teamId: true } },
-        teams: { select: { name: true, _count: { select: { members: true } } } },
+        problemSets: { select: { id: true, label: true, divisionId: true } },
+        participants: { select: { id: true, teamId: true, divisionId: true } },
+        teams: { select: { id: true, name: true } },
+        divisions: { select: { id: true, name: true } },
       },
     });
 
@@ -91,15 +138,36 @@ export async function runSetAssignment(
       );
     }
 
-    const crowdedTeams = contest.teams.filter(
-      (team) => team._count.members > contest.problemSets.length,
-    );
-    if (crowdedTeams.length > 0) {
+    const divisionNames = new Map(contest.divisions.map((d) => [d.id, d.name]));
+    const nameOfDivision = (divisionId: string | null): string | null =>
+      divisionId === null ? null : (divisionNames.get(divisionId) ?? null);
+    const scopes = scopesFor(contest.problemSets, contest.participants, divisionNames);
+
+    // Crowded is judged per (team, division): distinct sets are only owed among teammates who
+    // share a division, because that is the pool they draw from. A scope with no sets at all is
+    // skipped here for the same reason it is skipped below.
+    const teamNames = new Map(contest.teams.map((team) => [team.id, team.name]));
+    const crowded: string[] = [];
+    for (const scope of scopes) {
+      if (scope.setIds.length === 0) continue;
+      const membersByTeam = new Map<string, number>();
+      for (const participant of contest.participants) {
+        if (participant.teamId === null || participant.divisionId !== scope.divisionId) continue;
+        membersByTeam.set(participant.teamId, (membersByTeam.get(participant.teamId) ?? 0) + 1);
+      }
+      for (const [teamId, members] of membersByTeam) {
+        if (members <= scope.setIds.length) continue;
+        const where = scope.divisionName === null ? "" : ` in ${scope.divisionName}`;
+        crowded.push(
+          `${teamNames.get(teamId) ?? "a team"} has ${String(members)} members${where} but ` +
+            `${scope.divisionName ?? "this contest"} has ${String(scope.setIds.length)} sets`,
+        );
+      }
+    }
+    if (crowded.length > 0) {
       throw new DomainError(
         "VALIDATION",
-        `Create at least one set per teammate before assigning. ${crowdedTeams
-          .map((team) => `${team.name} has ${String(team._count.members)}`)
-          .join(", ")}, but this contest has ${String(contest.problemSets.length)} sets.`,
+        `Create at least one set per teammate before assigning. ${[...crowded].sort().join("; ")}.`,
       );
     }
 
@@ -113,19 +181,37 @@ export async function runSetAssignment(
     }
 
     const seed = options.seed ?? newSeed();
-    const setIds = contest.problemSets.map((set) => set.id);
-    const assignments = assignSets({
-      seed,
-      setIds,
-      participants: contest.participants.map((participant) => ({
-        participantId: participant.id,
-        teamId: participant.teamId,
-      })),
-    });
+    // One pure call per scope, each over its own division's sets and people. A contest with no
+    // divisions is exactly one scope holding every set, which is the same call this has always
+    // made — that is what keeps the stored seeds of already-assigned contests re-derivable.
+    const assignments = scopes
+      .flatMap((scope) =>
+        scope.setIds.length === 0
+          ? []
+          : assignSets({
+              seed,
+              setIds: scope.setIds,
+              participants: contest.participants
+                .filter((participant) => participant.divisionId === scope.divisionId)
+                .map((participant) => ({
+                  participantId: participant.id,
+                  teamId: participant.teamId,
+                })),
+            }),
+      )
+      // Each scope's result is sorted; the merge is re-sorted so the whole is byte-stable too.
+      .sort((a, b) => (a.participantId < b.participantId ? -1 : 1));
 
-    const labelOf = new Map(contest.problemSets.map((set) => [set.id, set.label]));
+    const labelOf = new Map(
+      contest.problemSets.map((set) => [
+        set.id,
+        qualifiedLabel(nameOfDivision(set.divisionId), set.label),
+      ]),
+    );
     const distribution: Record<string, number> = {};
-    for (const set of contest.problemSets) distribution[set.label] = 0;
+    for (const set of contest.problemSets) {
+      distribution[qualifiedLabel(nameOfDivision(set.divisionId), set.label)] = 0;
+    }
     for (const assignment of assignments) {
       const label = labelOf.get(assignment.setId);
       if (label !== undefined) distribution[label] = (distribution[label] ?? 0) + 1;
@@ -157,7 +243,7 @@ export async function runSetAssignment(
         after: {
           seed,
           assigned: assignments.length,
-          sets: setIds.length,
+          sets: contest.problemSets.length,
           at: now.toISOString(),
         },
         reason: alreadyAssigned ? "roster changed after the first assignment" : null,
@@ -204,11 +290,11 @@ export async function reDeriveAssignment(contestId: string): Promise<AssignmentA
     where: { id: contestId },
     select: {
       setAssignmentSeed: true,
-      problemSets: { select: { id: true, label: true } },
+      problemSets: { select: { id: true, label: true, divisionId: true } },
       participants: {
-        select: { id: true, displayName: true, teamId: true, chosenSetId: true },
+        select: { id: true, displayName: true, teamId: true, chosenSetId: true, divisionId: true },
       },
-      teams: { select: { name: true, _count: { select: { members: true } } } },
+      divisions: { select: { id: true, name: true } },
     },
   });
 
@@ -217,31 +303,62 @@ export async function reDeriveAssignment(contestId: string): Promise<AssignmentA
     throw new DomainError("VALIDATION", "This contest has not been assigned yet");
   }
 
-  const crowdedTeams = contest.teams.filter(
-    (team) => team._count.members > contest.problemSets.length,
-  );
-  if (crowdedTeams.length > 0) {
-    throw new DomainError(
-      "VALIDATION",
-      "The current roster has a team with more members than problem sets, so it cannot be " +
-        "re-derived without repeating a set. Fix the roster or build more sets first.",
-    );
+  const divisionNames = new Map(contest.divisions.map((d) => [d.id, d.name]));
+  const nameOfDivision = (divisionId: string | null): string | null =>
+    divisionId === null ? null : (divisionNames.get(divisionId) ?? null);
+  const scopes = scopesFor(contest.problemSets, contest.participants, divisionNames);
+
+  // Crowded is judged per (team, division), the granularity the balancing actually works at.
+  for (const scope of scopes) {
+    if (scope.setIds.length === 0) continue;
+    const membersByTeam = new Map<string, number>();
+    for (const participant of contest.participants) {
+      if (participant.teamId === null || participant.divisionId !== scope.divisionId) continue;
+      membersByTeam.set(
+        participant.teamId,
+        (membersByTeam.get(participant.teamId) ?? 0) + 1,
+      );
+    }
+    if ([...membersByTeam.values()].some((members) => members > scope.setIds.length)) {
+      throw new DomainError(
+        "VALIDATION",
+        "The current roster has a team with more members than problem sets, so it cannot be " +
+          "re-derived without repeating a set. Fix the roster or build more sets first.",
+      );
+    }
   }
 
   const seed = contest.setAssignmentSeed;
-  const labelOf = new Map(contest.problemSets.map((s) => [s.id, s.label]));
+  const labelOf = new Map(
+    contest.problemSets.map((s) => [s.id, qualifiedLabel(nameOfDivision(s.divisionId), s.label)]),
+  );
   const nameOf = new Map(contest.participants.map((p) => [p.id, p.displayName]));
   const storedSetOf = new Map(contest.participants.map((p) => [p.id, p.chosenSetId]));
 
-  const assignments = assignSets({
-    seed,
-    setIds: contest.problemSets.map((s) => s.id),
-    participants: contest.participants.map((p) => ({ participantId: p.id, teamId: p.teamId })),
-  });
+  const assignments = scopes
+    .flatMap((scope) =>
+      scope.setIds.length === 0
+        ? []
+        : assignSets({
+            seed,
+            setIds: scope.setIds,
+            participants: contest.participants
+              .filter((p) => p.divisionId === scope.divisionId)
+              .map((p) => ({ participantId: p.id, teamId: p.teamId })),
+          }),
+    )
+    // Each scope's result is sorted; the merge is re-sorted so the whole is byte-stable too.
+    .sort((a, b) => (a.participantId < b.participantId ? -1 : 1));
 
-  const matchesStored = assignments.every(
-    (a) => storedSetOf.get(a.participantId) === a.setId,
-  );
+  // Two ways the stored state can disagree with the derivation: a derived participant holds a
+  // different set, or a participant the derivation could not cover (their division has no sets)
+  // still holds one. Both mean the roster or the columns moved after assignment ran.
+  const derivedFor = new Set(assignments.map((a) => a.participantId));
+  const matchesStored =
+    assignments.every((a) => storedSetOf.get(a.participantId) === a.setId) &&
+    contest.participants.every(
+      (p) => derivedFor.has(p.id) || p.chosenSetId === null,
+    );
 
   return {
     contestId,

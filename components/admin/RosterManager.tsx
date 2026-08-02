@@ -123,6 +123,11 @@ export function RosterManager({ contestId }: RosterManagerProps) {
   const [settingSet, setSettingSet] = useState<RosterMember | null>(null);
   const [setTarget, setSetTarget] = useState("");
   const [assignmentReason, setAssignmentReason] = useState("");
+  const [settingDivision, setSettingDivision] = useState<RosterMember | null>(
+    null,
+  );
+  const [divisionTarget, setDivisionTarget] = useState("");
+  const [divisionReason, setDivisionReason] = useState("");
 
   const [teamForm, setTeamForm] = useState<TeamForm>(null);
   const [teamFormName, setTeamFormName] = useState("");
@@ -155,6 +160,9 @@ export function RosterManager({ contestId }: RosterManagerProps) {
     setSettingSet(null);
     setSetTarget("");
     setAssignmentReason("");
+    setSettingDivision(null);
+    setDivisionTarget("");
+    setDivisionReason("");
     closeTeamForm();
     closeRemoveForm();
   };
@@ -290,6 +298,33 @@ export function RosterManager({ contestId }: RosterManagerProps) {
     );
   }
 
+  /*
+    The shape of the room, derived from the rows on screen rather than sent as counts — a
+    transmitted count is a second source of truth for a list that is already here, which is the
+    same reason team size is never stored. "No division" is always named, even at zero, because
+    zero is the number an organizer is trying to reach and its absence reads as "not checked".
+  */
+  const everyone = [
+    ...roster.unassigned,
+    ...roster.teams.flatMap((team) => team.members),
+  ];
+  const divisionShape =
+    roster.divisions.length === 0
+      ? null
+      : [
+          ...roster.divisions.map(
+            (division) =>
+              `${division.name} ${String(
+                everyone.filter(
+                  (member) => member.divisionId === division.divisionId,
+                ).length,
+              )}`,
+          ),
+          `no division ${String(
+            everyone.filter((member) => member.divisionId === null).length,
+          )}`,
+        ].join(", ");
+
   /**
    * One person on the roster, with the two things an organizer does to them.
    *
@@ -368,6 +403,36 @@ export function RosterManager({ contestId }: RosterManagerProps) {
             {person.chosenSetLabel === null
               ? "Choose set"
               : `Set ${person.chosenSetLabel} · change`}
+          </Button>
+        )}
+        {roster.divisions.length > 0 && (
+          <Button
+            type="button"
+            variant="quiet"
+            className="justify-start text-left aria-expanded:font-semibold aria-expanded:text-ink aria-expanded:underline"
+            aria-expanded={
+              settingDivision?.participantId === person.participantId
+            }
+            disabled={busy}
+            onClick={() => {
+              const alreadyOpen =
+                settingDivision?.participantId === person.participantId;
+              closeEveryForm();
+              if (!alreadyOpen) {
+                setSettingDivision(person);
+                setDivisionTarget(person.divisionId ?? "");
+              }
+            }}
+          >
+            {/*
+              The button IS the display: the current division reads in the label the same way the
+              set button reads "Set A · change", so the row never shows a division in one place
+              and offers to change it somewhere else. "No division" is said in words because it is
+              a real state with a real consequence: that player sees only division-null problems.
+            */}
+            {person.divisionName === null
+              ? "No division · change"
+              : `${person.divisionName} · change`}
           </Button>
         )}
       </div>
@@ -621,6 +686,18 @@ export function RosterManager({ contestId }: RosterManagerProps) {
         </div>
       </Panel>
 
+      {divisionShape !== null && (
+        /*
+          One line, not a table: the question it answers is "does the shape look right", and
+          "Intermediate 12, Advanced 9, no division 3" is readable at the glance that question
+          gets. Each person's own division is on their row below, next to the button that
+          changes it.
+        */
+        <p className="text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
+          Divisions: {divisionShape}.
+        </p>
+      )}
+
       <Panel
         title="Not on a team"
         level="bare"
@@ -792,6 +869,72 @@ export function RosterManager({ contestId }: RosterManagerProps) {
                 type="button"
                 variant="quiet"
                 onClick={() => setSettingSet(null)}
+                disabled={busy}
+              >
+                Cancel
+              </Button>
+            </div>
+          </form>
+        </Panel>
+      )}
+
+      {settingDivision !== null && (
+        <Panel
+          title={`Division for ${settingDivision.displayName}`}
+          level="framed"
+        >
+          <form
+            className="flex flex-col gap-group"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (divisionReason.trim().length < MIN_REASON) return;
+              void send(API_ROUTES.adminSetDivision(contestId), "POST", {
+                participantId: settingDivision.participantId,
+                divisionId: divisionTarget === "" ? null : divisionTarget,
+                reason: divisionReason.trim(),
+              });
+            }}
+          >
+            <Select
+              label="Division"
+              value={divisionTarget}
+              onChange={(event) => setDivisionTarget(event.target.value)}
+            >
+              {/* Brackets rather than dashes: no em dash may appear in text a user reads. */}
+              <option value="">(no division)</option>
+              {roster.divisions.map((division) => (
+                <option key={division.divisionId} value={division.divisionId}>
+                  {division.name}
+                </option>
+              ))}
+            </Select>
+
+            <p className="text-ink/70" style={{ fontSize: "var(--text-xs)" }}>
+              A player with no division sees only the questions open to every
+              division. Changing division does not change their problem set;
+              check it afterwards if the sets are division-scoped.
+            </p>
+
+            <TextInput
+              label="Reason"
+              required
+              value={divisionReason}
+              placeholder="Why this division is being changed"
+              hint="Division decides which questions this player can open and which board ranks them, so it goes in the audit log."
+              onChange={(event) => setDivisionReason(event.target.value)}
+            />
+
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="submit"
+                disabled={busy || divisionReason.trim().length < MIN_REASON}
+              >
+                {busy ? "Saving…" : "Save division"}
+              </Button>
+              <Button
+                type="button"
+                variant="quiet"
+                onClick={() => setSettingDivision(null)}
                 disabled={busy}
               >
                 Cancel

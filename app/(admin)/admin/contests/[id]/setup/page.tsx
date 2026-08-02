@@ -252,9 +252,15 @@ function stepsFor(setup: ContestSetup): readonly Step[] {
     {
       title: "Build the roster",
       detail:
-        setup.teamCount === 0
+        (setup.teamCount === 0
           ? "No teams yet. Add teams and place every participant on a roster."
-          : `${String(setup.teamCount)} ${setup.teamCount === 1 ? "team" : "teams"}, ${String(setup.participantCount)} ${setup.participantCount === 1 ? "participant" : "participants"}${setup.unassignedCount === 0 ? "" : `, ${String(setup.unassignedCount)} still ${setup.unassignedCount === 1 ? "needs" : "need"} a team`}.`,
+          : `${String(setup.teamCount)} ${setup.teamCount === 1 ? "team" : "teams"}, ${String(setup.participantCount)} ${setup.participantCount === 1 ? "participant" : "participants"}${setup.unassignedCount === 0 ? "" : `, ${String(setup.unassignedCount)} still ${setup.unassignedCount === 1 ? "needs" : "need"} a team`}.`) +
+        // Only when the contest HAS divisions: in one, a player with no division sees only the
+        // division-null problems, which is usually just the group round. A warning, not a
+        // blocker — the step's done state stays about teams, which is what publishing needs.
+        (setup.divisionCount > 0 && setup.noDivisionCount > 0 && setup.participantCount > 0
+          ? ` ${String(setup.noDivisionCount)} ${setup.noDivisionCount === 1 ? "player has" : "players have"} no division, so they can open only the questions every division shares. Set divisions on the Teams tab.`
+          : ""),
       state: setup.teamCount > 0 && setup.unassignedCount === 0 ? "done" : "todo",
       action: <TabLink href={`${base}/teams`} label="Teams" />,
     },

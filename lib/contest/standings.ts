@@ -155,7 +155,7 @@ async function queryScoringInput(contestId: string): Promise<ScoringInput> {
       },
       teams: { select: { id: true, name: true } },
       problemSets: {
-        select: { id: true, label: true },
+        select: { id: true, label: true, divisionId: true },
         orderBy: [{ label: "asc" }, { id: "asc" }],
       },
     },
@@ -299,9 +299,34 @@ async function queryScoringInput(contestId: string): Promise<ScoringInput> {
       grantedAt: h.grantedAt,
     })),
     divisionNames: new Map(contest.divisions.map((d) => [d.id, d.name])),
-    problemSetLabels: contest.problemSets.map(
-      (set) => [set.id, set.label] as const,
-    ),
+    /*
+      THE LABEL IS QUALIFIED WITH ITS DIVISION, HERE, ONCE. Sets became division-scoped, so a
+      two-division contest legitimately holds two sets named "A" - and every consumer of this map
+      (the board's column headers, its React keys, each player's chosenSetLabel, the cell filter
+      that matches players to columns) went wrong at the same time: headers read A A B B C C D D,
+      both divisions' A-holders merged into every A cell, and the board threw a duplicate-key
+      error four times per render, re-firing on every SSE tick. One map is the fix for the same
+      reason it was the bug: qualify at the producer and every reader agrees again. Columns sort
+      division-first so a division's sets stand together on the wall. A contest with no divisions
+      is byte-identical to before, which is what the golden replay pins.
+    */
+    problemSetLabels: [...contest.problemSets]
+      .sort((a, b) => {
+        const divisionOf = (setDivisionId: string | null): string =>
+          setDivisionId === null
+            ? ""
+            : (contest.divisions.find((d) => d.id === setDivisionId)?.name ?? "");
+        const byDivision = divisionOf(a.divisionId).localeCompare(divisionOf(b.divisionId));
+        if (byDivision !== 0) return byDivision;
+        return a.label.localeCompare(b.label);
+      })
+      .map((set) => {
+        const divisionName =
+          set.divisionId === null
+            ? null
+            : (contest.divisions.find((d) => d.id === set.divisionId)?.name ?? null);
+        return [set.id, divisionName === null ? set.label : `${divisionName} ${set.label}`] as const;
+      }),
     problemLabels: contest.contestProblems.map(
       (cp) =>
         [

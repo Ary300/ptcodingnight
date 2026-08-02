@@ -28,6 +28,16 @@
 
   /* Derived from the type scale, not chosen: a standings row is one and a half lines. */
   --row-h: calc(var(--fs-lg) * 1.55);
+
+  /*
+    Member-cell padding on the WALL. The default (see `.memberCell`) is the spreadsheet-generous
+    value the competitor board wants; the projector cannot afford it, because every open block is
+    paid for out of a measured row budget (`MEMBER_BLOCK_ROWS`, measured at 19.9px per row on
+    1280x720 with 5.8px of slack) and a taller member row would clip the last team silently.
+    So the stage pins the values the measurement was taken at.
+  */
+  --member-pad-y: 0.05em;
+  --member-pad-x: 0.5em;
   --champ-h: calc(var(--fs-2xl) * 1.55);
   --champ-extra: calc(var(--champ-h) - var(--row-h));
   --gap: calc(var(--fs-sm) * 0.5);
@@ -624,50 +634,55 @@
 }
 
 /*
- * The tint is what groups the block under its team, and it is a SECOND channel rather than the
- * only one: the rows are half the height of a team row, the white name cell is indented, and the
- * team's caret above them has turned. A tint alone would say nothing in greyscale, which this board
- * spends part of the night in behind the freeze (DESIGN.md §3).
+ * WHITE GROUND, no tint. The tint made the block read as shaded strips; the organizer asked for
+ * the spreadsheet instead — "there should be just smaller boxes below" — and a boxed grid carries
+ * its own grouping: the rows are a third the height of a team row, the name cell is indented, and
+ * the team's caret above them has turned. All of those survive the greyscale the board spends part
+ * of the night in behind the freeze (DESIGN.md §3), which the tint never did. Dropping it also
+ * moves the pool label from 4.67:1 (panther over the 4% tint) back to panther's full 5.08:1 on
+ * paper (DESIGN.md §7: panther on paper, never with alpha, and never on a spent ground).
  */
 .memberRow {
-  /*
-    4%, and the number is a contrast budget rather than a taste. `--panther` is 5.08:1 on paper and
-    every point of tint under it spends some of that: 4% lands the pool label at 4.67:1 and 5% at
-    4.57:1, against a 4.5 floor that applies at 1280x720 where the label is 16px bold and therefore
-    NOT large text. Tint is also not the channel that groups this block: the rows are a third the
-    height of a team row and their name cells are indented, both of which survive the greyscale the
-    board spends part of the night in (DESIGN.md §3).
-  */
-  background: color-mix(in srgb, var(--color-ink) 4%, var(--color-paper));
+  background: var(--color-paper);
 }
 
 /*
- * Padding in `em` rather than in `--gap`, so the row height tracks the type size through
- * `--proj-scale` on its own. Measured on this commit: 20.1px per row at 1280x720 and 28.9px at
- * 1920x1080, against a team row's 66px and 94px. The 1px rules do NOT scale with `--proj-scale`,
- * which is why the smaller canvas is tighter than a straight two-thirds and is the one
- * `MEMBER_BLOCK_ROWS` is measured on.
+ * EVERY CELL A DEFINED BOX, in the table's own grid-line colour (`--rule-edge`, the same token the
+ * team rows' borders use), so the miniature and the sheet above it draw one grid rather than two.
  *
- * The vertical rules carry the column alignment. A one-pixel inset rule separates member rows
- * without changing the measured table height, which matters on the smaller projector canvas.
+ * How the four sides land without doubling and without changing the measured height — the table is
+ * `border-collapse`, and this deliberately mixes the two mechanisms:
+ * - LEFT and RIGHT are real 1px borders, collapsed with the neighbour's into single shared rules.
+ * - TOP and BOTTOM follow the halved-borders discipline instead: each row draws ONLY its bottom
+ *   edge, as a 1px inset box-shadow, and its top edge is the row above's bottom (the team row's
+ *   real collapsed border for the first member row). One edge per boundary, so rules are never
+ *   doubled — and an inset shadow lives INSIDE the row box, so the projector's measured block
+ *   height (`MEMBER_BLOCK_ROWS`, 5.8px of slack at 1280x720) does not move by even the 1px per row
+ *   that real collapsed top/bottom borders would add.
+ *
+ * Padding in `em` rather than in `--gap`, so the row height tracks the type size through
+ * `--proj-scale` on its own. The default is the competitor board's spreadsheet-generous value;
+ * `.stage` overrides both custom properties back to the tight values the projector budget was
+ * measured at (20.1px per row at 1280x720, 28.9px at 1920x1080, against a team row's 66px/94px).
  */
 .memberCell {
   border-top: 0;
-  border-right: 1px solid color-mix(in srgb, var(--color-ink) 20%, transparent);
+  border-right: 1px solid var(--color-rule-edge);
   border-bottom: 0;
-  border-left: 1px solid color-mix(in srgb, var(--color-ink) 20%, transparent);
-  box-shadow: inset 0 -1px color-mix(in srgb, var(--color-ink) 14%, transparent);
+  border-left: 1px solid var(--color-rule-edge);
+  box-shadow: inset 0 -1px var(--color-rule-edge);
   font-size: var(--fs-sm, var(--text-xs));
   font-weight: 400;
   line-height: 1.05;
-  padding: 0.05em 0.5em;
+  padding: var(--member-pad-y, 0.4em) var(--member-pad-x, 0.65em);
   vertical-align: middle;
 }
 
 /*
- * Indented, so the block reads as belonging to the row above rather than as a peer of it. The
- * indent is inside the Team column and takes no width from any other column, which is the
- * difference between an outline and a second table.
+ * The spreadsheet's label cell: text left, indented, on the same white ground as the rest of the
+ * row now that the tint is gone. The indent is what still says "nested" — it sits inside the Team
+ * column and takes no width from any other column, which is the difference between an outline and
+ * a second table.
  */
 .memberNameCell {
   background: var(--color-paper);
@@ -759,7 +774,8 @@
  * only emphasis in the block.
  */
 .poolRow > * {
-  border-top: 2px solid color-mix(in srgb, var(--color-ink) 45%, transparent);
+  /* The same 45%-ink value it always was, spelled as the token it is (`--rule-firm`). */
+  border-top: 2px solid var(--color-rule-firm);
 }
 
 /*
@@ -779,7 +795,8 @@
 }
 
 .playerProblemCell {
-  border: 1px solid color-mix(in srgb, var(--color-ink) 20%, transparent);
+  /* The grid's own line colour, not a thirteenth hand-picked border alpha. */
+  border: 1px solid var(--color-rule-edge);
   padding: 0.45rem 0.75rem 0.55rem calc(var(--pad, 1rem) * 3.5);
 }
 

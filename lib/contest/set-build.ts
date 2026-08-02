@@ -12,6 +12,7 @@ import {
   setSize,
   type AvailableProblem,
   type Difficulty,
+  type PlanDivision,
 } from "@/lib/contest/set-plan";
 import { invalidateScoringInput } from "@/lib/contest/standings";
 import { actorLabel, type AdminViewer } from "@/lib/contest/viewer";
@@ -29,28 +30,34 @@ import {
  *
  * The split mirrors `assign-sets.ts` against `set-assignment.ts`, and for the same reason. The deal
  * itself is pure, seeded and unit-tested with no database in sight; everything that touches the
- * world lives here. **Nothing in this file decides which problem goes where.** It gathers the pool,
- * hands it to `planSets`, and writes down what came back. If you find yourself shuffling, counting
- * difficulties, or checking feasibility in this file, it belongs one module over.
+ * world lives here. **Nothing in this file decides which problem goes where.** It gathers the pool
+ * and the divisions, hands them to `planSets`, and writes down what came back. If you find yourself
+ * shuffling, counting difficulties, or checking feasibility in this file, it belongs one module
+ * over.
  *
  * ## What a set is, and what this is not
  *
  * The columns on the organizer's sheet are SETS and the rows are teams: every member of a team
  * holds a different set, and a set is the same questions for everybody who holds it. So four sets
- * under a one-of-each recipe is twelve distinct problems. **Which player holds which set is
- * `assign-sets.ts`** and is not touched here. This module only decides what is IN a column.
+ * under a one-of-each recipe is twelve distinct problems. When the contest has divisions, each
+ * division gets its own columns dealt to the same recipe, and a member is only ever handed a set
+ * of their own division. **Which player holds which set is `assign-sets.ts`** and is not touched
+ * here. This module only decides what is IN a column.
  *
- * GROUP problems sit outside the plan entirely (`ContestProblem.setId = null`): the whole team
- * works them and every team gets the same ones. They are neither dealt nor deleted here, which is
- * why `applySets` clears rows by `setId != null` rather than by contest.
+ * GROUP problems have two authors, and the difference is a column, not a convention. The recipe's
+ * `groupCount` deals whole-team questions (`dealtByPlan: true`), which a re-plan replaces; the
+ * Problems tab places them by hand (`dealtByPlan: false`), and a re-plan leaves those alone
+ * exactly as it always has. Hand-picked group questions are also withheld from the pool, so the
+ * plan can never deal one of them into a set.
  *
  * ## Preview and apply are the same computation
  *
  * `previewSets` and `applySets` differ in exactly one thing: whether the result is written. They
  * share the pool gathering and the call into `planSets`. The caller echoes both the seed and the
  * pool fingerprint back: the seed fixes the shuffle, and the fingerprint refuses the write if the
- * usable bank changed after the preview. Without both, an apply could save a different, equally
- * valid split from the one on screen.
+ * usable bank OR the division list changed after the preview — the deal is a function of both, so
+ * both are in the hash. Without that, an apply could save a different, equally valid split from
+ * the one on screen.
  */
 
 /**
@@ -83,18 +90,26 @@ function newSeed(): string {
 }
 
 /**
- * Version the exact ordered pool that the seeded deal consumes.
+ * Version the exact inputs the seeded deal consumes: the ordered pool AND the division list.
  *
- * Order is deliberately part of the fingerprint: the shuffle starts from this array, so the
- * same members in a different order can produce a different set plan under the same seed.
+ * Order is deliberately part of the fingerprint on both: the shuffle starts from the pool array,
+ * and the divisions decide how many deals happen and what salts them, so the same members in a
+ * different order can produce a different set plan under the same seed. Adding or renaming a
+ * division between preview and apply must therefore refuse the write too.
  */
-export function setPoolVersion(pool: readonly AvailableProblem[]): string {
-  const material = pool.map((problem) => [
-    problem.problemId,
-    problem.slug,
-    problem.title,
-    problem.difficulty,
-  ]);
+export function setPoolVersion(
+  pool: readonly AvailableProblem[],
+  divisions: readonly PlanDivision[] = [],
+): string {
+  const material = {
+    pool: pool.map((problem) => [
+      problem.problemId,
+      problem.slug,
+      problem.title,
+      problem.difficulty,
+    ]),
+    divisions: divisions.map((division) => [division.id, division.name]),
+  };
   return createHash("sha256").update(JSON.stringify(material)).digest("hex");
 }
 
@@ -103,16 +118,23 @@ export function pointsForEntry(entry: SetCompositionInput[number]): number {
 }
 
 /**
- * The recipe as a sentence: "1 Easy, 1 Medium, 1 Hard".
+ * The recipe as a sentence: "1 Easy, 1 Medium, 1 Hard". `groupCount` appends ", 2 team questions"
+ * when the recipe asks for any.
  *
  * Used in the audit row, where the value has to be a flat scalar and has to be readable at 9pm by
  * somebody arguing about second place. A JSON blob is not that.
  */
-export function describeComposition(composition: SetCompositionInput): string {
-  return composition
+export function describeComposition(
+  composition: SetCompositionInput,
+  groupCount = 0,
+): string {
+  const lines = composition
     .filter((entry) => entry.count > 0)
-    .map((entry) => `${String(entry.count)} ${DIFFICULTY_LABEL[entry.difficulty]}`)
-    .join(", ");
+    .map((entry) => `${String(entry.count)} ${DIFFICULTY_LABEL[entry.difficulty]}`);
+  if (groupCount > 0) {
+    lines.push(`${String(groupCount)} team ${groupCount === 1 ? "question" : "questions"}`);
+  }
+  return lines.join(", ");
 }
 
 /**
@@ -156,6 +178,29 @@ export function assignSlots(
 }
 
 /**
+ * Label and price the plan's whole-team questions: "Team 1", "Team 2", …
+ *
+ * Priced by each problem's own difficulty, because the recipe's group line has none: a Hard team
+ * question is still a Hard question. The engine only draws rated problems for the group line, so
+ * a missing difficulty here is the same kind of invariant break as a set that disagrees with its
+ * recipe, and it is equally loud.
+ */
+export function groupSlots(problems: readonly AvailableProblem[]): PlannedSlot[] {
+  return problems.map((problem, index) => {
+    if (problem.difficulty === null) {
+      throw new Error(
+        `set-build: group question ${problem.problemId} has no difficulty, so it cannot be priced`,
+      );
+    }
+    return {
+      ...problem,
+      slotLabel: `Team ${String(index + 1)}`,
+      basePoints: DEFAULT_POINTS_BY_DIFFICULTY[problem.difficulty],
+    };
+  });
+}
+
+/**
  * Read a recipe back out of `Contest.setComposition`.
  *
  * `Json` is `unknown` as far as Prisma is concerned, so this is a trust boundary in the OUTGOING
@@ -191,25 +236,25 @@ export function parseStoredComposition(value: unknown): SetCompositionInput | nu
  *
  * Two further exclusions belong to the SET question rather than to the problem:
  *
- *  - a problem this contest already uses as a GROUP problem is out, because `ContestProblem` is
- *    unique on `(contestId, problemId, divisionId)` and the group rows are deliberately not
- *    cleared by a re-plan. The constraint error would arrive as an unreadable 500 at the end of a
- *    transaction; this is the same refusal, phrased as arithmetic in a shortfall instead.
+ *  - a problem an organizer HAND-PICKED as a GROUP question (`dealtByPlan: false`) is out: those
+ *    rows survive a re-plan on purpose, so dealing one into a set would collide with a row this
+ *    module never deletes. The plan's own previous group draws are NOT excluded, because a re-plan
+ *    replaces them, which returns them to the pool.
  *
  * Problems with no difficulty are dropped: they cannot satisfy any recipe line, so counting them
  * in `poolSize` would tell an organizer staring at a shortfall that the bank holds problems the
  * plan could have used.
  */
 async function gatherPool(contestId: string): Promise<AvailableProblem[]> {
-  const [bank, groupRows] = await Promise.all([
+  const [bank, handPickedGroupRows] = await Promise.all([
     problemBank(),
     prisma.contestProblem.findMany({
-      where: { contestId, round: "GROUP" },
+      where: { contestId, round: "GROUP", dealtByPlan: false },
       select: { problemId: true },
     }),
   ]);
 
-  const spokenFor = new Set(groupRows.map((row) => row.problemId));
+  const spokenFor = new Set(handPickedGroupRows.map((row) => row.problemId));
 
   return bank.problems
     .filter(
@@ -226,6 +271,59 @@ async function gatherPool(contestId: string): Promise<AvailableProblem[]> {
     }));
 }
 
+/**
+ * Which teams would break the "every teammate holds a different set" rule under `setCount`.
+ *
+ * Judged per (team, division): a member only draws from their own division's columns, and each
+ * division gets `setCount` of them, so five teammates split 3 and 2 across two divisions fit in
+ * three sets ("column A" is a different column in each division). A contest with no divisions is
+ * one scope holding everybody, which is the old whole-team comparison unchanged.
+ *
+ * Members with no division in a contest that HAS divisions are not counted: they have no columns
+ * to draw from, assignment skips them visibly, and refusing to build sets because of a student
+ * whose division is not picked yet would block the whole room on a roster detail.
+ */
+export function crowdedTeamMessages(
+  teams: readonly { readonly id: string; readonly name: string }[],
+  participants: readonly { readonly teamId: string | null; readonly divisionId: string | null }[],
+  divisionNames: ReadonlyMap<string, string>,
+  setCount: number,
+): string[] {
+  const contestHasDivisions = divisionNames.size > 0;
+  const counts = new Map<string, number>();
+  for (const participant of participants) {
+    if (participant.teamId === null) continue;
+    if (contestHasDivisions && participant.divisionId === null) continue;
+    const key = `${participant.teamId} ${participant.divisionId ?? ""}`;
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+
+  const nameOfTeam = new Map(teams.map((team) => [team.id, team.name]));
+  const messages: string[] = [];
+  for (const [key, members] of counts) {
+    if (members <= setCount) continue;
+    const [teamId = "", divisionId = ""] = key.split(" ");
+    const division = divisionId === "" ? null : (divisionNames.get(divisionId) ?? null);
+    messages.push(
+      `${nameOfTeam.get(teamId) ?? "a team"} (${String(members)}${division === null ? "" : ` in ${division}`})`,
+    );
+  }
+  return messages.sort();
+}
+
+/**
+ * The contest's divisions, in the order every board shows them. This order is a plan input: it
+ * decides which deal happens first, so it is part of the fingerprint too.
+ */
+async function gatherDivisions(contestId: string): Promise<PlanDivision[]> {
+  const rows = await prisma.division.findMany({
+    where: { contestId },
+    orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+    select: { id: true, name: true },
+  });
+  return rows.map((row) => ({ id: row.id, name: row.name }));
+}
+
 /** The shape both modes answer with, so a preview and an apply are read the same way. */
 function toResponse(
   contestId: string,
@@ -233,6 +331,7 @@ function toResponse(
   applied: boolean,
   composition: SetCompositionInput,
   setCount: number,
+  groupCount: number,
   seed: string | null,
   poolSize: number,
   poolVersion: string,
@@ -244,6 +343,7 @@ function toResponse(
     applied,
     setCount,
     setSize: setSize(composition),
+    groupCount,
     composition,
     seed,
     poolSize,
@@ -253,8 +353,11 @@ function toResponse(
           ok: true,
           sets: plan.sets.map((set) => ({
             label: set.label,
+            divisionId: set.divisionId,
+            divisionName: set.divisionName,
             problems: assignSlots(set.label, set.problems, composition),
           })),
+          groupProblems: groupSlots(plan.groupProblems),
         }
       : { ok: false, shortfalls: [...plan.shortfalls], message: plan.message },
   };
@@ -271,6 +374,7 @@ export async function previewSets(
   contestId: string,
   composition: SetCompositionInput,
   setCount: number,
+  groupCount: number,
   options: { readonly seed?: string } = {},
 ): Promise<SetPlanResponse> {
   const contest = await prisma.contest.findUnique({
@@ -279,10 +383,13 @@ export async function previewSets(
   });
   if (contest === null) throw new NotFoundError("Contest");
 
-  const pool = await gatherPool(contestId);
-  const poolVersion = setPoolVersion(pool);
+  const [pool, divisions] = await Promise.all([
+    gatherPool(contestId),
+    gatherDivisions(contestId),
+  ]);
+  const poolVersion = setPoolVersion(pool, divisions);
   const seed = options.seed ?? newSeed();
-  const plan = planSets({ seed, setCount, composition, pool });
+  const plan = planSets({ seed, setCount, composition, pool, divisions, groupCount });
 
   return toResponse(
     contestId,
@@ -290,6 +397,7 @@ export async function previewSets(
     false,
     composition,
     setCount,
+    groupCount,
     plan.ok ? seed : null,
     pool.length,
     poolVersion,
@@ -312,20 +420,22 @@ export async function previewSets(
  *
  * `ContestProblem` is unique on `(contestId, problemId, divisionId)`, so an append would throw a
  * constraint error the second time an organizer pressed the button — and a constraint error is not
- * something an organizer can read or act on. The previous individual-set rows go first.
+ * something an organizer can read or act on. The previous individual-set rows go first, and so do
+ * the plan's own previous group draws; hand-picked group questions are never touched.
  *
- * The `ProblemSet` rows are UPSERTED by label rather than deleted and recreated, and that is not
- * tidiness. `Participant.chosenSetId` points at a set with `onDelete: SetNull`, so recreating set A
- * with a new id would silently unassign every player who held it. A re-plan that keeps the same
- * number of columns therefore leaves every assignment intact and only changes what is inside them.
- * Shrinking the plan does drop the surplus columns, and the players on them lose their assignment —
- * unavoidable, since the column is gone. `reDeriveAssignment` reports that honestly as
- * `matchesStored: false`, which is exactly the signal it exists to give.
+ * The `ProblemSet` rows are UPSERTED by (division, label) rather than deleted and recreated, and
+ * that is not tidiness. `Participant.chosenSetId` points at a set with `onDelete: SetNull`, so
+ * recreating set A with a new id would silently unassign every player who held it. A re-plan that
+ * keeps the same columns therefore leaves every assignment intact and only changes what is inside
+ * them. Shrinking the plan does drop the surplus columns, and the players on them lose their
+ * assignment — unavoidable, since the column is gone. `reDeriveAssignment` reports that honestly
+ * as `matchesStored: false`, which is exactly the signal it exists to give.
  */
 export async function applySets(
   contestId: string,
   composition: SetCompositionInput,
   setCount: number,
+  groupCount: number,
   admin: AdminViewer,
   now: Date,
   options: { readonly seed: string; readonly poolVersion: string },
@@ -337,11 +447,11 @@ export async function applySets(
       state: true,
       setComposition: true,
       setCount: true,
+      setGroupCount: true,
       setPlanSeed: true,
       setSelection: true,
-      teams: {
-        select: { name: true, _count: { select: { members: true } } },
-      },
+      teams: { select: { id: true, name: true } },
+      participants: { select: { teamId: true, divisionId: true } },
     },
   });
   if (contest === null) throw new NotFoundError("Contest");
@@ -354,22 +464,24 @@ export async function applySets(
     );
   }
 
+  const [pool, divisions] = await Promise.all([
+    gatherPool(contestId),
+    gatherDivisions(contestId),
+  ]);
+  const divisionNames = new Map(divisions.map((division) => [division.id, division.name]));
+
   const crowdedTeams =
     contest.setSelection === "RANDOM_ASSIGNED"
-      ? contest.teams.filter((team) => team._count.members > setCount)
+      ? crowdedTeamMessages(contest.teams, contest.participants, divisionNames, setCount)
       : [];
   if (crowdedTeams.length > 0) {
-    const named = crowdedTeams
-      .map((team) => `${team.name} (${String(team._count.members)})`)
-      .join(", ");
     throw new DomainError(
       "VALIDATION",
-      `Build at least one set per member of the largest team. ${named} would otherwise repeat a set.`,
+      `Build at least one set per member of the largest team. ${crowdedTeams.join(", ")} ` +
+        "would otherwise repeat a set.",
     );
   }
-
-  const pool = await gatherPool(contestId);
-  const poolVersion = setPoolVersion(pool);
+  const poolVersion = setPoolVersion(pool, divisions);
   if (options.poolVersion !== poolVersion) {
     throw new DomainError(
       "CONFLICT",
@@ -377,7 +489,7 @@ export async function applySets(
     );
   }
   const seed = options.seed;
-  const plan = planSets({ seed, setCount, composition, pool });
+  const plan = planSets({ seed, setCount, composition, pool, divisions, groupCount });
 
   // A recipe the bank cannot fill is a normal answer, not an exception: the organizer is still
   // choosing. Nothing is written and the shortfalls carry the arithmetic that says why.
@@ -388,6 +500,7 @@ export async function applySets(
       false,
       composition,
       setCount,
+      groupCount,
       null,
       pool.length,
       poolVersion,
@@ -395,9 +508,15 @@ export async function applySets(
     );
   }
 
-  const labels = plan.sets.map((set) => set.label);
+  // A set's identity is (division, label): labels restart at "A" in every division.
+  const keyOf = (divisionId: string | null, label: string): string =>
+    `${divisionId ?? ""}\u0000${label}`;
+  const plannedKeys = plan.sets.map((set) => keyOf(set.divisionId, set.label));
   const plannedProblemIds = [
-    ...new Set(plan.sets.flatMap((set) => set.problems.map((problem) => problem.problemId))),
+    ...new Set([
+      ...plan.sets.flatMap((set) => set.problems.map((problem) => problem.problemId)),
+      ...plan.groupProblems.map((problem) => problem.problemId),
+    ]),
   ].sort();
 
   await prisma.$transaction(async (tx) => {
@@ -413,9 +532,11 @@ export async function applySets(
         setSelection: true,
         setComposition: true,
         setCount: true,
+        setGroupCount: true,
         setPlanSeed: true,
-        problemSets: { select: { label: true } },
-        teams: { select: { name: true, _count: { select: { members: true } } } },
+        problemSets: { select: { id: true, label: true, divisionId: true } },
+        teams: { select: { id: true, name: true } },
+        participants: { select: { teamId: true, divisionId: true } },
       },
     });
     if (latest === null) throw new NotFoundError("Contest");
@@ -427,21 +548,25 @@ export async function applySets(
     }
     const latestCrowded =
       latest.setSelection === "RANDOM_ASSIGNED"
-        ? latest.teams.filter((team) => team._count.members > setCount)
+        ? crowdedTeamMessages(latest.teams, latest.participants, divisionNames, setCount)
         : [];
     if (latestCrowded.length > 0) {
       throw new DomainError(
         "VALIDATION",
-        `Build at least one set per member of the largest team. ${latestCrowded
-          .map((team) => `${team.name} (${String(team._count.members)})`)
-          .join(", ")} would otherwise repeat a set.`,
+        `Build at least one set per member of the largest team. ${latestCrowded.join(", ")} ` +
+          "would otherwise repeat a set.",
       );
     }
 
     // The first comparison closes the ordinary preview/apply gap. This second one closes the
-    // smaller check/write gap: a problem edit or GROUP line-up change that won the advisory lock
-    // immediately before us must make this request preview again, not save a stale split.
-    const lockedPoolVersion = setPoolVersion(await gatherPool(contestId));
+    // smaller check/write gap: a problem edit, GROUP line-up change or division rename that won
+    // the advisory lock immediately before us must make this request preview again, not save a
+    // stale split.
+    const [lockedPool, lockedDivisions] = await Promise.all([
+      gatherPool(contestId),
+      gatherDivisions(contestId),
+    ]);
+    const lockedPoolVersion = setPoolVersion(lockedPool, lockedDivisions);
     if (lockedPoolVersion !== poolVersion) {
       throw new DomainError(
         "CONFLICT",
@@ -451,44 +576,84 @@ export async function applySets(
 
     const previousComposition = parseStoredComposition(latest.setComposition);
 
-    const previousLabels = new Set(latest.problemSets.map((set) => set.label));
-    const nextLabels = new Set(labels);
+    const previousKeys = new Set(
+      latest.problemSets.map((set) => keyOf(set.divisionId, set.label)),
+    );
+    const nextKeys = new Set(plannedKeys);
     const labelsChanged =
-      previousLabels.size !== nextLabels.size ||
-      [...nextLabels].some((label) => !previousLabels.has(label));
+      previousKeys.size !== nextKeys.size ||
+      [...nextKeys].some((key) => !previousKeys.has(key));
 
-    // The old line-up goes first, and only the INDIVIDUAL round this plan owns. Group questions
-    // are contest-scoped and remain untouched even if older data carries a contradictory set id.
+    // The old line-up goes first: the INDIVIDUAL round this plan owns, and the plan's own previous
+    // group draws. Hand-picked group questions (`dealtByPlan: false`) remain untouched even if
+    // older data carries a contradictory set id.
     await tx.contestProblem.deleteMany({ where: { contestId, round: "INDIVIDUAL" } });
+    await tx.contestProblem.deleteMany({
+      where: { contestId, round: "GROUP", dealtByPlan: true },
+    });
 
-    const setIdByLabel = new Map<string, string>();
-    for (const label of labels) {
-      const set = await tx.problemSet.upsert({
-        where: { contestId_label: { contestId, label } },
-        create: { contestId, label },
-        update: {},
+    // Upsert-by-(division, label) so a surviving column keeps its id, and with it every
+    // `Participant.chosenSetId` pointing at it. Done by hand rather than through Prisma's
+    // `upsert`, because a compound unique input cannot carry the null the no-division case needs.
+    // The advisory contest lock above makes the read-then-write race-free.
+    const existingByKey = new Map(
+      latest.problemSets.map((set) => [keyOf(set.divisionId, set.label), set.id]),
+    );
+    const setIdByKey = new Map<string, string>();
+    for (const set of plan.sets) {
+      const key = keyOf(set.divisionId, set.label);
+      const existingId = existingByKey.get(key);
+      if (existingId !== undefined) {
+        setIdByKey.set(key, existingId);
+        continue;
+      }
+      const created = await tx.problemSet.create({
+        data: { contestId, label: set.label, divisionId: set.divisionId },
         select: { id: true },
       });
-      setIdByLabel.set(label, set.id);
+      setIdByKey.set(key, created.id);
     }
 
-    // Columns the new plan does not have. Deleted after the upserts so a set that survives keeps
-    // its id, and with it every `Participant.chosenSetId` pointing at it.
-    await tx.problemSet.deleteMany({ where: { contestId, label: { notIn: labels } } });
+    // Columns the new plan does not have. Deleted after the creates so a set that survives keeps
+    // its id. Identified by id rather than by a label filter, because labels repeat across
+    // divisions and a notIn over labels would spare another division's dropped column.
+    const surplusIds = latest.problemSets
+      .filter((set) => !nextKeys.has(keyOf(set.divisionId, set.label)))
+      .map((set) => set.id);
+    if (surplusIds.length > 0) {
+      await tx.problemSet.deleteMany({ where: { id: { in: surplusIds } } });
+    }
 
     await tx.contestProblem.createMany({
-      data: plan.sets.flatMap((set) =>
-        assignSlots(set.label, set.problems, composition).map((slot) => ({
+      data: [
+        ...plan.sets.flatMap((set) =>
+          assignSlots(set.label, set.problems, composition).map((slot) => ({
+            contestId,
+            problemId: slot.problemId,
+            divisionId: set.divisionId,
+            round: "INDIVIDUAL" as const,
+            setId: setIdByKey.get(keyOf(set.divisionId, set.label)) ?? null,
+            slotLabel: slot.slotLabel,
+            basePoints: slot.basePoints,
+            unlockAt: null,
+            dealtByPlan: true,
+          })),
+        ),
+        // Whole-team questions: every team, every division, the same ones (divisionId null is
+        // the deliberate default the organizer described; a division-scoped group question can
+        // still be placed by hand on the Problems tab).
+        ...groupSlots(plan.groupProblems).map((slot) => ({
           contestId,
           problemId: slot.problemId,
           divisionId: null,
-          round: "INDIVIDUAL" as const,
-          setId: setIdByLabel.get(set.label) ?? null,
+          round: "GROUP" as const,
+          setId: null,
           slotLabel: slot.slotLabel,
           basePoints: slot.basePoints,
           unlockAt: null,
+          dealtByPlan: true,
         })),
-      ),
+      ],
     });
 
     await tx.contest.update({
@@ -499,6 +664,7 @@ export async function applySets(
         // what is a valid recipe, on the way in here and on the way out in parseStoredComposition.
         setComposition: composition as unknown as Prisma.InputJsonValue,
         setCount,
+        setGroupCount: groupCount,
         setPlanSeed: seed,
         ...(labelsChanged ? { setAssignmentSeed: null } : {}),
       },
@@ -515,14 +681,21 @@ export async function applySets(
             : {
                 seed: latest.setPlanSeed,
                 setCount: latest.setCount,
-                recipe: previousComposition === null ? null : describeComposition(previousComposition),
+                recipe:
+                  previousComposition === null
+                    ? null
+                    : describeComposition(previousComposition, latest.setGroupCount),
               },
         after: {
           seed,
           setCount,
-          recipe: describeComposition(composition),
-          sets: labels.join(", "),
-          problems: labels.length * setSize(composition),
+          recipe: describeComposition(composition, groupCount),
+          sets: plan.sets
+            .map((set) =>
+              set.divisionName === null ? set.label : `${set.divisionName} ${set.label}`,
+            )
+            .join(", "),
+          problems: plan.sets.length * setSize(composition) + plan.groupProblems.length,
           at: now.toISOString(),
         },
         reason:
@@ -542,6 +715,7 @@ export async function applySets(
     true,
     composition,
     setCount,
+    groupCount,
     seed,
     pool.length,
     poolVersion,
@@ -565,11 +739,14 @@ export async function readSetPlan(contestId: string): Promise<StoredSetPlanRespo
       state: true,
       setComposition: true,
       setCount: true,
+      setGroupCount: true,
       setPlanSeed: true,
       problemSets: {
         select: {
           id: true,
           label: true,
+          divisionId: true,
+          division: { select: { name: true, sortOrder: true } },
           contestProblems: {
             select: {
               id: true,
@@ -584,26 +761,52 @@ export async function readSetPlan(contestId: string): Promise<StoredSetPlanRespo
   });
   if (contest === null) throw new NotFoundError("Contest");
 
-  const [pool, groupProblemCount] = await Promise.all([
+  const [pool, groupRows] = await Promise.all([
     gatherPool(contestId),
-    prisma.contestProblem.count({ where: { contestId, round: "GROUP" } }),
+    prisma.contestProblem.findMany({
+      where: { contestId, round: "GROUP" },
+      select: {
+        id: true,
+        slotLabel: true,
+        basePoints: true,
+        dealtByPlan: true,
+        problem: { select: { id: true, slug: true, title: true, difficulty: true } },
+      },
+    }),
   ]);
+
+  // Divisions in board order, null-division columns first, then labels. A one-string sort key
+  // keeps the comparison total; `\u0000` cannot appear in a division name or a label.
+  const divisionKeyOf = (set: {
+    divisionId: string | null;
+    division: { name: string; sortOrder: number } | null;
+  }): string =>
+    set.division === null
+      ? "0"
+      : `1\u0000${String(set.division.sortOrder).padStart(9, "0")}\u0000${set.division.name}`;
 
   return {
     contestId,
     contestState: contest.state,
     composition: parseStoredComposition(contest.setComposition),
     setCount: contest.setCount,
+    groupCount: contest.setGroupCount,
     seed: contest.setPlanSeed,
     poolSize: pool.length,
-    // Sorted here, on both axes. Postgres returns rows in whatever order it likes, and a screen
+    // Sorted here, on every axis. Postgres returns rows in whatever order it likes, and a screen
     // whose columns reorder between two reads of unchanged data is one an organizer cannot check
     // against the sheet in front of them.
     sets: [...contest.problemSets]
-      .sort((a, b) => (a.label < b.label ? -1 : a.label > b.label ? 1 : 0))
+      .sort((a, b) => {
+        const aKey = `${divisionKeyOf(a)}\u0000${a.label}`;
+        const bKey = `${divisionKeyOf(b)}\u0000${b.label}`;
+        return aKey < bKey ? -1 : aKey > bKey ? 1 : 0;
+      })
       .map((set) => ({
         setId: set.id,
         label: set.label,
+        divisionId: set.divisionId,
+        divisionName: set.division?.name ?? null,
         problems: [...set.contestProblems]
           .sort((a, b) => (a.slotLabel < b.slotLabel ? -1 : a.slotLabel > b.slotLabel ? 1 : 0))
           .map((row) => ({
@@ -616,7 +819,23 @@ export async function readSetPlan(contestId: string): Promise<StoredSetPlanRespo
             contestProblemId: row.id,
           })),
       })),
-    groupProblemCount,
+    groupProblems: [...groupRows]
+      .sort((a, b) => {
+        const aKey = `${a.slotLabel}\u0000${a.id}`;
+        const bKey = `${b.slotLabel}\u0000${b.id}`;
+        return aKey < bKey ? -1 : aKey > bKey ? 1 : 0;
+      })
+      .map((row) => ({
+        problemId: row.problem.id,
+        slug: row.problem.slug,
+        title: row.problem.title,
+        difficulty: row.problem.difficulty,
+        slotLabel: row.slotLabel,
+        basePoints: row.basePoints,
+        contestProblemId: row.id,
+        dealtByPlan: row.dealtByPlan,
+      })),
+    groupProblemCount: groupRows.length,
   };
 }
 

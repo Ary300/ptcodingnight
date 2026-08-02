@@ -52,11 +52,13 @@ export async function POST(
 
     const result =
       input.mode === "apply"
-        ? await applySets(id, input.composition, input.setCount, admin, now, {
+        ? await applySets(id, input.composition, input.setCount, input.groupCount, admin, now, {
             seed: input.seed,
             poolVersion: input.poolVersion,
           })
-        : await previewSets(id, input.composition, input.setCount, { seed: input.seed });
+        : await previewSets(id, input.composition, input.setCount, input.groupCount, {
+            seed: input.seed,
+          });
 
     return jsonOk(SetPlanResponseSchema.parse(result), NO_STORE);
   });

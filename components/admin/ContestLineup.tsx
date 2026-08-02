@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useId, useState, type ReactNode } from "react";
+import { useCallback, useId, useRef, useState, type ReactNode } from "react";
 
 import {
   Button,
@@ -18,6 +18,10 @@ import {
   TR,
 } from "@/components/ui";
 import { useResource } from "@/components/contest/data/useResource";
+import {
+  problemDivisionConflicts,
+  slotLabelDivisionConflicts,
+} from "@/lib/contest/lineup-validation";
 import {
   AdminProblemBankSchema,
   type AdminProblemRow,
@@ -116,7 +120,35 @@ import { ProblemStatePill } from "@/components/admin/StatusPill";
  * organizer assembling next week's line-up legitimately wants to slot a problem whose statement is
  * still being written. What must not happen is a DRAFT problem going into a LIVE contest, and that
  * is refused by the API — the screen's job is to make sure nobody is surprised by the refusal.
+ *
+ * ## Divisions: a row is scoped to one division or shown to all, and duplicates follow SCOPE
+ *
+ * When the contest has divisions, each row carries a Division control: "All divisions" (stored as
+ * null, which `inScope` shows to everyone) or one of the contest's own. This is the write path
+ * that was missing — the read side already enforced scoping and the boards already render one
+ * table per division, but every save hardcoded null, so nothing an organizer did here could ever
+ * reach only one division.
+ *
+ * Two consequences that reshape this file:
+ *
+ * - **The same problem may appear TWICE, once per division.** `ContestProblem` is unique on
+ *   `(contestId, problemId, divisionId)` and the seed history uses it (Bill Division was
+ *   Intermediate/M and Advanced/E). So `problemId` stops being a usable row identity — rows carry
+ *   a client-only `rowId` — and the bank hides a problem only once no legal division remains for
+ *   another copy, not the moment it is first picked.
+ * - **"Duplicate" means overlapping SCOPE, not equal ids.** Two copies collide when the same
+ *   player could see both: same division, or either copy on "All divisions". Slot labels follow
+ *   the identical rule, so Intermediate's "E1" and Advanced's "E1" coexist — the organizer's
+ *   sheet numbers each division from E1, no board keys a column on a slot label, and no player
+ *   ever has both on screen. The rules are `lib/contest/lineup-validation.ts`, the same module
+ *   the server refuses with, so this screen and the API cannot disagree about what saves.
  */
+
+/** One division an organizer can scope a row to. Served by `listContestDivisions`. */
+export interface LineupDivision {
+  readonly divisionId: string;
+  readonly name: string;
+}
 
 export interface ContestLineupProps {
   readonly contestId: string;
@@ -127,6 +159,12 @@ export interface ContestLineupProps {
    * the PUT that replaces them. Optional so the component still works where no line-up is known.
    */
   readonly initial?: readonly StoredSlot[];
+  /**
+   * The contest's divisions, in the organizer's sort order. Empty (or absent) is a contest with
+   * no divisions, and the Division column is not rendered at all in that case: a dropdown whose
+   * only entry is "All divisions" would be a control that cannot control anything.
+   */
+  readonly divisions?: readonly LineupDivision[];
 }
 
 /** Individual: it sits in one set, so one member of each team works it. Group: no set, whole team. */
@@ -143,22 +181,37 @@ export interface StoredSlot {
   readonly basePoints: number;
   readonly round: "INDIVIDUAL" | "GROUP";
   readonly setLabel: string;
+  /** Null is "all divisions". The same problem may legally appear once per division. */
+  readonly divisionId: string | null;
 }
 
-/** A row while it is being edited: the stored shape plus the kind the organizer chose, explicitly. */
+/**
+ * A row while it is being edited: the stored shape plus the kind the organizer chose, explicitly,
+ * plus a client-only identity.
+ *
+ * `rowId` exists because `problemId` stopped being unique the moment one problem could sit in two
+ * divisions: keyed on `problemId`, React would reconcile the two copies as one row, and patch and
+ * remove could not say which copy they meant. It never leaves the browser.
+ */
 type Slot = Omit<StoredSlot, "round"> & {
   readonly kind: SlotKind;
+  readonly rowId: string;
 };
 
 /**
  * Read the stored rows into editable ones.
  *
  * The database round is the source of truth. A set label can no longer silently decide scoring.
+ *
+ * Row ids are derived from the INDEX, not generated: this initialiser runs on the server render
+ * and again at hydration, and a random id would come out different each time. Index-derived ids
+ * are stable for stored rows; added rows get theirs from a counter that only ever runs on click.
  */
 function withKind(stored: readonly StoredSlot[]): readonly Slot[] {
-  return stored.map(({ round, ...slot }): Slot => ({
+  return stored.map(({ round, ...slot }, index): Slot => ({
     ...slot,
     kind: round === "GROUP" ? "group" : "individual",
+    rowId: `stored-${String(index)}`,
   }));
 }
 
@@ -201,22 +254,6 @@ function PanelNote({
   );
 }
 
-/** Labels that appear on more than one problem, trimmed, blanks excluded (they get their own message). */
-function duplicateSlotLabels(slots: readonly Slot[]): readonly string[] {
-  const seen = new Set<string>();
-  const dupes = new Set<string>();
-  for (const slot of slots) {
-    const label = slot.slotLabel.trim();
-    if (label === "") continue;
-    if (seen.has(label)) {
-      dupes.add(label);
-    } else {
-      seen.add(label);
-    }
-  }
-  return [...dupes];
-}
-
 /** Order matters: the PUT replaces the list as given, so a reorder is a real change. */
 function sameLineup(a: readonly Slot[], b: readonly Slot[]): boolean {
   return (
@@ -225,10 +262,13 @@ function sameLineup(a: readonly Slot[], b: readonly Slot[]): boolean {
       const other = b[i];
       return (
         other !== undefined &&
+        // rowId is deliberately NOT compared: it is a client-side identity, and two lists that
+        // would PUT the same bytes are the same line-up whatever their rows are called locally.
         slot.problemId === other.problemId &&
         slot.slotLabel === other.slotLabel &&
         slot.basePoints === other.basePoints &&
         slot.setLabel === other.setLabel &&
+        slot.divisionId === other.divisionId &&
         // The kind is compared even though a group row and a set-less individual row would PUT
         // the same bytes, because the screen displays the kind: flipping Group to Individual
         // changes what the organizer is looking at, and "not saved yet" has to mean "what you can
@@ -258,8 +298,16 @@ async function loadBank(): Promise<readonly AdminProblemRow[]> {
   return AdminProblemBankSchema.parse(data).problems;
 }
 
-export function ContestLineup({ contestId, initial = [] }: ContestLineupProps) {
+export function ContestLineup({
+  contestId,
+  initial = [],
+  divisions = [],
+}: ContestLineupProps) {
   const bank = useResource(useCallback(() => loadBank(), []));
+
+  // Identities for rows added in this session. A ref, not state: bumping it must not re-render,
+  // and it never runs on the server, so it cannot desync hydration the way a random id would.
+  const nextRowId = useRef(0);
 
   const [slots, setSlots] = useState<readonly Slot[]>(() => withKind(initial));
   // What the server currently holds, as far as this screen knows. `slots` differing from it is
@@ -278,9 +326,25 @@ export function ContestLineup({ contestId, initial = [] }: ContestLineupProps) {
 
   const add = (problem: AdminProblemRow): void => {
     setSaved(false);
+    // A first copy starts on "All divisions", the common case. A SECOND copy of a problem
+    // already in the line-up starts in the first division that does not hold it yet, because
+    // "All divisions" would overlap every existing copy and the row would arrive already
+    // refused - a default the organizer must always correct is not a default.
+    const used = new Set(
+      slots
+        .filter((slot) => slot.problemId === problem.problemId)
+        .map((slot) => slot.divisionId),
+    );
+    const divisionId =
+      used.size === 0
+        ? null
+        : (divisions.find((d) => !used.has(d.divisionId))?.divisionId ?? null);
+    const rowId = `added-${String(nextRowId.current)}`;
+    nextRowId.current += 1;
     setSlots((current) => [
       ...current,
       {
+        rowId,
         problemId: problem.problemId,
         title: problem.title,
         // A sensible default the organizer can overwrite: A1, A2, A3… Numbering by position is
@@ -293,24 +357,23 @@ export function ContestLineup({ contestId, initial = [] }: ContestLineupProps) {
         // silently, with nothing on screen contradicting the organizer's intention.
         kind: "individual",
         setLabel: "A",
+        divisionId,
       },
     ]);
   };
 
-  const patch = (problemId: string, change: Partial<Slot>): void => {
+  const patch = (rowId: string, change: Partial<Slot>): void => {
     setSaved(false);
     setSlots((current) =>
       current.map((slot) =>
-        slot.problemId === problemId ? { ...slot, ...change } : slot,
+        slot.rowId === rowId ? { ...slot, ...change } : slot,
       ),
     );
   };
 
-  const remove = (problemId: string): void => {
+  const remove = (rowId: string): void => {
     setSaved(false);
-    setSlots((current) =>
-      current.filter((slot) => slot.problemId !== problemId),
-    );
+    setSlots((current) => current.filter((slot) => slot.rowId !== rowId));
   };
 
   const save = async (): Promise<void> => {
@@ -333,7 +396,7 @@ export function ContestLineup({ contestId, initial = [] }: ContestLineupProps) {
               // Trimmed, because a space is not a set label; an individual row that trims to nothing
               // cannot reach here, since Save is disabled while one exists.
               setLabel: slot.kind === "group" ? null : slot.setLabel.trim(),
-              divisionId: null,
+              divisionId: slot.divisionId,
             })),
           }),
         },
@@ -380,21 +443,65 @@ export function ContestLineup({ contestId, initial = [] }: ContestLineupProps) {
   // Empty until the bank arrives. The line-up below does not consult it.
   const bankRows = bank.data ?? [];
 
-  const chosen = new Set(slots.map((s) => s.problemId));
+  /*
+    A problem leaves the bank only when NO legal home remains for another copy, not on first
+    pick. One problem may sit in two divisions (never twice in one, and an "All divisions" row
+    overlaps everything), so hiding it at first pick would make the two-division case - the
+    reason ContestProblem is unique on (contestId, problemId, divisionId) - impossible to build
+    from this screen. In a contest without divisions any row exhausts the options, which is
+    exactly the old behaviour.
+  */
+  const divisionsUsed = new Map<string, ReadonlySet<string | null>>();
+  for (const slot of slots) {
+    const used = divisionsUsed.get(slot.problemId);
+    divisionsUsed.set(
+      slot.problemId,
+      new Set([...(used ?? []), slot.divisionId]),
+    );
+  }
+  const fullyPlaced = (problemId: string): boolean => {
+    const used = divisionsUsed.get(problemId);
+    if (used === undefined) return false;
+    if (used.has(null)) return true;
+    if (divisions.length === 0) return true;
+    return divisions.every((d) => used.has(d.divisionId));
+  };
+
   const needle = filter.trim().toLowerCase();
   const readyCount = bankRows.filter(
     (p) => p.readyBlockers.length === 0,
   ).length;
   const available = bankRows.filter(
     (p) =>
-      !chosen.has(p.problemId) &&
+      !fullyPlaced(p.problemId) &&
       (bankFilter === "all" || p.readyBlockers.length === 0) &&
       (needle === "" ||
         p.title.toLowerCase().includes(needle) ||
         p.slug.includes(needle)),
   );
 
-  const duplicates = duplicateSlotLabels(slots);
+  /*
+    Duplicates are decided by the SAME module the server refuses with
+    (lib/contest/lineup-validation.ts), so nothing can pass here and bounce there. Both checks
+    are about scope overlap: a label or a problem repeated across two disjoint divisions is
+    legal, because no player can ever see both copies.
+  */
+  const labelConflicts = slotLabelDivisionConflicts(slots);
+  const duplicates = labelConflicts.labels;
+  const labelConflictRows = new Set(
+    labelConflicts.rowIndexes.map((i) => slots[i]?.rowId),
+  );
+  const problemConflictIndexes = problemDivisionConflicts(slots);
+  const problemConflictRows = new Set(
+    problemConflictIndexes.map((i) => slots[i]?.rowId),
+  );
+  const problemConflictTitles = [
+    ...new Set(
+      problemConflictIndexes
+        .map((i) => slots[i]?.title)
+        .filter((title): title is string => title !== undefined),
+    ),
+  ];
   const blankCount = slots.filter(
     (slot) => slot.slotLabel.trim() === "",
   ).length;
@@ -412,31 +519,54 @@ export function ContestLineup({ contestId, initial = [] }: ContestLineupProps) {
     (slot) => slot.kind === "individual" && slot.setLabel.trim() === "",
   ).length;
   const slotLabelBlocked = duplicates.length > 0 || blankCount > 0;
-  const lineupBlocked = slotLabelBlocked || setMissingCount > 0;
+  const lineupBlocked =
+    slotLabelBlocked || setMissingCount > 0 || problemConflictRows.size > 0;
   const dirty = !sameLineup(slots, savedSlots);
 
-  // The closing sentence of the refusal, which has to name the way out of whichever fault is
-  // actually present. "Give every problem its own slot label to save." in front of a line-up whose
-  // only fault is a missing set is the sort of message that sends an organizer hunting through a
-  // column that is already correct.
-  let lineupBlockedFix: string;
-  if (slotLabelBlocked && setMissingCount > 0) {
-    lineupBlockedFix =
-      "Give every problem its own slot label, and name a set on every individual problem, to save.";
-  } else if (slotLabelBlocked) {
-    lineupBlockedFix = "Give every problem its own slot label to save.";
-  } else {
-    lineupBlockedFix =
-      "Name a set on each of those, or change them to Group, to save.";
+  /*
+    The closing sentence of the refusal, which has to name the way out of whichever fault is
+    actually present. "Give every problem its own slot label to save." in front of a line-up whose
+    only fault is a missing set is the sort of message that sends an organizer hunting through a
+    column that is already correct. Built as clauses now that there are three fault classes:
+    eight hand-written combinations would be seven chances to say the wrong thing.
+  */
+  const fixClauses: string[] = [];
+  if (slotLabelBlocked) fixClauses.push("give every problem its own slot label");
+  if (setMissingCount > 0) {
+    fixClauses.push("name a set on each individual problem or change it to Group");
   }
+  if (problemConflictRows.size > 0) {
+    fixClauses.push("put repeated questions in different divisions");
+  }
+  const joinedFix =
+    fixClauses.length <= 1
+      ? (fixClauses[0] ?? "")
+      : `${fixClauses.slice(0, -1).join(", ")}, and ${fixClauses[fixClauses.length - 1] ?? ""}`;
+  const lineupBlockedFix =
+    joinedFix === ""
+      ? ""
+      : `${joinedFix.charAt(0).toUpperCase()}${joinedFix.slice(1)} to save.`;
 
-  const slotInvalid = (slot: Slot): boolean => {
-    const label = slot.slotLabel.trim();
-    return label === "" || duplicates.includes(label);
-  };
+  const slotInvalid = (slot: Slot): boolean =>
+    slot.slotLabel.trim() === "" || labelConflictRows.has(slot.rowId);
 
   const setInvalid = (slot: Slot): boolean =>
     slot.kind === "individual" && slot.setLabel.trim() === "";
+
+  const divisionInvalid = (slot: Slot): boolean =>
+    problemConflictRows.has(slot.rowId);
+
+  // For aria-labels on rows of a problem that appears twice: "Slot label for Bill Division"
+  // twice over is two controls a screen reader cannot tell apart.
+  const divisionName = (divisionId: string | null): string =>
+    divisionId === null
+      ? "All divisions"
+      : (divisions.find((d) => d.divisionId === divisionId)?.name ??
+        "a removed division");
+  const rowName = (slot: Slot): string =>
+    divisions.length === 0
+      ? slot.title
+      : `${slot.title} (${divisionName(slot.divisionId)})`;
 
   return (
     <div className="flex flex-col gap-6">
@@ -462,13 +592,20 @@ export function ContestLineup({ contestId, initial = [] }: ContestLineupProps) {
           // edge and grow the document's scrollWidth, which pans the whole page at 360.
           <div className="relative min-w-0 overflow-x-auto">
             {/* Wider than it was: the set column now holds a choice and its set label side by
-                side. It scrolls inside its own box rather than pushing the page sideways. */}
-            <Table caption="Problems in this contest" className="min-w-[44rem]">
+                side, and a contest with divisions adds a Division column on top. It scrolls
+                inside its own box rather than pushing the page sideways. */}
+            <Table
+              caption="Problems in this contest"
+              className={divisions.length > 0 ? "min-w-[54rem]" : "min-w-[44rem]"}
+            >
               <THead>
                 <TR>
                   <TH className="w-full">Problem</TH>
                   <TH>Slot</TH>
                   <TH>Points</TH>
+                  {/* Rendered only when there is a choice to make. A contest without divisions
+                      would get a dropdown holding one option, which is furniture, not a control. */}
+                  {divisions.length > 0 && <TH>Division</TH>}
                   {/* The heading names the decision rather than one of its two outcomes. "Set"
                       alone read as a box to fill in, which is how leaving it empty came to mean
                       something nobody had been told. */}
@@ -482,22 +619,23 @@ export function ContestLineup({ contestId, initial = [] }: ContestLineupProps) {
                 {slots.map((slot) => {
                   const invalid = slotInvalid(slot);
                   const setMissing = setInvalid(slot);
+                  const divisionConflict = divisionInvalid(slot);
                   return (
-                    <TR key={slot.problemId}>
+                    <TR key={slot.rowId}>
                       <TD className="font-semibold">{slot.title}</TD>
                       {/* Widths live on a wrapper: CONTROL_SURFACE already says `w-full`, and
                           two width utilities on one element resolve by emission order. */}
                       <TD>
                         <span className="inline-block w-20 align-middle">
                           <input
-                            aria-label={`Slot label for ${slot.title}`}
+                            aria-label={`Slot label for ${rowName(slot)}`}
                             aria-invalid={invalid || undefined}
                             aria-describedby={
                               invalid ? lineupErrorId : undefined
                             }
                             value={slot.slotLabel}
                             onChange={(e) =>
-                              patch(slot.problemId, {
+                              patch(slot.rowId, {
                                 slotLabel: e.target.value,
                               })
                             }
@@ -509,12 +647,12 @@ export function ContestLineup({ contestId, initial = [] }: ContestLineupProps) {
                       <TD>
                         <span className="inline-block w-24 align-middle">
                           <input
-                            aria-label={`Base points for ${slot.title}`}
+                            aria-label={`Base points for ${rowName(slot)}`}
                             type="number"
                             min={0}
                             value={slot.basePoints}
                             onChange={(e) =>
-                              patch(slot.problemId, {
+                              patch(slot.rowId, {
                                 basePoints: Number(e.target.value) || 0,
                               })
                             }
@@ -523,12 +661,52 @@ export function ContestLineup({ contestId, initial = [] }: ContestLineupProps) {
                           />
                         </span>
                       </TD>
+                      {divisions.length > 0 && (
+                        <TD>
+                          {/*
+                            "All divisions" is the empty string on the wire of this control and
+                            null in the data, converted at this edge and nowhere else. The
+                            invalid mark rides on the Division control, not the slot input,
+                            because a duplicated problem is fixed by moving a COPY to another
+                            division; pointing at the label column would send the organizer to
+                            fix the one column that is already right.
+                          */}
+                          <Select
+                            size="sm"
+                            shellClassName="w-40"
+                            aria-label={`Division for ${slot.title}`}
+                            invalid={divisionConflict}
+                            aria-describedby={
+                              divisionConflict ? lineupErrorId : undefined
+                            }
+                            value={slot.divisionId ?? ""}
+                            onChange={(e) =>
+                              patch(slot.rowId, {
+                                divisionId:
+                                  e.target.value === ""
+                                    ? null
+                                    : e.target.value,
+                              })
+                            }
+                          >
+                            <option value="">All divisions</option>
+                            {divisions.map((division) => (
+                              <option
+                                key={division.divisionId}
+                                value={division.divisionId}
+                              >
+                                {division.name}
+                              </option>
+                            ))}
+                          </Select>
+                        </TD>
+                      )}
                       <TD>
                         <span className="flex items-center gap-2">
                           <Select
                             size="sm"
                             shellClassName="w-32"
-                            aria-label={`Individual or group for ${slot.title}`}
+                            aria-label={`Individual or group for ${rowName(slot)}`}
                             value={slot.kind}
                             onChange={(e) => {
                               /*
@@ -545,7 +723,7 @@ export function ContestLineup({ contestId, initial = [] }: ContestLineupProps) {
                                   ? "group"
                                   : "individual";
                               patch(
-                                slot.problemId,
+                                slot.rowId,
                                 kind === "group"
                                   ? { kind, setLabel: "" }
                                   : { kind },
@@ -567,7 +745,7 @@ export function ContestLineup({ contestId, initial = [] }: ContestLineupProps) {
                           {slot.kind === "individual" && (
                             <span className="inline-block w-20 shrink-0 align-middle">
                               <input
-                                aria-label={`Set label for ${slot.title}`}
+                                aria-label={`Set label for ${rowName(slot)}`}
                                 aria-invalid={setMissing || undefined}
                                 aria-describedby={
                                   setMissing ? lineupErrorId : undefined
@@ -575,7 +753,7 @@ export function ContestLineup({ contestId, initial = [] }: ContestLineupProps) {
                                 value={slot.setLabel}
                                 placeholder="A"
                                 onChange={(e) =>
-                                  patch(slot.problemId, {
+                                  patch(slot.rowId, {
                                     setLabel: e.target.value,
                                   })
                                 }
@@ -593,7 +771,7 @@ export function ContestLineup({ contestId, initial = [] }: ContestLineupProps) {
                           type="button"
                           variant="quiet"
                           size="sm"
-                          onClick={() => remove(slot.problemId)}
+                          onClick={() => remove(slot.rowId)}
                         >
                           Remove
                         </Button>
@@ -621,7 +799,13 @@ export function ContestLineup({ contestId, initial = [] }: ContestLineupProps) {
                 .map((label) => `"${label}"`)
                 .join(
                   ", ",
-                )}. Two problems cannot share a slot, or the board cannot order them. `}
+                )}. Two problems the same players can see cannot share a slot label. A label may repeat only across different divisions. `}
+            {problemConflictTitles.length > 0 &&
+              `${problemConflictTitles
+                .map((title) => `"${title}"`)
+                .join(", ")} ${
+                problemConflictTitles.length === 1 ? "is" : "are"
+              } in the line-up twice for the same players. A question can repeat only when each copy is in a different division. `}
             {blankCount > 0 &&
               `${String(blankCount)} ${blankCount === 1 ? "problem has" : "problems have"} no slot label. `}
             {setMissingCount > 0 &&

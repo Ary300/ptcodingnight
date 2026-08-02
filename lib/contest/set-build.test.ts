@@ -3,7 +3,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   DEFAULT_POINTS_BY_DIFFICULTY,
   assignSlots,
+  crowdedTeamMessages,
   describeComposition,
+  groupSlots,
   labelsFor,
   parseStoredComposition,
   pointsForEntry,
@@ -146,6 +148,34 @@ describe("describeComposition", () => {
       ]),
     ).toBe("2 Easy");
   });
+
+  it("names the team questions when the recipe asks for any", () => {
+    expect(describeComposition(CLASSIC, 2)).toBe("1 Easy, 1 Medium, 1 Hard, 2 team questions");
+    expect(describeComposition(CLASSIC, 1)).toBe("1 Easy, 1 Medium, 1 Hard, 1 team question");
+    // Zero is silence, not "0 team questions": a recipe from before team questions existed
+    // must read back exactly as it always did.
+    expect(describeComposition(CLASSIC, 0)).toBe("1 Easy, 1 Medium, 1 Hard");
+  });
+});
+
+describe("groupSlots", () => {
+  it("labels the whole-team questions Team 1, Team 2, and prices each by its own difficulty", () => {
+    const slots = groupSlots([problem("H1", "H"), problem("E1", "E")]);
+
+    expect(slots.map((slot) => slot.slotLabel)).toEqual(["Team 1", "Team 2"]);
+    expect(slots.map((slot) => slot.basePoints)).toEqual([
+      DEFAULT_POINTS_BY_DIFFICULTY.H,
+      DEFAULT_POINTS_BY_DIFFICULTY.E,
+    ]);
+  });
+
+  it("refuses an unrated problem, loudly, because it cannot be priced", () => {
+    // The engine only draws rated problems for the group line, so this firing means the engine
+    // and this file stopped describing the same deal. Same invariant posture as assignSlots.
+    expect(() =>
+      groupSlots([{ problemId: "X1", slug: "x-1", title: "Unrated", difficulty: null }]),
+    ).toThrow(/priced/);
+  });
 });
 
 describe("pointsForEntry", () => {
@@ -194,6 +224,47 @@ describe("parseStoredComposition", () => {
   });
 });
 
+describe("crowdedTeamMessages", () => {
+  const teams = [{ id: "t1", name: "Rockets" }];
+  const divisionNames = new Map([
+    ["div-int", "Intermediate"],
+    ["div-adv", "Advanced"],
+  ]);
+
+  it("judges a contest with no divisions by whole team size, as before", () => {
+    const participants = [1, 2, 3].map(() => ({ teamId: "t1", divisionId: null }));
+    expect(crowdedTeamMessages(teams, participants, new Map(), 2)).toEqual(["Rockets (3)"]);
+    expect(crowdedTeamMessages(teams, participants, new Map(), 3)).toEqual([]);
+  });
+
+  it("judges a divisioned contest per (team, division), because members only draw from their own columns", () => {
+    // Five teammates split 3 and 2: three sets suffice, four members whole-team arithmetic
+    // would have refused.
+    const participants = [
+      { teamId: "t1", divisionId: "div-int" },
+      { teamId: "t1", divisionId: "div-int" },
+      { teamId: "t1", divisionId: "div-int" },
+      { teamId: "t1", divisionId: "div-adv" },
+      { teamId: "t1", divisionId: "div-adv" },
+    ];
+    expect(crowdedTeamMessages(teams, participants, divisionNames, 3)).toEqual([]);
+    expect(crowdedTeamMessages(teams, participants, divisionNames, 2)).toEqual([
+      "Rockets (3 in Intermediate)",
+    ]);
+  });
+
+  it("does not count a member with no division in a divisioned contest", () => {
+    // They have no columns to draw from; assignment skips them visibly, and building must not
+    // be blocked on a roster detail the organizer has not decided yet.
+    const participants = [
+      { teamId: "t1", divisionId: null },
+      { teamId: "t1", divisionId: null },
+      { teamId: "t1", divisionId: "div-int" },
+    ];
+    expect(crowdedTeamMessages(teams, participants, divisionNames, 1)).toEqual([]);
+  });
+});
+
 describe("labelsFor", () => {
   it("names the columns the way the organizer's sheet does", () => {
     expect(labelsFor(4)).toEqual(["A", "B", "C", "D"]);
@@ -215,6 +286,26 @@ describe("set preview identity", () => {
     expect(
       setPoolVersion([{ ...original[0]!, title: "Edited title" }, original[1]!]),
     ).not.toBe(setPoolVersion(original));
+  });
+
+  it("versions the division list too, because the deal is a function of it", () => {
+    const problems = [problem("E1", "E"), problem("M1", "M")];
+    const divisions = [
+      { id: "div-int", name: "Intermediate" },
+      { id: "div-adv", name: "Advanced" },
+    ];
+
+    // Adding, renaming or reordering a division between preview and apply must refuse the write:
+    // any of them changes what the same seed deals.
+    expect(setPoolVersion(problems, divisions)).toBe(setPoolVersion(problems, divisions));
+    expect(setPoolVersion(problems, [])).toBe(setPoolVersion(problems));
+    expect(setPoolVersion(problems, divisions)).not.toBe(setPoolVersion(problems));
+    expect(setPoolVersion(problems, [...divisions].reverse())).not.toBe(
+      setPoolVersion(problems, divisions),
+    );
+    expect(
+      setPoolVersion(problems, [divisions[0]!, { ...divisions[1]!, name: "Advanced 2" }]),
+    ).not.toBe(setPoolVersion(problems, divisions));
   });
 
   it("requires an apply request to identify both the seed and pool that were previewed", () => {

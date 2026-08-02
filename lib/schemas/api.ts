@@ -107,6 +107,8 @@ export const API_ROUTES = {
     `/api/admin/contests/${encodeURIComponent(contestId)}/roster/move`,
   adminReassignSet: (contestId: string) =>
     `/api/admin/contests/${encodeURIComponent(contestId)}/roster/set`,
+  adminSetDivision: (contestId: string) =>
+    `/api/admin/contests/${encodeURIComponent(contestId)}/roster/division`,
   /**
    * The contest's roster membership, as distinct from `/roster`, which is the VIEW of it.
    *
@@ -443,7 +445,14 @@ export const SetContestProblemsRequestSchema = z.object({
         basePoints: z.number().int().nonnegative(),
         round: z.enum(["INDIVIDUAL", "GROUP"]),
         setLabel: z.string().trim().min(1).max(8).nullable(),
-        divisionId: z.string().nullable(),
+        /**
+         * Which division's players see this row. Null means all of them.
+         *
+         * `min(1)` because an empty string is neither: it would sail into the ownership check
+         * and come back as "belongs to a different contest", which is a misleading answer to a
+         * malformed request. "All divisions" is spelled null, on the wire and in the row.
+         */
+        divisionId: z.string().min(1).nullable(),
       })
       .superRefine((problem, ctx) => {
         if (problem.round === "GROUP" && problem.setLabel !== null) {
@@ -530,6 +539,14 @@ export const RosterMemberSchema = TeamMemberSchema.extend({
   submissionCount: z.number().int().nonnegative(),
   chosenSetId: z.string().nullable(),
   chosenSetLabel: z.string().nullable(),
+  /**
+   * The division this player competes in, or null for none. Null is not a display nicety: a
+   * player with no division sees only division-null problems, so the organizer's screen has to
+   * show it and offer to change it. The name rides along so the row never has to join the id
+   * against the contest's division list to say a word a human reads.
+   */
+  divisionId: z.string().nullable(),
+  divisionName: z.string().nullable(),
 });
 export type RosterMember = z.infer<typeof RosterMemberSchema>;
 
@@ -543,6 +560,13 @@ export const AdminRosterSchema = z.object({
     "ONE_SET_PER_TEAM",
   ]),
   problemSets: z.array(z.object({ setId: z.string(), label: z.string() })),
+  /**
+   * The contest's divisions, in board order. Empty for a contest with none, which is what the
+   * screen keys "show division controls at all" on. The per-division headcount is derived from
+   * the members client-side rather than sent as counts, for the same reason team size is never
+   * stored: a transmitted count is a second source of truth for a list that is already here.
+   */
+  divisions: z.array(z.object({ divisionId: z.string(), name: z.string() })),
   teams: z.array(
     TeamViewSchema.extend({
       memberCount: z.number().int().nonnegative(),
@@ -624,6 +648,19 @@ export const AdminMoveParticipantRequestSchema = AdminReasonSchema.extend({
 export const AdminReassignSetRequestSchema = AdminReasonSchema.extend({
   participantId: z.string().min(1),
   setId: z.string().min(1).nullable(),
+});
+
+/**
+ * Put a player in a division, or in none with `divisionId: null`.
+ *
+ * Follows the move-to-team shape exactly, reason included: division decides which problems the
+ * player can open and which board ranks them, so "why is this student suddenly Advanced" needs
+ * the same audit-row answer as "why did our team score change". Changing division deliberately
+ * does NOT touch their set assignment; re-planning sets is its own explicit action.
+ */
+export const AdminSetDivisionRequestSchema = AdminReasonSchema.extend({
+  participantId: z.string().min(1),
+  divisionId: z.string().min(1).nullable(),
 });
 
 /**
@@ -1178,6 +1215,12 @@ const SetPlanCommonSchema = {
       26,
       "26 sets is A to Z, and a contest will not need a second row of labels.",
     ),
+  /**
+   * How many whole-team (GROUP) questions the plan deals after every division's sets. Optional
+   * with a default so a request written before team questions existed still parses, as zero,
+   * which is what it meant.
+   */
+  groupCount: z.number().int().min(0).max(20).default(0),
 };
 
 const SetPlanSeedSchema = z.string().min(8).max(64);
@@ -1215,6 +1258,12 @@ export const PlannedSetProblemSchema = z.object({
 export const PlannedSetSchema = z.object({
   /** "A", "B", "C", … the column heading on the organizer's sheet. */
   label: z.string(),
+  /**
+   * Which division this column belongs to. Null for a contest with no divisions. Labels restart
+   * at "A" within each division, so the label alone stops identifying a set once divisions exist.
+   */
+  divisionId: z.string().nullable(),
+  divisionName: z.string().nullable(),
   problems: z.array(PlannedSetProblemSchema),
 });
 
@@ -1225,7 +1274,10 @@ export const PlannedSetSchema = z.object({
  * two sets. An organizer told only "not enough problems" has to work that out themselves.
  */
 export const SetShortfallSchema = z.object({
-  difficulty: DifficultySchema,
+  /** Null is the team-question line: group questions need problems, not a difficulty. */
+  difficulty: DifficultySchema.nullable(),
+  /** Whose demand went short. Null for a contest with no divisions, and on the team line. */
+  divisionName: z.string().nullable(),
   /** `count × setCount`: how many distinct problems of this difficulty the recipe needs. */
   needed: z.number().int().nonnegative(),
   /** How many usable ones the bank actually holds. */
@@ -1241,7 +1293,12 @@ export const SetShortfallSchema = z.object({
  * whether anything was written.
  */
 export const SetPlanOutcomeSchema = z.discriminatedUnion("ok", [
-  z.object({ ok: z.literal(true), sets: z.array(PlannedSetSchema) }),
+  z.object({
+    ok: z.literal(true),
+    sets: z.array(PlannedSetSchema),
+    /** The whole-team questions, drawn from problems no set in any division took. */
+    groupProblems: z.array(PlannedSetProblemSchema),
+  }),
   z.object({
     ok: z.literal(false),
     shortfalls: z.array(SetShortfallSchema),
@@ -1258,6 +1315,8 @@ export const SetPlanResponseSchema = z.object({
   setCount: z.number().int().nonnegative(),
   /** How many problems one set holds under this recipe. */
   setSize: z.number().int().nonnegative(),
+  /** How many whole-team questions the recipe asked this plan to deal. */
+  groupCount: z.number().int().nonnegative(),
   composition: SetCompositionSchema,
   /** The seed this deal came from. Null when nothing was dealt. */
   seed: z.string().nullable(),
@@ -1273,9 +1332,22 @@ export type SetPlanResponse = z.infer<typeof SetPlanResponseSchema>;
 export const StoredSetSchema = z.object({
   setId: z.string(),
   label: z.string(),
+  divisionId: z.string().nullable(),
+  divisionName: z.string().nullable(),
   problems: z.array(
     PlannedSetProblemSchema.extend({ contestProblemId: z.string() }),
   ),
+});
+
+/**
+ * A whole-team question as it stands in the database. `dealtByPlan` separates the recipe's own
+ * draws, which a re-plan replaces, from questions an organizer placed by hand on the Problems
+ * tab, which a re-plan must not touch. The screen has to show which is which, or a re-plan
+ * looks like it ate an organizer's hand-picked question.
+ */
+export const StoredGroupProblemSchema = PlannedSetProblemSchema.extend({
+  contestProblemId: z.string(),
+  dealtByPlan: z.boolean(),
 });
 
 /**
@@ -1290,9 +1362,13 @@ export const StoredSetPlanResponseSchema = z.object({
   contestState: z.string(),
   composition: SetCompositionSchema.nullable(),
   setCount: z.number().int().nonnegative().nullable(),
+  /** The stored recipe's team-question count. Zero for contests planned before it existed. */
+  groupCount: z.number().int().nonnegative(),
   seed: z.string().nullable(),
   poolSize: z.number().int().nonnegative(),
   sets: z.array(StoredSetSchema),
+  /** Every whole-team question as it stands, the hand-picked ones included. */
+  groupProblems: z.array(StoredGroupProblemSchema),
   groupProblemCount: z.number().int().nonnegative(),
 });
 export type StoredSetPlanResponse = z.infer<typeof StoredSetPlanResponseSchema>;

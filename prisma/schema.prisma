@@ -333,6 +333,13 @@ model Contest {
   /// one alone cannot reproduce the deal.
   setCount Int?
 
+  /// How many whole-team (GROUP) questions the plan deals after every division's sets are dealt.
+  ///
+  /// Part of the recipe, stored as its own column rather than inside `setComposition` so rows
+  /// written before this existed keep parsing: absence of a value means zero team questions,
+  /// which is exactly what those contests were built with.
+  setGroupCount Int @default(0)
+
   /// Seed for the set BUILD: which problems landed in which set.
   ///
   /// Distinct from `setAssignmentSeed`, which decides which PLAYER holds which set. Two separate
@@ -400,12 +407,33 @@ model ProblemSet {
   /// "A" | "B" | "C" | "D".
   label     String
 
+  /// The division this set belongs to. Null for a contest with no divisions.
+  ///
+  /// When a contest has divisions, the planner deals each division its own columns, so
+  /// "Intermediate A" and "Advanced A" are two different sets that happen to share a letter. A
+  /// member is only ever handed a set of their own division; the letter alone stops identifying
+  /// a set the moment divisions exist, which is why the unique key carries the division.
+  ///
+  /// The unique index is created NULLS NOT DISTINCT (Postgres 15+; the compose runs postgres:16),
+  /// so two division-null sets cannot share a label either — the pre-division (contestId, label)
+  /// semantics survive for contests that never split. Prisma cannot express that modifier, so the
+  /// migration writes the index by hand under the name Prisma expects.
+  ///
+  /// Cascade rather than SetNull on the division: nulling would fold "Advanced A" into the
+  /// null-division namespace, where a plain "A" may already exist, and NULLS NOT DISTINCT would
+  /// then refuse the division delete with an error nobody can act on. A division's columns die
+  /// with the division; Participant.chosenSetId is SetNull, so its members become visibly
+  /// unassigned rather than silently mis-assigned.
+  divisionId String?
+
   contest         Contest          @relation(fields: [contestId], references: [id], onDelete: Cascade)
+  division        Division?        @relation(fields: [divisionId], references: [id], onDelete: Cascade)
   contestProblems ContestProblem[]
   assignedTo      Participant[]
 
-  @@unique([contestId, label])
+  @@unique([contestId, divisionId, label])
   @@index([contestId])
+  @@index([divisionId])
 }
 
 /// Points awarded to a team for a non-coding activity — metal puzzle, train tracks, Connections.
@@ -444,6 +472,7 @@ model Division {
   contestProblems ContestProblem[]
   participants    Participant[]
   standings       Standing[]
+  problemSets     ProblemSet[]
 
   @@unique([contestId, name])
   @@index([contestId])
@@ -575,6 +604,16 @@ model ContestProblem {
   slotLabel  String
   basePoints Int
   unlockAt   DateTime?
+
+  /// True when the set planner dealt this row; false for a row an organizer placed by hand.
+  ///
+  /// Needed only for the GROUP round: the planner owns the whole INDIVIDUAL round (a re-plan
+  /// replaces it wholesale), but group questions can come from two authors — the recipe's
+  /// `setGroupCount` deal, and the Problems tab. A re-plan must replace the first without
+  /// touching the second, and the rows are otherwise indistinguishable (round GROUP, setId null,
+  /// divisionId null). Provenance in a column, not a slot-label naming convention, because a
+  /// convention is one hand-typed label away from deleting an organizer's work.
+  dealtByPlan Boolean @default(false)
 
   contest  Contest     @relation(fields: [contestId], references: [id], onDelete: Cascade)
   problem  Problem     @relation(fields: [problemId], references: [id], onDelete: Restrict)
