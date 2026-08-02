@@ -147,7 +147,7 @@ function ProblemCard({ problem }: { problem: ProblemSummary }) {
         <Rail state="brand" />
         {body}
         <span
-          className="numeric mr-3 self-center rounded bg-ink px-2 py-0.5 text-paper sm:mr-4"
+          className="numeric mr-3 self-center rounded-chip bg-ink px-2 py-0.5 text-paper sm:mr-4"
           style={{ fontSize: "var(--text-xs)" }}
         >
           Locked
@@ -185,7 +185,7 @@ export function ProblemList({ problems }: ProblemListProps) {
       // SubmissionHistory already uses. A left-aligned shrink-wrapped sentence read as a stray
       // paragraph, not as the list saying it is empty.
       <p
-        className="rounded border border-ink/15 bg-paper p-4 py-8 text-center text-ink/70"
+        className="rounded-panel border border-rule-edge bg-paper p-4 py-8 text-center text-ink/70"
         style={{ fontSize: "var(--text-sm)" }}
       >
         No problems are available to you yet. Check the team and set assignment above, or ask an
@@ -199,7 +199,7 @@ export function ProblemList({ problems }: ProblemListProps) {
     // whichever list happens to be first on a page that also carries standings.
     <ul
       aria-label="Problems"
-      className="divide-y divide-ink/10 overflow-hidden rounded border border-ink/15 bg-paper"
+      className="divide-y divide-rule-hair overflow-hidden rounded-panel border border-rule-edge bg-paper"
     >
       {problems.map((problem) => (
         <ProblemCard key={problem.contestProblemId} problem={problem} />

@@ -170,7 +170,7 @@ export function ProblemWorkspace({ slug }: ProblemWorkspaceProps) {
     */
     if (participant.status === "error") {
       return (
-        <div className="max-w-md rounded border border-panther/35 bg-paper p-4">
+        <div className="max-w-md rounded-panel border border-panther/35 bg-paper p-4">
           <h1 className="font-display font-bold" style={{ fontSize: "var(--text-md)" }}>
             We could not check your sign-in
           </h1>
@@ -294,7 +294,7 @@ export function ProblemWorkspace({ slug }: ProblemWorkspaceProps) {
           one part of this panel that has to be exactly visible (G9, keyboard-only submit).
           The header bar and the status strip cover the rounded corners on their own.
         */}
-        <div className="rounded border border-ink/15 bg-paper">
+        <div className="rounded-panel border border-rule-edge bg-paper">
           {/*
             ONE toolbar, not two. The picker sits in the editor surface's own `toolbarStart` seat,
             so the selector is on the left of the same tinted strip that carries the reset and
@@ -399,6 +399,7 @@ export function ProblemWorkspace({ slug }: ProblemWorkspaceProps) {
               busy={submitBusy || judging}
               transport={stream.transport}
               error={stream.error}
+              queuePosition={stream.submission?.queuePosition ?? null}
             />
           )}
 

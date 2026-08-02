@@ -45,7 +45,7 @@ export function FilterRail({ groups, selected, onChange, footer }: FilterRailPro
     */
     <aside
       aria-label="Filters"
-      className="flex h-fit flex-col gap-5 rounded border border-ink/15 bg-paper p-4"
+      className="flex h-fit flex-col gap-5 rounded-panel border border-rule-edge bg-paper p-4"
     >
       {groups.map((group, index) => (
         /*
@@ -56,7 +56,7 @@ export function FilterRail({ groups, selected, onChange, footer }: FilterRailPro
           above it. The wrapper draws the full-width rule the reference shows; the fieldset stays
           inside for the group semantics it was there for.
         */
-        <div key={group.id} className={index === 0 ? "" : "border-t border-ink/12 pt-5"}>
+        <div key={group.id} className={index === 0 ? "" : "border-t border-rule-hair pt-5"}>
           <fieldset>
             {/*
               One mb on the legend is the whole spacing story. When the fieldset carried the
@@ -99,7 +99,7 @@ export function FilterRail({ groups, selected, onChange, footer }: FilterRailPro
       {footer !== undefined && (
         <p
           role="status"
-          className="numeric border-t border-ink/12 pt-3 text-ink/65"
+          className="numeric border-t border-rule-hair pt-3 text-ink/65"
           style={{ fontSize: "var(--text-xs)" }}
         >
           {footer}

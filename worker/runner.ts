@@ -4,7 +4,13 @@ import path from "node:path";
 import { aggregate } from "@/lib/judge/aggregate";
 import { matches, UnknownCheckerError } from "@/lib/judge/comparators";
 import { buildDiffSnippet, buildErrorSnippet } from "@/lib/judge/diff";
-import type { JudgeJob, JudgeResult, JudgeTestResult, Verdict } from "@/lib/schemas/judge";
+import type {
+  JudgeJob,
+  JudgeResult,
+  JudgeTestResult,
+  JudgeTimings,
+  Verdict,
+} from "@/lib/schemas/judge";
 import { runtimeFor, variantFor, type Runtime, type Variant } from "@/lib/judge/runtimes";
 import {
   OUTPUT_CAP_FLOOR_BYTES,
@@ -52,6 +58,35 @@ const SCRATCH_ROOT =
  * adding a language must not require a new field here.
  */
 export type ImageOverrides = Partial<Record<string, string>>;
+
+/**
+ * The two queue-side clocks and the attempt number, handed in by `worker/index.ts`.
+ *
+ * BullMQ already stamps when a job was enqueued (`job.timestamp`) and when a worker picked it
+ * up (`job.processedOn`); inventing clocks of our own for those two marks would just be a second
+ * opinion that drifts. Optional, because the fixture harnesses (G4/G5/G13) call `judge()` with
+ * no queue in front of it — with no facts, no timings are attached.
+ */
+export interface QueueTimingFacts {
+  readonly enqueuedAtMs: number;
+  readonly dequeuedAtMs: number;
+  readonly attempt: number;
+}
+
+/**
+ * A clock for stage marks: monotonic between marks, epoch-anchored in value.
+ *
+ * `Date.now()` can step (NTP corrections) mid-judge, and a stage duration derived from two
+ * stepped wall readings can come out negative or wildly wrong. `performance.now()` cannot step,
+ * so the marks are measured monotonically and anchored to the epoch once, at construction —
+ * giving numbers that are comparable to `submittedAt`/`judgedAt` without inheriting the wall
+ * clock's jumps between marks.
+ */
+function epochAnchoredClock(): () => number {
+  const epochAnchorMs = Date.now();
+  const monoAnchorMs = performance.now();
+  return () => Math.round(epochAnchorMs + (performance.now() - monoAnchorMs));
+}
 
 /**
  * Map one container run to a verdict.
@@ -545,12 +580,47 @@ async function readCompileStatus(
   }
 }
 
-export async function judge(job: JudgeJob, images?: ImageOverrides): Promise<JudgeResult> {
+export async function judge(
+  job: JudgeJob,
+  images?: ImageOverrides,
+  queueFacts?: QueueTimingFacts,
+): Promise<JudgeResult> {
   // Everything language-specific comes from the registry. There is no switch on job.language
   // anywhere in this file, and adding C++20 or Rust must not add one.
   const variant: Variant = variantFor(job.language);
   const runtime: Runtime = runtimeFor(job.language);
   const image = images?.[runtime.id] ?? runtime.image;
+
+  /*
+    Stage marks for the six-point latency model (lib/schemas/judge.ts, JudgeTimingsSchema).
+
+    Each is null until its stage is reached, and STAYS null if the job never gets there — a CE
+    runs no tests, so its lastTestFinishedAtMs is honestly absent rather than zero. "Container
+    started" is back-computed from the daemon's own StartedAt/FinishedAt span (`durationMs`)
+    rather than timed around `docker run`, for the same reason submissions are never timed that
+    way (CLAUDE.md): the epoch mark when the call returns minus the daemon-measured execution
+    span IS the daemon's StartedAt, so container creation lands in the create bucket, not the
+    compile or run bucket.
+  */
+  const stageClock = epochAnchoredClock();
+  let containerStartedAtMs: number | null = null;
+  let compileFinishedAtMs: number | null = null;
+  let lastTestFinishedAtMs: number | null = null;
+
+  // Attached at every return site through this one door, so a new early return cannot silently
+  // ship a result with no timings while the queue facts sit unused.
+  const withTimings = (result: JudgeResult): JudgeResult => {
+    if (queueFacts === undefined) return result;
+    const timings: JudgeTimings = {
+      enqueuedAtMs: queueFacts.enqueuedAtMs,
+      dequeuedAtMs: queueFacts.dequeuedAtMs,
+      containerStartedAtMs,
+      compileFinishedAtMs,
+      lastTestFinishedAtMs,
+      attempt: queueFacts.attempt,
+    };
+    return { ...result, timings };
+  };
 
   const algorithmMs = job.limits.timeLimitMs * runtime.multiplier;
   // Scaled, not raw. The registry's budgets describe native Linux; a virtualised dev host declares
@@ -676,8 +746,15 @@ export async function judge(job: JudgeJob, images?: ImageOverrides): Promise<Jud
         outputDirMaxFiles: 4096,
       });
 
+      // The daemon's execution span ends at (roughly) this instant, so subtracting it recovers
+      // the daemon's StartedAt: everything before that mark — workspace prep, image start,
+      // container create — is the create bucket. The compile bucket is the compiler itself.
+      const compileEndedAtMs = stageClock();
+      containerStartedAtMs = compileEndedAtMs - Math.max(0, Math.round(compile.durationMs));
+      compileFinishedAtMs = compileEndedAtMs;
+
       if (compile.exitCode !== 0) {
-        return aggregate({
+        return withTimings(aggregate({
           submissionId: job.submissionId,
           results: [],
           testCases: job.testCases,
@@ -685,7 +762,7 @@ export async function judge(job: JudgeJob, images?: ImageOverrides): Promise<Jud
           // nothing about the hidden tests leaks (PRD §7.2), and a truncated or paraphrased
           // g++ template error is useless to them.
           compileError: compile.stderr.trim() || "Compilation failed",
-        });
+        }));
       }
     }
 
@@ -785,15 +862,27 @@ export async function judge(job: JudgeJob, images?: ImageOverrides): Promise<Jud
     feedStopped.value = true;
     await feeder.catch(() => undefined);
 
+    // Same back-computation as the compile container above. For interpreted and parse-only
+    // languages this batch IS the first container, so its daemon-measured start is the create
+    // boundary; compileFinishedAtMs stays null for them, because their (in-batch) parse step is
+    // not separately observable and a made-up number is worse than an honest absence.
+    const batchEndedAtMs = stageClock();
+    if (containerStartedAtMs === null) {
+      containerStartedAtMs = batchEndedAtMs - Math.max(0, Math.round(batch.durationMs));
+    }
+    lastTestFinishedAtMs = batchEndedAtMs;
+
     // A parse-only check that failed is still a CE.
     const compileStatus = await readCompileStatus(resultDir);
     if (compileStatus !== null && compileStatus.exitCode !== 0) {
-      return aggregate({
+      // No test ran, so the mark set moments ago would claim a run stage that never happened.
+      lastTestFinishedAtMs = null;
+      return withTimings(aggregate({
         submissionId: job.submissionId,
         results: [],
         testCases: job.testCases,
         compileError: compileStatus.stderr.trim() || "Compilation failed",
-      });
+      }));
     }
 
     const results: JudgeTestResult[] = [];
@@ -836,6 +925,9 @@ export async function judge(job: JudgeJob, images?: ImageOverrides): Promise<Jud
               inputText: input,
             })
           : null;
+
+      // A retry runs a fresh container after the batch, so the run stage genuinely ends later.
+      if (outcome === null) lastTestFinishedAtMs = stageClock();
 
       const run: ContainerRunResult =
         outcome === null
@@ -893,11 +985,11 @@ export async function judge(job: JudgeJob, images?: ImageOverrides): Promise<Jud
       });
     }
 
-    return aggregate({
+    return withTimings(aggregate({
       submissionId: job.submissionId,
       results,
       testCases: job.testCases,
-    });
+    }));
   } finally {
     await removeWorkspace(workspace);
   }

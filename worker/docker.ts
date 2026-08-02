@@ -285,6 +285,17 @@ export async function isDockerAvailable(): Promise<boolean> {
 }
 
 /**
+ * Whether an image is present locally. Deliberately never pulls: the boot check this serves
+ * (worker/preflight.ts) exists to make a missing image a loud startup failure, and a check that
+ * quietly fetched multi-hundred-megabyte images would hide exactly the state it is looking for.
+ */
+export async function imageExists(image: string): Promise<boolean> {
+  // --format keeps the output to one id; the default is the full inspect JSON per image.
+  const { code } = await runDocker(["image", "inspect", "--format", "{{.Id}}", image]);
+  return code === 0;
+}
+
+/**
  * Run one container to completion.
  *
  * Deliberately does NOT pass `--rm`. We need `docker inspect` afterwards to read the

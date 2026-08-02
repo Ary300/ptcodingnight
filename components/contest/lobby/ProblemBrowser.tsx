@@ -103,7 +103,7 @@ export function ProblemBrowser({ problems }: ProblemBrowserProps) {
       */}
       <details className="lg:hidden">
         <summary
-          className="cursor-pointer rounded border border-ink/15 bg-paper px-4 py-2.5 font-semibold"
+          className="cursor-pointer rounded-chip border border-rule-edge bg-paper px-4 py-2.5 font-semibold"
           style={{ fontSize: "var(--text-sm)" }}
         >
           Filters
@@ -124,7 +124,7 @@ export function ProblemBrowser({ problems }: ProblemBrowserProps) {
           // the tinted ground was a second, different empty grammar on the same screen.
           <p
             role="status"
-            className="rounded border border-ink/15 bg-paper p-4 py-8 text-center text-ink/70"
+            className="rounded-panel border border-rule-edge bg-paper p-4 py-8 text-center text-ink/70"
             style={{ fontSize: "var(--text-sm)" }}
           >
             No problems match those filters. Untick one to widen the list.

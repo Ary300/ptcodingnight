@@ -478,7 +478,7 @@ export function SideActivityEntry({ contestId }: SideActivityEntryProps) {
         {selected === undefined ? (
           <p className="text-ink/60" style={{ fontSize: "var(--text-sm)" }}>
             Pick a team above to see its entries. Every award is listed with when it was entered
-            and by which organizer session, and nothing is ever edited or deleted.
+            and who entered it. Nothing is ever edited or deleted.
           </p>
         ) : activities.length === 0 ? (
             <p className="text-ink/60" style={{ fontSize: "var(--text-sm)" }}>

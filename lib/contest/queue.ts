@@ -2,6 +2,7 @@ import { Queue, type Job } from "bullmq";
 import IORedis from "ioredis";
 
 import { JUDGE_JOB_OPTIONS, JUDGE_QUEUE_NAME } from "@/lib/judge/queue";
+import type { QueuePosition } from "@/lib/schemas/api";
 import { JudgeResultSchema, type JudgeJob, type JudgeResult } from "@/lib/schemas/judge";
 import { DomainError } from "@/lib/errors";
 import { parseServerEnv } from "@/lib/schemas/env";
@@ -88,6 +89,57 @@ async function outcomeOf(job: Job): Promise<JobOutcome> {
   }
 
   return { status: "pending" };
+}
+
+/**
+ * How many jobs will be taken before `jobId`, given the raw wait list left to right.
+ *
+ * BullMQ adds a FIFO job with LPUSH and the worker consumes from the right, so LRANGE reads
+ * newest to oldest and everything to the RIGHT of a job runs first. That direction is verified
+ * empirically against bullmq 5.x rather than assumed: a probe enqueued first/second/third and
+ * LRANGE returned ["third", "second", "first"]. If a BullMQ upgrade ever flips it, the unit
+ * test on this function is the tripwire.
+ *
+ * `null` for a job not in the list: the caller knows more about why than this function does.
+ */
+export function jobsAheadInWaitList(ids: readonly string[], jobId: string): number | null {
+  const index = ids.indexOf(jobId);
+  if (index === -1) return null;
+  return ids.length - 1 - index;
+}
+
+/**
+ * Where a submission's job stands, as the waiting student may be told.
+ *
+ * Best-effort by contract: every failure path returns `null`, which the read path turns into
+ * an OMITTED field. A slow submission must look slow, never broken - and a position read that
+ * could throw would break the verdict read it decorates, which is the one read that matters.
+ *
+ * The wait list is read as raw ids with LRANGE rather than through `getJobs`, because a judge
+ * job's payload carries the student's full source code and test paths; hydrating every queued
+ * job to learn one index would make the cheapest read on this screen the heaviest.
+ */
+export async function queuePositionOf(jobId: string): Promise<QueuePosition | null> {
+  try {
+    const queue = judgeQueue();
+    const job = await queue.getJob(jobId);
+    if (job === undefined) return null;
+
+    const state = await job.getState();
+    if (state === "active") return { state: "active", ahead: 0 };
+    // Delayed (the one IE retry, on its 2s backoff) and every terminal state: no claim. A
+    // "position" for a job that is not plainly waiting would be a guess wearing a number.
+    if (state !== "waiting") return null;
+
+    const client = await queue.client;
+    const ids = await client.lrange(queue.toKey("wait"), 0, -1);
+    const ahead = jobsAheadInWaitList(ids, jobId);
+    // Gone from the list between the two reads means a worker took it: progress, not absence.
+    if (ahead === null) return { state: "active", ahead: 0 };
+    return { state: "waiting", ahead };
+  } catch {
+    return null;
+  }
 }
 
 /** Poll interval while waiting on a "run samples" job. Short: the student is watching. */

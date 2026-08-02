@@ -150,14 +150,14 @@ export function ContestPicker({ tab = "", purpose, variant = "picker" }: Contest
 
   if (load.status === "error" || load.data === null) {
     return (
-      <div className="rounded border border-rule-edge bg-paper p-5">
+      <div className="rounded-panel border border-rule-edge bg-paper p-5">
         <p role="alert" className="text-panther" style={{ fontSize: "var(--text-sm)" }}>
           {load.error ?? "Those contests could not be loaded."}
         </p>
         <button
           type="button"
           onClick={load.reload}
-          className="mt-3 rounded border border-rule-edge px-3 py-1.5 font-semibold hover:border-rule-firm"
+          className="mt-3 rounded-chip border border-rule-edge px-3 py-1.5 font-semibold hover:border-rule-firm"
           style={{ fontSize: "var(--text-xs)" }}
         >
           Try again
@@ -168,13 +168,13 @@ export function ContestPicker({ tab = "", purpose, variant = "picker" }: Contest
 
   if (load.data.contests.length === 0) {
     return (
-      <div className="rounded border border-rule-edge bg-paper p-5">
+      <div className="rounded-panel border border-rule-edge bg-paper p-5">
         <p style={{ fontSize: "var(--text-sm)" }}>
           There are no contests yet. Make one first: {purpose} needs a contest to act on.
         </p>
         <Link
           href="/admin/contests/new"
-          className="mt-3 inline-block rounded bg-panther px-3 py-1.5 font-semibold text-paper hover:bg-panther-deep"
+          className="mt-3 inline-block rounded-chip bg-panther px-3 py-1.5 font-semibold text-paper hover:bg-panther-deep"
           style={{ fontSize: "var(--text-xs)" }}
         >
           Create contest
@@ -194,7 +194,7 @@ export function ContestPicker({ tab = "", purpose, variant = "picker" }: Contest
       // The picker variant keeps its old accessible name, because "choose a contest" is what the
       // flat routes still ask and what the a11y suite audits them by.
       aria-label={variant === "list" ? "All contests" : "Choose a contest"}
-      className="rounded border border-rule-edge bg-paper"
+      className="rounded-panel border border-rule-edge bg-paper"
     >
       <div className="flex flex-wrap items-center justify-between gap-x-4 border-b border-rule-edge px-5 py-3">
         <h2 className="font-display font-bold" style={{ fontSize: "var(--text-md)" }}>
@@ -269,8 +269,13 @@ export function ContestPicker({ tab = "", purpose, variant = "picker" }: Contest
                       {contest.participantCount} in · {contest.teamCount}{" "}
                       {contest.teamCount === 1 ? "team" : "teams"}
                     </span>
+                    {/*
+                      10rem, not 7.5: the widest honest value here is "ends Aug 1, 12:55 AM" -
+                      20 mono characters at --text-xs, about 154px - and at 7.5rem the meridiem
+                      wrapped onto its own line ("11:37" over "PM") on any cross-day contest.
+                    */}
                     <span
-                      className="numeric w-[7.5rem] text-right text-ink/60"
+                      className="numeric w-[10rem] text-right text-ink/60"
                       style={{ fontSize: "var(--text-xs)" }}
                     >
                       <span className="block">{when.starts}</span>

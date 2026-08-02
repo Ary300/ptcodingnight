@@ -93,7 +93,7 @@ export function LobbyView({ phase = null, viewerKind }: LobbyViewProps) {
 
   if (participant.status === "error") {
     return (
-      <div role="alert" className="max-w-md rounded border border-panther/35 bg-paper p-4">
+      <div role="alert" className="max-w-md rounded-panel border border-panther/35 bg-paper p-4">
         <h1 className="font-display font-bold" style={{ fontSize: "var(--text-md)" }}>
           We could not check your sign-in
         </h1>
@@ -228,7 +228,7 @@ export function LobbyView({ phase = null, viewerKind }: LobbyViewProps) {
               */
               <p
                 role="status"
-                className="rounded border border-ink/15 bg-paper p-4 text-ink/75"
+                className="rounded-panel border border-rule-edge bg-paper p-4 text-ink/75"
                 style={{ fontSize: "var(--text-sm)" }}
               >
                 {problems.error}{" "}
@@ -269,8 +269,10 @@ export function LobbyView({ phase = null, viewerKind }: LobbyViewProps) {
                   {visibleProblems.length === 1
                     ? "1 problem, locked until the start."
                     : `${String(visibleProblems.length)} problems, locked until the start.`}{" "}
+                  {/* Titles are withheld so nobody can look a problem up before the start; the
+                      copy states the fact and leaves the policy reasoning here. */}
                   {titlesWithheld
-                    ? "The titles stay hidden until then, so nobody can look a problem up early. The slot and what it is worth are not secret."
+                    ? "The titles stay hidden until then. The slot and what it is worth are not secret."
                     : "What each is worth is shown beside it."}
                 </p>
                 <ProblemList problems={visibleProblems} />
@@ -315,7 +317,7 @@ function OrganizerViewingNotice() {
       </p>
       <Link
         href="/admin"
-        className="mt-4 inline-block rounded bg-panther px-4 py-2 font-semibold text-paper hover:bg-panther-deep"
+        className="mt-4 inline-block rounded-chip bg-panther px-4 py-2 font-semibold text-paper hover:bg-panther-deep"
         style={{ fontSize: "var(--text-sm)" }}
       >
         Back to the organizer console

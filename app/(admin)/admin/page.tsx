@@ -42,14 +42,14 @@ export default function AdminContestsPage() {
             Contests
           </h1>
           <p className="mt-1 max-w-[70ch] text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
-            Open a contest to set its problems, build its roster, award side-activity points, run
-            the console and publish it. Everything an organizer does belongs to one contest.
+            Open a contest to set it up and run it. Everything an organizer does belongs to one
+            contest.
           </p>
         </div>
 
         <Link
           href="/admin/contests/new"
-          className="rounded bg-panther px-4 py-2 font-semibold text-paper hover:bg-panther-deep"
+          className="rounded-chip bg-panther px-4 py-2 font-semibold text-paper hover:bg-panther-deep"
           style={{ fontSize: "var(--text-sm)" }}
         >
           Create contest

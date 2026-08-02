@@ -48,7 +48,7 @@ export function ContestEndedPanel({ phase }: ContestEndedPanelProps) {
       // `status`, not `alert`. A contest finishing on time is the plan, not a fault.
       role="status"
       aria-label="This contest has finished"
-      className="flex items-stretch overflow-hidden rounded border border-ink/15 bg-paper"
+      className="flex items-stretch overflow-hidden rounded-panel border border-rule-edge bg-paper"
     >
       <Rail state="brand" />
       <div className="min-w-0 flex-1 px-4 py-3">

@@ -2,6 +2,7 @@ import {
   PublicTestResultSchema,
   SubmissionViewSchema,
   type PublicTestResult,
+  type QueuePosition,
   type SubmissionView,
 } from "@/lib/schemas/api";
 import { DIFF_SNIPPET_MAX_CHARS, type Language, type Verdict } from "@/lib/schemas/judge";
@@ -71,11 +72,15 @@ export interface SubmissionRow {
  *
  * @param compileError Compiler stderr, verbatim, and only when the verdict is `CE` — the
  *   compiler is talking about the student's own code, so nothing leaks (PRD §7.2).
+ * @param queuePosition Best-effort, from the judge queue, and only meaningful before a verdict.
+ *   `undefined` (Redis could not answer, or the caller did not ask) OMITS the field: absence is
+ *   "no claim", never "position zero".
  */
 export function toSubmissionView(
   submission: SubmissionRow,
   testResults: readonly TestResultRow[],
   compileError: string | null,
+  queuePosition?: QueuePosition,
 ): SubmissionView {
   return SubmissionViewSchema.parse({
     submissionId: submission.id,
@@ -87,5 +92,8 @@ export function toSubmissionView(
     runtimeMs: submission.runtimeMs === null ? null : Math.max(0, Math.round(submission.runtimeMs)),
     testResults: toPublicTestResults(testResults),
     compileError: submission.verdict === "CE" ? compileError : null,
+    // A settled submission never carries a position: "Accepted" beside "3 ahead of yours"
+    // would be two claims in conflict, and the stale one would win a reader's eye.
+    ...(submission.verdict === null && queuePosition !== undefined ? { queuePosition } : {}),
   });
 }

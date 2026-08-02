@@ -24,8 +24,8 @@ export default async function LiveConsolePage({
           Live console
         </h1>
         <p className="mt-1 max-w-[70ch] text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
-          Admin truth: this view is never frozen, even while the public board is. Pick the contest
-          you are running.
+          This view is never frozen, even while the public board is. Pick the contest you are
+          running.
         </p>
       </header>
 

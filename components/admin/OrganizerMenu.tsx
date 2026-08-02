@@ -74,7 +74,7 @@ export function OrganizerMenu({ displayName }: OrganizerMenuProps) {
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
-        className="flex items-center gap-2 rounded border border-paper/30 px-2.5 py-1 font-semibold text-paper hover:border-paper/60"
+        className="flex items-center gap-2 rounded-chip border border-rule-edge-inverse px-2.5 py-1 font-semibold text-paper hover:border-rule-firm-inverse"
         style={{ fontSize: "var(--text-xs)" }}
       >
         <span className="max-w-[12ch] truncate">{displayName}</span>
@@ -84,7 +84,7 @@ export function OrganizerMenu({ displayName }: OrganizerMenuProps) {
       {open && (
         // `text-ink` on the panel: it is a paper surface inside a `text-paper` header, and without
         // this every item inherits near-white on near-white and the menu opens invisible.
-        <div className="absolute right-0 z-50 mt-1 w-56 rounded border border-ink/15 bg-paper text-ink shadow-lg">
+        <div className="absolute right-0 z-50 mt-1 w-56 rounded-panel border border-rule-edge bg-paper text-ink shadow-lg">
           <ul role="menu" className="py-1">
             <li role="none">
               <Link
@@ -97,7 +97,7 @@ export function OrganizerMenu({ displayName }: OrganizerMenuProps) {
                 View as a student
               </Link>
             </li>
-            <li role="none" className="border-t border-ink/10">
+            <li role="none" className="border-t border-rule-hair">
               <button
                 role="menuitem"
                 type="button"

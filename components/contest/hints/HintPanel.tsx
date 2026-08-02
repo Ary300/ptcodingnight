@@ -80,17 +80,17 @@ function Figure({ label, value }: { label: string; value: number }) {
 function LockedBody() {
   return (
     <div aria-hidden="true" className="space-y-2 p-3">
-      <div className="h-2.5 w-full rounded bg-ink/10 blur-[2px]" />
-      <div className="h-2.5 w-5/6 rounded bg-ink/10 blur-[2px]" />
-      <div className="h-2.5 w-3/5 rounded bg-ink/10 blur-[2px]" />
+      <div className="h-2.5 w-full rounded-chip bg-ink/10 blur-[2px]" />
+      <div className="h-2.5 w-5/6 rounded-chip bg-ink/10 blur-[2px]" />
+      <div className="h-2.5 w-3/5 rounded-chip bg-ink/10 blur-[2px]" />
     </div>
   );
 }
 
 function TakenHintCard({ hint }: { hint: TakenHint }) {
   return (
-    <article className="mt-3 rounded border border-ink/15 bg-ink/[0.03]">
-      <header className="flex items-baseline justify-between gap-2 border-b border-ink/10 px-3 py-2">
+    <article className="mt-3 rounded-panel border border-rule-edge bg-ink/[0.03]">
+      <header className="flex items-baseline justify-between gap-2 border-b border-rule-hair px-3 py-2">
         <span className="font-semibold" style={{ fontSize: "var(--text-xs)" }}>
           Hint {hint.ordinal} <span className="font-medium text-ink/60">unlocked</span>
         </span>
@@ -149,7 +149,7 @@ export function HintPanel({ contestProblemId, problemTitle }: HintPanelProps) {
 
   if (balance.status === "loading") {
     return (
-      <section aria-label="Hints" className="rounded border border-ink/15 p-4">
+      <section aria-label="Hints" className="rounded-panel border border-rule-edge p-4">
         <p className="text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
           Loading hint balance…
         </p>
@@ -159,7 +159,7 @@ export function HintPanel({ contestProblemId, problemTitle }: HintPanelProps) {
 
   if (current === null) {
     return (
-      <section aria-label="Hints" className="rounded border border-ink/15 p-4">
+      <section aria-label="Hints" className="rounded-panel border border-rule-edge p-4">
         <h2 className="font-display font-bold" style={{ fontSize: "var(--text-md)" }}>
           Hints
         </h2>
@@ -183,7 +183,7 @@ export function HintPanel({ contestProblemId, problemTitle }: HintPanelProps) {
   const confirming = flow.step === "confirming" || flow.step === "taking";
 
   return (
-    <section aria-label="Hints" className="rounded border border-ink/15 p-4">
+    <section aria-label="Hints" className="rounded-panel border border-rule-edge p-4">
       <h2 className="font-display font-bold" style={{ fontSize: "var(--text-md)" }}>
         Hints
       </h2>
@@ -199,8 +199,8 @@ export function HintPanel({ contestProblemId, problemTitle }: HintPanelProps) {
       ))}
 
       {/* The locked card: HackerRank's paywall grammar, priced in the header AND on the button. */}
-      <article className="mt-3 rounded border border-ink/15">
-        <header className="flex items-baseline justify-between gap-2 border-b border-ink/10 bg-ink/[0.04] px-3 py-2">
+      <article className="mt-3 rounded-panel border border-rule-edge">
+        <header className="flex items-baseline justify-between gap-2 border-b border-rule-hair bg-ink/[0.04] px-3 py-2">
           <span className="font-semibold" style={{ fontSize: "var(--text-xs)" }}>
             Hint {nextOrdinal} <span className="font-medium text-ink/60">locked</span>
           </span>
@@ -211,7 +211,7 @@ export function HintPanel({ contestProblemId, problemTitle }: HintPanelProps) {
 
         <LockedBody />
 
-        <div className="border-t border-ink/10 px-3 py-3">
+        <div className="border-t border-rule-hair px-3 py-3">
           <p className="text-ink/75" style={{ fontSize: "var(--text-xs)" }}>
             Unlocking this hint costs <span className="numeric font-semibold">{current.nextHintCost}</span>{" "}
             points off your score on <strong>{problemTitle}</strong>. Solving warmups earns more
@@ -244,7 +244,7 @@ export function HintPanel({ contestProblemId, problemTitle }: HintPanelProps) {
             <div
               role="group"
               aria-label="Confirm taking this hint"
-              className="mt-3 rounded border-2 border-panther p-3"
+              className="mt-3 rounded-panel border-2 border-panther p-3"
             >
               <p className="font-semibold" style={{ fontSize: "var(--text-sm)" }}>
                 Take hint {nextOrdinal} for{" "}

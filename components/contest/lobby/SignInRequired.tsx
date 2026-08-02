@@ -55,7 +55,7 @@ export function SignInRequired({ what, level = 2 }: SignInRequiredProps) {
       </p>
       <Link
         href="/sign-in"
-        className="mt-4 inline-block rounded bg-panther px-4 py-2 font-semibold text-paper hover:bg-panther-deep"
+        className="mt-4 inline-block rounded-chip bg-panther px-4 py-2 font-semibold text-paper hover:bg-panther-deep"
         style={{ fontSize: "var(--text-sm)" }}
       >
         Sign in to compete

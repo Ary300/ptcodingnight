@@ -62,7 +62,7 @@ export default function DesignSpecimen() {
         </p>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
           {SWATCHES.map((s) => (
-            <div key={s.name} className="overflow-hidden rounded border border-black/10">
+            <div key={s.name} className="overflow-hidden rounded-panel border border-rule-hair">
               <div style={{ background: s.hex, height: 72 }} />
               <div className="p-3">
                 <div className="flex items-baseline justify-between">
@@ -90,8 +90,7 @@ export default function DesignSpecimen() {
             Libre Baskerville (display)
           </p>
           <p style={{ fontFamily: "var(--font-body)", fontSize: "var(--text-md)" }}>
-            Open Sans (body). Both are the school&rsquo;s own faces, self-hosted; no CDN,
-            because the night has no internet.
+            Open Sans (body). Both are the school&rsquo;s own faces, self-hosted.
           </p>
           <p className="numeric" style={{ fontSize: "var(--text-md)" }}>
             JetBrains Mono: 0O 1lI 5S 8B {"↑"}3 {"↓"}2 {"−"}

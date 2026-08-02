@@ -18,6 +18,10 @@ import { judgeHealthLevel, type JudgeHealth, type JudgeHealthLevel } from "@/com
 const LEVEL_COPY: Record<JudgeHealthLevel, string> = {
   ok: "Judge healthy",
   watch: "Judge needs a look",
+  // The one state with a full sentence for a heading, on purpose. This exact condition sat
+  // unnoticed on the dev machine and turned a 5 s verdict into a 12 minute one, so the words
+  // that matter have to be readable from across the room, not in a body paragraph.
+  stalled: "Submissions are queueing and no judge is taking them. Is the worker running?",
   down: "Judge is not running",
 };
 
@@ -94,7 +98,7 @@ export function JudgeHealthBar({ health }: { health: JudgeHealth }) {
       className="rounded-panel bg-ink p-5 text-paper"
       style={{
         borderLeft: `var(--rail-width) solid ${
-          level === "down" ? "var(--color-fall)" : "var(--color-gold)"
+          level === "down" || level === "stalled" ? "var(--color-fall)" : "var(--color-gold)"
         }`,
       }}
     >
@@ -103,15 +107,25 @@ export function JudgeHealthBar({ health }: { health: JudgeHealth }) {
         className="mb-group font-bold"
         style={{
           fontSize: "var(--text-md)",
-          color: level === "down" ? "var(--color-fall)" : "var(--color-gold)",
+          color:
+            level === "down" || level === "stalled" ? "var(--color-fall)" : "var(--color-gold)",
         }}
       >
         {LEVEL_COPY[level]}
       </p>
 
       <div className="flex flex-wrap gap-x-10 gap-y-group">
-        <Stat value={String(health.queueDepth)} label="queued" alarm={health.queueDepth > 25} />
-        <Stat value={String(health.active)} label="judging now" />
+        {/*
+          When stalled, the two figures that ARE the condition go red together: a nonzero
+          queue beside a zero "judging now" is the whole finding, and the pairing is what
+          points at the worker rather than at load.
+        */}
+        <Stat
+          value={String(health.queueDepth)}
+          label="queued"
+          alarm={level === "stalled" || health.queueDepth > 25}
+        />
+        <Stat value={String(health.active)} label="judging now" alarm={level === "stalled"} />
         <Stat value={String(health.failed)} label="failed jobs" alarm={health.failed > 0} />
         <Stat
           value={String(health.workersOnline)}
@@ -132,11 +146,20 @@ export function JudgeHealthBar({ health }: { health: JudgeHealth }) {
         />
       </div>
 
+      {level === "stalled" && (
+        <p className="mt-group max-w-[70ch]" style={{ fontSize: "var(--text-sm)" }}>
+          The queue is reachable and still accepting, so no student work is lost, but nothing
+          has taken a job for over 30 seconds. Check the worker process first: on the dev
+          machine it is started by hand (npm run worker), not as a service. This exact
+          condition once sat unnoticed here until a verdict took 12 minutes.
+        </p>
+      )}
+
       {level === "down" && (
         <p className="mt-group max-w-[70ch]" style={{ fontSize: "var(--text-sm)" }}>
           {health.reachable
             ? "Nothing is being judged. Submissions are still being accepted and queued, so no student work is lost, but no verdict will land until a worker comes back."
-            : "The judge queue cannot be reached, so submissions are being REFUSED rather than queued: a student pressing Submit gets an error. Check Redis before anything else; the numbers above are zeros because there was nothing to ask, not because the queue is empty."}
+            : "The judge queue cannot be reached, so submissions are being refused, not queued. A student pressing Submit gets an error. Check Redis first. The zeros above mean there was nothing to ask, not an empty queue."}
         </p>
       )}
     </section>

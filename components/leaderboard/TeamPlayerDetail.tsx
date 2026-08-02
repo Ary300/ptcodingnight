@@ -101,7 +101,7 @@ function ProblemLine({ problem, playerName }: ProblemLineProps) {
   }
 
   return (
-    <li className="border-t border-ink/10 py-1.5 first:border-t-0">
+    <li className="border-t border-rule-hair py-1.5 first:border-t-0">
       <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
         <span className="numeric shrink-0 font-bold text-ink" style={{ fontSize: "var(--text-xs)" }}>
           {problem.slotLabel}
@@ -270,7 +270,7 @@ export function TeamPlayerLine({ player }: TeamPlayerLineProps) {
           In practice it never scrolls: the lines wrap, so the panel's own min-content is under
           100px and the column it sits in is always wider than that.
         */
-        <div className="mt-1 overflow-x-auto border-l-2 border-ink/20 pl-2.5">
+        <div className="mt-1 overflow-x-auto border-l-2 border-rule-edge pl-2.5">
           {player.lastScoreIncreaseAt !== null && (
             /* "Still moving" versus "stalled forty minutes ago" is the single most useful signal
                for how someone is doing, and it is free — the engine already computes it. */

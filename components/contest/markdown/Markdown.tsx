@@ -27,7 +27,7 @@ function renderInline(nodes: readonly Inline[], prefix: string): ReactNode[] {
         return (
           <code
             key={key}
-            className="rounded bg-ink/10 px-1.5 py-0.5 font-mono text-[0.9em] text-ink"
+            className="rounded-chip bg-ink/10 px-1.5 py-0.5 font-mono text-[0.9em] text-ink"
           >
             {node.value}
           </code>
@@ -95,7 +95,7 @@ function renderBlock(block: Block, key: string): ReactNode {
           // blocks carry none — so full-width dark bands here were polarity for nothing, where
           // the reference sits its code quietly inside a white statement. Same tint as
           // SampleIO's blocks, so the statement's two kinds of code read as one surface.
-          className="my-5 overflow-x-auto rounded bg-ink/[0.04] p-4 text-ink"
+          className="my-5 overflow-x-auto rounded-flat bg-ink/[0.04] p-4 text-ink"
           // Long sample blocks scroll inside their own box; the page never scrolls sideways.
           tabIndex={0}
           role="region"
@@ -136,7 +136,7 @@ function renderBlock(block: Block, key: string): ReactNode {
       );
 
     case "rule":
-      return <hr key={key} className="my-8 border-ink/15" />;
+      return <hr key={key} className="my-8 border-rule-edge" />;
   }
 }
 

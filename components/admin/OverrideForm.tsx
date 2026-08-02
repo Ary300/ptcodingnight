@@ -113,7 +113,9 @@ export function OverrideForm({ submission, onSubmit, onCancel }: OverrideFormPro
         value={reason}
         maxLength={500}
         error={error}
-        hint="Written to the audit log and read by whoever has to explain this result later. Say what happened, not that you decided."
+        // The log entry is read by whoever has to explain this result later, which is why the
+        // hint pushes for facts over judgement calls.
+        hint="Goes in the audit log. Say what happened, not that you decided."
         onChange={(e) => {
           setReason(e.target.value);
           if (error !== null) setError(null);
@@ -129,7 +131,7 @@ export function OverrideForm({ submission, onSubmit, onCancel }: OverrideFormPro
         </Button>
         {reasonIsBlank && (
           <span className="text-ink/70" style={{ fontSize: "var(--text-xs)" }}>
-            A reason is required before this can be applied.
+            Write a reason first.
           </span>
         )}
       </div>

@@ -56,7 +56,7 @@ export default async function ContestSetupPage({
     ? "Complete these steps before publishing the contest."
     : live
       ? "The contest is running. Any item below needs an organizer's attention, but it does not stop the live round."
-      : "This is the final record of the line-up, roster, assignments and contest state.";
+      : "The contest is over. This is the final record of how it was set up.";
 
   return (
     <div className="flex flex-col gap-6">
@@ -131,14 +131,14 @@ export default async function ContestSetupPage({
         <div className="mb-5 flex flex-wrap items-center gap-3 border-b border-rule-edge pb-5">
           <Link
             href="/contest"
-            className="inline-flex items-center rounded border border-rule-edge bg-paper px-4 py-2 font-semibold text-ink hover:bg-ink/5"
+            className="inline-flex items-center rounded-chip border border-rule-edge bg-paper px-4 py-2 font-semibold text-ink hover:bg-ink/5"
             style={{ fontSize: "var(--text-sm)", lineHeight: "1.5rem" }}
           >
             Open the student view
           </Link>
           <Link
             href={`/projector?contest=${encodeURIComponent(setup.contestId)}`}
-            className="inline-flex items-center rounded border border-rule-edge bg-paper px-4 py-2 font-semibold text-ink hover:bg-ink/5"
+            className="inline-flex items-center rounded-chip border border-rule-edge bg-paper px-4 py-2 font-semibold text-ink hover:bg-ink/5"
             style={{ fontSize: "var(--text-sm)", lineHeight: "1.5rem" }}
           >
             Open the projector for this contest
@@ -156,7 +156,7 @@ export default async function ContestSetupPage({
 
       <Panel
         title="Window"
-        description="When students are let in, when they are locked out, and when the public board stops updating."
+        description="When the contest runs, and when the public board stops updating."
       >
         <dl className="grid gap-x-8 gap-y-3 sm:grid-cols-3" style={{ fontSize: "var(--text-sm)" }}>
           <Fact label="Starts" value={formatWhen(setup.startsAt)} />
@@ -245,7 +245,7 @@ function stepsFor(setup: ContestSetup): readonly Step[] {
       detail:
         setup.problemCount === 0
           ? "Nothing in the line-up yet. Until there is, this contest cannot be published."
-          : `${String(setup.problemCount)} ${setup.problemCount === 1 ? "problem" : "problems"} in the line-up, each with a slot, its points and its set.`,
+          : `${String(setup.problemCount)} ${setup.problemCount === 1 ? "problem" : "problems"} in the line-up.`,
       state: setup.problemCount > 0 ? "done" : "todo",
       action: <TabLink href={`${base}/problems`} label="Problems" />,
     },
@@ -290,7 +290,7 @@ function stepsFor(setup: ContestSetup): readonly Step[] {
       title: "Publish it",
       detail:
         setup.state === "DRAFT"
-          ? "Still a DRAFT. Students cannot see it, cannot open a problem, and cannot submit."
+          ? "Still a draft, so students cannot see it or submit to it."
           : setup.state === "SCHEDULED"
             ? "Published. Students can see it and will be let in when the window opens."
             : setup.state === "ENDED" || setup.state === "ARCHIVED"
@@ -308,7 +308,7 @@ function TabLink({ href, label }: { href: string; label: string }) {
   return (
     <Link
       href={href}
-      className="inline-block rounded border border-rule-edge px-3 py-1.5 font-semibold hover:border-rule-firm"
+      className="inline-block rounded-chip border border-rule-edge px-3 py-1.5 font-semibold hover:border-rule-firm"
       style={{ fontSize: "var(--text-xs)" }}
     >
       {label}

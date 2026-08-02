@@ -499,8 +499,8 @@ export function RosterManager({ contestId }: RosterManagerProps) {
           <>
             Anybody with an account can be put on this contest, whether or not
             they have signed into it. That includes everyone from previous
-            contests. Adding somebody creates their place in this contest with
-            no team, so no score moves.
+            contests. Whoever you add starts without a team, so no score
+            changes.
           </>
         }
       >
@@ -708,7 +708,9 @@ export function RosterManager({ contestId }: RosterManagerProps) {
               required
               value={reason}
               placeholder="Why this is being changed"
-              hint="This moves two divisors at once, so it changes two team scores. The reason goes in the audit log."
+              // Team size divides both team scores, so a move shifts two denominators at once.
+              // That is the arithmetic behind the plain warning below.
+              hint="Moving a player changes both teams' scores. The reason goes in the audit log."
               onChange={(event) => setReason(event.target.value)}
             />
 
@@ -992,7 +994,7 @@ export function RosterManager({ contestId }: RosterManagerProps) {
                       required
                       value={teamFormReason}
                       placeholder="Why this is being changed"
-                      hint="Recorded in the audit log because roster changes can affect scores."
+                      hint="Goes in the audit log. Roster changes can change team scores."
                       onChange={(event) =>
                         setTeamFormReason(event.target.value)
                       }

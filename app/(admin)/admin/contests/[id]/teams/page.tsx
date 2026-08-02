@@ -21,8 +21,10 @@ export default async function ContestTeamsPage({
           Teams
         </h2>
         <p className="mt-1 max-w-[70ch] text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
-          Team size is the divisor in every team score, so a roster change is a score change. Every
-          action here is recorded with who did it and why.
+          {/* Team size is the divisor in every team score, which is why a roster change is
+              always a score change. */}
+          Roster changes change team scores. Every action here is recorded with who did it and
+          why.
         </p>
       </header>
 

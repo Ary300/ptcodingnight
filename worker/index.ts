@@ -10,6 +10,7 @@ import { parseServerEnv } from "@/lib/schemas/env";
 import { isDockerAvailable, sweepJudgeContainers } from "@/worker/docker";
 import { defaultJudgeConcurrency, hostCpuCount, hostMemoryMb } from "./host";
 import { RUNTIMES, type RuntimeId } from "@/lib/judge/runtimes";
+import { describeMissingImages, findMissingImages, requiredImages } from "@/worker/preflight";
 import { judge, type ImageOverrides } from "@/worker/runner";
 
 /**
@@ -32,7 +33,15 @@ async function processJob(job: Job, images: ImageOverrides): Promise<JudgeResult
     );
   }
 
-  const result = await judge(parsed.data, images);
+  // Queue wait comes from BullMQ's own clocks — `timestamp` is stamped at enqueue and
+  // `processedOn` when this worker picked the job up. `processedOn` is set before the processor
+  // runs, so the fallback is unreachable in practice; it exists because the field is typed
+  // optional, and "now" is the honest value at the only moment the fallback could fire.
+  const result = await judge(parsed.data, images, {
+    enqueuedAtMs: job.timestamp,
+    dequeuedAtMs: job.processedOn ?? Date.now(),
+    attempt: job.attemptsMade + 1,
+  });
 
   // An IE is our fault, not the student's. Throwing hands the job back to BullMQ for its one
   // retry; on the final attempt we stop retrying and surface it for an admin instead of
@@ -54,11 +63,6 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  // A previous crash may have left containers behind; start from a clean host.
-  const swept = await sweepJudgeContainers();
-  if (swept > 0) console.warn(`swept ${swept} judge container(s) left by a previous run`);
-
-  const connection = new IORedis(env.REDIS_URL, { maxRetriesPerRequest: null });
   // Keyed by RuntimeId, which is what `judge()` looks up.
   //
   // This was `{ python, java }` — keys that match no RuntimeId, so every override was silently
@@ -73,6 +77,21 @@ async function main(): Promise<void> {
     python312: env.JUDGE_IMAGE_PYTHON,
     jdk21: env.JUDGE_IMAGE_JAVA,
   };
+
+  // Refuse to start with any runtime image missing, same reasoning as the daemon check above:
+  // a worker without an image does not fail at boot on its own, it fails every submission for
+  // that runtime as IE at run time — silence now, a student's 12-minute wait later.
+  const missing = await findMissingImages(requiredImages(images));
+  if (missing.length > 0) {
+    console.error(describeMissingImages(missing));
+    process.exit(1);
+  }
+
+  // A previous crash may have left containers behind; start from a clean host.
+  const swept = await sweepJudgeContainers();
+  if (swept > 0) console.warn(`swept ${swept} judge container(s) left by a previous run`);
+
+  const connection = new IORedis(env.REDIS_URL, { maxRetriesPerRequest: null });
 
   /*
     Concurrency follows the box unless somebody has actually chosen a number.

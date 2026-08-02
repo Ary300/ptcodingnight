@@ -292,7 +292,7 @@ export function SettingsView() {
       </p>
 
       {/* --- Profile picture ------------------------------------------------ */}
-      <section className="mt-8 rounded border border-rule-edge bg-paper p-5">
+      <section className="mt-8 rounded-panel border border-rule-edge bg-paper p-5">
         <h2
           className="font-display font-bold"
           style={{ fontSize: "var(--text-md)" }}
@@ -376,7 +376,7 @@ export function SettingsView() {
       </section>
 
       {/* --- Display name --------------------------------------------------- */}
-      <section className="mt-6 rounded border border-rule-edge bg-paper p-5">
+      <section className="mt-6 rounded-panel border border-rule-edge bg-paper p-5">
         <h2
           className="font-display font-bold"
           style={{ fontSize: "var(--text-md)" }}
@@ -397,7 +397,7 @@ export function SettingsView() {
             value={name}
             maxLength={40}
             onChange={(event) => setName(event.target.value)}
-            className="min-w-0 flex-1 rounded border border-ink/25 bg-paper px-3 py-2"
+            className="min-w-0 flex-1 rounded-flat border border-rule-edge bg-paper px-3 py-2"
             style={{ fontSize: "var(--text-sm)" }}
           />
           <Button
@@ -430,7 +430,7 @@ export function SettingsView() {
       {/* --- Account facts (read-only) -------------------------------------- */}
       {profile !== null &&
         (profile.email !== null || profile.gradYear !== null) && (
-          <section className="mt-6 rounded border border-rule-edge bg-paper p-5">
+          <section className="mt-6 rounded-panel border border-rule-edge bg-paper p-5">
             <h2
               className="font-display font-bold"
               style={{ fontSize: "var(--text-md)" }}

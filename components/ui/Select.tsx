@@ -162,7 +162,9 @@ export const CONTROL_SURFACE =
   // into a select FADED the ring up from ink to `--panther` over 150ms — the one indicator a
   // keyboard-only user has, arriving late and washed out. The border is the only colour here
   // that has any business animating.
-  "w-full rounded border bg-paper text-ink transition-[border-color] " +
+  // `rounded-flat`, not the bare 4px `rounded`: DESIGN.md §5a puts inputs in the flat class —
+  // a rectangle that is read or typed into has square corners; only CONTROLS get the 3px chip.
+  "w-full rounded-flat border bg-paper text-ink transition-[border-color] " +
   "disabled:cursor-not-allowed disabled:border-rule-hair disabled:bg-ink/5 disabled:text-ink/40";
 
 /** Padding by size. The select adds its own right padding to clear the chevron. */
@@ -879,7 +881,7 @@ function ListboxControl({
               so making the outermost portalled node the widget itself is the honest fix rather
               than the suppression.
             */
-            className="fixed z-50 overflow-y-auto overscroll-contain rounded border border-rule-edge bg-paper py-1.5 shadow-lg"
+            className="fixed z-50 overflow-y-auto overscroll-contain rounded-panel border border-rule-edge bg-paper py-1.5 shadow-lg"
           >
             {options.map((option, index) => {
               const selected = option.value === value;

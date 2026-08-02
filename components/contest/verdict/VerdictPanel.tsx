@@ -2,13 +2,18 @@
 
 import { useMemo } from "react";
 
-import type { PublicTestResult } from "@/lib/schemas/api";
+import type { PublicTestResult, QueuePosition } from "@/lib/schemas/api";
 import type { Verdict } from "@/lib/schemas/judge";
 
 import { sanitizeTestResults } from "../data/leak-guard";
 import type { StreamTransport } from "../data/useVerdictStream";
 import type { VerdictTone } from "./verdict-display";
-import { judgingProgressLabel, TONE_COLOR, VERDICT_DISPLAY } from "./verdict-display";
+import {
+  judgingProgressLabel,
+  queuePositionLabel,
+  TONE_COLOR,
+  VERDICT_DISPLAY,
+} from "./verdict-display";
 
 /**
  * The verdict panel — dark by necessity, not by taste. Rise, fall and gold all fail AA on
@@ -38,13 +43,19 @@ export interface VerdictPanelProps {
   error?: string | null;
   /** Total case count when known, so "3 of 12" is possible while judging. */
   totalCases?: number | null;
+  /**
+   * Where the submission stands in the judge queue, when the server could read it. Null or
+   * absent renders nothing: the wire field is optional and absence means "no claim", so the
+   * panel must not invent one.
+   */
+  queuePosition?: QueuePosition | null;
 }
 
 function Chip({ verdict }: { verdict: Verdict }) {
   const presentation = VERDICT_DISPLAY[verdict];
   return (
     <span
-      className="rounded px-2 py-0.5 font-semibold"
+      className="rounded-chip px-2 py-0.5 font-semibold"
       style={{
         fontSize: "var(--text-xs)",
         color: TONE_COLOR[presentation.tone],
@@ -110,7 +121,7 @@ function TestRow({ result }: { result: PublicTestResult }) {
   const name = result.isSample ? `Sample ${result.ordinal}` : `Test case ${result.ordinal}`;
 
   return (
-    <li className="border-t border-paper/10 py-2 first:border-t-0">
+    <li className="border-t border-rule-hair-inverse py-2 first:border-t-0">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <CaseMark tone={presentation.tone} />
         <span className="numeric text-paper/85" style={{ fontSize: "var(--text-xs)" }}>
@@ -154,7 +165,7 @@ function TestRow({ result }: { result: PublicTestResult }) {
             tabIndex={0}
             role="region"
             aria-label={`Difference for sample ${result.ordinal}`}
-            className="mt-2 overflow-x-auto rounded bg-paper/5 p-2 font-mono text-paper/80"
+            className="mt-2 overflow-x-auto rounded-flat bg-paper/5 p-2 font-mono text-paper/80"
             style={{ fontSize: "var(--text-xs)" }}
           >
             {result.diffSnippet}
@@ -175,6 +186,7 @@ export function VerdictPanel({
   transport = null,
   error = null,
   totalCases = null,
+  queuePosition = null,
 }: VerdictPanelProps) {
   const { results: safeResults, leakedOrdinals } = useMemo(
     () => sanitizeTestResults(results),
@@ -187,7 +199,7 @@ export function VerdictPanel({
   return (
     <section
       aria-label={heading}
-      className="rounded border border-ink/20 bg-ink p-4 text-paper"
+      className="rounded-panel border border-rule-edge bg-ink p-4 text-paper"
     >
       <header className="flex flex-wrap items-center gap-3">
         <h2 className="font-display font-bold" style={{ fontSize: "var(--text-md)" }}>
@@ -215,6 +227,19 @@ export function VerdictPanel({
           </span>
         )}
       </header>
+
+      {/*
+        Where the wait is coming from, while there is a wait. A slow submission must look
+        slow, never broken: "3 submissions ahead of yours" turns a silent spinner into a
+        queue the student can see moving. Gated on `verdict === null` so a settled panel can
+        never carry a stale position, and on the field being present at all - the server
+        omits it when Redis could not answer, and this line says nothing rather than guessing.
+      */}
+      {mode === "judged" && busy && verdict === null && queuePosition !== null && (
+        <p className="mt-2 text-paper/60" style={{ fontSize: "var(--text-xs)" }}>
+          {queuePositionLabel(queuePosition)}
+        </p>
+      )}
 
       {/* One announcement when it settles, not one per test row. */}
       <p aria-live="polite" className="sr-only">
@@ -257,7 +282,7 @@ export function VerdictPanel({
 
       {error !== null && (
         <p
-          className="mt-3 rounded p-2"
+          className="mt-3 rounded-chip p-2"
           style={{ fontSize: "var(--text-xs)", color: "var(--color-gold)", border: "1px solid var(--color-gold)" }}
         >
           {error}
@@ -267,7 +292,7 @@ export function VerdictPanel({
       {leakedOrdinals.length > 0 && (
         <p
           role="alert"
-          className="mt-3 rounded p-2"
+          className="mt-3 rounded-chip p-2"
           style={{ fontSize: "var(--text-xs)", color: "var(--color-gold)", border: "1px solid var(--color-gold)" }}
         >
           The server sent detail for {leakedOrdinals.length} hidden{" "}
@@ -281,7 +306,7 @@ export function VerdictPanel({
           tabIndex={0}
           role="region"
           aria-label="Compiler output"
-          className="mt-3 max-h-64 overflow-auto rounded bg-paper/5 p-3 font-mono text-paper/85"
+          className="mt-3 max-h-64 overflow-auto rounded-flat bg-paper/5 p-3 font-mono text-paper/85"
           style={{ fontSize: "var(--text-xs)" }}
         >
           {compileError}
@@ -311,7 +336,7 @@ export function VerdictPanel({
       )}
 
       {hasHidden && (
-        <p className="mt-3 border-t border-paper/10 pt-3 text-paper/50" style={{ fontSize: "var(--text-xs)" }}>
+        <p className="mt-3 border-t border-rule-hair-inverse pt-3 text-paper/50" style={{ fontSize: "var(--text-xs)" }}>
           Hidden tests report pass/fail and timing only, never their input or expected
           output. That is the same for everyone.
         </p>

@@ -33,11 +33,23 @@ cd "$(dirname "$0")/.."
 
 # Kept in step with lib/judge/runtimes.ts by the test in worker/runner.test.ts, which reads
 # both and fails if an image named in the registry is missing here.
+#
+# Each entry is <tag>@<digest>, and the digest is the point. A tag floats: a re-pull on a new
+# host can land a newer toolchain that rejects code the old one accepted, and contest night is
+# not when to discover that. Every digest below was resolved from the LOCAL image that the
+# gates were run against (docker image inspect --format '{{.RepoDigests}}'), so a fresh host
+# pulls exactly the bytes that were proven to work — never "whatever the tag points at today".
+#
+# ptcn-go:1.23 is absent from this list on purpose: it is BUILT below, not pulled, so it has no
+# registry digest to pin. Its base image is pinned by digest in docker/go/Dockerfile instead.
+#
+# To re-pin after a deliberate upgrade: pull the new tag, run the full gate suite against it,
+# then copy the digest docker reports for the image that passed.
 STOCK_IMAGES=(
-  "python:3.12-slim"
-  "eclipse-temurin:21-jdk"
-  "gcc:14"
-  "node:22-slim"
+  "python:3.12-slim@sha256:57cd7c3a7a273101a6485ba99423ee568157882804b1124b4dd04266317710de"
+  "eclipse-temurin:21-jdk@sha256:da9d3a4f7650db39b918fc5a2c3da76556fb8cc8e5f3767cdea0bb409286951a"
+  "gcc:14@sha256:1ea81e094f614fd2ed066316651dbac8eecb4d36add2ddd8a26151374c85c52c"
+  "node:22-slim@sha256:f32b81066cde10a75dbac96646099533316d94bac4150c55da1636e1f0ffdc46"
 )
 
 # Threshold for --verify, in seconds. A warm build measured 2.5-11.8 s on Docker Desktop; a
@@ -50,16 +62,41 @@ if ! docker ps >/dev/null 2>&1; then
   exit 1
 fi
 
-echo "==> pulling stock runtime images"
-for image in "${STOCK_IMAGES[@]}"; do
-  printf '    %-26s ' "$image"
-  if docker image inspect "$image" >/dev/null 2>&1; then
-    echo "present"
-  elif docker pull -q "$image" >/dev/null 2>&1; then
-    echo "pulled"
+echo "==> pulling stock runtime images (pinned by digest)"
+for pinned in "${STOCK_IMAGES[@]}"; do
+  tag="${pinned%%@*}"       # what the registry in lib/judge/runtimes.ts names
+  digest="${pinned#*@}"     # the bytes that were proven to work
+  repo="${tag%%:*}"
+  printf '    %-26s ' "$tag"
+  if docker image inspect "$tag" >/dev/null 2>&1; then
+    # Present images are checked against the pin rather than trusted: a tag that was re-pulled
+    # elsewhere may already have drifted, and a drifted toolchain fails in ways no gate points
+    # at. A mismatch WARNS rather than fails — the operator may be mid-upgrade on purpose — but
+    # it never passes silently.
+    local_digests=$(docker image inspect --format '{{join .RepoDigests ","}}' "$tag" 2>/dev/null || true)
+    case "$local_digests" in
+      *"$digest"*)
+        echo "present (matches pin)"
+        ;;
+      *)
+        echo "present, DIGEST DOES NOT MATCH PIN"
+        cat >&2 <<EOF
+WARN  local ${tag} is ${local_digests:-<no RepoDigest>}
+      but this script pins ${digest}.
+      The pin names the exact bytes the gates were run against. If this drift is not a
+      deliberate upgrade, re-pull the pinned digest; if it is, re-run the gates against the
+      new image and update the pin here.
+EOF
+        ;;
+    esac
+  elif docker pull -q "${repo}@${digest}" >/dev/null 2>&1; then
+    # A pull by digest fetches exactly the proven bytes but leaves them untagged, so restore
+    # the tag the worker will ask for.
+    docker tag "${repo}@${digest}" "$tag"
+    echo "pulled by digest"
   else
     echo "FAILED"
-    echo "FAIL  could not pull $image" >&2
+    echo "FAIL  could not pull ${repo}@${digest}" >&2
     exit 1
   fi
 done

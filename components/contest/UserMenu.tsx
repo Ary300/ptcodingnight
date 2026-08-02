@@ -192,7 +192,7 @@ export function UserMenu({
           accessible name does not change with the viewport.
         */
         aria-label={`Account: ${displayName}`}
-        className="flex min-w-0 items-center gap-2 rounded px-1.5 py-1 text-paper/85 hover:text-paper"
+        className="flex min-w-0 items-center gap-2 rounded-chip px-1.5 py-1 text-paper/85 hover:text-paper"
         style={{ fontSize: "var(--text-sm)" }}
       >
         <Avatar displayName={displayName} userId={userId} version={avatarVersion} />
@@ -227,8 +227,8 @@ export function UserMenu({
           */
           className={
             sheetTop !== null
-              ? "fixed inset-x-0 z-50 overflow-hidden border-y border-ink/20 bg-paper text-ink shadow-lg"
-              : "absolute right-0 z-50 mt-2 w-64 overflow-hidden rounded border border-ink/20 bg-paper text-ink shadow-lg"
+              ? "fixed inset-x-0 z-50 overflow-hidden border-y border-rule-edge bg-paper text-ink shadow-lg"
+              : "absolute right-0 z-50 mt-2 w-64 overflow-hidden rounded-panel border border-rule-edge bg-paper text-ink shadow-lg"
           }
           style={sheetTop !== null ? { top: sheetTop } : undefined}
         >
@@ -289,7 +289,7 @@ export function UserMenu({
           <ul role="menu" aria-label="Account">
             {ITEMS.map((item) => (
               <li key={item.href} role="none">
-                <div aria-hidden="true" className="mx-3.5 border-t border-ink/10" />
+                <div aria-hidden="true" className="mx-3.5 border-t border-rule-hair" />
                 <Link
                   href={item.href}
                   role="menuitem"
@@ -302,7 +302,7 @@ export function UserMenu({
               </li>
             ))}
             <li role="none">
-              <div aria-hidden="true" className="mx-3.5 border-t border-ink/10" />
+              <div aria-hidden="true" className="mx-3.5 border-t border-rule-hair" />
               {/*
                 Styled like every other row, as the reference styles Logout. It carried
                 `font-semibold text-panther`, which made the one action a student least wants

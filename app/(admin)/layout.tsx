@@ -70,7 +70,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     <div className="flex min-h-full flex-1 flex-col">
       <a
         href="#admin-main"
-        className="sr-only rounded bg-panther px-3 py-2 text-paper focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50"
+        className="sr-only rounded-chip bg-panther px-3 py-2 text-paper focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50"
       >
         Skip to content
       </a>
@@ -98,7 +98,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
               is a real way to show the room a problem set early.
             */}
             <span
-              className="rounded-sm border border-paper/40 px-1.5 py-0.5 font-semibold uppercase"
+              className="rounded-chip border border-rule-firm-inverse px-1.5 py-0.5 font-semibold uppercase"
               style={{ fontSize: "var(--text-xs)", letterSpacing: "0.08em" }}
             >
               Organizer
@@ -110,7 +110,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           <div className="ml-auto flex flex-wrap items-center gap-3">
             <Link
               href="/projector"
-              className="rounded border border-paper/30 px-2.5 py-1 font-semibold text-paper/85 hover:border-paper/60 hover:text-paper"
+              className="rounded-chip border border-rule-edge-inverse px-2.5 py-1 font-semibold text-paper/85 hover:border-rule-firm-inverse hover:text-paper"
               style={{ fontSize: "var(--text-xs)" }}
             >
               Open projector

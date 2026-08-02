@@ -316,9 +316,10 @@ export function LiveConsole({ contestId }: LiveConsoleProps) {
             />
           }
         >
-          Students and the projector are seeing the standings as they were at
-          the freeze. Judging is still running and the console below is live
-          truth. Unfreezing is the reveal, so do it when the room is watching.
+          Students and the projector still see the standings as they were at
+          the freeze. Judging keeps running, and the console below stays live.
+          Unfreezing reveals the final board, so do it when the room is
+          watching.
         </AlertPlate>
       )}
 

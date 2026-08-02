@@ -37,7 +37,12 @@
 # Do NOT "fix" this by rebuilding before the night. A rebuild resets the clock for 24 hours: a
 # countdown, not a repair. `--verify` asserts this symlink resolves off the rootfs, because a
 # rebuild that silently drops it looks perfect for a day and then fails during the contest.
-FROM golang:1.23-bookworm
+# Pinned by digest, resolved from the image already proven on this host (docker inspect
+# RepoDigests), never from a fresh pull. The tag alone floats: a re-pull can land a newer
+# toolchain that rejects code the old one accepted, or shifts the std build cache this image
+# exists to pre-warm — and contest night is not when to discover either. The tag stays in the
+# reference purely as documentation of what the digest is.
+FROM golang:1.23-bookworm@sha256:167053a2bb901972bf2c1611f8f52c44d5fe7e762e5cab213708d82c421614db
 
 ENV GOCACHE=/opt/gocache
 

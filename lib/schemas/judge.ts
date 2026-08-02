@@ -110,6 +110,34 @@ export const JudgeTestResultSchema = z.object({
 });
 export type JudgeTestResult = z.infer<typeof JudgeTestResultSchema>;
 
+/**
+ * Stage attribution for one judged run — the six-point model, as epoch-anchored milliseconds.
+ *
+ * The two queue marks come from BullMQ's own clocks (`job.timestamp` and `job.processedOn`);
+ * the three container marks are recorded monotonically inside the worker and converted to
+ * epoch-anchored numbers before they cross the queue. Readers derive the buckets:
+ *
+ *   queue   = dequeuedAtMs - enqueuedAtMs
+ *   create  = containerStartedAtMs - dequeuedAtMs
+ *   compile = compileFinishedAtMs - containerStartedAtMs
+ *   run     = lastTestFinishedAtMs - (compileFinishedAtMs ?? containerStartedAtMs)
+ *
+ * `compileFinishedAtMs` is null for runs with no separate compile container (interpreted and
+ * parse-only languages). The container marks are individually nullable because a job can fail
+ * before reaching a stage — a CE never runs a test — and every reader must treat absence as
+ * absence. `attempt` is the BullMQ attempt number: 2 means the one IE retry ran (PRD §7.2),
+ * which is the first thing to check when a submission's latency looks wrong.
+ */
+export const JudgeTimingsSchema = z.object({
+  enqueuedAtMs: z.number().int().nonnegative(),
+  dequeuedAtMs: z.number().int().nonnegative(),
+  containerStartedAtMs: z.number().int().nonnegative().nullable(),
+  compileFinishedAtMs: z.number().int().nonnegative().nullable(),
+  lastTestFinishedAtMs: z.number().int().nonnegative().nullable(),
+  attempt: z.number().int().min(1),
+});
+export type JudgeTimings = z.infer<typeof JudgeTimingsSchema>;
+
 /** What a verdict carries OUT. */
 export const JudgeResultSchema = z.object({
   submissionId: z.string().min(1),
@@ -125,6 +153,12 @@ export const JudgeResultSchema = z.object({
   compileError: z.string().nullable(),
   /** Pointer to the retained structured judge log, for dispute resolution. */
   judgeLogRef: z.string().nullable(),
+  /**
+   * Optional, not defaulted: results produced before this field existed are still sitting in
+   * Redis as completed jobs, and they must keep parsing. Absence and null both mean "no
+   * timings were recorded".
+   */
+  timings: JudgeTimingsSchema.nullable().optional(),
 });
 export type JudgeResult = z.infer<typeof JudgeResultSchema>;
 

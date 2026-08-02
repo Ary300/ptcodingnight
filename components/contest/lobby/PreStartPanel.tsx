@@ -46,7 +46,7 @@ function Panel({ label, children }: { label: string; children: React.ReactNode }
   return (
     <section
       aria-label={label}
-      className="flex items-stretch overflow-hidden rounded border border-ink/15 bg-paper"
+      className="flex items-stretch overflow-hidden rounded-panel border border-rule-edge bg-paper"
     >
       <Rail state="brand" />
       <div className="min-w-0 flex-1 px-4 py-3">{children}</div>
@@ -127,9 +127,9 @@ export function PreStartPanel({ phase }: PreStartPanelProps) {
           // course of the evening, not a fault, and an alert on arrival interrupts a screen reader
           // to say so.
           <p role="status" className="mt-3" style={{ fontSize: "var(--text-sm)" }}>
-            The start time has passed. An organizer opens the contest from their console, so there
-            is a moment between the two. This page is checking every few seconds and will open
-            itself: you do not need to reload.
+            The start time has passed. An organizer opens the contest by hand, so it can take a
+            moment. This page checks every few seconds and will open itself. You do not need to
+            reload.
           </p>
         ) : (
           <p className="mt-3" style={{ fontSize: "var(--text-sm)" }}>
@@ -146,7 +146,7 @@ export function PreStartPanel({ phase }: PreStartPanelProps) {
           list below the fold on a 360px phone. The clock and "which team am I on" answer the same
           question — what is my situation right now — so they are one object with a rule through it.
         */}
-        <dl className="mt-3 flex flex-wrap gap-x-10 gap-y-3 border-t border-ink/15 pt-3">
+        <dl className="mt-3 flex flex-wrap gap-x-10 gap-y-3 border-t border-rule-edge pt-3">
           <Fact
             label="Team"
             value={phase.teamName ?? "Not on a team yet"}
@@ -166,7 +166,7 @@ export function PreStartPanel({ phase }: PreStartPanelProps) {
             note={
               phase.setLabel === null
                 ? "Assigned with your team, by an organizer."
-                : "Assigned, never chosen. Fixed for the round."
+                : "Assigned by an organizer. Fixed for the round."
             }
           />
           {/*
@@ -201,8 +201,8 @@ export function PreStartPanel({ phase }: PreStartPanelProps) {
             score.
           </li>
           <li>
-            Running the samples becomes free and unlimited. A sample run is never judged, never
-            scored, and never appears in your submission history.
+            Running the samples becomes free and unlimited. Sample runs are never scored and never
+            appear in your submission history.
           </li>
           <li>
             Group problems are open to everybody. The rest come from your set, which is the one
@@ -235,8 +235,8 @@ export function PreStartPanel({ phase }: PreStartPanelProps) {
           inventing a rule. Nothing here required a gate change.
         */}
         <p className="mt-3 text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
-          You cannot run code yet, on purpose. Running samples needs the statement and the sample
-          input, and those open with everything else, at the start.
+          You cannot run code yet. The statement and sample input it needs open with everything
+          else at the start.
         </p>
       </Panel>
     </div>

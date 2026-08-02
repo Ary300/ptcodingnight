@@ -27,6 +27,7 @@ import { readCompileError, writeJudgeLog } from "@/lib/contest/judge-log";
 import {
   enqueueJudgeJob,
   jobOutcome,
+  queuePositionOf,
   runJobAndWait,
 } from "@/lib/contest/queue";
 import { runSamplesLimiter, submitLimiter } from "@/lib/contest/rate-limit";
@@ -268,7 +269,12 @@ export async function createSubmission(
     );
   }
 
-  return toSubmissionView(submission, [], null);
+  // The response a student stares at first. Telling them where the queue put them costs one
+  // Redis round trip and is best-effort: `queuePositionOf` never throws, and `null` simply
+  // omits the field, so a Redis hiccup here cannot fail a submission that already enqueued.
+  const queuePosition = await queuePositionOf(submission.id);
+
+  return toSubmissionView(submission, [], null, queuePosition ?? undefined);
 }
 
 /**
@@ -378,6 +384,13 @@ async function persistResult(
         memoryKb: result.memoryKb,
         judgedAt,
         judgeLogRef,
+        // Stage attribution rides in on the result — the worker writes nothing to Postgres,
+        // so THIS is the only write. Absent (a result produced before timings existed, or a
+        // fixture-driven judge with no queue in front of it) leaves the column untouched:
+        // absence is stored as absence, never as zeros.
+        ...(result.timings === undefined || result.timings === null
+          ? {}
+          : { judgeTimings: result.timings }),
       },
     });
 
@@ -536,7 +549,13 @@ export async function getSubmissionView(
       ? await readCompileError(submission.id, submission.judgeLogRef)
       : null;
 
-  return toSubmissionView(submission, rows, compileError);
+  // Still unjudged after reconciling: say where it stands, so a slow submission looks slow
+  // rather than broken. Best-effort - `queuePositionOf` returns null rather than throwing,
+  // and null omits the field, so this line can never turn a verdict read into an error.
+  const queuePosition =
+    submission.verdict === null ? await queuePositionOf(submission.id) : null;
+
+  return toSubmissionView(submission, rows, compileError, queuePosition ?? undefined);
 }
 
 /** Submissions belonging to one participant, newest first — the "my submissions" feed. */

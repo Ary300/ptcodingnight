@@ -1,7 +1,12 @@
 import { prisma } from "@/lib/db";
 
-import type { AdminConsoleView, AdminSubmissionRow, JudgeHealthView } from "@/lib/schemas/api";
-import type { Language, Verdict } from "@/lib/schemas/judge";
+import type {
+  AdminConsoleView,
+  AdminSubmissionRow,
+  AdminSubmissionTimings,
+  JudgeHealthView,
+} from "@/lib/schemas/api";
+import { JudgeTimingsSchema, type Language, type Verdict } from "@/lib/schemas/judge";
 import { isPublicBoardFrozen } from "./gate";
 import { judgeQueue } from "./queue";
 import { reconcile } from "./submissions";
@@ -87,6 +92,7 @@ export async function adminConsole(contestId: string): Promise<AdminConsoleView>
         verdict: true,
         score: true,
         runtimeMs: true,
+        judgeTimings: true,
         participant: {
           select: { id: true, displayName: true, division: { select: { name: true } } },
         },
@@ -123,6 +129,42 @@ export async function adminConsole(contestId: string): Promise<AdminConsoleView>
   };
 }
 
+/**
+ * Derive the console's stage DURATIONS from the stored epoch marks.
+ *
+ * Parsed, not cast: `judgeTimings` is a Json column, and a row written by a build with a
+ * different shape must degrade to "no timings" rather than crash the console poll. Every null
+ * mark propagates to a null bucket — old submissions have no timings, a CE has no run stage,
+ * and absence is presented as absence, never as a zero that reads like a measurement.
+ *
+ * Clamped at zero because the queue marks and the container marks come from different clocks
+ * (BullMQ's `Date.now()` on the web process vs the worker's epoch-anchored monotonic clock),
+ * and a small skew between them must not render as a negative duration.
+ */
+export function deriveTimingsRow(raw: unknown): AdminSubmissionTimings | null {
+  const parsed = JudgeTimingsSchema.safeParse(raw);
+  if (!parsed.success) return null;
+  const t = parsed.data;
+
+  const clamp = (ms: number): number => Math.max(0, Math.round(ms));
+  const runStartMs = t.compileFinishedAtMs ?? t.containerStartedAtMs;
+
+  return {
+    queueMs: clamp(t.dequeuedAtMs - t.enqueuedAtMs),
+    createMs:
+      t.containerStartedAtMs === null ? null : clamp(t.containerStartedAtMs - t.dequeuedAtMs),
+    compileMs:
+      t.compileFinishedAtMs === null || t.containerStartedAtMs === null
+        ? null
+        : clamp(t.compileFinishedAtMs - t.containerStartedAtMs),
+    runMs:
+      t.lastTestFinishedAtMs === null || runStartMs === null
+        ? null
+        : clamp(t.lastTestFinishedAtMs - runStartMs),
+    attempt: t.attempt,
+  };
+}
+
 function toRow(row: {
   id: string;
   language: Language;
@@ -130,6 +172,7 @@ function toRow(row: {
   verdict: Verdict | null;
   score: number;
   runtimeMs: number | null;
+  judgeTimings: unknown;
   participant: { id: string; displayName: string; division: { name: string } | null };
   contestProblem: { slotLabel: string; problem: { title: string } };
 }): AdminSubmissionRow {
@@ -147,6 +190,7 @@ function toRow(row: {
     verdict: row.verdict,
     score: row.score,
     runtimeMs: row.runtimeMs,
+    timings: deriveTimingsRow(row.judgeTimings),
   };
 }
 
@@ -167,7 +211,13 @@ export async function judgeHealth(): Promise<JudgeHealthView> {
     const [counts, workers, waiting] = await Promise.all([
       queue.getJobCounts("waiting", "active", "failed", "delayed"),
       queue.getWorkers(),
-      queue.getJobs(["waiting"], 0, 0),
+      // `asc: true`, and it is load-bearing. BullMQ's default order for the wait list is
+      // NEWEST first (verified empirically on bullmq 5.x: enqueue first/second/third, read
+      // back ["third", "second", "first"]), so without the flag this measured the age of the
+      // newest waiting job - a number that sits near zero exactly when submissions are
+      // pouring in and nobody is judging them, which is the one condition the worker-down
+      // alarm exists to catch.
+      queue.getJobs(["waiting"], 0, 0, true),
     ]);
 
     const oldest = waiting[0]?.timestamp;

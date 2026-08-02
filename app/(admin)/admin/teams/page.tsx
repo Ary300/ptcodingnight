@@ -26,8 +26,10 @@ export default async function AdminTeamsPage({
       <header>
         <h1 style={{ fontFamily: "var(--font-display)", fontSize: "var(--text-xl)" }}>Teams</h1>
         <p className="mt-1 max-w-[70ch] opacity-75" style={{ fontSize: "var(--text-sm)" }}>
-          Team size is the divisor in every team score, so a roster change is a score change. Pick
-          the contest whose roster you are about to change.
+          {/* Team size is the divisor in every team score, which is why a roster change is
+              always a score change. */}
+          Roster changes change team scores. Pick the contest whose roster you are about to
+          change.
         </p>
       </header>
 

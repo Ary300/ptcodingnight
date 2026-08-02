@@ -321,7 +321,7 @@ export function CompetitorChrome({ children }: { children: ReactNode }) {
                       className={
                         active
                           ? "flex items-center border-b-4 border-panther px-2 py-3 font-semibold text-paper sm:px-6"
-                          : "flex items-center border-b-4 border-transparent px-2 py-3 text-paper/75 hover:border-paper/30 hover:text-paper sm:px-6"
+                          : "flex items-center border-b-4 border-transparent px-2 py-3 text-paper/75 hover:border-rule-edge-inverse hover:text-paper sm:px-6"
                       }
                       style={{ fontSize: "var(--text-sm)" }}
                     >

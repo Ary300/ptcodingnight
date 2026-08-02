@@ -22,8 +22,8 @@ export default async function ContestConsolePage({
           Live console
         </h2>
         <p className="mt-1 max-w-[70ch] text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
-          Admin truth: this view is never frozen, even while the public board is. Click a name to
-          drill into one participant.
+          This view is never frozen, even while the public board is. Click a name to drill into
+          one participant.
         </p>
       </header>
 

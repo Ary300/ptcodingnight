@@ -64,22 +64,22 @@ const VARIANT: Record<ButtonVariant, string> = {
    * button dissolving into a tinted toolbar or a coloured card. `--panther-deep` is already this
    * button's hover fill, so hover reads as the rim closing over the face.
    */
-  primary: "rounded border border-panther-deep bg-panther font-semibold text-paper hover:bg-panther-deep",
+  primary: "rounded-chip border border-panther-deep bg-panther font-semibold text-paper hover:bg-panther-deep",
   /*
    * `bg-paper`, not transparent: HR's secondary buttons (Run Code, Preview Landing Page,
    * Add Challenge) are a white or near-white FILL with a grey border, so on a tinted row or
    * toolbar the button reads as its own surface rather than a floating outline.
    */
   secondary:
-    "rounded border border-rule-edge bg-paper font-semibold text-ink hover:bg-ink/5",
-  ghost: "rounded border border-transparent bg-transparent font-medium text-ink/70 hover:bg-ink/5 hover:text-ink",
+    "rounded-chip border border-rule-edge bg-paper font-semibold text-ink hover:bg-ink/5",
+  ghost: "rounded-chip border border-transparent bg-transparent font-medium text-ink/70 hover:bg-ink/5 hover:text-ink",
   /*
    * Destructive and audit-logged actions (verdict override, rejudge). The one use of the accent
    * outside identity and the primary action, and it is stated as an exception in DESIGN.md §2
    * rather than left to be inferred: a red button for a destructive act is a convention old
    * enough that removing it would cost more than it saved.
    */
-  danger: "rounded border border-panther font-semibold text-panther hover:bg-panther hover:text-paper",
+  danger: "rounded-chip border border-panther font-semibold text-panther hover:bg-panther hover:text-paper",
   /*
    * A row action. Text, not a box. `text-ink/60` is the documented AA floor on paper (5.15:1),
    * and it darkens to full ink on hover rather than changing colour, so the affordance is weight

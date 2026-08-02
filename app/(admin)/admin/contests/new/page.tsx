@@ -23,8 +23,8 @@ export default function NewContestPage() {
           New contest
         </h1>
         <p className="max-w-[70ch] text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
-          Choose the schedule, divisions, scoring preset, and scoreboard freeze. You can add
-          questions, teams, and side activities after creating the contest.
+          Set the schedule and scoring here. Questions and teams come after the contest is
+          created.
         </p>
       </header>
 

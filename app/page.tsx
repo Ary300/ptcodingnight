@@ -63,8 +63,8 @@ function BoardPreview() {
   const widest = Math.max(...BOARD_PREVIEW.map((row) => row.sets.length));
 
   return (
-    <div className="overflow-hidden rounded-lg border border-ink/15 bg-paper shadow-[0_1px_2px_color-mix(in_srgb,var(--color-ink)_6%,transparent),0_8px_24px_-12px_color-mix(in_srgb,var(--color-ink)_25%,transparent)]">
-      <div className="flex items-center justify-between border-b border-ink/12 bg-ink px-4 py-2.5 text-paper">
+    <div className="overflow-hidden rounded-panel border border-rule-edge bg-paper shadow-[0_1px_2px_color-mix(in_srgb,var(--color-ink)_6%,transparent),0_8px_24px_-12px_color-mix(in_srgb,var(--color-ink)_25%,transparent)]">
+      <div className="flex items-center justify-between border-b border-rule-hair bg-ink px-4 py-2.5 text-paper">
         <span className="font-display font-bold" style={{ fontSize: "var(--text-sm)" }}>
           Team standings
         </span>
@@ -92,7 +92,7 @@ function BoardPreview() {
           aria-describedby="board-preview-caption"
         >
           <thead>
-            <tr className="border-b border-ink/12 text-ink/60">
+            <tr className="border-b border-rule-edge text-ink/60">
               <th scope="col" className="px-3 py-2 text-left font-semibold">
                 #
               </th>
@@ -123,7 +123,7 @@ function BoardPreview() {
           </thead>
           <tbody>
             {BOARD_PREVIEW.map((row) => (
-              <tr key={row.team} className="border-b border-ink/8 last:border-b-0">
+              <tr key={row.team} className="border-b border-rule-hair last:border-b-0">
                 <td className="numeric px-3 py-2.5 text-ink/70">{row.rank}</td>
                 <td className="px-3 py-2.5 font-semibold whitespace-nowrap">{row.team}</td>
                 <td className="numeric px-3 py-2.5 text-right font-bold">{row.score}</td>
@@ -177,7 +177,7 @@ export default async function Home() {
   return (
     <div className="flex min-h-full flex-col bg-ink/[0.035]">
       {/* --- slim bar, the shape HackerRank uses above its hero ------------- */}
-      <header className="border-b border-ink/10 bg-paper">
+      <header className="border-b border-rule-hair bg-paper">
         {/*
           `flex-wrap` on the bar plus `whitespace-nowrap` on every label: at 360 the header used
           to collapse into four columns of stacked words ("Coding / Night", "Log / in", a
@@ -214,7 +214,7 @@ export default async function Home() {
           <nav aria-label="Site" className="ml-auto flex items-center gap-1.5 sm:gap-3">
             <Link
               href="/projector"
-              className="rounded px-2 py-1.5 whitespace-nowrap text-ink/75 hover:text-ink sm:px-3"
+              className="rounded-chip px-2 py-1.5 whitespace-nowrap text-ink/75 hover:text-ink sm:px-3"
               style={{ fontSize: "var(--text-xs)" }}
             >
               Live standings
@@ -222,7 +222,7 @@ export default async function Home() {
             {signedIn ? (
               <Link
                 href={destination}
-                className="rounded bg-panther px-3 py-1.5 font-semibold text-paper hover:bg-panther-deep"
+                className="rounded-chip bg-panther px-3 py-1.5 font-semibold text-paper hover:bg-panther-deep"
                 style={{ fontSize: "var(--text-xs)" }}
               >
                 {enterLabel}
@@ -231,14 +231,14 @@ export default async function Home() {
               <>
                 <Link
                   href="/sign-in"
-                  className="rounded px-2 py-1.5 whitespace-nowrap text-ink/75 hover:text-ink sm:px-3"
+                  className="rounded-chip px-2 py-1.5 whitespace-nowrap text-ink/75 hover:text-ink sm:px-3"
                   style={{ fontSize: "var(--text-xs)" }}
                 >
                   Log in
                 </Link>
                 <Link
                   href="/sign-in"
-                  className="rounded bg-panther px-3 py-1.5 font-semibold whitespace-nowrap text-paper hover:bg-panther-deep"
+                  className="rounded-chip bg-panther px-3 py-1.5 font-semibold whitespace-nowrap text-paper hover:bg-panther-deep"
                   style={{ fontSize: "var(--text-xs)" }}
                 >
                   {/* The shorter label below `sm` keeps the CTA on one line in a 360 header. */}
@@ -252,7 +252,7 @@ export default async function Home() {
       </header>
 
       {/* --- hero ----------------------------------------------------------- */}
-      <section className="relative overflow-hidden border-b border-ink/10 bg-paper">
+      <section className="relative overflow-hidden border-b border-rule-hair bg-paper">
         {/*
           The mark, oversized and bled off the right edge at low opacity. One image used as a field
           rather than as a logo — HackerRank runs a photograph here and we have exactly one brand
@@ -316,14 +316,14 @@ export default async function Home() {
             <div className="mt-8 flex flex-wrap items-center gap-3">
               <Link
                 href={signedIn ? destination : "/sign-in"}
-                className="rounded bg-panther px-5 py-2.5 font-semibold text-paper hover:bg-panther-deep"
+                className="rounded-chip bg-panther px-5 py-2.5 font-semibold text-paper hover:bg-panther-deep"
                 style={{ fontSize: "var(--text-sm)" }}
               >
                 {signedIn ? enterLabel : "Sign in to compete"}
               </Link>
               <Link
                 href="/projector"
-                className="rounded border border-ink/25 px-5 py-2.5 font-semibold hover:border-ink/50 hover:bg-ink/[0.03]"
+                className="rounded-chip border border-rule-edge px-5 py-2.5 font-semibold hover:border-rule-firm hover:bg-ink/[0.03]"
                 style={{ fontSize: "var(--text-sm)" }}
               >
                 Watch the board
@@ -354,9 +354,13 @@ export default async function Home() {
         */}
         <ol className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {HOW.map((step) => (
-            <li key={step.n} className="rounded border border-ink/12 bg-paper p-4">
+            <li key={step.n} className="rounded-panel border border-rule-hair bg-paper p-4">
+              {/*
+                Ink, not panther: DESIGN.md §2 names these step numbers as a place the accent was
+                specifically dropped - the sequence differentiates by weight and size alone.
+              */}
               <span
-                className="numeric font-display font-bold text-panther"
+                className="numeric font-display font-bold text-ink/60"
                 style={{ fontSize: "var(--text-lg)" }}
               >
                 {step.n}
@@ -402,7 +406,7 @@ export default async function Home() {
           </div>
           <Link
             href={signedIn ? destination : "/sign-in"}
-            className="rounded bg-panther px-5 py-2.5 font-semibold text-paper hover:bg-panther-deep"
+            className="rounded-chip bg-panther px-5 py-2.5 font-semibold text-paper hover:bg-panther-deep"
             style={{ fontSize: "var(--text-sm)" }}
           >
             {signedIn ? enterLabel : "Sign in to compete"}
@@ -411,7 +415,7 @@ export default async function Home() {
       </section>
 
       {/* --- footer ---------------------------------------------------------- */}
-      <footer className="mt-auto border-t border-ink/10">
+      <footer className="mt-auto border-t border-rule-hair">
         <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center gap-x-6 gap-y-2 px-4 py-6">
           <span className="text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
             Park Tudor Coding Night
@@ -419,14 +423,14 @@ export default async function Home() {
           {/* `py-1.5` lifts both targets from 19px to 31px, matching the header links (2.5.8). */}
           <Link
             href="/projector"
-            className="py-1.5 text-ink/70 hover:text-panther"
+            className="py-1.5 text-ink/70 hover:text-ink"
             style={{ fontSize: "var(--text-xs)" }}
           >
             Live standings
           </Link>
           <Link
             href="/admin"
-            className="ml-auto py-1.5 text-ink/70 hover:text-panther"
+            className="ml-auto py-1.5 text-ink/70 hover:text-ink"
             style={{ fontSize: "var(--text-xs)" }}
           >
             Organizers

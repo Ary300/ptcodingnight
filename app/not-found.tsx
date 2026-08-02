@@ -24,27 +24,27 @@ export default function NotFound() {
         </h1>
         <p className="mt-2 max-w-[46ch] text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
           The link may be stale. If you bookmarked a problem, open the contest and find it in the
-          list, because problem links can change between contests.
+          list. Problem links can change between contests.
         </p>
       </div>
       <nav aria-label="Ways out" className="flex flex-wrap items-center justify-center gap-3">
         <Link
           href="/contest"
-          className="rounded bg-panther px-5 py-2.5 font-semibold text-paper hover:bg-panther-deep"
+          className="rounded-chip bg-panther px-5 py-2.5 font-semibold text-paper hover:bg-panther-deep"
           style={{ fontSize: "var(--text-sm)" }}
         >
           Open the contest
         </Link>
         <Link
           href="/"
-          className="rounded border border-ink/25 px-5 py-2.5 font-semibold hover:border-ink/50 hover:bg-ink/[0.03]"
+          className="rounded-chip border border-rule-edge px-5 py-2.5 font-semibold hover:border-rule-firm hover:bg-ink/[0.03]"
           style={{ fontSize: "var(--text-sm)" }}
         >
           Home page
         </Link>
         <Link
           href="/projector"
-          className="rounded px-3 py-2.5 text-ink/75 hover:text-ink"
+          className="rounded-chip px-3 py-2.5 text-ink/75 hover:text-ink"
           style={{ fontSize: "var(--text-sm)" }}
         >
           Live standings

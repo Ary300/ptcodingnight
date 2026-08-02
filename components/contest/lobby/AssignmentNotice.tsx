@@ -76,7 +76,7 @@ function Panel({ children }: { children: React.ReactNode }) {
   return (
     <section
       aria-label="Your assignment"
-      className="flex items-stretch overflow-hidden rounded border border-ink/15 bg-paper"
+      className="flex items-stretch overflow-hidden rounded-panel border border-rule-edge bg-paper"
     >
       <Rail state="brand" />
       <div className="flex-1 px-4 py-3">{children}</div>
@@ -156,10 +156,10 @@ export function AssignmentNotice({
         openable, and accepted submissions. Say what is actually true of the list on screen.
       */}
       <p className="mt-1 text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
-        Sets are assigned by an organizer, never chosen, so this is fixed for the round.{" "}
+        An organizer assigned it, and it is fixed for the round.{" "}
         {groupOnly
           ? "Your set and the rows marked group are what you see below."
-          : "Every problem listed below is one you can open and submit to, including the other sets. They are all yours to score on."}
+          : "You can open and submit to every problem below, including the other sets. They are all yours to score on."}
       </p>
     </Panel>
   );

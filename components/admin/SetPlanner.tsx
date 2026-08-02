@@ -535,7 +535,7 @@ export function SetPlanner({
     usually that the roster has changed underneath the plan.
   */
   const why =
-    "Every member of a team holds a different set, so one set per member of your largest team is what stops anybody repeating one.";
+    "Teammates each hold a different set, so you need at least one set per member of your largest team.";
   const teamName = largestTeam?.name ?? "";
   const setCountPurpose =
     setSelection === "ONE_SET_PER_TEAM"
@@ -655,10 +655,12 @@ export function SetPlanner({
           title="This contest has started, so its sets are fixed"
           live={false}
         >
+          {/* The mechanism behind the lock, kept off the screen: rebuilding mid-contest would
+              leave existing submissions pointing at slots that no longer exist, so the server
+              refuses it and this plate only has to say what the organizer can still do. */}
           Rebuilding the split now would move students off questions they have
-          already started working on, and their submissions would point at slots
-          that no longer exist. The plan below can be read and previewed, and
-          Build stays refused until the contest ends.
+          already started. You can still read and preview the plan below, but
+          Build stays locked until the contest ends.
         </AlertPlate>
       )}
 
@@ -826,13 +828,12 @@ export function SetPlanner({
             className="max-w-[70ch] text-ink/70"
             style={{ fontSize: "var(--text-sm)" }}
           >
-            Group questions are not part of any set: the whole team works them
-            together and every team gets the same ones, so they are left alone
-            by everything on this screen
+            Group questions are not part of any set. Every team works the same
+            ones together, so nothing on this screen touches them
             {stored === null
               ? ""
               : ` (there ${stored.groupProblemCount === 1 ? "is" : "are"} ${String(stored.groupProblemCount)} of them)`}
-            . A question is designated Group or Individual on the{" "}
+            . You mark a question Group or Individual on the{" "}
             <Link
               href={`/admin/contests/${contestId}/problems`}
               className="font-semibold underline underline-offset-2"
@@ -919,7 +920,7 @@ export function SetPlanner({
                   ? "The contest has started, so the split is fixed until it ends."
                   : buildable
                     ? storedSets.length > 0
-                      ? "You will be asked to confirm, because this replaces the split that is there now."
+                      ? "This replaces the split that is there now. You will be asked to confirm."
                       : "Writes the split above and assigns every question its points."
                     : "There is nothing to build yet."}
               </p>

@@ -83,7 +83,7 @@ function VerdictChip({ verdict }: { verdict: Verdict }) {
   const presentation = VERDICT_DISPLAY[verdict];
   return (
     <span
-      className="numeric rounded px-1.5 py-0.5 font-semibold"
+      className="numeric rounded-chip px-1.5 py-0.5 font-semibold"
       style={{
         fontSize: "var(--text-xs)",
         background: "var(--color-ink)",
@@ -153,7 +153,7 @@ function SubmissionDetail({ submission }: { submission: SubmissionView }) {
           tabIndex={0}
           role="region"
           aria-label={`Source for the ${formatTime(submission.submittedAt)} submission`}
-          className="mt-2 max-h-80 overflow-auto rounded bg-ink p-3 font-mono text-paper"
+          className="mt-2 max-h-80 overflow-auto rounded-flat bg-ink p-3 font-mono text-paper"
           style={{ fontSize: "var(--text-xs)", lineHeight: "1.6" }}
         >
           {source}
@@ -165,7 +165,7 @@ function SubmissionDetail({ submission }: { submission: SubmissionView }) {
           tabIndex={0}
           role="region"
           aria-label="Compiler output"
-          className="mt-2 max-h-48 overflow-auto rounded p-3 font-mono"
+          className="mt-2 max-h-48 overflow-auto rounded-flat p-3 font-mono"
           style={{
             fontSize: "var(--text-xs)",
             background: "var(--color-ink)",
@@ -405,7 +405,7 @@ export function SubmissionHistory() {
     */
     if (participant.status === "error") {
       return (
-        <div className="max-w-md rounded border border-panther/35 bg-paper p-4">
+        <div className="max-w-md rounded-panel border border-panther/35 bg-paper p-4">
           <h1 className="font-display font-bold" style={{ fontSize: "var(--text-md)" }}>
             We could not check your sign-in
           </h1>
@@ -441,7 +441,7 @@ export function SubmissionHistory() {
       */
       <div>
         <p
-          className="rounded border border-dashed border-rule-edge bg-paper px-4 py-10 text-center text-ink/70"
+          className="rounded-panel border border-dashed border-rule-edge bg-paper px-4 py-10 text-center text-ink/70"
           style={{ fontSize: "var(--text-sm)" }}
         >
           You have not made any submissions yet. Running samples is free and unjudged, so sample
@@ -452,7 +452,7 @@ export function SubmissionHistory() {
               itself only renders <button>, and this is a navigation, not an action. */}
           <Link
             href="/contest"
-            className="inline-flex items-center justify-center rounded border border-rule-edge bg-paper px-5 py-2 leading-6 font-semibold text-ink transition-colors hover:bg-ink/5"
+            className="inline-flex items-center justify-center rounded-chip border border-rule-edge bg-paper px-5 py-2 leading-6 font-semibold text-ink transition-colors hover:bg-ink/5"
             style={{ fontSize: "var(--text-sm)" }}
           >
             Browse the problems
@@ -489,7 +489,7 @@ export function SubmissionHistory() {
       */}
       <ul
         aria-label="Submissions"
-        className="rounded border border-rule-edge bg-paper sm:hidden"
+        className="rounded-panel border border-rule-edge bg-paper sm:hidden"
       >
         {submissions.data.map((submission) => (
           <Card
@@ -517,7 +517,7 @@ export function SubmissionHistory() {
         tabIndex={0}
         role="region"
         aria-label="Submissions table"
-        className="hidden overflow-x-auto rounded border border-rule-edge bg-paper sm:block"
+        className="hidden overflow-x-auto rounded-panel border border-rule-edge bg-paper sm:block"
       >
         <table aria-label="Submissions" className="w-full min-w-[560px] border-collapse">
           {/*

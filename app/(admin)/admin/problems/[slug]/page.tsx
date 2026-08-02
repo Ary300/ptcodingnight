@@ -188,7 +188,7 @@ export default async function ProblemPage({
         ) : (
           <Link
             href={`/admin/problems/${problem.slug}/edit`}
-            className="shrink-0 rounded bg-panther px-4 py-2 font-semibold text-paper hover:bg-panther-deep"
+            className="shrink-0 rounded-chip bg-panther px-4 py-2 font-semibold text-paper hover:bg-panther-deep"
             style={{ fontSize: "var(--text-sm)" }}
           >
             Edit this question
@@ -321,7 +321,7 @@ export default async function ProblemPage({
             style={{ fontSize: "var(--text-sm)" }}
           >
             This question stores a signature that does not parse, so no starter code can be
-            generated from it and a student would get an empty editor.
+            generated. A student would get an empty editor.
           </p>
         ) : starters.length === 0 ? (
           <p className="text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
@@ -336,7 +336,7 @@ export default async function ProblemPage({
                 // The first open and the rest closed. Ten fully expanded files is a page nobody
                 // scrolls; one open file is a page somebody reads.
                 open={index === 0}
-                className="rounded border border-rule-edge"
+                className="rounded-panel border border-rule-edge"
               >
                 <summary
                   className="cursor-pointer px-4 py-2 font-semibold"
@@ -457,7 +457,7 @@ function Fact({ ok, children }: { ok: boolean; children: React.ReactNode }) {
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="flex justify-between gap-4 border-b border-ink/10 pb-2">
+    <div className="flex justify-between gap-4 border-b border-rule-hair pb-2">
       <dt className="text-ink/70">{label}</dt>
       <dd className="text-right font-semibold">{children}</dd>
     </div>

@@ -258,7 +258,7 @@ export function SignInForm({
                   `py-2` rather than `py-2.5` so the links stand 42px like the inputs below: one
                   control height per column, not three.
                 */
-                className="flex items-center justify-center gap-2.5 rounded-chip border border-rule-firm px-3 py-2 font-semibold hover:border-ink/45 hover:bg-ink/[0.03]"
+                className="flex items-center justify-center gap-2.5 rounded-chip border border-rule-firm px-3 py-2 font-semibold hover:border-ink hover:bg-ink/[0.03]"
                 style={{ fontSize: "var(--text-sm)" }}
               >
                 <GoogleMark />
@@ -269,7 +269,7 @@ export function SignInForm({
               // eslint-disable-next-line @next/next/no-html-link-for-pages -- OAuth start: must be a document navigation
               <a
                 href="/api/auth/github"
-                className="flex items-center justify-center gap-2.5 rounded-chip border border-rule-firm px-3 py-2 font-semibold hover:border-ink/45 hover:bg-ink/[0.03]"
+                className="flex items-center justify-center gap-2.5 rounded-chip border border-rule-firm px-3 py-2 font-semibold hover:border-ink hover:bg-ink/[0.03]"
                 style={{ fontSize: "var(--text-sm)" }}
               >
                 <GitHubMark />
@@ -375,7 +375,7 @@ export function SignInForm({
         `open` is forced while there is a passcode error, so a refusal cannot be reported into a
         collapsed section — which is what would happen to anyone who submitted and then closed it.
       */}
-      <details className="mt-6 border-t border-ink/12 pt-4" open={passcodeError !== null}>
+      <details className="mt-6 border-t border-rule-hair pt-4" open={passcodeError !== null}>
         <summary
           className="cursor-pointer text-ink/70 hover:text-ink"
           style={{ fontSize: "var(--text-xs)" }}

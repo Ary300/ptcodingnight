@@ -500,7 +500,7 @@ export function CodeEditorSurface({
             onClick={() => setConfirmingReset(true)}
             aria-label="Reset the editor to the starter template"
             title="Reset to the starter template"
-            className="inline-flex h-7 w-7 items-center justify-center rounded text-ink/70 hover:bg-ink/10 hover:text-ink disabled:cursor-not-allowed disabled:text-ink/30 disabled:hover:bg-transparent"
+            className="inline-flex h-7 w-7 items-center justify-center rounded-chip text-ink/70 hover:bg-ink/10 hover:text-ink disabled:cursor-not-allowed disabled:text-ink/30 disabled:hover:bg-transparent"
           >
             <svg
               width="14"
@@ -526,7 +526,7 @@ export function CodeEditorSurface({
             onClick={toggleFullscreen}
             aria-label={isFullscreen ? "Exit full screen" : "Enter full screen"}
             title={isFullscreen ? "Exit full screen" : "Full screen"}
-            className="inline-flex h-7 w-7 items-center justify-center rounded text-ink/70 hover:bg-ink/10 hover:text-ink disabled:cursor-not-allowed disabled:text-ink/30 disabled:hover:bg-transparent"
+            className="inline-flex h-7 w-7 items-center justify-center rounded-chip text-ink/70 hover:bg-ink/10 hover:text-ink disabled:cursor-not-allowed disabled:text-ink/30 disabled:hover:bg-transparent"
           >
             {isFullscreen ? (
               <svg
@@ -580,7 +580,7 @@ export function CodeEditorSurface({
         <div
           ref={gutterRef}
           aria-hidden="true"
-          className="numeric shrink-0 overflow-hidden border-r border-paper/10 bg-paper/5 py-3 pr-2 pl-3 text-right select-none"
+          className="numeric shrink-0 overflow-hidden border-r border-rule-hair-inverse bg-paper/5 py-3 pr-2 pl-3 text-right select-none"
           // `height` pins the gutter to the textarea's measured height so its per-line divs can
           // never stretch the band past the box the student actually types in. Null only before
           // the first layout-effect measurement, which runs before paint.
@@ -656,7 +656,7 @@ export function CodeEditorSurface({
         every keystroke, and a live region that announces the column number as you type is
         actively hostile to a screen-reader user.
       */}
-      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-t border-ink/15 px-3 py-2">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-t border-rule-edge px-3 py-2">
         <p id={hintId} className="text-ink/70" style={{ fontSize: "var(--text-xs)" }}>
           Tab indents. Press <kbd className="font-mono">Esc</kbd> then{" "}
           <kbd className="font-mono">Tab</kbd> to move on. <kbd className="font-mono">Ctrl</kbd>

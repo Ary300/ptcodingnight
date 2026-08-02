@@ -55,7 +55,7 @@ export default async function ProblemBankPage({
         </div>
         <Link
           href="/admin/problems/new"
-          className="shrink-0 rounded bg-panther px-4 py-2 font-semibold text-paper hover:bg-panther-deep"
+          className="shrink-0 rounded-chip bg-panther px-4 py-2 font-semibold text-paper hover:bg-panther-deep"
           style={{ fontSize: "var(--text-sm)" }}
         >
           New question
@@ -121,7 +121,10 @@ export default async function ProblemBankPage({
                 >
                   {problem.title}
                 </Link>
-                <span className="text-panther" style={{ fontSize: "var(--text-xs)" }}>
+                {/* Muted, not accent: DESIGN §2 gives --panther three jobs (identity, the one
+                    primary action, destructive) and a nine-row metadata label is none of them —
+                    the section heading already carries the state. */}
+                <span className="text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
                   nobody scored
                 </span>
               </li>
@@ -135,8 +138,9 @@ export default async function ProblemBankPage({
           Put these in a contest
         </h2>
         <p className="max-w-[70ch] text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
-          Slot, points and set belong to a contest rather than to a problem, so the line-up is built
-          inside the contest. Open one:
+          {/* Slot, points and set belong to a contest rather than to a problem, which is why the
+              line-up cannot be built from the bank. */}
+          The line-up is built inside the contest. Open one:
         </p>
         <ContestPicker tab="/problems" purpose="setting a line-up" />
       </section>
@@ -146,7 +150,7 @@ export default async function ProblemBankPage({
 
 function Figure({ value, label }: { value: number; label: string }) {
   return (
-    <div className="rounded border border-rule-edge bg-paper p-5">
+    <div className="rounded-panel border border-rule-edge bg-paper p-5">
       <div className="numeric leading-none font-semibold" style={{ fontSize: "var(--text-2xl)" }}>
         {value}
       </div>

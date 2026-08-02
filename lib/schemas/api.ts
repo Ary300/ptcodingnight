@@ -337,6 +337,25 @@ export type JudgeHealthView = z.infer<typeof JudgeHealthViewSchema>;
  * lookup. That exact mistake has four homes in this codebase and has been found three separate
  * times (CLAUDE.md). Importing the enum is the only version that cannot drift.
  */
+/**
+ * Stage attribution for one judged submission, as the console renders it: derived DURATIONS,
+ * not the raw epoch marks the worker recorded (`JudgeTimingsSchema` in lib/schemas/judge.ts).
+ * The server does the subtraction once so every screen agrees on what "queue" means.
+ *
+ * `compileMs` is null for runs with no separate compile container (interpreted and parse-only
+ * languages); `createMs`/`runMs` are null when the run never reached that stage. `attempt` is
+ * the BullMQ attempt number — 2 means the one IE retry ran, which is the first thing to rule
+ * out when a submission's latency looks wrong.
+ */
+export const AdminSubmissionTimingsSchema = z.object({
+  queueMs: z.number().int().nonnegative(),
+  createMs: z.number().int().nonnegative().nullable(),
+  compileMs: z.number().int().nonnegative().nullable(),
+  runMs: z.number().int().nonnegative().nullable(),
+  attempt: z.number().int().min(1),
+});
+export type AdminSubmissionTimings = z.infer<typeof AdminSubmissionTimingsSchema>;
+
 export const AdminSubmissionRowSchema = z.object({
   submissionId: z.string(),
   participantId: z.string(),
@@ -350,6 +369,8 @@ export const AdminSubmissionRowSchema = z.object({
   verdict: VerdictSchema.nullable(),
   score: z.number().int(),
   runtimeMs: z.number().int().nonnegative().nullable(),
+  /** null while unjudged, and for every submission judged before timings were recorded. */
+  timings: AdminSubmissionTimingsSchema.nullable(),
 });
 export type AdminSubmissionRow = z.infer<typeof AdminSubmissionRowSchema>;
 
@@ -567,9 +588,9 @@ export const AdminReasonSchema = z.object({
    * received undefined" — which tells an organizer nothing about what the form wants.
    */
   reason: z
-    .string({ error: "Give a reason — it goes in the audit log" })
+    .string({ error: "Give a reason. It goes in the audit log" })
     .trim()
-    .min(3, "Give a reason — it goes in the audit log")
+    .min(3, "Give a reason. It goes in the audit log")
     .max(300),
 });
 
@@ -726,6 +747,20 @@ export const PublicTestResultSchema = z.object({
 });
 export type PublicTestResult = z.infer<typeof PublicTestResultSchema>;
 
+/**
+ * Where an unjudged submission stands in the judge queue.
+ *
+ * "active" means a worker holds it right now; "waiting" means `ahead` jobs will be taken first
+ * (`ahead` is 0 when it is next, and always 0 for "active"). The point of the field is that a
+ * slow submission must look SLOW, never broken: a student staring at a spinner with no idea
+ * whether the judge has forgotten them is the 12-minute-verdict failure mode, worn client-side.
+ */
+export const QueuePositionSchema = z.object({
+  state: z.enum(["waiting", "active"]),
+  ahead: z.number().int().nonnegative(),
+});
+export type QueuePosition = z.infer<typeof QueuePositionSchema>;
+
 export const SubmissionViewSchema = z.object({
   submissionId: z.string(),
   contestProblemId: z.string(),
@@ -738,6 +773,13 @@ export const SubmissionViewSchema = z.object({
   testResults: z.array(PublicTestResultSchema),
   /** Compiler stderr, verbatim, only when the verdict is CE. */
   compileError: z.string().nullable(),
+  /**
+   * OPTIONAL on purpose, and absence means "no claim", not "position zero". The position is
+   * read from Redis on a best-effort basis; if Redis cannot answer, the field is omitted and
+   * the verdict panel simply says nothing new. A position read must never break a verdict
+   * read, so nothing downstream may require this field. Never present once `verdict` is set.
+   */
+  queuePosition: QueuePositionSchema.optional(),
 });
 export type SubmissionView = z.infer<typeof SubmissionViewSchema>;
 
@@ -933,7 +975,7 @@ export const OverrideVerdictRequestSchema = z.object({
   reason: z
     .string()
     .trim()
-    .min(1, "A reason is required for an override")
+    .min(1, "Give a reason for the override")
     .max(500),
 });
 

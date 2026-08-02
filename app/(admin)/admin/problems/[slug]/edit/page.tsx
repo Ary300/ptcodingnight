@@ -171,8 +171,8 @@ function LockedByContest({ usage }: { usage: ProblemUsage }) {
         </ul>
       </AlertPlate>
       <p style={{ fontSize: "var(--text-sm)" }}>
-        A mistake in a question that is live is fixed on the console, not here: override the
-        affected submissions, or rejudge them once the wording is settled.
+        Fix a live question from the console, not here. Override the affected submissions, or
+        rejudge them once the wording is settled.
       </p>
     </>
   );

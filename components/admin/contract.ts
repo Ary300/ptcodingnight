@@ -188,13 +188,35 @@ export function referenceRunFailures(
 export type { AdminSubmissionRow } from "@/lib/schemas/api";
 export type { JudgeHealthView as JudgeHealth } from "@/lib/schemas/api";
 
-export type JudgeHealthLevel = "ok" | "watch" | "down";
+export type JudgeHealthLevel = "ok" | "watch" | "stalled" | "down";
+
+/**
+ * Jobs queued, nothing active, and the oldest has waited this long: past it, nobody is taking
+ * work and the bar goes to its loudest state. 30 s is long enough that a worker between jobs
+ * (active drops to 0 for a moment while it takes the next one) cannot trip it, and short
+ * enough that an organizer hears about a dead worker before the first student walks over.
+ */
+export const STALLED_AFTER_MS = 30_000;
 
 /** One place decides what "the judge is unhealthy" means, so the console cannot disagree with itself. */
 export function judgeHealthLevel(health: JudgeHealthView): JudgeHealthLevel {
   // Redis unreachable outranks everything: with no queue to ask, every other number below is
   // zero, and a screen reading "0 queued, 0 failed" is the picture of a healthy contest.
   if (!health.reachable) return "down";
+  // Stalled outranks even "no workers online", because it is the OBSERVED failure, not the
+  // inferred one: submissions are queueing and none is being taken. `workersOnline` comes
+  // from Redis's client list, which can show a connection for a worker that is wedged or a
+  // stale registration for one that is gone - this exact condition (jobs waiting, zero
+  // active, no one noticing) sat for 12 minutes on the dev machine, and it is the one state
+  // where the words on the bar have to say what to check first: the worker process.
+  if (
+    health.queueDepth > 0 &&
+    health.active === 0 &&
+    health.oldestWaitingMs !== null &&
+    health.oldestWaitingMs > STALLED_AFTER_MS
+  ) {
+    return "stalled";
+  }
   if (health.workersOnline === 0) return "down";
   if (health.failed > 0) return "watch";
   if (health.oldestWaitingMs !== null && health.oldestWaitingMs > 60_000) return "watch";

@@ -59,7 +59,7 @@ export default async function ContestSetsPage({
             ? "A set is one bundle of questions. In this format every teammate works the same set, and set A is the same for every team assigned to A."
             : contest?.setSelection === "PLAYER_CHOOSES"
               ? "A set is one bundle of questions. Players choose independently, and everyone who chooses set A receives the same questions."
-              : "A set is a column on the sheet: one bundle of questions, held by one member of every team. Everybody holding set A works the same questions, and teammates receive different sets."}
+              : "A set is one bundle of questions, held by one member of every team. Everybody holding set A works the same questions, and teammates receive different sets."}
         </p>
       </header>
 

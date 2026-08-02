@@ -724,7 +724,7 @@ function DetailsStep({
     <>
       <BuilderSection
         title="Problem"
-        description="Start with the task. Put background, rules, and examples in a clear reading order."
+        description="Start with the task, then the background and examples."
       >
         <TextInput
           label="Question name"
@@ -741,7 +741,7 @@ function DetailsStep({
           value={statementMd}
           rows={12}
           placeholder={
-            "Explain the task, the rules, and what the program needs to do."
+            "Explain the task and what the program needs to do."
           }
           onChange={(event) => setStatementMd(event.target.value)}
         />
@@ -1101,7 +1101,7 @@ function TestsStep({
                 // HackerRank lets a case omit its output, and then "candidates see only their
                 // own output". Our judge compares byte for byte, so the output is required; the
                 // hint says WHY rather than leaving "required" to read as arbitrary.
-                hint="The judge compares the program's output to this text byte for byte, so every case needs one. Samples show students the full diff; hidden cases reveal pass or fail only."
+                hint="The judge compares the program's output to this text byte for byte, so every case needs one. Samples show students the full diff. Hidden cases show pass or fail only."
                 value={testCase.expectedOutput}
                 rows={6}
                 placeholder="Exact expected output"
@@ -1409,7 +1409,7 @@ function StarterPreview({ starter }: { starter: PreviewStarter }) {
           style={{ fontSize: "var(--text-sm)" }}
         >
           This question keeps its stored starter code. Open the question page
-          to see it; the builder cannot edit its advanced harness.
+          to see it. The builder cannot edit its advanced harness.
         </p>
       ) : starter.kind === "invalid" || code === null ? (
         <p

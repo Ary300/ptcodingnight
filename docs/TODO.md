@@ -16,7 +16,7 @@ and a couple are reachable but wrong on this hardware.
 |---|---|---|
 | T1 | Hints — specified and priced, deliberately unimplemented pending organizer-written content | deferred by decision |
 | T2 | Java time limits — **RESOLVED** by measuring the real host: 38,473 ms → 229 ms, budget 45,000 → 4,000 | resolved |
-| T3 | Verdict latency straddles the G8 threshold — 7.4 s to 22.8 s on the same commit | **high**, hardware |
+| T3 | Verdict latency — the dev-machine ladder was worker lifecycle (no worker; 120 s stall quanta), not hardware; the G8 p95 spread is real but host-bound; droplet still unmeasured | medium, split: process + hardware |
 | T14 | ~~G7 listbox failure~~ **fixed**; ~~screenshot findings unimplemented~~ **worked**: 46 verified items implemented across five surfaces, each with a before/after measurement, spot-checked by an independent verifier | resolved |
 | T4 | ~~A submission can fill the judge host's disk~~ **fixed** | resolved |
 | T5 | ~~Re-joining re-rolls the problem set, leaking other sets~~ **fixed**; one residual stated | low |
@@ -195,57 +195,89 @@ Two smaller findings worth keeping:
 
 ---
 
-## T3 — Verdict latency depends on how busy the host is, and G8 passes only on a quiet one
+## T3 — Verdict latency: the ladder was the worker's lifecycle, the spread is the host, and the droplet is still unmeasured
 
-**Severity: medium, downgraded from high.** The threshold was never lowered; the machine got
-quieter.
+**Severity: medium, and now split in two.** A session spent measuring this instead of re-reading
+it separated two findings that had been filed as one. The dramatic latencies on the dev machine
+were **process management**, now understood and insured against. The G8 p95 spread is **hardware**,
+still real, and still unmeasured on the machine that matters.
 
-Same code, eleven measurements, against a 10,000 ms target:
+### The dev-machine ladder is explained, and it was never hardware
 
-| Condition | p95 | |
-|---|---|---|
-| Standalone, host load 4.25 | **7,363 ms** / 7,476 ms | PASS, reproducible back to back |
-| Standalone, host load 7.74 | **8,713 ms** | PASS, 1.3 s of headroom |
-| Inside `npm run verify`, host load 6.06 | **8,449 ms** | PASS, 1.6 s of headroom |
-| Inside `npm run verify` | 9,261 ms | PASS, 0.7 s of headroom |
-| Inside `npm run verify` | **14,737 ms** | **FAIL** |
-| **Standalone, host load 8.76, 11 unrelated containers up** | **16,447 ms** | **FAIL, 1.6×** |
-| Inside `npm run verify` | **18,723 ms** | **FAIL** |
-| Inside `npm run verify` | **22,781 ms** | **FAIL, 2.3×** |
-| **Inside `npm run verify`, dev server + browser + 11 containers** | **45,620 ms** | **FAIL, 4.6×** |
-| Earlier sessions, load ~8 / 32 | 110,767 / 283,436 ms | FAIL, 11× and 28× |
+Identical AC submissions on this machine clustered at three *discrete* latencies: **~5 s, ~75 s,
+and 12 m 20 s.** A ladder that discrete is not load jitter — load produces a smear, not steps —
+and chasing it as a hardware problem was chasing the wrong suspect:
 
-**The full spread on one unchanged commit is 7,363 ms to 45,620 ms — a factor of 6.2.** The
-threshold sits inside that spread, which is the whole problem.
+- **The 12-minute verdict was a worker that was not running.** `npm run worker` is a hand-started
+  process on this machine, not a service. The job sat in Redis, complete and correct, until a
+  concurrent agent happened to start a worker, which judged it in seconds. Nothing was slow;
+  nothing was listening. The queue depth was visible the whole time and no surface said so.
+- **The ~75 s class matches BullMQ's stall recovery, which quantises in ~120 s steps.** With
+  `STALLED_JOB_GRACE_MS=120000`, `MAX_JOB_ATTEMPTS=2` and a fixed 2 s backoff, a worker that dies
+  holding a job leaves it invisible until the stall check reclaims it — so a mid-job worker death
+  adds a chunk of up to two minutes, not a proportional slowdown. Plausible fit for the 75 s
+  class; not yet pinned by killing a worker mid-job on purpose and timing the recovery.
+- **The ~5 s class is a healthy queue** paying container creation, which is what G8 measures.
+- **Ruled out here: image pruning.** No pruner exists on this machine, `docker events` shows zero
+  image deletions in 24 h, and every judge image is present. (Not yet ruled out in production,
+  where a pruner could plausibly exist — check before blaming anything there.)
 
-**The two worst numbers here are the newest, and they are the same finding as the rest.** They
-were taken on a laptop that had been up for a day with eleven unrelated containers, VS Code and a
-browser running — and the standalone run, at 16,447 ms, is worse than every *verify-embedded* run
-from a quieter day. Nothing in the judging path changed between them. That is the point of this
-entry: the number is a property of the machine, and it moves by 6× without a line of code moving.
+The honest restatement: **on this machine, every verdict slower than the ~5 s class so far has
+been the worker's lifecycle, not the machine.**
 
-**It has now passed inside a complete `npm run verify` run**, at 8,449 ms with 1.6 s of headroom,
-alongside every other gate in the same run. That is the best result recorded here and it is worth
-having: it means the gate is achievable on this machine rather than only in isolation. It does not
-make the gate reliable, and it settles nothing about the droplet.
+### What is now in place, so the same failure cannot sit silent again
 
-Identical code, and the result depends on how loaded the machine is and on what ran immediately
-before — inside `npm run verify` several gates have just finished and the judge queue is still
-settling, and that is enough to move p95 from 8.4 s to 22.8 s.
+None of this makes a slow host fast. All of it makes a slow or dead judge **visible**, which is
+what was actually missing for 12 minutes:
 
-So: **a green G8 says the machine was quiet when the gate ran.** It is not a property of the code.
-Container creation dominates and degrades with load — 2.4–16 s against a 1.0 s per-container
-budget — which is the whole of the effect.
+- **Worker boot check** (`worker/preflight.ts`): the worker refuses to start if any registry
+  image is missing locally, with the fix in the message — converting "silence now, IE later"
+  into a startup error.
+- **Queue position for the waiting student** (`lib/contest/queue.ts` `queuePositionOf`, surfaced
+  through `GET /api/submissions/{id}`): an unjudged submission's panel says "3 submissions ahead
+  of yours in the queue" or "The judge is working on yours now", read from BullMQ per poll. If
+  Redis cannot answer, the field is omitted and the panel says nothing new — the position read
+  can never break the verdict read. A slow submission now looks slow instead of broken.
+- **Worker-down alarm** (`components/admin/JudgeHealthBar.tsx`): jobs waiting, zero active, and
+  the oldest past 30 s renders the loudest state on the organizer console — "Submissions are
+  queueing and no judge is taking them. Is the worker running?" — even if Redis still lists a
+  worker connection, because a wedged worker keeps its connection. Fixing this exposed a real
+  bug: `judgeHealth` read the wait list without `asc: true`, so `oldestWaitingMs` was the age of
+  the **newest** waiting job — a number that sits near zero precisely when submissions pour in
+  and nobody takes them.
+- **Stage attribution** in the worker log, being landed in the same pass as this entry: a
+  verdict's wall time broken down by stage, so the next slow verdict names its culprit (queue
+  wait vs container create vs compile vs run) instead of arriving as one opaque number. If it
+  is not in `worker/` when you read this, that bullet regressed — say so here.
 
-**Correctness never varied**: 40/40 accepted, 40/40 `AC`, zero `IE`, zero dropped, on every run
-including the two newest and slowest. Students get the right verdict; on a busy host they wait for it.
+### The G8 spread is a separate finding, still true, still host-bound
 
-**Still open. A pass is not a resolution.** A gate that measures 7.4 s and 22.8 s on the same
-commit has no margin, and one green run does not create margin — it samples a distribution whose
-spread is the actual finding. The deployment target is a 2 vCPU droplet shared with Postgres,
-Redis and the web app: busier than this laptop, not quieter. The fix is
-the host, not the code — `docs/HOSTING.md` §6 for the recommendation and §7 for the ten-minute
-re-measurement to run on whatever machine the contest actually uses.
+Same commit, eleven measurements against a 10,000 ms p95 target: **7,363 / 7,476 / 8,449 / 8,713 /
+9,261 ms pass; 14,737 / 16,447 / 18,723 / 22,781 / 45,620 ms fail** (earlier sessions: 110,767 and
+283,436 ms under extreme load). A factor of 6.2 with no code change. The standalone 16,447 ms on a
+busy day was worse than every verify-embedded run from a quiet one, so the driver is host state,
+not what the gate runs inside. Container creation dominates — 2.4–16 s against a 1.0 s
+per-container budget. **A green G8 says the machine was quiet when the gate ran.** Correctness
+never varied: 40/40 AC, zero IE, zero dropped, on every run including the slowest.
+
+### What the droplet still owes before anyone blames burst credits
+
+The deployment target is a 2 vCPU droplet shared with Postgres, Redis and the web app. Nothing
+above measures it, and the dev-machine findings do not transfer — this laptop's ladder was a
+missing worker, which systemd/compose `restart: unless-stopped` makes a non-event in production.
+Before attributing any droplet slowness to CPU burst credits or shared tenancy:
+
+1. **`vmstat 1 30` during a judging burst**, for the steal-time column. Nonzero `st` is the
+   hypervisor taking cycles; zero `st` under a slow burst points back at Docker or disk, and no
+   burst-credit story survives without the number.
+2. **A 30-submission distribution, not a single p95** — `docs/HOSTING.md` §7 is the ten-minute
+   procedure. One run samples a distribution whose spread is the finding; the shape (smear vs
+   discrete steps) also distinguishes load from lifecycle, which is exactly the distinction this
+   entry existed to learn.
+
+**Still open until the droplet numbers exist.** A pass on a quiet laptop settles nothing about a
+shared 2 vCPU host, and the fix — if one is needed — is `docs/HOSTING.md` §6's hosting
+recommendation, not the judging code.
 
 ---
 

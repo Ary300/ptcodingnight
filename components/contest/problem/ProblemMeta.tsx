@@ -38,8 +38,8 @@ const DIFFICULTY_LABEL: Record<string, string> = { E: "Easy", M: "Medium", H: "H
  * a warning. Weight carries the scale instead — the same ink, more of it.
  */
 const DIFFICULTY_TINT: Record<string, string> = {
-  E: "border-ink/20 text-ink/70",
-  M: "border-ink/35 text-ink/85",
+  E: "border-rule-edge text-ink/70",
+  M: "border-rule-firm text-ink/85",
   H: "border-panther/50 text-panther",
 };
 
@@ -48,7 +48,7 @@ export function DifficultyPill({ difficulty }: { difficulty: string | null }) {
   const label = DIFFICULTY_LABEL[difficulty] ?? difficulty;
   return (
     <span
-      className={`inline-block rounded-full border px-2 py-0.5 ${DIFFICULTY_TINT[difficulty] ?? "border-ink/20 text-ink/70"}`}
+      className={`inline-block rounded-full border px-2 py-0.5 ${DIFFICULTY_TINT[difficulty] ?? "border-rule-edge text-ink/70"}`}
       style={{ fontSize: "var(--text-xs)" }}
     >
       {label}
@@ -67,7 +67,7 @@ export function ProblemStatusPill({ detail }: { detail: ProblemDetail }) {
   if (!detail.unlocked) {
     return (
       <span
-        className="inline-flex shrink-0 items-center gap-1.5 rounded bg-panther px-2.5 py-1 font-semibold text-paper"
+        className="inline-flex shrink-0 items-center gap-1.5 rounded-chip bg-panther px-2.5 py-1 font-semibold text-paper"
         style={{ fontSize: "var(--text-xs)" }}
       >
         {/* Drawn, not a glyph: a padlock character sits outside the vendored woff2 subsets and
@@ -83,7 +83,7 @@ export function ProblemStatusPill({ detail }: { detail: ProblemDetail }) {
   if (detail.solved) {
     return (
       <span
-        className="inline-flex shrink-0 items-center rounded bg-panther px-2.5 py-1 font-semibold text-paper"
+        className="inline-flex shrink-0 items-center rounded-chip bg-panther px-2.5 py-1 font-semibold text-paper"
         style={{ fontSize: "var(--text-xs)" }}
       >
         Solved{detail.bestScore === null ? "" : ` · ${String(detail.bestScore)} pts`}
@@ -94,7 +94,7 @@ export function ProblemStatusPill({ detail }: { detail: ProblemDetail }) {
   if (detail.bestScore !== null) {
     return (
       <span
-        className="inline-flex shrink-0 items-center rounded border border-ink/25 px-2.5 py-1 text-ink/80"
+        className="inline-flex shrink-0 items-center rounded-chip border border-rule-edge px-2.5 py-1 text-ink/80"
         style={{ fontSize: "var(--text-xs)" }}
       >
         Attempted · {detail.bestScore} pts
@@ -176,12 +176,12 @@ export function ProblemMetaRail({ detail }: { detail: ProblemDetail }) {
   ].filter((row) => row.value !== null);
 
   return (
-    <aside aria-label="Problem details" className="border-t border-ink/15 pt-4 lg:border-t-0 lg:pt-0">
+    <aside aria-label="Problem details" className="border-t border-rule-edge pt-4 lg:border-t-0 lg:pt-0">
       <dl className="flex flex-col gap-2.5">
         {rows.map((row) => (
           <div
             key={row.label}
-            className="flex items-center justify-between gap-4 border-b border-ink/10 pb-2 last:border-b-0"
+            className="flex items-center justify-between gap-4 border-b border-rule-hair pb-2 last:border-b-0"
           >
             <dt className="text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
               {row.label}

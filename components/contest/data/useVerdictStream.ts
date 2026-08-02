@@ -98,7 +98,7 @@ export function useVerdictStream(seed: SubmissionView | null): VerdictStreamStat
           stop();
           setFailure({
             submissionId,
-            value: "Still waiting on the judge. Tell an organizer; your submission is saved.",
+            value: "Still waiting on the judge. Your submission is saved. Tell an organizer.",
           });
           return;
         }

@@ -89,6 +89,32 @@ function languageLabel(language: AdminSubmissionRow["language"]): string {
   return VARIANTS[language].label;
 }
 
+/**
+ * Stage attribution as one muted line: "queue 0.2s / create 1.1s / compile 3.0s / run 1.4s,
+ * attempt 1". This is the latency investigation's instrument — a slow submission names its own
+ * bucket here instead of being guessed at from the wall clock.
+ *
+ * Stages the run never had are OMITTED, not zeroed: an interpreted run has no compile segment,
+ * and a CE has no run segment. A "0.0s" for a stage that never happened reads as a measurement.
+ */
+function timingsLine(timings: NonNullable<AdminSubmissionRow["timings"]>): string {
+  const seconds = (ms: number): string => `${(ms / 1000).toFixed(1)}s`;
+
+  const stages: readonly (readonly [string, number | null])[] = [
+    ["queue", timings.queueMs],
+    ["create", timings.createMs],
+    ["compile", timings.compileMs],
+    ["run", timings.runMs],
+  ];
+
+  const shown = stages
+    .filter((stage): stage is readonly [string, number] => stage[1] !== null)
+    .map(([name, ms]) => `${name} ${seconds(ms)}`)
+    .join(" / ");
+
+  return `${shown}, attempt ${String(timings.attempt)}`;
+}
+
 export function SubmissionFeed({
   submissions,
   onRejudge,
@@ -225,7 +251,19 @@ export function SubmissionFeed({
                           that is where it is authoritative. Putting it back on the row is a real
                           feature and is not this one: it needs the audit row joined in, not a
                           field made up.
+
+                          The stage line below is NOT that mistake repeated: `timings` is a field
+                          the server actually sends, derived from marks the worker actually
+                          recorded (Submission.judgeTimings). Old rows have none and show none.
                         */}
+                        {submission.timings !== null && (
+                          <p
+                            className="numeric text-ink/60"
+                            style={{ fontSize: "var(--text-xs)" }}
+                          >
+                            {timingsLine(submission.timings)}
+                          </p>
+                        )}
                       </TD>
                       <TD numeric className="align-top">
                         <Stacked

@@ -58,7 +58,7 @@ function Block({ title, value, what }: { title: string; value: string; what: str
         tabIndex={0}
         role="region"
         aria-label={what}
-        className="mt-1 max-h-96 overflow-y-auto rounded bg-ink/[0.04] p-3 font-mono break-words whitespace-pre-wrap text-ink"
+        className="mt-1 max-h-96 overflow-y-auto rounded-flat bg-ink/[0.04] p-3 font-mono break-words whitespace-pre-wrap text-ink"
         style={{ fontSize: "var(--text-xs)", lineHeight: "1.6" }}
       >
         {value}

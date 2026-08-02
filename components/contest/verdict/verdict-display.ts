@@ -1,3 +1,4 @@
+import type { QueuePosition } from "@/lib/schemas/api";
 import type { Verdict } from "@/lib/schemas/judge";
 
 /**
@@ -54,6 +55,22 @@ export function problemStatusLabel(solved: boolean, bestScore: number | null): s
   if (bestScore !== null && bestScore > 0) return `Partial: ${bestScore} pts`;
   if (bestScore !== null) return "Attempted";
   return "Unsolved";
+}
+
+/**
+ * Where an unjudged submission stands, in words a waiting student can act on.
+ *
+ * The same honesty rules as `judgingProgressLabel`: the count is a fact the server read from
+ * the queue a moment ago, so it is stated plainly, and no time estimate is attached because a
+ * queue of 3 can be 15 seconds of Python or 4 minutes of Go compiles. The field this renders
+ * is optional on the wire; when the server could not ask the queue, the panel says nothing
+ * rather than something invented, and this function is simply not called.
+ */
+export function queuePositionLabel(position: QueuePosition): string {
+  if (position.state === "active") return "The judge is working on yours now.";
+  if (position.ahead === 0) return "Yours is next in the queue.";
+  if (position.ahead === 1) return "1 submission ahead of yours in the queue.";
+  return `${position.ahead} submissions ahead of yours in the queue.`;
 }
 
 /**

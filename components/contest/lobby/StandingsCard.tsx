@@ -144,13 +144,19 @@ function DivisionBoard({
               <th scope="col" className="sticky top-0 z-10 bg-ink py-1 pl-2 text-left font-normal">
                 Name
               </th>
-              <th scope="col" className="sticky top-0 z-10 bg-ink py-1 pl-3 text-right font-normal">
+              {/*
+                `pl-2` to match the cells below, not the old `pl-3`: the header row was the
+                widest row in the table, so at 1440 the card sat with "Penalty" clipped mid-word
+                at rest - a scrollable box should start fully legible and scroll for MORE, not
+                open on a cut glyph.
+              */}
+              <th scope="col" className="sticky top-0 z-10 bg-ink py-1 pl-2 text-right font-normal">
                 Move
               </th>
-              <th scope="col" className="sticky top-0 z-10 bg-ink py-1 pl-3 text-right font-normal">
+              <th scope="col" className="sticky top-0 z-10 bg-ink py-1 pl-2 text-right font-normal">
                 Score
               </th>
-              <th scope="col" className="sticky top-0 z-10 bg-ink py-1 pl-3 text-right font-normal">
+              <th scope="col" className="sticky top-0 z-10 bg-ink py-1 pl-2 text-right font-normal">
                 Penalty
               </th>
             </tr>
@@ -162,7 +168,7 @@ function DivisionBoard({
                 <tr
                   key={row.participantId}
                   ref={isYou ? yourRowRef : undefined}
-                  className="border-t border-paper/10"
+                  className="border-t border-rule-hair-inverse"
                   style={{ background: isYou ? "color-mix(in srgb, var(--color-paper) 8%, transparent)" : undefined }}
                 >
                   <td className="py-1.5">
@@ -178,9 +184,17 @@ function DivisionBoard({
                     className="py-1.5 pl-2 font-display"
                     style={{ fontSize: "var(--text-sm)" }}
                   >
-                    {row.displayName}
+                    {/*
+                      `overflow-wrap: anywhere` on the NAME TEXT only: the one run of
+                      user-supplied text absorbs the squeeze - a display name with a long
+                      unbroken run (seeded test accounts end in a 13-digit timestamp) otherwise
+                      sets the table's minimum width and shoves "Penalty" off the card's right
+                      edge. Names with spaces still break at the spaces first. Scoped to a span
+                      so the "you" tag beside it cannot be broken mid-word into "yo / u".
+                    */}
+                    <span className="[overflow-wrap:anywhere]">{row.displayName}</span>
                     {isYou && (
-                      <span className="ml-2 font-body text-paper/55" style={{ fontSize: "var(--text-xs)" }}>
+                      <span className="ml-2 font-body whitespace-nowrap text-paper/55" style={{ fontSize: "var(--text-xs)" }}>
                         {/*
                           `ml-2` is a visual gap and nothing else — the accessible name is the
                           concatenation of the text nodes, so this row announced as
@@ -234,7 +248,7 @@ export function StandingsCard({ standings, participantId }: StandingsCardProps) 
   const showDivisionNames = divisions.length > 1;
 
   return (
-    <section aria-label="Standings" className="rounded bg-ink p-4 text-paper">
+    <section aria-label="Standings" className="rounded-panel bg-ink p-4 text-paper">
       <header className="flex flex-wrap items-center gap-3">
         <h2 className="font-display font-bold" style={{ fontSize: "var(--text-md)" }}>
           Standings

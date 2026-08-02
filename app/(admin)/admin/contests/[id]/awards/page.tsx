@@ -26,8 +26,9 @@ export default async function ContestAwardsPage({
           Awards
         </h2>
         <p className="mt-1 max-w-[70ch] text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
-          A team score is a mean, so every row shows the numbers it was computed from. Ties are
-          shown as ties and never broken arbitrarily.
+          {/* A team score is a mean, so a bare total is uncheckable; the row carries its own
+              working. Ties are never broken arbitrarily. */}
+          Every row shows the numbers its team score was computed from. Ties are shown as ties.
         </p>
       </header>
 

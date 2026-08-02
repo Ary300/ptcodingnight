@@ -24,7 +24,7 @@ export default function NewProblemPage() {
           Create a coding question
         </h1>
         <p className="mt-tight max-w-[70ch] text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
-          Write the statement, choose the starter code, and add the cases the judge will run.
+          Write the statement, then add the cases the judge will run.
         </p>
       </header>
       <ProblemBuilder />

@@ -102,4 +102,28 @@ describe("toSubmissionView", () => {
     expect(view.verdict).toBeNull();
     expect(view.testResults).toEqual([]);
   });
+
+  it("carries a queue position on an unjudged submission", () => {
+    const view = toSubmissionView(submissionRow({ verdict: null, score: 0 }), [], null, {
+      state: "waiting",
+      ahead: 3,
+    });
+    expect(view.queuePosition).toEqual({ state: "waiting", ahead: 3 });
+  });
+
+  it("omits the queue position when the caller has none, rather than sending a zero", () => {
+    // Absence means "no claim". A default of {ahead: 0} would tell every student on a broken
+    // Redis that they are next.
+    const view = toSubmissionView(submissionRow({ verdict: null, score: 0 }), [], null);
+    expect("queuePosition" in view).toBe(false);
+  });
+
+  it("drops a queue position once a verdict exists, even if the caller passed one", () => {
+    // A settled row saying "3 ahead of yours" is two claims in conflict.
+    const view = toSubmissionView(submissionRow({ verdict: "AC" }), [], null, {
+      state: "waiting",
+      ahead: 3,
+    });
+    expect("queuePosition" in view).toBe(false);
+  });
 });
