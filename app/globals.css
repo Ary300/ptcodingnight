@@ -203,6 +203,9 @@ body {
   --motion-press: 100ms;
   --motion-swap: 200ms;
   --motion-panel: 300ms;
+  /* Rank changes on the standings: the largest move on the largest screen, so the
+     slowest step of the scale. */
+  --motion-reorder: 400ms;
   --motion-ease: cubic-bezier(0.16, 1, 0.3, 1);
 }
 

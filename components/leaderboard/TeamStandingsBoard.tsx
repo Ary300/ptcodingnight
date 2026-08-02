@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useState } from "react";
+import { Fragment, useLayoutEffect, useRef, useState } from "react";
 
 import type {
   TeamPlayerProblem,
@@ -267,6 +267,59 @@ function anyPenalty(teams: readonly TeamStandingRow[]): boolean {
   );
 }
 
+
+/**
+ * Rank changes SLIDE instead of teleporting: FLIP over each team's two `<tbody>` elements.
+ *
+ * The board re-polls while a room watches it. A re-render that redraws a team three rows higher
+ * in the same frame cannot be followed by the eye, and the one genuinely exciting moment this
+ * screen has - a team overtaking another - was invisible. First/Last/Invert/Play: after every
+ * commit, read where each team's row-group landed, compare with where it sat after the previous
+ * commit, snap it back to the old position with no transition, then release it to travel the
+ * difference over `--motion-reorder`.
+ *
+ * The two `<tbody>` elements (the team row and its breakdown) share one delta, so an expanded
+ * team slides as a unit rather than its members chasing it. First render animates nothing:
+ * there is no previous position to travel from. Reduced motion flattens the transition to 0.01ms
+ * globally (globals.css), so this degrades to today's instant redraw exactly where it should.
+ */
+function useRankSlide(tableRef: React.RefObject<HTMLTableElement | null>) {
+  const previousTops = useRef<Map<string, number>>(new Map());
+
+  useLayoutEffect(() => {
+    const table = tableRef.current;
+    if (table === null) return;
+
+    const groups = table.querySelectorAll<HTMLTableSectionElement>("[data-flip-team]");
+    const nextTops = new Map<string, number>();
+
+    for (const group of groups) {
+      const teamId = group.dataset.flipTeam ?? "";
+      const key = `${teamId}:${group.dataset.flipPart ?? ""}`;
+      const top = group.getBoundingClientRect().top;
+      nextTops.set(key, top);
+
+      const previous = previousTops.current.get(key);
+      if (previous === undefined) continue;
+      const delta = previous - top;
+      if (Math.abs(delta) < 1) continue;
+
+      group.style.transition = "none";
+      group.style.transform = `translateY(${String(delta)}px)`;
+      // Two frames: one for the browser to commit the inverted position, one to start the play.
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          group.style.transition =
+            "transform var(--motion-reorder, 400ms) var(--motion-ease, ease-out)";
+          group.style.transform = "";
+        });
+      });
+    }
+
+    previousTops.current = nextTops;
+  });
+}
+
 export function TeamStandingsBoard({
   teams,
   setLabels,
@@ -278,6 +331,8 @@ export function TeamStandingsBoard({
   onToggleTeam,
   memberBlockRows,
 }: TeamStandingsBoardProps) {
+  const rankSlideTable = useRef<HTMLTableElement | null>(null);
+  useRankSlide(rankSlideTable);
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
   const [expandedPlayers, setExpandedPlayers] = useState<ReadonlySet<string>>(
     new Set(),
@@ -427,6 +482,7 @@ export function TeamStandingsBoard({
         className={`w-full overflow-x-auto border ${grid} ${projector ? "" : "rounded-panel bg-paper"}`}
       >
         <table
+          ref={rankSlideTable}
           aria-label="Team standings"
           className="w-full border-collapse"
           style={{ fontSize: projector ? size.cell : "var(--text-sm)" }}
@@ -554,7 +610,7 @@ export function TeamStandingsBoard({
 
             return (
               <Fragment key={team.teamId}>
-                <tbody>
+                <tbody data-flip-team={team.teamId} data-flip-part="row">
                   <tr
                     className={`${rowTint} ${toggleTeam === undefined ? "" : styles.teamStandingRow}`}
                     onClick={toggleTeam === undefined ? undefined : activateTeam}
@@ -736,6 +792,8 @@ export function TeamStandingsBoard({
                 </tbody>
 
                 <tbody
+                  data-flip-team={team.teamId}
+                  data-flip-part="breakdown"
                   id={rosterId}
                   aria-hidden={!isOpen}
                   className={`${styles.rosterRows} ${isOpen ? styles.rosterRowsOpen : ""}`}
