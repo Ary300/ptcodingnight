@@ -8,7 +8,7 @@ import { runningContestId, signInAsOrganizer } from "./helpers/journey";
  *
  * The suite audited exactly one admin screen (`/admin/side-activities`). The contest list, the
  * create form and the per-contest shell were unaudited, and the shell is the part most likely to
- * carry a mistake: it is a breadcrumb, a heading, a state pill and a six-item tab strip, which is
+ * carry a mistake: it is a breadcrumb, a heading, a state pill and a seven-item tab strip, which is
  * four separate chances to encode position with colour alone or to leave a landmark unnamed.
  *
  * The restructure that made this necessary is also the one that makes it pass. Five copies of a
@@ -54,7 +54,7 @@ test.describe("axe-core: the organizer setup flow", () => {
     await page.goto(`/admin/contests/${contestId}/teams`);
 
     const tabs = page.getByRole("navigation", { name: "Contest sections" }).getByRole("link");
-    await expect(tabs).toHaveCount(6);
+    await expect(tabs).toHaveCount(7);
 
     // Exactly one tab is current, and it is the one whose path we are on. The Setup tab has its
     // own `/setup` segment precisely so that the bare contest URL is not a prefix of all five
@@ -71,7 +71,7 @@ test.describe("axe-core: the organizer setup flow", () => {
     await page.goto(`/admin/contests/${contestId}/setup`);
     await expect(page.getByRole("navigation", { name: "Contest sections" })).toBeVisible();
 
-    // Six tabs do not fit at 360px. `TabStrip` scrolls the STRIP; if that ever becomes the
+    // Seven tabs do not fit at 360px. `TabStrip` scrolls the STRIP; if that ever becomes the
     // document scrolling instead, an organizer on a phone drags the whole layout off screen —
     // the same defect the team board shipped (DESIGN.md §7).
     const overflow = await page.evaluate(() => ({

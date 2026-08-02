@@ -129,7 +129,9 @@ function DivisionBoard({
               carry `bg-ink` too, or the rows scroll THROUGH the header rather than under it.
             */}
             <tr className="text-paper/50" style={{ fontSize: "var(--text-xs)" }}>
-              <th scope="col" className="sticky top-0 z-10 w-2 bg-ink" />
+              <th scope="col" className="sticky top-0 z-10 w-2 bg-ink">
+                <span className="sr-only">Trend</span>
+              </th>
               {/*
                 `pl-2` on every column after the first, because these headers ran together:
                 "RankName" and "Move ScorePenalty" rendered as single words. A table cell has no

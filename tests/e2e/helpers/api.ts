@@ -12,6 +12,7 @@ import {
   TeamStandingsResponseSchema,
   type ProblemDetail,
   type ProblemSummary,
+  type SetCompositionInput,
   type StandingsResponse,
   type SubmissionView,
   type TeamStandingsResponse,
@@ -369,6 +370,16 @@ export class ContestApi {
     return this.req().post(`/api/admin/contests/${this.contestId}/assign-sets`, { data: body });
   }
 
+  planSetsRaw(body: {
+    mode: "preview" | "apply";
+    composition: SetCompositionInput;
+    setCount: number;
+    seed?: string;
+    poolVersion?: string;
+  }): Promise<APIResponse> {
+    return this.req().post(`/api/admin/contests/${this.contestId}/sets`, { data: body });
+  }
+
   reDeriveAssignmentRaw(): Promise<APIResponse> {
     return this.req().get(`/api/admin/contests/${this.contestId}/assign-sets`);
   }
@@ -437,6 +448,7 @@ export class ContestApi {
         problemId: string;
         slotLabel: string;
         basePoints: number;
+        round: "INDIVIDUAL" | "GROUP";
         setLabel: string | null;
         divisionId: string | null;
       }[];

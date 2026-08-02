@@ -30,6 +30,11 @@ interface ProblemAccumulator {
   firstScoredAtMs: number | null;
 }
 
+/** A temporal revision selected for replay; null tombstones and IE never reach the scorers. */
+type ScorableSubmissionRecord = SubmissionRecord & {
+  readonly verdict: NonNullable<SubmissionRecord["verdict"]>;
+};
+
 function emptyAccumulator(): ProblemAccumulator {
   return { bestScore: 0, rejections: 0, firstScoredAtMs: null };
 }
@@ -45,33 +50,35 @@ function emptyAccumulator(): ProblemAccumulator {
 function submissionsInWindow(
   submissions: readonly SubmissionRecord[],
   upTo: Date | null | undefined,
-): SubmissionRecord[] {
+): ScorableSubmissionRecord[] {
   const cutoff = upTo == null ? Number.POSITIVE_INFINITY : upTo.getTime();
 
-  return submissions
-    /*
-      Both instants must be inside the window.
+  /*
+    A submission can have several score revisions: judge answer, override, rejudge tombstone,
+    second judge answer. Choose the last revision that existed inside this window BEFORE replaying
+    attempts. Treating revisions as separate submissions would invent rejected attempts and points.
 
-      `submittedAt <= cutoff` keeps a submission made after the freeze off the board. `effectiveAt
-      <= cutoff` keeps an ANSWER that arrived after the freeze off it — a rejudge, an override, or
-      a verdict the judge had simply not returned yet.
+    `revisionOrder` is authoritative between versions of one submission. `effectiveAt` decides
+    whether a version existed by the cutoff; the order decides which of the eligible versions was
+    current. Fixture rows without a persisted revision use zero.
+  */
+  const latest = new Map<string, SubmissionRecord>();
+  for (const submission of submissions) {
+    if (submission.submittedAt.getTime() > cutoff) continue;
+    if (submission.effectiveAt === null || submission.effectiveAt.getTime() > cutoff) continue;
 
-      Filtering on `submittedAt` alone answered a different question — "which submissions existed
-      yet" — so a submission made BEFORE the freeze whose verdict changed AFTER it went straight
-      through carrying its new score. Measured anonymously on the running app: a contest frozen
-      with a student on 0, an override to AC, and eighteen seconds later the public board reported
-      `frozen: true`, the same `asOf`, and the new score. A rejudge did the reverse and dropped a
-      named student to zero on the projector, in front of the room, during the one period a freeze
-      exists to protect.
+    const previous = latest.get(submission.submissionId);
+    if (
+      previous === undefined ||
+      (submission.revisionOrder ?? 0) > (previous.revisionOrder ?? 0)
+    ) {
+      latest.set(submission.submissionId, submission);
+    }
+  }
 
-      `effectiveAt === null` is an unjudged submission, which contributes nothing at any cutoff.
-    */
+  return [...latest.values()]
     .filter(
-      (s) =>
-        isScorable(s.verdict) &&
-        s.submittedAt.getTime() <= cutoff &&
-        s.effectiveAt !== null &&
-        s.effectiveAt.getTime() <= cutoff,
+      (submission): submission is ScorableSubmissionRecord => isScorable(submission.verdict),
     )
     .sort((a, b) => {
       const at = a.submittedAt.getTime();
@@ -118,7 +125,7 @@ interface ParticipantResult {
  */
 function scoreClassic(
   problemsById: ReadonlyMap<string, ScoringProblem>,
-  submissions: readonly SubmissionRecord[],
+  submissions: readonly ScorableSubmissionRecord[],
   hintCounts: ReadonlyMap<string, number>,
 ): ParticipantResult {
   const byProblem = new Map<string, ProblemAccumulator>();
@@ -196,7 +203,7 @@ function scoreClassic(
  * by solve count then penalty.
  */
 function scoreIcpc(
-  submissions: readonly SubmissionRecord[],
+  submissions: readonly ScorableSubmissionRecord[],
   hintCounts: ReadonlyMap<string, number>,
 ): ParticipantResult {
   const byProblem = new Map<string, ProblemAccumulator>();
@@ -271,7 +278,7 @@ export function computeStandings(
 
   const problemsById = new Map(config.problems.map((p) => [p.contestProblemId, p]));
 
-  const submissionsByParticipant = new Map<string, SubmissionRecord[]>();
+  const submissionsByParticipant = new Map<string, ScorableSubmissionRecord[]>();
   for (const submission of submissionsInWindow(submissions, upTo)) {
     const list = submissionsByParticipant.get(submission.participantId) ?? [];
     list.push(submission);

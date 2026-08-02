@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Fragment, useCallback, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui";
@@ -78,6 +79,22 @@ function formatTime(iso: string): string {
  * ("Accepted", "Too slow") rides next to it in plain ink, so a colour-blind student and a
  * greyscale projector read the same verdict (DESIGN.md §3).
  */
+function VerdictChip({ verdict }: { verdict: Verdict }) {
+  const presentation = VERDICT_DISPLAY[verdict];
+  return (
+    <span
+      className="numeric rounded px-1.5 py-0.5 font-semibold"
+      style={{
+        fontSize: "var(--text-xs)",
+        background: "var(--color-ink)",
+        color: TONE_COLOR[presentation.tone],
+      }}
+    >
+      {verdict}
+    </span>
+  );
+}
+
 function VerdictToken({ verdict }: { verdict: Verdict | null }) {
   if (verdict === null) {
     return (
@@ -86,21 +103,79 @@ function VerdictToken({ verdict }: { verdict: Verdict | null }) {
       </span>
     );
   }
-  const presentation = VERDICT_DISPLAY[verdict];
   return (
     <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
-      <span
-        className="numeric rounded px-1.5 py-0.5 font-semibold"
-        style={{
-          fontSize: "var(--text-xs)",
-          background: "var(--color-ink)",
-          color: TONE_COLOR[presentation.tone],
-        }}
-      >
-        {verdict}
-      </span>
-      <span style={{ fontSize: "var(--text-sm)" }}>{presentation.label}</span>
+      <VerdictChip verdict={verdict} />
+      <span style={{ fontSize: "var(--text-sm)" }}>{VERDICT_DISPLAY[verdict].label}</span>
     </span>
+  );
+}
+
+/**
+ * Everything the row's five cells do not carry: the test tally, the source, the compiler output
+ * and the leak-guard alert. Extracted from the table row so the phone card layout below `sm` can
+ * open exactly the same detail — one render path for the detail means the leak guard cannot be
+ * covered on one layout and missed on the other.
+ */
+function SubmissionDetail({ submission }: { submission: SubmissionView }) {
+  const source = recallSource(submission.submissionId);
+  const { results, leakedOrdinals } = sanitizeTestResults(submission.testResults);
+  const passed = results.filter((result) => result.verdict === "AC").length;
+
+  return (
+    <>
+      <p className="text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
+        <span className="numeric">
+          {results.length === 0 ? "no tests reported" : `${passed}/${results.length} tests`}
+        </span>
+        <span aria-hidden="true" className="px-2 text-ink/40">
+          &#183;
+        </span>
+        <span className="numeric">
+          {submission.runtimeMs === null ? "no timing" : `${submission.runtimeMs} ms`}
+        </span>
+      </p>
+
+      {leakedOrdinals.length > 0 && (
+        <p role="alert" className="pt-2 text-panther" style={{ fontSize: "var(--text-xs)" }}>
+          Detail for {leakedOrdinals.length} hidden{" "}
+          {leakedOrdinals.length === 1 ? "test was" : "tests were"} withheld. Please tell an
+          organizer.
+        </p>
+      )}
+
+      {source === null ? (
+        <p className="pt-2 text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
+          The code for this submission is not available in this tab.
+        </p>
+      ) : (
+        <pre
+          tabIndex={0}
+          role="region"
+          aria-label={`Source for the ${formatTime(submission.submittedAt)} submission`}
+          className="mt-2 max-h-80 overflow-auto rounded bg-ink p-3 font-mono text-paper"
+          style={{ fontSize: "var(--text-xs)", lineHeight: "1.6" }}
+        >
+          {source}
+        </pre>
+      )}
+
+      {submission.compileError !== null && (
+        <pre
+          tabIndex={0}
+          role="region"
+          aria-label="Compiler output"
+          className="mt-2 max-h-48 overflow-auto rounded p-3 font-mono"
+          style={{
+            fontSize: "var(--text-xs)",
+            background: "var(--color-ink)",
+            color: TONE_COLOR.compile,
+          }}
+        >
+          {submission.compileError}
+        </pre>
+      )}
+    </>
   );
 }
 
@@ -112,9 +187,6 @@ interface RowProps {
 }
 
 function Row({ submission, title, open, onToggle }: RowProps) {
-  const source = recallSource(submission.submissionId);
-  const { results, leakedOrdinals } = sanitizeTestResults(submission.testResults);
-  const passed = results.filter((result) => result.verdict === "AC").length;
   const detailId = `submission-detail-${submission.submissionId}`;
 
   return (
@@ -192,57 +264,7 @@ function Row({ submission, title, open, onToggle }: RowProps) {
       {open && (
         <tr id={detailId} className="bg-ink/[0.02]">
           <td colSpan={5} className="px-3 pt-2 pb-3 sm:px-4">
-            <p className="text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
-              <span className="numeric">
-                {results.length === 0 ? "no tests reported" : `${passed}/${results.length} tests`}
-              </span>
-              <span aria-hidden="true" className="px-2 text-ink/40">
-                &#183;
-              </span>
-              <span className="numeric">
-                {submission.runtimeMs === null ? "no timing" : `${submission.runtimeMs} ms`}
-              </span>
-            </p>
-
-            {leakedOrdinals.length > 0 && (
-              <p role="alert" className="pt-2 text-panther" style={{ fontSize: "var(--text-xs)" }}>
-                Detail for {leakedOrdinals.length} hidden{" "}
-                {leakedOrdinals.length === 1 ? "test was" : "tests were"} withheld. Please tell an
-                organizer.
-              </p>
-            )}
-
-            {source === null ? (
-              <p className="pt-2 text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
-                The code for this submission is not available in this tab.
-              </p>
-            ) : (
-              <pre
-                tabIndex={0}
-                role="region"
-                aria-label={`Source for the ${formatTime(submission.submittedAt)} submission`}
-                className="mt-2 max-h-80 overflow-auto rounded bg-ink p-3 font-mono text-paper"
-                style={{ fontSize: "var(--text-xs)", lineHeight: "1.6" }}
-              >
-                {source}
-              </pre>
-            )}
-
-            {submission.compileError !== null && (
-              <pre
-                tabIndex={0}
-                role="region"
-                aria-label="Compiler output"
-                className="mt-2 max-h-48 overflow-auto rounded p-3 font-mono"
-                style={{
-                  fontSize: "var(--text-xs)",
-                  background: "var(--color-ink)",
-                  color: TONE_COLOR.compile,
-                }}
-              >
-                {submission.compileError}
-              </pre>
-            )}
+            <SubmissionDetail submission={submission} />
           </td>
         </tr>
       )}
@@ -250,13 +272,101 @@ function Row({ submission, title, open, onToggle }: RowProps) {
   );
 }
 
+/**
+ * The same submission as a stacked card, rendered only below `sm`.
+ *
+ * At 360px the 560px min-width table put 41% of itself (Score, Time) off-screen and wrapped
+ * problem titles to four lines inside the scroller — 117px rows against 46.6px at 1440. A
+ * smaller `min-w` is not the fix, it just crushes the other columns; a phone gets two lines
+ * per submission instead: verdict chip and title, then language, score and time as one quiet
+ * metadata run. Same toggle, same `openId`, same detail panel as the table.
+ */
+function Card({ submission, title, open, onToggle }: RowProps) {
+  const detailId = `submission-card-detail-${submission.submissionId}`;
+
+  return (
+    <li className="border-t border-rule-hair first:border-t-0">
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={detailId}
+        onClick={onToggle}
+        className="block w-full px-3 py-2.5 text-left"
+      >
+        <span className="flex items-center gap-2">
+          <svg
+            aria-hidden="true"
+            focusable="false"
+            width={10}
+            height={6}
+            viewBox="0 0 10 6"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={1.5}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className={`inline-block shrink-0 transition-transform ${open ? "" : "-rotate-90"}`}
+          >
+            <path d="M1 1L5 5L9 1" />
+          </svg>
+          {submission.verdict === null ? (
+            <span className="shrink-0 text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
+              Judging…
+            </span>
+          ) : (
+            <VerdictChip verdict={submission.verdict} />
+          )}
+          <span
+            className={
+              title === null ? "min-w-0 text-ink/60" : "min-w-0 font-display font-bold"
+            }
+            style={{ fontSize: "var(--text-sm)" }}
+          >
+            {title ?? "Problem name unavailable"}
+          </span>
+        </span>
+        <span
+          className="mt-1 flex flex-wrap items-center gap-x-2 pl-[18px] text-ink/60"
+          style={{ fontSize: "var(--text-xs)" }}
+        >
+          <span>{LANGUAGE_LABEL[submission.language]}</span>
+          <span aria-hidden="true" className="text-ink/40">
+            &#183;
+          </span>
+          {/* The word rides here so the verdict is never the coloured chip alone. */}
+          {submission.verdict !== null && (
+            <>
+              <span>{VERDICT_DISPLAY[submission.verdict].label}</span>
+              <span aria-hidden="true" className="text-ink/40">
+                &#183;
+              </span>
+            </>
+          )}
+          <span className="numeric">score {submission.score}</span>
+          <span aria-hidden="true" className="text-ink/40">
+            &#183;
+          </span>
+          <span className="numeric">{formatTime(submission.submittedAt)}</span>
+        </span>
+      </button>
+
+      {open && (
+        <div id={detailId} className="bg-ink/[0.02] px-3 pt-2 pb-3">
+          <SubmissionDetail submission={submission} />
+        </div>
+      )}
+    </li>
+  );
+}
+
 export function SubmissionHistory() {
   const participant = useParticipant();
+  const scopeKey = participant.status === "joined" ? participant.scopeKey : participant.status;
   const loadSubmissions = useCallback(() => contestApi.listSubmissions(), []);
   const loadProblems = useCallback(() => contestApi.listProblems(), []);
 
-  const submissions = useResource(loadSubmissions);
-  const problems = useResource(loadProblems);
+  const submissions = useResource(loadSubmissions, scopeKey);
+  const problems = useResource(loadProblems, scopeKey);
   const [openId, setOpenId] = useState<string | null>(null);
 
   const titleById = useMemo(() => {
@@ -285,16 +395,30 @@ export function SubmissionHistory() {
     /*
       Signed out is reported only once the read has actually failed, never before it.
 
-      `fetchParticipant()` cannot tell "not signed in" from "could not ask" — a timeout, a 500 and
-      a genuine anonymous visitor all come back as null. Short-circuiting on that would tell a
-      student with a valid cookie that they are not signed in, on a page whose data loaded fine,
-      which is this project's worst-ever bug arriving from a new direction. The read wins; the
-      anonymous answer only gets to explain a failure that already happened.
+      The participant read distinguishes an anonymous visitor from a failed session check. The
+      submissions read still wins when it succeeds, so a transient identity refresh cannot hide
+      history that the server already authorized and returned.
 
       What it replaces is `submissions.error` painted verbatim — for this state that string is
       "Join the contest first", a `ForbiddenError` from the route layer naming a flow that was
       deleted, in alert red, with nothing to click.
     */
+    if (participant.status === "error") {
+      return (
+        <div className="max-w-md rounded border border-panther/35 bg-paper p-4">
+          <h1 className="font-display font-bold" style={{ fontSize: "var(--text-md)" }}>
+            We could not check your sign-in
+          </h1>
+          <p role="alert" className="mt-1 text-ink/75" style={{ fontSize: "var(--text-sm)" }}>
+            {participant.message}
+          </p>
+          <Button className="mt-3" variant="secondary" onClick={() => window.location.reload()}>
+            Reload the page
+          </Button>
+        </div>
+      );
+    }
+
     if (participant.status === "anonymous") {
       return <SignInRequired what="your submissions" />;
     }
@@ -309,17 +433,32 @@ export function SubmissionHistory() {
   if (submissions.data.length === 0) {
     return (
       /*
-        HackerRank's empty state exactly: a dashed hairline box with one centred sentence. The
+        HackerRank's empty state exactly: a dashed hairline box with one centred sentence, and a
+        real button under the box handing the student the next step (theirs is "View Challenges").
+        Without it this screen had zero interactive elements on first visit — a dead end. The
         second sentence answers the question a student actually has here after pressing "Run
         samples" three times: sample runs are free, unjudged, and never listed.
       */
-      <p
-        className="rounded border border-dashed border-rule-edge bg-paper px-4 py-10 text-center text-ink/70"
-        style={{ fontSize: "var(--text-sm)" }}
-      >
-        You have not made any submissions yet. Running samples is free and unjudged, so sample
-        runs never appear here.
-      </p>
+      <div>
+        <p
+          className="rounded border border-dashed border-rule-edge bg-paper px-4 py-10 text-center text-ink/70"
+          style={{ fontSize: "var(--text-sm)" }}
+        >
+          You have not made any submissions yet. Running samples is free and unjudged, so sample
+          runs never appear here.
+        </p>
+        <p className="mt-4 text-center">
+          {/* A link drawn in ui/Button's secondary skin (border, paper fill, 42px box) — Button
+              itself only renders <button>, and this is a navigation, not an action. */}
+          <Link
+            href="/contest"
+            className="inline-flex items-center justify-center rounded border border-rule-edge bg-paper px-5 py-2 leading-6 font-semibold text-ink transition-colors hover:bg-ink/5"
+            style={{ fontSize: "var(--text-sm)" }}
+          >
+            Browse the problems
+          </Link>
+        </p>
+      </div>
     );
   }
 
@@ -343,11 +482,43 @@ export function SubmissionHistory() {
       )}
 
       {/*
-        The table scrolls inside its own wrapper. Five columns at 360px do not fit, and the page
-        must never scroll sideways (CLAUDE.md); `min-w` keeps the columns from crushing into
-        single-word verticals once the scroller takes over.
+        Below `sm` the submissions render as stacked cards instead of the table: at 360px the
+        560px-wide table put Score and Time entirely off-screen. Only one of the two layouts is
+        ever displayed, so the duplicate "Submissions" label never reaches the accessibility
+        tree twice.
       */}
-      <div className="overflow-x-auto rounded border border-rule-edge bg-paper">
+      <ul
+        aria-label="Submissions"
+        className="rounded border border-rule-edge bg-paper sm:hidden"
+      >
+        {submissions.data.map((submission) => (
+          <Card
+            key={submission.submissionId}
+            submission={submission}
+            title={titleById.get(submission.contestProblemId) ?? null}
+            open={openId === submission.submissionId}
+            onToggle={() =>
+              setOpenId((current) =>
+                current === submission.submissionId ? null : submission.submissionId,
+              )
+            }
+          />
+        ))}
+      </ul>
+
+      {/*
+        The table scrolls inside its own wrapper. Five columns in a narrow window do not fit, and
+        the page must never scroll sideways (CLAUDE.md); `min-w` keeps the columns from crushing
+        into single-word verticals once the scroller takes over. The wrapper is focusable and
+        named for the same reason the <pre> blocks are: a scroll container a keyboard cannot
+        reach is content a keyboard user cannot read.
+      */}
+      <div
+        tabIndex={0}
+        role="region"
+        aria-label="Submissions table"
+        className="hidden overflow-x-auto rounded border border-rule-edge bg-paper sm:block"
+      >
         <table aria-label="Submissions" className="w-full min-w-[560px] border-collapse">
           {/*
             The header is the same tinted bar TabStrip uses (`bg-ink/[0.04]`): one piece of

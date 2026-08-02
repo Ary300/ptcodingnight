@@ -75,8 +75,8 @@ export function TeamAwardsBoard({ standings, contestName }: TeamAwardsBoardProps
       level="bare"
       description={
         <>
-          Every row shows the numbers the score was computed from, not just the score. A team
-          total is the player pool divided by the team size, plus side activity points.
+          Team score equals the player pool divided by team size, plus side-activity points.
+          Expand a row to see each player&apos;s contribution.
         </>
       }
       aside={
@@ -157,7 +157,12 @@ export function TeamAwardsBoard({ standings, contestName }: TeamAwardsBoardProps
             clipping without becoming a second scroll container in front of the board's own.
           */}
           <div className="relative min-w-0 overflow-x-clip">
-            <TeamStandingsBoard teams={standings.teams} />
+            <TeamStandingsBoard
+              teams={standings.teams}
+              setLabels={standings.setLabels}
+              groupPointsInsideMean={standings.groupPointsInsideMean}
+              sideActivitiesFlat={standings.sideActivitiesFlat}
+            />
           </div>
         </>
       )}

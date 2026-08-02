@@ -7,9 +7,10 @@ import {
   labelsFor,
   parseStoredComposition,
   pointsForEntry,
+  setPoolVersion,
 } from "@/lib/contest/set-build";
 import { planSets, type AvailableProblem } from "@/lib/contest/set-plan";
-import type { SetCompositionInput } from "@/lib/schemas/api";
+import { SetPlanRequestSchema, type SetCompositionInput } from "@/lib/schemas/api";
 
 /**
  * What is tested here, and what deliberately is not.
@@ -200,5 +201,46 @@ describe("labelsFor", () => {
 
   it("has no columns to name for a plan of no sets", () => {
     expect(labelsFor(0)).toEqual([]);
+  });
+});
+
+describe("set preview identity", () => {
+  it("versions every input and its order, because both affect the seeded deal", () => {
+    const original = [problem("E1", "E"), problem("M1", "M")];
+    const same = original.map((entry) => ({ ...entry }));
+
+    expect(setPoolVersion(original)).toBe(setPoolVersion(same));
+    expect(setPoolVersion(original)).toMatch(/^[a-f0-9]{64}$/);
+    expect(setPoolVersion([...original].reverse())).not.toBe(setPoolVersion(original));
+    expect(
+      setPoolVersion([{ ...original[0]!, title: "Edited title" }, original[1]!]),
+    ).not.toBe(setPoolVersion(original));
+  });
+
+  it("requires an apply request to identify both the seed and pool that were previewed", () => {
+    const common = {
+      composition: CLASSIC,
+      setCount: 2,
+      seed: "preview-seed",
+    };
+    const poolVersion = setPoolVersion(pool({ E: 2, M: 2, H: 2 }));
+
+    expect(SetPlanRequestSchema.safeParse({ ...common, mode: "apply" }).success).toBe(false);
+    expect(
+      SetPlanRequestSchema.safeParse({
+        composition: CLASSIC,
+        setCount: 2,
+        mode: "apply",
+        poolVersion,
+      }).success,
+    ).toBe(false);
+    expect(
+      SetPlanRequestSchema.safeParse({
+        ...common,
+        mode: "apply",
+        poolVersion,
+      }).success,
+    ).toBe(true);
+    expect(SetPlanRequestSchema.safeParse({ ...common, mode: "preview" }).success).toBe(true);
   });
 });

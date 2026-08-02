@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { ContestPicker } from "@/components/admin/ContestPicker";
+import { Crumbs } from "@/components/ui";
 
 /**
  * `/admin` — the contest list. HackerRank's "Manage Contests", which is its admin HOME.
@@ -26,9 +27,18 @@ import { ContestPicker } from "@/components/admin/ContestPicker";
 export default function AdminContestsPage() {
   return (
     <div className="flex flex-col gap-6">
-      <header className="flex flex-wrap items-end justify-between gap-4">
+      {/* The trail is one label deep here, but every other admin screen renders Crumbs one route
+          group over, and a home page that is the only screen without an eyebrow reads as a
+          different product. */}
+      <Crumbs trail={[{ label: "Contests" }]} />
+
+      {/*
+        `items-start`, not `items-end`: the button belongs to the h1 it acts beside, and bottom-
+        aligning it against a two-line subtitle dropped it 72px below that h1.
+      */}
+      <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="font-display font-bold" style={{ fontSize: "var(--text-xl)" }}>
+          <h1 className="font-display font-bold text-[length:var(--text-lg)] sm:text-[length:var(--text-xl)]">
             Contests
           </h1>
           <p className="mt-1 max-w-[70ch] text-ink/70" style={{ fontSize: "var(--text-sm)" }}>

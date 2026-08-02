@@ -45,10 +45,12 @@ export const API_ROUTES = {
    * joining. Every route below is scoped because by then the client knows which contest it
    * is in; this one is how it finds out.
    */
-  problems: (contestId: string) => `/api/contests/${encodeURIComponent(contestId)}/problems`,
+  problems: (contestId: string) =>
+    `/api/contests/${encodeURIComponent(contestId)}/problems`,
   problem: (contestId: string, slug: string) =>
     `/api/contests/${encodeURIComponent(contestId)}/problems/${encodeURIComponent(slug)}`,
-  standings: (contestId: string) => `/api/contests/${encodeURIComponent(contestId)}/standings`,
+  standings: (contestId: string) =>
+    `/api/contests/${encodeURIComponent(contestId)}/standings`,
   /**
    * The projector's board. Un-scoped on purpose, and the only read route that is.
    *
@@ -61,7 +63,8 @@ export const API_ROUTES = {
       ? "/api/standings"
       : `/api/standings?contestId=${encodeURIComponent(contestId)}`,
   /** Contest-level SSE. One stream carries verdicts, standings and contest state. */
-  stream: (contestId: string) => `/api/contests/${encodeURIComponent(contestId)}/stream`,
+  stream: (contestId: string) =>
+    `/api/contests/${encodeURIComponent(contestId)}/stream`,
 
   runSamples: "/api/run-samples",
   submissions: "/api/submissions",
@@ -77,7 +80,8 @@ export const API_ROUTES = {
       : `/api/users/${encodeURIComponent(userId)}/avatar?v=${encodeURIComponent(version)}`,
 
   /** Team formation. Contest-scoped like everything else a competitor reaches after joining. */
-  myTeam: (contestId: string) => `/api/contests/${encodeURIComponent(contestId)}/teams/mine`,
+  myTeam: (contestId: string) =>
+    `/api/contests/${encodeURIComponent(contestId)}/teams/mine`,
   teamStandings: (contestId: string) =>
     `/api/contests/${encodeURIComponent(contestId)}/team-standings`,
 
@@ -95,8 +99,10 @@ export const API_ROUTES = {
   // --- admin: team management ---
   adminRoster: (contestId: string) =>
     `/api/admin/contests/${encodeURIComponent(contestId)}/roster`,
-  adminTeams: (contestId: string) => `/api/admin/contests/${encodeURIComponent(contestId)}/teams`,
-  adminTeam: (teamId: string) => `/api/admin/teams/${encodeURIComponent(teamId)}`,
+  adminTeams: (contestId: string) =>
+    `/api/admin/contests/${encodeURIComponent(contestId)}/teams`,
+  adminTeam: (teamId: string) =>
+    `/api/admin/teams/${encodeURIComponent(teamId)}`,
   adminMoveParticipant: (contestId: string) =>
     `/api/admin/contests/${encodeURIComponent(contestId)}/roster/move`,
   adminReassignSet: (contestId: string) =>
@@ -173,7 +179,11 @@ export function fail(error: ApiError): ApiResponse<never> {
 export function apiResponseSchema<T extends z.ZodTypeAny>(data: T) {
   return z.discriminatedUnion("success", [
     z.object({ success: z.literal(true), data, error: z.null() }),
-    z.object({ success: z.literal(false), data: z.null(), error: ApiErrorSchema }),
+    z.object({
+      success: z.literal(false),
+      data: z.null(),
+      error: ApiErrorSchema,
+    }),
   ]);
 }
 
@@ -280,7 +290,14 @@ export const AdminContestSummarySchema = z.object({
   name: z.string(),
   // The Prisma enum verbatim. Spelling it out rather than importing keeps the wire contract a
   // thing this file owns — but it must MATCH, so it is asserted against the enum in a unit test.
-  state: z.enum(["DRAFT", "SCHEDULED", "RUNNING", "FROZEN", "ENDED", "ARCHIVED"]),
+  state: z.enum([
+    "DRAFT",
+    "SCHEDULED",
+    "RUNNING",
+    "FROZEN",
+    "ENDED",
+    "ARCHIVED",
+  ]),
   startsAt: z.string(),
   endsAt: z.string(),
   participantCount: z.number().int().nonnegative(),
@@ -379,19 +396,37 @@ export const CreateContestResponseSchema = z.object({ contestId: z.string() });
 /**
  * A contest's line-up, set in one call.
  *
- * `setLabel` null means a GROUP problem — every team works it regardless of which set a player was
- * assigned. That is the distinction the whole Coding Night format rests on, so it is a field
- * rather than something inferred from the slot label's spelling.
+ * `round` is explicit and contest-scoped. A GROUP problem belongs to no set; an INDIVIDUAL problem
+ * belongs to exactly one set. Keeping both facts in the request lets the boundary reject a
+ * contradictory row instead of silently guessing what a blank set means.
  */
 export const SetContestProblemsRequestSchema = z.object({
   problems: z.array(
-    z.object({
-      problemId: z.string(),
-      slotLabel: z.string().trim().min(1).max(24),
-      basePoints: z.number().int().nonnegative(),
-      setLabel: z.string().trim().min(1).max(8).nullable(),
-      divisionId: z.string().nullable(),
-    }),
+    z
+      .object({
+        problemId: z.string(),
+        slotLabel: z.string().trim().min(1).max(24),
+        basePoints: z.number().int().nonnegative(),
+        round: z.enum(["INDIVIDUAL", "GROUP"]),
+        setLabel: z.string().trim().min(1).max(8).nullable(),
+        divisionId: z.string().nullable(),
+      })
+      .superRefine((problem, ctx) => {
+        if (problem.round === "GROUP" && problem.setLabel !== null) {
+          ctx.addIssue({
+            code: "custom",
+            path: ["setLabel"],
+            message: "A group question cannot belong to an individual set",
+          });
+        }
+        if (problem.round === "INDIVIDUAL" && problem.setLabel === null) {
+          ctx.addIssue({
+            code: "custom",
+            path: ["setLabel"],
+            message: "An individual question needs a set",
+          });
+        }
+      }),
   ),
   reason: z.string().trim().min(1, "Say why this line-up changed").max(300),
 });
@@ -459,6 +494,8 @@ export const RosterMemberSchema = TeamMemberSchema.extend({
   userId: z.string().nullable(),
   email: z.string().nullable(),
   submissionCount: z.number().int().nonnegative(),
+  chosenSetId: z.string().nullable(),
+  chosenSetLabel: z.string().nullable(),
 });
 export type RosterMember = z.infer<typeof RosterMemberSchema>;
 
@@ -466,6 +503,12 @@ export type RosterMember = z.infer<typeof RosterMemberSchema>;
 export const AdminRosterSchema = z.object({
   maxTeamSize: z.number().int().positive(),
   formationOpen: z.boolean(),
+  setSelection: z.enum([
+    "RANDOM_ASSIGNED",
+    "PLAYER_CHOOSES",
+    "ONE_SET_PER_TEAM",
+  ]),
+  problemSets: z.array(z.object({ setId: z.string(), label: z.string() })),
   teams: z.array(
     TeamViewSchema.extend({
       memberCount: z.number().int().nonnegative(),
@@ -655,7 +698,10 @@ export type ProblemDetail = z.infer<typeof ProblemDetailSchema>;
 export const SubmitRequestSchema = z.object({
   contestProblemId: z.string().min(1),
   language: LanguageSchema,
-  sourceCode: z.string().min(1, "Write some code first").max(200_000, "Source is too large"),
+  sourceCode: z
+    .string()
+    .min(1, "Write some code first")
+    .max(200_000, "Source is too large"),
 });
 export type SubmitRequest = z.infer<typeof SubmitRequestSchema>;
 
@@ -849,6 +895,10 @@ export const TeamStandingsResponseSchema = z.object({
   frozen: z.boolean(),
   asOf: z.string(),
   endsAt: z.string(),
+  /** Configured columns, including a set that currently has no assigned player. */
+  setLabels: z.array(z.string()),
+  groupPointsInsideMean: z.boolean(),
+  sideActivitiesFlat: z.boolean(),
   /** Ranked best first. One entry per team; players nest inside. */
   teams: z.array(TeamStandingRowSchema),
 });
@@ -880,7 +930,11 @@ export const OverrideVerdictRequestSchema = z.object({
   verdict: VerdictSchema,
   score: z.number().int().nonnegative(),
   /** Required. Every override is audit-logged with a reason (PRD §9.2). */
-  reason: z.string().trim().min(1, "A reason is required for an override").max(500),
+  reason: z
+    .string()
+    .trim()
+    .min(1, "A reason is required for an override")
+    .max(500),
 });
 
 export const FreezeRequestSchema = z.object({
@@ -928,17 +982,22 @@ export type AccountProfile = z.infer<typeof AccountProfileSchema>;
 
 /** The rename request. Trimmed and length-checked here; normalised again server-side. */
 export const RenameAccountRequestSchema = z.object({
-  displayName: z.string().trim().min(1, "Your name cannot be empty.").max(DISPLAY_NAME_MAX),
+  displayName: z
+    .string()
+    .trim()
+    .min(1, "Your name cannot be empty.")
+    .max(DISPLAY_NAME_MAX),
 });
 export type RenameAccountRequest = z.infer<typeof RenameAccountRequestSchema>;
 
 /**
- * The rename response. `adjustedOnABoard` is true when a contest already had the wanted name, so
- * a participant row was stored with a suffix and the board will show it.
+ * The rename response. `adjustedOnABoard` reports a uniqueness suffix. A frozen or completed
+ * result keeps its published competition name and reports that separately.
  */
 export const RenameAccountResponseSchema = z.object({
   displayName: z.string(),
   adjustedOnABoard: z.boolean(),
+  preservedOnLockedBoards: z.boolean(),
 });
 export type RenameAccountResponse = z.infer<typeof RenameAccountResponseSchema>;
 
@@ -988,7 +1047,9 @@ export const CreateProblemRequestSchema = z.object({
   timeLimitMs: z.number().int().min(500).max(10_000).optional(),
   memoryLimitMb: z.number().int().min(64).max(1024).optional(),
   signature: AuthoredSignatureSchema.nullable().optional(),
-  testCases: z.array(AuthoredTestCaseSchema).min(1, "Add at least one test case."),
+  testCases: z
+    .array(AuthoredTestCaseSchema)
+    .min(1, "Add at least one test case."),
 });
 export type CreateProblemRequest = z.infer<typeof CreateProblemRequestSchema>;
 
@@ -1019,7 +1080,9 @@ export const SetCompositionEntrySchema = z.object({
   count: z.number().int().min(0).max(20),
   points: z.number().int().min(0).max(10_000).optional(),
 });
-export type SetCompositionEntryInput = z.infer<typeof SetCompositionEntrySchema>;
+export type SetCompositionEntryInput = z.infer<
+  typeof SetCompositionEntrySchema
+>;
 
 /**
  * The whole recipe for one set.
@@ -1034,7 +1097,8 @@ export const SetCompositionSchema = z
   .min(1, "Say how many problems of each difficulty a set should hold.")
   .max(3)
   .refine(
-    (entries) => new Set(entries.map((entry) => entry.difficulty)).size === entries.length,
+    (entries) =>
+      new Set(entries.map((entry) => entry.difficulty)).size === entries.length,
     "Each difficulty may appear once in the recipe.",
   );
 export type SetCompositionInput = z.infer<typeof SetCompositionSchema>;
@@ -1043,22 +1107,37 @@ export type SetCompositionInput = z.infer<typeof SetCompositionSchema>;
  * `preview` computes and returns; `apply` writes. Two modes on one route rather than two routes,
  * so the plan an organizer approved is produced by exactly the code that then stores it.
  */
-export const SetPlanRequestSchema = z.object({
+const SetPlanCommonSchema = {
   composition: SetCompositionSchema,
   setCount: z
     .number()
     .int()
     .min(1, "Build at least one set.")
-    .max(26, "26 sets is A to Z, and a contest will not need a second row of labels."),
-  mode: z.enum(["preview", "apply"]),
-  /**
-   * An explicit seed, for reproducing a past deal exactly. Omit for a fresh random one.
-   *
-   * The same escape hatch `/assign-sets` has, for the same reason: restoring a plan after a bad
-   * re-plan, or demonstrating the deal on known input.
-   */
-  seed: z.string().min(8).max(64).optional(),
-});
+    .max(
+      26,
+      "26 sets is A to Z, and a contest will not need a second row of labels.",
+    ),
+};
+
+const SetPlanSeedSchema = z.string().min(8).max(64);
+const SetPoolVersionSchema = z.string().regex(/^[a-f0-9]{64}$/);
+
+export const SetPlanRequestSchema = z.discriminatedUnion("mode", [
+  z.object({
+    ...SetPlanCommonSchema,
+    mode: z.literal("preview"),
+    /** Omit to deal a fresh preview; provide one to reproduce a stored plan. */
+    seed: SetPlanSeedSchema.optional(),
+  }),
+  z.object({
+    ...SetPlanCommonSchema,
+    mode: z.literal("apply"),
+    /** The exact seed returned by the preview. Apply never silently mints another one. */
+    seed: SetPlanSeedSchema,
+    /** The exact usable-pool fingerprint returned by the preview. */
+    poolVersion: SetPoolVersionSchema,
+  }),
+]);
 export type SetPlanRequest = z.infer<typeof SetPlanRequestSchema>;
 
 /** A problem as it sits in a planned set. Enough for the organizer to recognise it on screen. */
@@ -1123,6 +1202,8 @@ export const SetPlanResponseSchema = z.object({
   seed: z.string().nullable(),
   /** How many problems in the bank were usable at all. The denominator behind any shortfall. */
   poolSize: z.number().int().nonnegative(),
+  /** SHA-256 fingerprint of the ordered usable pool behind this exact deal. */
+  poolVersion: SetPoolVersionSchema,
   plan: SetPlanOutcomeSchema,
 });
 export type SetPlanResponse = z.infer<typeof SetPlanResponseSchema>;

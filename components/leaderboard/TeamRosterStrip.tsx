@@ -16,8 +16,10 @@ import styles from "./leaderboard.module.css";
  *    box the team member's name is there and then to the right there is the scores and it goes
  *    down, but the boxes are smaller to show it's individual"
  *
- * So: a row per member, the name boxed on the left, the numbers to its right IN THE COLUMNS THE
- * TEAM ROW ALREADY USES, drawn one rung smaller.
+ * So: a row per member, a full white name cell on the left, and the numbers to its right IN THE
+ * COLUMNS THE TEAM ROW ALREADY USES, drawn one rung smaller. The first implementation put another
+ * outlined box inside the name cell. That read as a floating badge rather than a nested table row,
+ * so the cell itself now carries the white ground and the grid carries the boundary.
  *
  * ## Why these are `<tr>`s and not a nested table
  *
@@ -88,6 +90,8 @@ export interface TeamRosterStripProps {
    * belongs.
    */
   columns: readonly string[];
+  /** Authoritative scoring setting; do not infer it from a zero-point group round. */
+  groupPointsInsideMean: boolean;
   /** The viewer's own team, so the rail stays lit down the whole block rather than stopping. */
   mine: boolean;
 }
@@ -145,7 +149,12 @@ function railStyle(mine: boolean): React.CSSProperties {
   };
 }
 
-export function TeamRosterStrip({ team, columns, mine }: TeamRosterStripProps) {
+export function TeamRosterStrip({
+  team,
+  columns,
+  mine,
+  groupPointsInsideMean,
+}: TeamRosterStripProps) {
   const players = team.players;
 
   const drawnCount = drawnMemberCount(players.length);
@@ -153,18 +162,7 @@ export function TeamRosterStrip({ team, columns, mine }: TeamRosterStripProps) {
   const rest = players.slice(drawnCount);
   const restPoints = rest.reduce((sum, player) => sum + player.score, 0);
 
-  /**
-   * Is the group total inside the pool, or beside it?
-   *
-   * `config.groupPointsInsideMean` decides that in the scoring engine and the payload does not
-   * carry the flag, so it is derived from the numbers rather than assumed. Derived, not guessed:
-   * when the two agree the pool row says where the group points went, and when they do not it says
-   * nothing rather than something confident and wrong.
-   */
-  const memberPoints = players.reduce((sum, player) => sum + player.score, 0);
-  const groupInsidePool =
-    team.groupPoints > 0 &&
-    team.playerPoolPoints === memberPoints + team.groupPoints;
+  const groupInsidePool = groupPointsInsideMean && team.groupPoints > 0;
 
   /** That player's points under that set, blank elsewhere. A blank is not a dash: see below. */
   const setCells = (

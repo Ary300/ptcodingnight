@@ -1,5 +1,6 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 
+import { createRemoteJWKSet, customFetch, jwtVerify } from "jose";
 import { z } from "zod";
 
 /**
@@ -150,6 +151,26 @@ const GoogleIdTokenClaims = z.object({
   name: z.string().optional(),
 });
 
+const GOOGLE_JWKS_URL = new URL("https://www.googleapis.com/oauth2/v3/certs");
+const GOOGLE_ISSUERS = ["https://accounts.google.com", "accounts.google.com"];
+
+export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
+
+/*
+ * Google's signing keys rotate. jose's remote resolver caches a successful JWKS response, limits
+ * refreshes, and refreshes again when a token names a new key id. Keep one resolver for the real
+ * network path; tests receive an isolated resolver backed by their injected fetch implementation.
+ */
+const googleJwks = createRemoteJWKSet(GOOGLE_JWKS_URL);
+
+function googleJwksFor(fetchImpl: FetchLike) {
+  if (fetchImpl === fetch) return googleJwks;
+
+  return createRemoteJWKSet(GOOGLE_JWKS_URL, {
+    [customFetch]: (url, init) => fetchImpl(url, init),
+  });
+}
+
 const GitHubUser = z.object({
   id: z.number().int(),
   login: z.string().min(1),
@@ -163,30 +184,27 @@ const GitHubEmail = z.object({
   verified: z.boolean(),
 });
 
-/**
- * Decode a JWT payload WITHOUT verifying its signature.
- *
- * Safe only in this exact position, and the reason is worth stating: the id_token came directly
- * from Google's token endpoint over TLS in response to our own client secret. It was not supplied
- * by the browser, so there is no attacker in a position to forge it. Verifying the signature would
- * mean fetching and caching Google's JWKS for no additional security here.
- *
- * **This would be wrong for an id_token arriving any other way** — one posted by a client must
- * always have its signature checked.
- */
-function decodeJwtPayload(token: string): unknown {
-  const parts = token.split(".");
-  if (parts.length !== 3) return null;
-  const payload = parts[1];
-  if (payload === undefined) return null;
+async function verifiedGoogleClaims(
+  token: string,
+  clientId: string,
+  fetchImpl: FetchLike,
+) {
   try {
-    return JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as unknown;
+    const verified = await jwtVerify(token, googleJwksFor(fetchImpl), {
+      algorithms: ["RS256"],
+      issuer: GOOGLE_ISSUERS,
+      audience: clientId,
+      requiredClaims: ["sub", "iss", "aud", "exp"],
+    });
+    const claims = GoogleIdTokenClaims.safeParse(verified.payload);
+    if (!claims.success) throw new Error("claims did not match the Google contract");
+    return claims.data;
   } catch {
-    return null;
+    // The callback turns OAuthError into a readable sign-in-page redirect. Do not expose jose's
+    // detailed reason or the token itself to the browser, but never continue to account linking.
+    throw new OAuthError("Google returned an invalid id_token");
   }
 }
-
-export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 
 export class OAuthError extends Error {
   constructor(message: string) {
@@ -226,16 +244,15 @@ export async function identityFromCode(
     const idToken = token.id_token;
     if (typeof idToken !== "string") throw new OAuthError("Google returned no id_token");
 
-    const claims = GoogleIdTokenClaims.safeParse(decodeJwtPayload(idToken));
-    if (!claims.success) throw new OAuthError("Google returned an id_token we cannot read");
+    const claims = await verifiedGoogleClaims(idToken, config.clientId, fetchImpl);
 
-    const verified = claims.data.email_verified;
+    const verified = claims.email_verified;
     return {
       provider: "google",
-      subject: claims.data.sub,
-      email: claims.data.email ?? null,
+      subject: claims.sub,
+      email: claims.email ?? null,
       emailVerified: verified === true || verified === "true",
-      displayName: claims.data.name ?? null,
+      displayName: claims.name ?? null,
     };
   }
 

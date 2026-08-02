@@ -314,7 +314,7 @@ export function SideActivityEntry({ contestId }: SideActivityEntryProps) {
         title="Award points"
         level="framed"
         className="max-w-2xl"
-        description="Added flat to the team total. There is no submission behind these, so this entry is the only record that they happened."
+        description="Side-activity points are added directly to the team total and recorded in the audit log."
       >
         <form
           onSubmit={(event) => {
@@ -365,6 +365,10 @@ export function SideActivityEntry({ contestId }: SideActivityEntryProps) {
             min={-MAX_POINTS}
             max={MAX_POINTS}
             step={1}
+            // A width the value can fill: this box holds a 5-character signed integer, and at
+            // the control column's full width it was the most visible proportion error on the
+            // screen. Inline, because TextInput owns className and w-full is in its base.
+            style={{ width: "8rem" }}
             hint={
               <>
                 Added <strong>flat</strong> to the team total, not divided by team size, so a typo
@@ -451,17 +455,32 @@ export function SideActivityEntry({ contestId }: SideActivityEntryProps) {
         </form>
       </Panel>
 
-      {selected !== undefined && (
-        <Panel
-          title={`${selected.name}: awarded so far`}
-          level="bare"
-          aside={
-            <span className="numeric text-ink/60" style={{ fontSize: "var(--text-sm)" }}>
+      {/*
+        Always rendered, even before a team is chosen. The whole region used to be behind
+        `selected !== undefined`, so on arrival the screen showed no evidence any record is kept
+        although the intro copy promises one — and the entries that existed were invisible. The
+        history route is per-team, so with no team chosen the panel says what to do rather than
+        listing nothing silently. Capped at the form's own width: the table used to run the full
+        1240px canvas, putting an activity's name 500px from its points.
+      */}
+      <Panel
+        title={selected === undefined ? "Awarded so far" : `${selected.name}: awarded so far`}
+        level="bare"
+        className="max-w-2xl"
+        aside={
+          selected === undefined ? undefined : (
+            <span className="text-ink/60" style={{ fontSize: "var(--text-sm)" }}>
               {selected.sideActivityPoints} points total
             </span>
-          }
-        >
-          {activities.length === 0 ? (
+          )
+        }
+      >
+        {selected === undefined ? (
+          <p className="text-ink/60" style={{ fontSize: "var(--text-sm)" }}>
+            Pick a team above to see its entries. Every award is listed with when it was entered
+            and by which organizer session, and nothing is ever edited or deleted.
+          </p>
+        ) : activities.length === 0 ? (
             <p className="text-ink/60" style={{ fontSize: "var(--text-sm)" }}>
               {historyFailed
                 ? "The history could not be loaded. The award form above still works."
@@ -519,8 +538,7 @@ export function SideActivityEntry({ contestId }: SideActivityEntryProps) {
               </Table>
             </div>
           )}
-        </Panel>
-      )}
+      </Panel>
     </div>
   );
 }

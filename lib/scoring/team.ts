@@ -43,27 +43,6 @@ import { rankDivision, type RankKey } from "@/lib/scoring/rank";
  * See `docs/SCORING.md`.
  */
 
-/** A group problem is solved once by the team, so its points are counted once for the team. */
-function bestGroupPointsForTeam(
-  groupProblemIds: ReadonlySet<string>,
-  members: readonly PlayerStandingSource[],
-): number {
-  let total = 0;
-
-  for (const contestProblemId of groupProblemIds) {
-    // Best across the WHOLE TEAM, not per member. Two teammates who both submit the same group
-    // problem must not double its points — one submission counts for the team (PRD §5.1).
-    let best = 0;
-    for (const member of members) {
-      const entry = member.problems.find((p) => p.contestProblemId === contestProblemId);
-      if (entry !== undefined && entry.score > best) best = entry.score;
-    }
-    total += best;
-  }
-
-  return total;
-}
-
 /** What this module needs out of a per-participant standing. */
 interface PlayerStandingSource {
   readonly participantId: string;
@@ -96,6 +75,67 @@ export function computeTeamStandings(
     config.problems.filter((p) => p.round === "GROUP").map((p) => p.contestProblemId),
   );
 
+  /*
+   * A group problem belongs to the TEAM, including its attempt log. Scoring every member first
+   * and then taking the best score gets the points right, but not the event semantics:
+   *
+   * - a second teammate's equal AC is not another team score increase;
+   * - Classic penalties apply to each team attempt exactly once once the team scores;
+   * - ICPC attempts after the team's first solve are free, even if that particular teammate had
+   *   not submitted an AC before.
+   *
+   * Replaying the union of the team's group submissions as one synthetic participant gives us
+   * those rules directly from the canonical per-problem engine. It also keeps freeze/effectiveAt,
+   * hint deductions, same-instant ordering, and preset differences in one implementation.
+   */
+  const participantTeam = new Map(
+    participants.flatMap((participant) =>
+      participant.teamId === null
+        ? []
+        : ([[participant.participantId, participant.teamId]] as const),
+    ),
+  );
+  const groupProblems = config.problems.filter((problem) => problem.round === "GROUP");
+  const teamAsParticipants: ParticipantRecord[] = teams.map((team) => ({
+    participantId: team.teamId,
+    displayName: team.name,
+    divisionId: null,
+    teamId: null,
+    chosenSetId: null,
+  }));
+  const groupSubmissions: SubmissionRecord[] = submissions.flatMap((submission) => {
+    if (!groupProblemIds.has(submission.contestProblemId)) return [];
+    const teamId = participantTeam.get(submission.participantId);
+    return teamId === undefined ? [] : [{ ...submission, participantId: teamId }];
+  });
+  const groupHintGrants: HintGrantRecord[] = hintGrants.flatMap((grant) => {
+    if (!groupProblemIds.has(grant.contestProblemId)) return [];
+    const teamId = participantTeam.get(grant.participantId);
+    return teamId === undefined ? [] : [{ ...grant, participantId: teamId }];
+  });
+  const groupStandings = computeStandings(
+    { ...config, divisions: [], problems: groupProblems },
+    teamAsParticipants,
+    groupSubmissions,
+    groupHintGrants,
+    options,
+  );
+  const groupByTeam = new Map(groupStandings.map((standing) => [standing.participantId, standing]));
+
+  // A player's row is their own contribution, so group events must not leak into its penalty or
+  // last-increase columns. Keep the full standing above for the authorized per-problem detail,
+  // and replay only non-group events for the row and for the individual part of team ranking.
+  const individualStandings = computeStandings(
+    { ...config, problems: config.problems.filter((problem) => problem.round !== "GROUP") },
+    participants,
+    submissions.filter((submission) => !groupProblemIds.has(submission.contestProblemId)),
+    hintGrants.filter((grant) => !groupProblemIds.has(grant.contestProblemId)),
+    options,
+  );
+  const individualByParticipant = new Map(
+    individualStandings.map((standing) => [standing.participantId, standing]),
+  );
+
   const participantsByTeam = new Map<string, ParticipantRecord[]>();
   for (const participant of participants) {
     if (participant.teamId === null) continue; // contributes to no team score
@@ -106,6 +146,7 @@ export function computeTeamStandings(
 
   const sideByTeam = new Map<string, number>();
   for (const activity of sideActivities) {
+    if (options?.upTo != null && activity.enteredAt.getTime() > options.upTo.getTime()) continue;
     sideByTeam.set(activity.teamId, (sideByTeam.get(activity.teamId) ?? 0) + activity.points);
   }
 
@@ -129,12 +170,13 @@ export function computeTeamStandings(
 
     const sources: PlayerStandingSource[] = members.map((member) => {
       const standing = byParticipant.get(member.participantId);
+      const individualStanding = individualByParticipant.get(member.participantId);
       return {
         participantId: member.participantId,
         displayName: member.displayName,
         divisionId: member.divisionId,
-        penaltyMinutes: standing?.penaltyMinutes ?? 0,
-        lastScoreIncreaseAt: standing?.lastScoreIncreaseAt ?? null,
+        penaltyMinutes: individualStanding?.penaltyMinutes ?? 0,
+        lastScoreIncreaseAt: individualStanding?.lastScoreIncreaseAt ?? null,
         problems: standing?.problems ?? [],
       };
     });
@@ -172,7 +214,8 @@ export function computeTeamStandings(
     );
 
     const individualPoints = players.reduce((sum, p) => sum + p.score, 0);
-    const groupPoints = bestGroupPointsForTeam(groupProblemIds, sources);
+    const groupStanding = groupByTeam.get(team.teamId);
+    const groupPoints = groupStanding?.score ?? 0;
     const sideActivityPoints = sideByTeam.get(team.teamId) ?? 0;
 
     // --- the formula, in hundredths -------------------------------------------
@@ -200,13 +243,22 @@ export function computeTeamStandings(
 
     const scoreHundredths = meanHundredths + afterMean + sideContribution;
 
-    const penaltyMinutes = players.reduce((sum, p) => sum + p.penaltyMinutes, 0);
+    const penaltyMinutes =
+      players.reduce((sum, p) => sum + p.penaltyMinutes, 0) +
+      (groupStanding?.penaltyMinutes ?? 0);
 
-    const lastScoreIncreaseAt = players.reduce<Date | null>((latest, p) => {
+    const lastIndividualIncreaseAt = players.reduce<Date | null>((latest, p) => {
       if (p.lastScoreIncreaseAt === null) return latest;
       if (latest === null) return p.lastScoreIncreaseAt;
       return p.lastScoreIncreaseAt > latest ? p.lastScoreIncreaseAt : latest;
     }, null);
+    const groupIncreaseAt = groupStanding?.lastScoreIncreaseAt ?? null;
+    const lastScoreIncreaseAt =
+      lastIndividualIncreaseAt === null
+        ? groupIncreaseAt
+        : groupIncreaseAt === null || lastIndividualIncreaseAt > groupIncreaseAt
+          ? lastIndividualIncreaseAt
+          : groupIncreaseAt;
 
     return {
       team,

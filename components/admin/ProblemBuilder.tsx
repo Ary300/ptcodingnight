@@ -1,10 +1,19 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useCallback, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type Dispatch,
+  type ReactNode,
+  type SetStateAction,
+} from "react";
 
-import { TextArea, TextInput } from "@/components/admin/Field";
-import { AlertPlate } from "@/components/admin/Panel";
+import { Select, TextArea, TextInput } from "@/components/admin/Field";
+import { Markdown } from "@/components/contest/markdown/Markdown";
 import { Button } from "@/components/ui";
 import {
   API_ROUTES,
@@ -46,7 +55,14 @@ import {
  * first Save would make the screen true by destroying the data.
  */
 
-const SIGNATURE_TYPES = ["int", "long", "string", "int[]", "long[]", "string[]"] as const;
+const SIGNATURE_TYPES = [
+  "int",
+  "long",
+  "string",
+  "int[]",
+  "long[]",
+  "string[]",
+] as const;
 type SignatureType = (typeof SIGNATURE_TYPES)[number];
 
 interface DraftParam {
@@ -65,7 +81,11 @@ interface DraftCase {
 type StepKey = "details" | "starter" | "tests";
 
 const STEPS: readonly { key: StepKey; title: string; blurb: string }[] = [
-  { key: "details", title: "Question details", blurb: "Title, statement, difficulty" },
+  {
+    key: "details",
+    title: "Question details",
+    blurb: "Title, statement, difficulty",
+  },
   { key: "starter", title: "Starter code", blurb: "Optional function stub" },
   { key: "tests", title: "Test cases", blurb: "Input and expected output" },
 ];
@@ -77,7 +97,10 @@ const makeId = (): number => (nextId += 1);
 export interface ProblemBuilderSignature {
   readonly name: string;
   readonly returns: SignatureType;
-  readonly params: readonly { readonly name: string; readonly type: SignatureType }[];
+  readonly params: readonly {
+    readonly name: string;
+    readonly type: SignatureType;
+  }[];
 }
 
 export interface ProblemBuilderCase {
@@ -107,12 +130,6 @@ export interface ProblemBuilderInitial {
 export interface ProblemBuilderEdit {
   readonly slug: string;
   readonly initial: ProblemBuilderInitial;
-  /**
-   * Judged submissions that already exist against this question. Not a blocker: a live contest is
-   * refused by the server, and what is left is a past contest or a draft. It is worth saying out
-   * loud, because changing test data changes what those verdicts meant.
-   */
-  readonly judgedSubmissionCount: number;
 }
 
 export interface ProblemBuilderProps {
@@ -131,7 +148,9 @@ export function ProblemBuilder({ edit }: ProblemBuilderProps = {}) {
   const [inputSpec, setInputSpec] = useState(initial?.inputSpec ?? "");
   const [outputSpec, setOutputSpec] = useState(initial?.outputSpec ?? "");
   const [constraints, setConstraints] = useState(initial?.constraints ?? "");
-  const [difficulty, setDifficulty] = useState<"E" | "M" | "H">(initial?.difficulty ?? "E");
+  const [difficulty, setDifficulty] = useState<"E" | "M" | "H">(
+    initial?.difficulty ?? "E",
+  );
 
   // --- starter code ---
   // A question whose stored signature this form cannot represent keeps it: the checkbox is not
@@ -139,10 +158,16 @@ export function ProblemBuilder({ edit }: ProblemBuilderProps = {}) {
   const signatureLocked = initial !== undefined && !initial.signatureEditable;
   const [wantStarter, setWantStarter] = useState(initial?.signature != null);
   const [fnName, setFnName] = useState(initial?.signature?.name ?? "solve");
-  const [returns, setReturns] = useState<SignatureType>(initial?.signature?.returns ?? "int");
+  const [returns, setReturns] = useState<SignatureType>(
+    initial?.signature?.returns ?? "int",
+  );
   const [params, setParams] = useState<DraftParam[]>(() =>
     initial?.signature != null && initial.signature.params.length > 0
-      ? initial.signature.params.map((p) => ({ id: makeId(), name: p.name, type: p.type }))
+      ? initial.signature.params.map((p) => ({
+          id: makeId(),
+          name: p.name,
+          type: p.type,
+        }))
       : [{ id: makeId(), name: "n", type: "int" }],
   );
 
@@ -161,11 +186,19 @@ export function ProblemBuilder({ edit }: ProblemBuilderProps = {}) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const sampleCount = useMemo(() => cases.filter((c) => c.isSample).length, [cases]);
+  const sampleCount = useMemo(
+    () => cases.filter((c) => c.isSample).length,
+    [cases],
+  );
 
   const detailsComplete = title.trim() !== "" && statementMd.trim() !== "";
   const testsComplete =
-    cases.length > 0 && sampleCount > 0 && cases.every((c) => c.expectedOutput.trim() !== "");
+    cases.length > 0 &&
+    sampleCount > 0 &&
+    cases.every((c) => c.expectedOutput.trim() !== "");
+  const starterComplete =
+    signatureLocked || !wantStarter || fnName.trim() !== "";
+  const stepIndex = STEPS.findIndex((entry) => entry.key === step);
 
   const save = useCallback(async () => {
     setSubmitting(true);
@@ -196,7 +229,9 @@ export function ProblemBuilder({ edit }: ProblemBuilderProps = {}) {
       // OMITTED, not sent as null, when the stored signature is one this form cannot represent.
       // `null` is a request to REMOVE the starter code, and sending it because a checkbox the
       // organizer never saw happened to be unchecked would delete a harness nobody touched.
-      const body: CreateProblemRequest = signatureLocked ? common : { ...common, signature };
+      const body: CreateProblemRequest = signatureLocked
+        ? common
+        : { ...common, signature };
 
       const response = await fetch(
         edit === undefined
@@ -228,7 +263,11 @@ export function ProblemBuilder({ edit }: ProblemBuilderProps = {}) {
       }
       // A create lands on the bank, where the new question is now listed and cleared for a
       // contest. An edit lands on the question itself, whose preview shows what it now says.
-      router.push(edit === undefined ? "/admin/problems" : `/admin/problems/${parsed.data.slug}`);
+      router.push(
+        edit === undefined
+          ? "/admin/problems"
+          : `/admin/problems/${parsed.data.slug}`,
+      );
       router.refresh();
     } catch {
       setError("We could not reach the server.");
@@ -253,390 +292,1018 @@ export function ProblemBuilder({ edit }: ProblemBuilderProps = {}) {
   ]);
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[14rem_1fr]">
-      {/* --- what an edit is about to reinterpret -------------------------- */}
-      {edit !== undefined && edit.judgedSubmissionCount > 0 && (
-        // Spans both columns rather than sitting in the form, because it is a fact about the
-        // question and not about any one step. `live` is false: it is a standing condition present
-        // at first render, and a live region here would announce it on every arrival.
-        <div className="lg:col-span-2">
-          <AlertPlate tone="notice" title="This question has already been judged" live={false}>
-            <p>
-              {edit.judgedSubmissionCount} submission
-              {edit.judgedSubmissionCount === 1 ? " has" : "s have"} been judged against this
-              question. Changing the test data does not change those verdicts, but it does change
-              what they meant: a stored <strong>AC</strong> was earned against cases that will no
-              longer exist. Editing the statement or the limits is safe. Editing the cases is a
-              decision about a result somebody already has.
-            </p>
-          </AlertPlate>
+    <div className="grid gap-group lg:grid-cols-[15rem_minmax(0,1fr)]">
+      <div className="min-w-0 lg:sticky lg:top-4 lg:self-start">
+        <nav aria-label="Question sections">
+          <ol className="flex gap-2 overflow-x-auto lg:flex-col lg:overflow-visible">
+            {STEPS.map((entry, index) => {
+              const active = step === entry.key;
+              const done =
+                (entry.key === "details" && detailsComplete) ||
+                (entry.key === "starter" && starterComplete) ||
+                (entry.key === "tests" && testsComplete);
+
+              return (
+                <li key={entry.key} className="shrink-0 lg:shrink">
+                  <button
+                    type="button"
+                    onClick={() => setStep(entry.key)}
+                    aria-current={active ? "step" : undefined}
+                    className={`flex w-full items-center gap-3 border-l-2 px-3 py-3 text-left transition-colors ${
+                      active
+                        ? "border-panther bg-paper"
+                        : "border-transparent hover:bg-paper"
+                    }`}
+                  >
+                    <span
+                      aria-hidden="true"
+                      className={`numeric flex h-7 w-7 shrink-0 items-center justify-center rounded-full border ${
+                        done
+                          ? "border-ink bg-ink text-paper"
+                          : active
+                            ? "border-panther text-panther"
+                            : "border-rule-firm text-ink/70"
+                      }`}
+                      style={{ fontSize: "var(--text-xs)" }}
+                    >
+                      {done ? "✓" : index + 1}
+                    </span>
+                    <span className="min-w-0">
+                      <span
+                        className="block font-semibold"
+                        style={{ fontSize: "var(--text-sm)" }}
+                      >
+                        {entry.title}
+                      </span>
+                      <span
+                        className="block text-ink/60"
+                        style={{ fontSize: "var(--text-xs)" }}
+                      >
+                        {entry.blurb}
+                      </span>
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ol>
+        </nav>
+
+        <div className="mt-group hidden lg:block">
+          <QualityReview
+            detailsComplete={detailsComplete}
+            starterComplete={starterComplete}
+            expectedOutputsComplete={cases.every(
+              (testCase) => testCase.expectedOutput.trim() !== "",
+            )}
+            caseCount={cases.length}
+            sampleCount={sampleCount}
+          />
         </div>
+      </div>
+
+      <section className="min-w-0 overflow-hidden rounded-panel border border-rule-edge bg-paper">
+        <BuilderHeader
+          step={stepIndex + 1}
+          title={STEPS[stepIndex]?.title ?? "Question"}
+          description={
+            step === "details"
+              ? "Write the challenge exactly as students will receive it."
+              : step === "starter"
+                ? "Choose the function students complete, or start them with a blank editor."
+                : "Add the sample and hidden cases that the judge will run."
+          }
+          action={
+            step === "details" ? (
+              <PreviewButton
+                title={title}
+                statementMd={statementMd}
+                inputSpec={inputSpec}
+                outputSpec={outputSpec}
+                constraints={constraints}
+                cases={cases}
+              />
+            ) : undefined
+          }
+        />
+
+        <div className="flex flex-col gap-group p-5 sm:p-8">
+          {step === "details" && (
+            <DetailsStep
+              title={title}
+              setTitle={setTitle}
+              statementMd={statementMd}
+              setStatementMd={setStatementMd}
+              inputSpec={inputSpec}
+              setInputSpec={setInputSpec}
+              outputSpec={outputSpec}
+              setOutputSpec={setOutputSpec}
+              constraints={constraints}
+              setConstraints={setConstraints}
+              difficulty={difficulty}
+              setDifficulty={setDifficulty}
+            />
+          )}
+
+          {step === "starter" && (
+            <StarterStep
+              signatureLocked={signatureLocked}
+              wantStarter={wantStarter}
+              setWantStarter={setWantStarter}
+              fnName={fnName}
+              setFnName={setFnName}
+              returns={returns}
+              setReturns={setReturns}
+              params={params}
+              setParams={setParams}
+            />
+          )}
+
+          {step === "tests" && (
+            <TestsStep
+              cases={cases}
+              setCases={setCases}
+              sampleCount={sampleCount}
+            />
+          )}
+        </div>
+
+        <div className="sticky bottom-0 z-10 flex flex-wrap items-center justify-between gap-3 border-t border-rule-edge bg-paper/95 px-5 py-4 backdrop-blur sm:px-8">
+          {error !== null ? (
+            <p
+              role="alert"
+              className="font-semibold text-panther"
+              style={{ fontSize: "var(--text-sm)" }}
+            >
+              {error}
+            </p>
+          ) : (
+            <p className="text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
+              {!detailsComplete
+                ? "Add a question name and problem statement before saving."
+                : !starterComplete
+                  ? "Name the starter function, or turn starter code off."
+                  : !testsComplete
+                    ? "Every case needs expected output, and at least one case must be a sample."
+                    : edit === undefined
+                      ? "This question is ready to create."
+                      : "Your changes are ready to save."}
+            </p>
+          )}
+
+          <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={submitting}
+              onClick={() =>
+                router.push(
+                  edit === undefined
+                    ? "/admin/problems"
+                    : `/admin/problems/${edit.slug}`,
+                )
+              }
+            >
+              Cancel
+            </Button>
+            {stepIndex > 0 && (
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={submitting}
+                onClick={() => setStep(STEPS[stepIndex - 1]?.key ?? "details")}
+              >
+                Back
+              </Button>
+            )}
+            {step !== "tests" ? (
+              <Button
+                type="button"
+                disabled={submitting}
+                onClick={() => setStep(STEPS[stepIndex + 1]?.key ?? "tests")}
+              >
+                Next: {STEPS[stepIndex + 1]?.title}
+              </Button>
+            ) : (
+              <Button
+                type="button"
+                disabled={
+                  submitting ||
+                  !detailsComplete ||
+                  !starterComplete ||
+                  !testsComplete
+                }
+                onClick={() => void save()}
+              >
+                {edit === undefined
+                  ? submitting
+                    ? "Creating..."
+                    : "Create question"
+                  : submitting
+                    ? "Saving..."
+                    : "Save changes"}
+              </Button>
+            )}
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function BuilderHeader({
+  step,
+  title,
+  description,
+  action,
+}: {
+  step: number;
+  title: string;
+  description: string;
+  action?: ReactNode;
+}) {
+  return (
+    <header className="flex flex-wrap items-start justify-between gap-4 border-b border-rule-edge bg-ink/[0.025] px-5 py-5 sm:px-8">
+      <div>
+        <p
+          className="font-semibold text-ink/60 uppercase"
+          style={{ fontSize: "var(--text-xs)", letterSpacing: "0.1em" }}
+        >
+          Step {step} of {STEPS.length}
+        </p>
+        <h2
+          className="mt-tight font-display font-bold leading-tight"
+          style={{ fontSize: "var(--text-lg)" }}
+        >
+          {title}
+        </h2>
+        <p
+          className="mt-tight max-w-[65ch] text-ink/70"
+          style={{ fontSize: "var(--text-sm)" }}
+        >
+          {description}
+        </p>
+      </div>
+      {action}
+    </header>
+  );
+}
+
+function BuilderSection({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description?: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className="rounded-panel border border-rule-edge">
+      <header className="border-b border-rule-hair px-4 py-4 sm:px-6">
+        <h3
+          className="font-display font-bold"
+          style={{ fontSize: "var(--text-md)" }}
+        >
+          {title}
+        </h3>
+        {description !== undefined && (
+          <p
+            className="mt-tight max-w-[70ch] text-ink/60"
+            style={{ fontSize: "var(--text-xs)" }}
+          >
+            {description}
+          </p>
+        )}
+      </header>
+      <div className="flex flex-col gap-group p-4 sm:p-6">{children}</div>
+    </section>
+  );
+}
+
+function DetailsStep({
+  title,
+  setTitle,
+  statementMd,
+  setStatementMd,
+  inputSpec,
+  setInputSpec,
+  outputSpec,
+  setOutputSpec,
+  constraints,
+  setConstraints,
+  difficulty,
+  setDifficulty,
+}: {
+  title: string;
+  setTitle: (value: string) => void;
+  statementMd: string;
+  setStatementMd: (value: string) => void;
+  inputSpec: string;
+  setInputSpec: (value: string) => void;
+  outputSpec: string;
+  setOutputSpec: (value: string) => void;
+  constraints: string;
+  setConstraints: (value: string) => void;
+  difficulty: "E" | "M" | "H";
+  setDifficulty: (value: "E" | "M" | "H") => void;
+}) {
+  return (
+    <>
+      <BuilderSection
+        title="Problem"
+        description="Start with the task. Put background, rules, and examples in a clear reading order."
+      >
+        <TextInput
+          label="Question name"
+          required
+          value={title}
+          maxLength={120}
+          placeholder="A Very Big Sum"
+          onChange={(event) => setTitle(event.target.value)}
+        />
+        <TextArea
+          label="Problem statement"
+          required
+          hint="Markdown is supported for headings, lists, links, code, and math."
+          value={statementMd}
+          rows={12}
+          placeholder={
+            "Explain the task, the rules, and what the program needs to do."
+          }
+          onChange={(event) => setStatementMd(event.target.value)}
+        />
+      </BuilderSection>
+
+      <BuilderSection
+        title="Input and output"
+        description="Keep format rules separate from the main statement so students can find them quickly."
+      >
+        <TextArea
+          label="Input format"
+          hint="Describe each line and the order of values. Optional."
+          value={inputSpec}
+          rows={5}
+          onChange={(event) => setInputSpec(event.target.value)}
+        />
+        <TextArea
+          label="Output format"
+          hint="Describe exactly what the program should print. Optional."
+          value={outputSpec}
+          rows={5}
+          onChange={(event) => setOutputSpec(event.target.value)}
+        />
+        <TextArea
+          label="Constraints"
+          hint="One rule per line works well. Example: 1 ≤ n ≤ 10^5. Optional."
+          value={constraints}
+          rows={4}
+          onChange={(event) => setConstraints(event.target.value)}
+        />
+      </BuilderSection>
+
+      <BuilderSection title="Question settings">
+        <DifficultyPicker value={difficulty} onChange={setDifficulty} />
+        <p
+          className="rounded-panel border border-rule-hair bg-ink/[0.025] p-4 text-ink/70"
+          style={{ fontSize: "var(--text-sm)" }}
+        >
+          Every supported language is available automatically.
+        </p>
+      </BuilderSection>
+    </>
+  );
+}
+
+function StarterStep({
+  signatureLocked,
+  wantStarter,
+  setWantStarter,
+  fnName,
+  setFnName,
+  returns,
+  setReturns,
+  params,
+  setParams,
+}: {
+  signatureLocked: boolean;
+  wantStarter: boolean;
+  setWantStarter: (value: boolean) => void;
+  fnName: string;
+  setFnName: (value: string) => void;
+  returns: SignatureType;
+  setReturns: (value: SignatureType) => void;
+  params: DraftParam[];
+  setParams: Dispatch<SetStateAction<DraftParam[]>>;
+}) {
+  const signature = `${returns} ${fnName.trim() || "solve"}(${params
+    .filter((param) => param.name.trim() !== "")
+    .map((param) => `${param.type} ${param.name.trim()}`)
+    .join(", ")})`;
+
+  return (
+    <BuilderSection
+      title="Function declaration"
+      description="Starter code lets students focus on the function instead of writing input parsing."
+    >
+      {signatureLocked ? (
+        <div className="rounded-panel border border-rule-edge bg-ink/[0.025] p-4">
+          <p className="font-semibold" style={{ fontSize: "var(--text-sm)" }}>
+            This starter code is read only in the builder.
+          </p>
+          <p
+            className="mt-tight max-w-[70ch] text-ink/70"
+            style={{ fontSize: "var(--text-xs)" }}
+          >
+            Its input harness uses an advanced format. Saving this question
+            keeps that harness unchanged. Create a new question if you need a
+            different function signature.
+          </p>
+        </div>
+      ) : (
+        <label className="flex cursor-pointer items-start gap-3 rounded-panel border border-rule-edge bg-ink/[0.025] p-4">
+          <input
+            type="checkbox"
+            checked={wantStarter}
+            onChange={(event) => setWantStarter(event.target.checked)}
+            className="mt-1 h-4 w-4 accent-panther"
+          />
+          <span>
+            <span
+              className="block font-semibold"
+              style={{ fontSize: "var(--text-sm)" }}
+            >
+              Give students starter code
+            </span>
+            <span
+              className="mt-1 block text-ink/60"
+              style={{ fontSize: "var(--text-xs)" }}
+            >
+              Turn this off when students should read stdin and build the full
+              program themselves.
+            </span>
+          </span>
+        </label>
       )}
 
-      {/* --- step rail ---------------------------------------------------- */}
-      <nav aria-label="Question sections" className="lg:sticky lg:top-4 lg:self-start">
-        <ol className="flex gap-2 overflow-x-auto lg:flex-col lg:overflow-visible">
-          {STEPS.map((entry, index) => {
-            const active = step === entry.key;
-            const done =
-              (entry.key === "details" && detailsComplete) ||
-              (entry.key === "tests" && testsComplete) ||
-              (entry.key === "starter" && wantStarter && fnName.trim() !== "");
-            return (
-              <li key={entry.key} className="shrink-0 lg:shrink">
-                <button
-                  type="button"
-                  onClick={() => setStep(entry.key)}
-                  aria-current={active ? "step" : undefined}
-                  className={`flex w-full items-center gap-3 rounded border px-3 py-2 text-left ${
-                    active
-                      ? "border-panther bg-panther/[0.06]"
-                      : "border-rule-edge hover:border-rule-firm"
-                  }`}
-                >
-                  <span
-                    aria-hidden="true"
-                    className={`numeric flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${
-                      done ? "bg-ink text-paper" : "border border-rule-firm text-ink/70"
-                    }`}
-                    style={{ fontSize: "var(--text-xs)" }}
-                  >
-                    {done ? "✓" : index + 1}
-                  </span>
-                  <span className="min-w-0">
-                    <span className="block font-semibold" style={{ fontSize: "var(--text-sm)" }}>
-                      {entry.title}
-                    </span>
-                    <span className="block text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
-                      {entry.blurb}
-                    </span>
-                  </span>
-                </button>
-              </li>
-            );
-          })}
-        </ol>
-      </nav>
-
-      {/* --- panel -------------------------------------------------------- */}
-      <div className="min-w-0 rounded border border-rule-edge bg-paper p-5">
-        {step === "details" && (
-          <div className="flex flex-col gap-4">
-            <SectionHeading title="Question details" />
+      {!signatureLocked && wantStarter && (
+        <>
+          <div className="grid gap-group sm:grid-cols-2">
             <TextInput
-              label="Question name"
+              label="Function name"
               required
-              value={title}
-              maxLength={120}
-              placeholder="A Very Big Sum"
-              onChange={(e) => setTitle(e.target.value)}
+              value={fnName}
+              hint="Use lowerCamelCase with letters and digits."
+              onChange={(event) => setFnName(event.target.value)}
             />
-            <TextArea
-              label="Problem statement"
-              required
-              hint="Markdown. Write your own; do not paste from another site."
-              value={statementMd}
-              rows={10}
-              placeholder={"# Title\n\nDescribe the task, then the input and output."}
-              onChange={(e) => setStatementMd(e.target.value)}
+            <TypeSelect
+              label="Return type"
+              value={returns}
+              onChange={setReturns}
             />
-            <div className="grid gap-4 sm:grid-cols-2">
-              <TextArea
-                label="Input format"
-                hint="Optional."
-                value={inputSpec}
-                rows={3}
-                onChange={(e) => setInputSpec(e.target.value)}
-              />
-              <TextArea
-                label="Output format"
-                hint="Optional."
-                value={outputSpec}
-                rows={3}
-                onChange={(e) => setOutputSpec(e.target.value)}
-              />
-            </div>
-            <TextArea
-              label="Constraints"
-              hint="Optional. e.g. 1 ≤ n ≤ 10^5"
-              value={constraints}
-              rows={2}
-              onChange={(e) => setConstraints(e.target.value)}
-            />
-            <DifficultyPicker value={difficulty} onChange={setDifficulty} />
-            <p className="text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
-              Every question runs in all six languages. There is nothing to choose here, which is
-              why there is no languages step.
-            </p>
           </div>
-        )}
 
-        {step === "starter" && (
-          <div className="flex flex-col gap-4">
-            <SectionHeading title="Starter code" />
-            <p className="max-w-[62ch] text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
-              Optional. Pre-fill the editor with a function the student completes, so they never
-              write input parsing. The same stub is generated for every language. Leave this off
-              and the student gets a blank editor and reads stdin themselves.
-            </p>
-
-            {signatureLocked ? (
-              <p
-                className="max-w-[62ch] border-l-2 border-panther pl-4"
-                style={{ fontSize: "var(--text-sm)" }}
-              >
-                <strong>This question&rsquo;s starter code is kept as it is, and is not editable
-                here.</strong>{" "}
-                Its signature uses parts of the harness format this form does not offer: fields read
-                once before a repeat loop, or a count field named by hand. Flattening that into a
-                function name and a parameter list would change how every student&rsquo;s stub reads
-                its input, without saying so. Saving leaves it untouched. To change it, edit the
-                question&rsquo;s <code>problem.json</code> in the repository.
-              </p>
-            ) : (
-              <label className="flex items-center gap-2" style={{ fontSize: "var(--text-sm)" }}>
-                <input
-                  type="checkbox"
-                  checked={wantStarter}
-                  onChange={(e) => setWantStarter(e.target.checked)}
-                  className="h-4 w-4 accent-panther"
-                />
-                Give this question starter code
-              </label>
-            )}
-
-            {!signatureLocked && wantStarter && (
-              <div className="flex flex-col gap-4 border-l-2 border-rule-edge pl-4">
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <TextInput
-                    label="Function name"
-                    required
-                    value={fnName}
-                    hint="lowerCamelCase, letters and digits only."
-                    onChange={(e) => setFnName(e.target.value)}
-                  />
-                  <TypeSelect label="Returns" value={returns} onChange={setReturns} />
-                </div>
-
-                <div className="flex flex-col gap-2">
-                  <span className="font-semibold" style={{ fontSize: "var(--text-sm)" }}>
-                    Parameters
-                  </span>
-                  <p className="text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
-                    Read in this order. An array parameter reads its length first, then the values,
-                    so match your test-case input to that order.
-                  </p>
-                  {params.map((param) => (
-                    <div key={param.id} className="flex flex-wrap items-end gap-2">
-                      <div className="min-w-[8rem] flex-1">
-                        <TextInput
-                          label="Name"
-                          value={param.name}
-                          onChange={(e) =>
-                            setParams((prev) =>
-                              prev.map((p) => (p.id === param.id ? { ...p, name: e.target.value } : p)),
-                            )
-                          }
-                        />
-                      </div>
-                      <div className="min-w-[7rem]">
-                        <TypeSelect
-                          label="Type"
-                          value={param.type}
-                          onChange={(type) =>
-                            setParams((prev) => prev.map((p) => (p.id === param.id ? { ...p, type } : p)))
-                          }
-                        />
-                      </div>
-                      <Button
-                        type="button"
-                        variant="quiet"
-                        size="sm"
-                        onClick={() => setParams((prev) => prev.filter((p) => p.id !== param.id))}
-                      >
-                        Remove
-                      </Button>
-                    </div>
-                  ))}
-                  <div>
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      size="sm"
-                      onClick={() =>
-                        setParams((prev) => [...prev, { id: makeId(), name: "", type: "int" }])
-                      }
-                    >
-                      Add a parameter
-                    </Button>
-                  </div>
-                </div>
+          <div>
+            <div className="flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <h4
+                  className="font-semibold"
+                  style={{ fontSize: "var(--text-sm)" }}
+                >
+                  Function parameters
+                </h4>
+                <p
+                  className="mt-1 text-ink/60"
+                  style={{ fontSize: "var(--text-xs)" }}
+                >
+                  Parameters are read in this order. Arrays read their length
+                  before their values.
+                </p>
               </div>
-            )}
-          </div>
-        )}
-
-        {step === "tests" && (
-          <div className="flex flex-col gap-4">
-            <SectionHeading title="Test cases" />
-            <p className="max-w-[62ch] text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
-              A test case is input fed to the program on stdin and the exact output expected on
-              stdout. Mark the ones a student may see in full as samples; the rest are hidden and
-              reveal only pass or fail. HackerRank recommends three to fifteen.
-            </p>
-
-            {cases.map((testCase, index) => (
-              <div key={testCase.id} className="rounded border border-rule-edge p-4">
-                <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-                  <span className="font-semibold" style={{ fontSize: "var(--text-sm)" }}>
-                    Test case {index + 1}
-                  </span>
-                  <div className="flex items-center gap-3">
-                    <label className="flex items-center gap-2" style={{ fontSize: "var(--text-xs)" }}>
-                      <input
-                        type="checkbox"
-                        checked={testCase.isSample}
-                        onChange={(e) =>
-                          setCases((prev) =>
-                            prev.map((c) =>
-                              c.id === testCase.id ? { ...c, isSample: e.target.checked } : c,
-                            ),
-                          )
-                        }
-                        className="h-4 w-4 accent-panther"
-                      />
-                      Sample (shown to students)
-                    </label>
-                    {cases.length > 1 && (
-                      <Button
-                        type="button"
-                        variant="quiet"
-                        size="sm"
-                        onClick={() => setCases((prev) => prev.filter((c) => c.id !== testCase.id))}
-                      >
-                        Remove
-                      </Button>
-                    )}
-                  </div>
-                </div>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <TextArea
-                    label="Input (stdin)"
-                    mono
-                    value={testCase.input}
-                    rows={4}
-                    onChange={(e) =>
-                      setCases((prev) =>
-                        prev.map((c) => (c.id === testCase.id ? { ...c, input: e.target.value } : c)),
-                      )
-                    }
-                  />
-                  <TextArea
-                    label="Expected output (stdout)"
-                    mono
-                    required
-                    value={testCase.expectedOutput}
-                    rows={4}
-                    onChange={(e) =>
-                      setCases((prev) =>
-                        prev.map((c) =>
-                          c.id === testCase.id ? { ...c, expectedOutput: e.target.value } : c,
-                        ),
-                      )
-                    }
-                  />
-                </div>
-              </div>
-            ))}
-
-            <div className="flex flex-wrap items-center gap-3">
               <Button
                 type="button"
                 variant="secondary"
                 size="sm"
                 onClick={() =>
-                  setCases((prev) => [
-                    ...prev,
-                    { id: makeId(), input: "", expectedOutput: "", isSample: false },
+                  setParams((current) => [
+                    ...current,
+                    { id: makeId(), name: "", type: "int" },
                   ])
                 }
               >
-                Add a test case
+                Add parameter
               </Button>
-              <span
-                className={sampleCount === 0 ? "text-panther" : "text-ink/60"}
-                style={{ fontSize: "var(--text-xs)" }}
-              >
-                {cases.length} case{cases.length === 1 ? "" : "s"}, {sampleCount} sample
-                {sampleCount === 1 ? "" : "s"}
-                {sampleCount === 0 ? " (mark at least one as a sample)" : ""}
-              </span>
+            </div>
+
+            <div className="mt-tight flex flex-col gap-tight">
+              {params.length === 0 ? (
+                <p
+                  className="border border-dashed border-rule-edge p-4 text-ink/60"
+                  style={{ fontSize: "var(--text-xs)" }}
+                >
+                  This function has no parameters.
+                </p>
+              ) : (
+                params.map((param, index) => (
+                  <div
+                    key={param.id}
+                    className="rounded-panel border border-rule-hair p-4"
+                  >
+                    <div className="mb-tight flex items-center justify-between gap-3">
+                      <span
+                        className="font-semibold"
+                        style={{ fontSize: "var(--text-xs)" }}
+                      >
+                        Parameter {index + 1}
+                      </span>
+                      <Button
+                        type="button"
+                        variant="quiet"
+                        size="sm"
+                        onClick={() =>
+                          setParams((current) =>
+                            current.filter((entry) => entry.id !== param.id),
+                          )
+                        }
+                      >
+                        Remove
+                      </Button>
+                    </div>
+                    <div className="grid gap-group sm:grid-cols-2">
+                      <TypeSelect
+                        label="Type"
+                        value={param.type}
+                        onChange={(type) =>
+                          setParams((current) =>
+                            current.map((entry) =>
+                              entry.id === param.id
+                                ? { ...entry, type }
+                                : entry,
+                            ),
+                          )
+                        }
+                      />
+                      <TextInput
+                        label="Parameter name"
+                        value={param.name}
+                        placeholder="value"
+                        onChange={(event) =>
+                          setParams((current) =>
+                            current.map((entry) =>
+                              entry.id === param.id
+                                ? { ...entry, name: event.target.value }
+                                : entry,
+                            ),
+                          )
+                        }
+                      />
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </div>
-        )}
 
-        {/* --- footer ---------------------------------------------------- */}
-        <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-rule-edge pt-4">
-          {error !== null ? (
-            <p role="alert" className="text-panther" style={{ fontSize: "var(--text-sm)" }}>
-              {error}
-            </p>
-          ) : (
-            <p className="text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
-              {detailsComplete
-                ? testsComplete
-                  ? edit === undefined
-                    ? "Ready to create."
-                    : "Ready to save."
-                  : "Add a statement and at least one sample test case."
-                : "A title and a statement are required."}
-            </p>
-          )}
-          <div className="flex items-center gap-2">
-            {edit !== undefined && (
-              <Button
-                type="button"
-                variant="secondary"
-                disabled={submitting}
-                onClick={() => router.push(`/admin/problems/${edit.slug}`)}
-              >
-                Cancel
-              </Button>
-            )}
-            {step !== "tests" && (
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => setStep(step === "details" ? "starter" : "tests")}
-              >
-                Next
-              </Button>
-            )}
-            <Button
-              type="button"
-              disabled={submitting || !detailsComplete || !testsComplete}
-              onClick={() => void save()}
+          <div className="border border-rule-edge bg-ink/[0.025] p-4">
+            <p
+              className="font-semibold text-ink/60 uppercase"
+              style={{ fontSize: "var(--text-xs)", letterSpacing: "0.08em" }}
             >
-              {edit === undefined
-                ? submitting
-                  ? "Creating…"
-                  : "Create question"
-                : submitting
-                  ? "Saving…"
-                  : "Save changes"}
-            </Button>
+              Signature preview
+            </p>
+            <code
+              className="numeric mt-tight block overflow-x-auto whitespace-nowrap"
+              style={{ fontSize: "var(--text-sm)" }}
+            >
+              {signature}
+            </code>
           </div>
-        </div>
-      </div>
-    </div>
+        </>
+      )}
+    </BuilderSection>
   );
 }
 
-function SectionHeading({ title }: { title: string }) {
+function TestsStep({
+  cases,
+  setCases,
+  sampleCount,
+}: {
+  cases: DraftCase[];
+  setCases: Dispatch<SetStateAction<DraftCase[]>>;
+  sampleCount: number;
+}) {
   return (
-    <h2 className="font-display font-bold" style={{ fontSize: "var(--text-md)" }}>
-      {title}
-    </h2>
+    <BuilderSection
+      title="Judge cases"
+      description="Samples are visible to students. Hidden cases show only whether the submission passed."
+    >
+      <div className="flex flex-col gap-group">
+        {cases.map((testCase, index) => (
+          <section
+            key={testCase.id}
+            className="overflow-hidden rounded-panel border border-rule-edge"
+          >
+            <header className="flex flex-wrap items-center justify-between gap-3 border-b border-rule-hair bg-ink/[0.025] px-4 py-3">
+              <div className="flex items-center gap-3">
+                <span
+                  className="numeric flex h-7 w-7 items-center justify-center rounded-full border border-rule-firm"
+                  style={{ fontSize: "var(--text-xs)" }}
+                  aria-hidden="true"
+                >
+                  {index + 1}
+                </span>
+                <div>
+                  <h4
+                    className="font-semibold"
+                    style={{ fontSize: "var(--text-sm)" }}
+                  >
+                    Test case {index + 1}
+                  </h4>
+                  <span
+                    className="text-ink/60"
+                    style={{ fontSize: "var(--text-xs)" }}
+                  >
+                    {testCase.isSample ? "Sample case" : "Hidden case"}
+                  </span>
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-3">
+                <label
+                  className="flex cursor-pointer items-center gap-2"
+                  style={{ fontSize: "var(--text-xs)" }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={testCase.isSample}
+                    onChange={(event) =>
+                      setCases((current) =>
+                        current.map((entry) =>
+                          entry.id === testCase.id
+                            ? { ...entry, isSample: event.target.checked }
+                            : entry,
+                        ),
+                      )
+                    }
+                    className="h-4 w-4 accent-panther"
+                  />
+                  Show to students
+                </label>
+                {cases.length > 1 && (
+                  <Button
+                    type="button"
+                    variant="quiet"
+                    size="sm"
+                    onClick={() =>
+                      setCases((current) =>
+                        current.filter((entry) => entry.id !== testCase.id),
+                      )
+                    }
+                  >
+                    Remove
+                  </Button>
+                )}
+              </div>
+            </header>
+            <div className="grid gap-group p-4 sm:grid-cols-2 sm:p-5">
+              <TextArea
+                label="Input (stdin)"
+                mono
+                value={testCase.input}
+                rows={6}
+                placeholder="Input for this case"
+                onChange={(event) =>
+                  setCases((current) =>
+                    current.map((entry) =>
+                      entry.id === testCase.id
+                        ? { ...entry, input: event.target.value }
+                        : entry,
+                    ),
+                  )
+                }
+              />
+              <TextArea
+                label="Expected output (stdout)"
+                mono
+                required
+                value={testCase.expectedOutput}
+                rows={6}
+                placeholder="Exact expected output"
+                onChange={(event) =>
+                  setCases((current) =>
+                    current.map((entry) =>
+                      entry.id === testCase.id
+                        ? { ...entry, expectedOutput: event.target.value }
+                        : entry,
+                    ),
+                  )
+                }
+              />
+            </div>
+          </section>
+        ))}
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-rule-hair pt-4">
+        <Button
+          type="button"
+          variant="secondary"
+          onClick={() =>
+            setCases((current) => [
+              ...current,
+              { id: makeId(), input: "", expectedOutput: "", isSample: false },
+            ])
+          }
+        >
+          Add test case
+        </Button>
+        <p
+          className={
+            sampleCount === 0 ? "font-semibold text-panther" : "text-ink/60"
+          }
+          style={{ fontSize: "var(--text-xs)" }}
+        >
+          {cases.length} case{cases.length === 1 ? "" : "s"} · {sampleCount}{" "}
+          sample
+          {sampleCount === 1 ? "" : "s"}
+          {sampleCount === 0 ? ". Mark at least one case as a sample." : ""}
+        </p>
+      </div>
+    </BuilderSection>
+  );
+}
+
+function QualityReview({
+  detailsComplete,
+  starterComplete,
+  expectedOutputsComplete,
+  caseCount,
+  sampleCount,
+}: {
+  detailsComplete: boolean;
+  starterComplete: boolean;
+  expectedOutputsComplete: boolean;
+  caseCount: number;
+  sampleCount: number;
+}) {
+  return (
+    <aside
+      className="rounded-panel border border-rule-edge bg-paper p-4"
+      aria-label="Question quality review"
+    >
+      <h2
+        className="font-display font-bold"
+        style={{ fontSize: "var(--text-sm)" }}
+      >
+        Quality review
+      </h2>
+      <ul className="mt-tight flex flex-col gap-tight">
+        <ReviewItem ok={detailsComplete}>Title and statement</ReviewItem>
+        <ReviewItem ok={starterComplete}>Starter code ready</ReviewItem>
+        <ReviewItem ok={expectedOutputsComplete}>
+          Expected output for every case
+        </ReviewItem>
+        <ReviewItem ok={sampleCount > 0}>At least one sample case</ReviewItem>
+        <ReviewItem ok={caseCount >= 3} recommendation>
+          Three or more test cases
+        </ReviewItem>
+      </ul>
+    </aside>
+  );
+}
+
+function ReviewItem({
+  ok,
+  recommendation = false,
+  children,
+}: {
+  ok: boolean;
+  recommendation?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <li
+      className="flex items-start gap-2 text-ink/70"
+      style={{ fontSize: "var(--text-xs)" }}
+    >
+      <span className="numeric font-bold text-ink" aria-hidden="true">
+        {ok ? "✓" : "○"}
+      </span>
+      <span>
+        {children}
+        {recommendation && (
+          <span className="block text-ink/60">Recommended</span>
+        )}
+      </span>
+      <span className="sr-only">
+        {ok ? "Complete" : recommendation ? "Recommended" : "Incomplete"}
+      </span>
+    </li>
+  );
+}
+
+interface PreviewProps {
+  title: string;
+  statementMd: string;
+  inputSpec: string;
+  outputSpec: string;
+  constraints: string;
+  cases: readonly DraftCase[];
+}
+
+function PreviewButton(props: PreviewProps) {
+  const [open, setOpen] = useState(false);
+  const dialogRef = useRef<HTMLDialogElement>(null);
+
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (dialog === null) return;
+    if (open && !dialog.open) dialog.showModal();
+    if (!open && dialog.open) dialog.close();
+  }, [open]);
+
+  return (
+    <>
+      <Button
+        type="button"
+        variant="secondary"
+        size="sm"
+        onClick={() => setOpen(true)}
+      >
+        Preview question
+      </Button>
+      <dialog
+        ref={dialogRef}
+        onCancel={() => setOpen(false)}
+        onClose={() => setOpen(false)}
+        className="max-h-[calc(100vh-2rem)] w-[min(64rem,calc(100vw-2rem))] max-w-none overflow-hidden rounded-panel border border-rule-edge bg-paper p-0 text-ink shadow-2xl backdrop:bg-ink/65"
+        aria-labelledby="question-preview-title"
+      >
+        <header className="flex items-center justify-between gap-4 border-b border-rule-edge bg-ink px-5 py-4 text-paper">
+          <div>
+            <p
+              className="text-paper/70 uppercase"
+              style={{ fontSize: "var(--text-xs)", letterSpacing: "0.1em" }}
+            >
+              Competitor view
+            </p>
+            <h2
+              id="question-preview-title"
+              className="font-display font-bold"
+              style={{ fontSize: "var(--text-md)" }}
+            >
+              Question preview
+            </h2>
+          </div>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            onClick={() => setOpen(false)}
+            autoFocus
+          >
+            Close preview
+          </Button>
+        </header>
+        <div className="max-h-[calc(100vh-8rem)] overflow-y-auto p-5 sm:p-8">
+          <ProblemPreview {...props} />
+        </div>
+      </dialog>
+    </>
+  );
+}
+
+function ProblemPreview({
+  title,
+  statementMd,
+  inputSpec,
+  outputSpec,
+  constraints,
+  cases,
+}: PreviewProps) {
+  const samples = cases.filter((testCase) => testCase.isSample);
+
+  return (
+    <article className="mx-auto max-w-[75ch]">
+      <h3
+        className="font-display font-bold leading-tight"
+        style={{ fontSize: "var(--text-xl)" }}
+      >
+        {title.trim() || "Untitled question"}
+      </h3>
+      <div className="mt-group">
+        {statementMd.trim() === "" ? (
+          <p className="text-ink/50">The problem statement will appear here.</p>
+        ) : (
+          <Markdown source={statementMd} />
+        )}
+      </div>
+      <PreviewSection title="Input format" source={inputSpec} />
+      <PreviewSection title="Output format" source={outputSpec} />
+      <PreviewSection title="Constraints" source={constraints} mono />
+
+      <section className="mt-section">
+        <h4
+          className="font-display font-bold"
+          style={{ fontSize: "var(--text-lg)" }}
+        >
+          Samples
+        </h4>
+        {samples.length === 0 ? (
+          <p
+            className="mt-tight text-ink/50"
+            style={{ fontSize: "var(--text-sm)" }}
+          >
+            Mark a test case as a sample to show it here.
+          </p>
+        ) : (
+          <div className="mt-group flex flex-col gap-group">
+            {samples.map((sample, index) => (
+              <div
+                key={sample.id}
+                className="overflow-hidden rounded-panel border border-rule-edge"
+              >
+                <h5
+                  className="border-b border-rule-hair bg-ink/[0.025] px-4 py-3 font-semibold"
+                  style={{ fontSize: "var(--text-sm)" }}
+                >
+                  Sample {index + 1}
+                </h5>
+                <div className="grid sm:grid-cols-2">
+                  <PreviewCode label="Input" value={sample.input} />
+                  <PreviewCode
+                    label="Expected output"
+                    value={sample.expectedOutput}
+                    bordered
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+    </article>
+  );
+}
+
+function PreviewSection({
+  title,
+  source,
+  mono = false,
+}: {
+  title: string;
+  source: string;
+  mono?: boolean;
+}) {
+  if (source.trim() === "") return null;
+  return (
+    <section className="mt-section">
+      <h4
+        className="font-display font-bold"
+        style={{ fontSize: "var(--text-lg)" }}
+      >
+        {title}
+      </h4>
+      <div
+        className={`mt-tight ${mono ? "numeric whitespace-pre-wrap" : ""}`}
+        style={{ fontSize: "var(--text-sm)" }}
+      >
+        {mono ? source : <Markdown source={source} />}
+      </div>
+    </section>
+  );
+}
+
+function PreviewCode({
+  label,
+  value,
+  bordered = false,
+}: {
+  label: string;
+  value: string;
+  bordered?: boolean;
+}) {
+  return (
+    <div
+      className={`min-w-0 p-4 ${bordered ? "border-t border-rule-hair sm:border-t-0 sm:border-l" : ""}`}
+    >
+      <h6
+        className="font-semibold text-ink/60 uppercase"
+        style={{ fontSize: "var(--text-xs)", letterSpacing: "0.08em" }}
+      >
+        {label}
+      </h6>
+      <pre
+        className="numeric mt-tight overflow-x-auto whitespace-pre-wrap bg-ink/[0.035] p-3"
+        style={{ fontSize: "var(--text-sm)" }}
+      >
+        {value === ""
+          ? label === "Input"
+            ? "(no input)"
+            : "(not provided)"
+          : value}
+      </pre>
+    </div>
   );
 }
 
@@ -654,7 +1321,10 @@ function DifficultyPicker({
   ];
   return (
     <fieldset>
-      <legend className="mb-1 font-semibold" style={{ fontSize: "var(--text-sm)" }}>
+      <legend
+        className="mb-1 font-semibold"
+        style={{ fontSize: "var(--text-sm)" }}
+      >
         Difficulty
       </legend>
       <div className="flex gap-2">
@@ -689,20 +1359,16 @@ function TypeSelect({
   onChange: (value: SignatureType) => void;
 }) {
   return (
-    <label className="flex flex-col gap-1" style={{ fontSize: "var(--text-sm)" }}>
-      <span className="font-semibold">{label}</span>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value as SignatureType)}
-        className="numeric rounded border border-ink/25 bg-paper px-3 py-2"
-        style={{ fontSize: "var(--text-sm)" }}
-      >
-        {SIGNATURE_TYPES.map((type) => (
-          <option key={type} value={type}>
-            {type}
-          </option>
-        ))}
-      </select>
-    </label>
+    <Select
+      label={label}
+      value={value}
+      onChange={(event) => onChange(event.target.value as SignatureType)}
+    >
+      {SIGNATURE_TYPES.map((type) => (
+        <option key={type} value={type}>
+          {type}
+        </option>
+      ))}
+    </Select>
   );
 }

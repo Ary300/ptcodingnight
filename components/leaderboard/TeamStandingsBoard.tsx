@@ -1,10 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { Fragment, useState } from "react";
 
-import type { TeamStandingRow, TeamPlayerRow } from "@/lib/schemas/api";
+import type {
+  TeamPlayerProblem,
+  TeamPlayerRow,
+  TeamStandingRow,
+} from "@/lib/schemas/api";
 
-import { TeamPlayerLine } from "./TeamPlayerDetail";
 import { TeamRosterStrip } from "./TeamRosterStrip";
 import styles from "./leaderboard.module.css";
 
@@ -21,7 +24,11 @@ import styles from "./leaderboard.module.css";
  *
  * Taken from that table, concretely: a centred title over a bordered grid, `#` / who / `=` / one
  * column per problem, a two-line cell with the score over the time, tabular figures so the columns
- * line up, thin rules and a tight row. What is NOT taken is at the bottom of this comment.
+ * line up, thin rules, a tight row, and the zebra stripe — CF alternates a pale grey with white
+ * per competitor, and with 66px rows and eight columns that alternation is what lets an eye track
+ * one team across the board from the back of a room. Ours is indexed per TEAM rather than per
+ * `<tr>`, so the roster strip's inserted rows cannot flip the stripes beneath an open team. What
+ * is NOT taken is at the bottom of this comment.
  *
  * ## What "one column per problem" means for a TEAM contest
  *
@@ -88,20 +95,24 @@ import styles from "./leaderboard.module.css";
 
 export interface TeamStandingsBoardProps {
   teams: readonly TeamStandingRow[];
-  /** Projector mode: larger type, no per-player panel, and a controlled roster strip. */
+  /** Contest-configured columns, including currently unassigned sets. */
+  setLabels: readonly string[];
+  groupPointsInsideMean: boolean;
+  sideActivitiesFlat: boolean;
+  /** Projector mode: larger type, public roster rows, and externally budgeted expansion. */
   variant?: "interactive" | "projector";
   /** Highlights the viewer's own team. */
   highlightTeamId?: string | null;
   /**
-   * Projector only: which team's roster strip is open.
+   * Projector only: the roster strips that are open.
    *
    * **Controlled from outside, unlike the interactive expander**, and that asymmetry is the whole
    * design. On a phone an open panel just makes the page taller. On a wall there is no taller: the
-   * strip has to be paid for out of the row budget, so the screen that owns the budget
-   * (`TeamProjectorScreen`) has to own the open row too. A board that toggled its own state here
-   * would expand into rows it had already been told to draw, and clip them.
+   * every strip has to be paid for out of the row budget, so the screen that owns the budget
+   * (`TeamProjectorScreen`) has to own this set too. A board that toggled its own state here would
+   * expand into rows it had already been told to draw and clip them.
    */
-  openTeamId?: string | null;
+  openTeamIds?: ReadonlySet<string>;
   /** Projector only. Absent means the board is not expandable at all. */
   onToggleTeam?: (teamId: string) => void;
 }
@@ -110,27 +121,109 @@ function formatScore(score: number): string {
   return score.toFixed(2);
 }
 
-/** "1450 pts ÷ 4 players = 362.50 + 150 side" — the sentence form of the formula. */
-function arithmeticFor(team: TeamStandingRow): string {
+function timeOfDay(iso: string): string {
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return "";
+  return at.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+interface PlayerProblemListProps {
+  player: TeamPlayerRow;
+}
+
+/** The entitled, problem-by-problem layer that sits below one aligned player row. */
+function PlayerProblemList({ player }: PlayerProblemListProps) {
+  const problems = player.problems ?? [];
+
+  return (
+    <ul
+      aria-label={`${player.displayName}: problem by problem`}
+      className={styles.playerProblemList}
+    >
+      {problems.map((problem: TeamPlayerProblem) => {
+        const facts: string[] = [];
+        if (problem.firstScoredAt !== null) {
+          facts.push(`first scored ${timeOfDay(problem.firstScoredAt)}`);
+        }
+        if (problem.penaltyMinutes > 0) {
+          facts.push(`${String(problem.penaltyMinutes)} min penalty`);
+        }
+        if (problem.hintsTaken > 0) {
+          facts.push(
+            `${String(problem.hintsTaken)} hint${problem.hintsTaken === 1 ? "" : "s"} (−${String(problem.hintDeduction)})`,
+          );
+        }
+        if (problem.isGroupProblem) facts.push("group score");
+        if (problem.score === 0 && !problem.isGroupProblem) {
+          facts.push("not scored yet");
+        }
+
+        return (
+          <li key={problem.contestProblemId} className={styles.playerProblemLine}>
+            <span className="numeric font-bold">{problem.slotLabel}</span>
+            <span className={styles.playerProblemTitle}>{problem.title}</span>
+            {problem.rejectedCount > 0 && (
+              <span className="numeric font-bold text-panther">
+                <span aria-hidden="true">&minus;{problem.rejectedCount}</span>
+                <span className={styles.visuallyHidden}>
+                  {player.displayName}: {problem.rejectedCount} rejected submission
+                  {problem.rejectedCount === 1 ? "" : "s"}
+                </span>
+              </span>
+            )}
+            <span className="numeric text-right font-bold">
+              {problem.score}
+              <span className={styles.visuallyHidden}> points</span>
+            </span>
+            {facts.length > 0 && (
+              <span className={styles.playerProblemFacts}>{facts.join(" · ")}</span>
+            )}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+/** "1450 pts ÷ 4 players = 362.50 + 150 side" in the contest's actual scoring mode. */
+function arithmeticFor(
+  team: TeamStandingRow,
+  groupPointsInsideMean: boolean,
+  sideActivitiesFlat: boolean,
+): string {
   const pool = `${team.playerPoolPoints} pts`;
   const divisor =
     team.teamSize === 0
       ? "no players"
       : `${team.teamSize} player${team.teamSize === 1 ? "" : "s"}`;
-  const mean =
+  const meanHundredths =
     team.teamSize === 0
-      ? "0.00"
-      : formatScore((team.playerPoolPoints * 100) / team.teamSize / 100);
-  const side =
-    team.sideActivityPoints === 0 ? "" : ` + ${team.sideActivityPoints} side`;
+      ? 0
+      : Math.round((team.playerPoolPoints * 100) / team.teamSize);
+  const groupHundredths = groupPointsInsideMean ? 0 : team.groupPoints * 100;
+  // Derived from the authoritative total so the UI never reimplements negative half-away rounding.
+  const sideHundredths = team.scoreHundredths - meanHundredths - groupHundredths;
 
-  return `${pool} ÷ ${divisor} = ${mean}${side}`;
+  const term = (hundredths: number, label: string): string => {
+    if (hundredths === 0) return "";
+    const operator = hundredths < 0 ? " - " : " + ";
+    return `${operator}${formatScore(Math.abs(hundredths) / 100)} ${label}`;
+  };
+
+  const group = term(groupHundredths, "group");
+  const side = term(
+    sideHundredths,
+    sideActivitiesFlat || team.teamSize === 0
+      ? "side"
+      : `side (${String(team.sideActivityPoints)} pts ÷ ${divisor})`,
+  );
+
+  return `${pool} ÷ ${divisor} = ${formatScore(meanHundredths / 100)}${group}${side}`;
 }
 
-/** One team's players in one set. Usually exactly one; a roster can legitimately double up. */
+/** One team's points in one set. Current rosters allow one teammate per set; sums tolerate legacy data. */
 interface SetCell {
   readonly points: number;
-  readonly names: readonly string[];
   readonly penaltyMinutes: number;
 }
 
@@ -141,23 +234,12 @@ interface SetCell {
  * with a different number of sets, and a column that exists because a constant said so would be
  * empty on every row without anyone noticing it was wrong.
  */
-function setColumns(teams: readonly TeamStandingRow[]): readonly string[] {
-  const labels = new Set<string>();
-  for (const team of teams) {
-    for (const player of team.players) {
-      if (player.chosenSetLabel !== null) labels.add(player.chosenSetLabel);
-    }
-  }
-  return [...labels].sort((a, b) => a.localeCompare(b));
-}
-
 function cellFor(team: TeamStandingRow, label: string): SetCell | null {
   const players = team.players.filter((p) => p.chosenSetLabel === label);
   if (players.length === 0) return null;
 
   return {
     points: players.reduce((sum, p) => sum + p.score, 0),
-    names: players.map((p) => p.displayName),
     penaltyMinutes: players.reduce((sum, p) => sum + p.penaltyMinutes, 0),
   };
 }
@@ -181,12 +263,18 @@ function anyPenalty(teams: readonly TeamStandingRow[]): boolean {
 
 export function TeamStandingsBoard({
   teams,
+  setLabels,
+  groupPointsInsideMean,
+  sideActivitiesFlat,
   variant = "interactive",
   highlightTeamId = null,
-  openTeamId = null,
+  openTeamIds = new Set(),
   onToggleTeam,
 }: TeamStandingsBoardProps) {
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
+  const [expandedPlayers, setExpandedPlayers] = useState<ReadonlySet<string>>(
+    new Set(),
+  );
   const projector = variant === "projector";
   /** A projector board is expandable only when somebody upstream is budgeting for it. */
   const toggleWall = projector ? onToggleTeam : undefined;
@@ -198,6 +286,15 @@ export function TeamStandingsBoard({
       const next = new Set(current);
       if (next.has(teamId)) next.delete(teamId);
       else next.add(teamId);
+      return next;
+    });
+  };
+
+  const togglePlayer = (playerKey: string): void => {
+    setExpandedPlayers((current) => {
+      const next = new Set(current);
+      if (next.has(playerKey)) next.delete(playerKey);
+      else next.add(playerKey);
       return next;
     });
   };
@@ -220,7 +317,8 @@ export function TeamStandingsBoard({
    */
   const muted = "text-ink/70";
   const dim = "text-ink/60";
-  const grid = "border-ink/20";
+  /* The rule tokens exist to delete hand-picked border alphas; this was a twelfth (`ink/20`). */
+  const grid = "border-rule-edge";
   const headBg = "bg-ink/5";
   /** One accent on one ground. `--color-gold` is 1.39:1 on paper and cannot appear here. */
   const accent = "text-panther";
@@ -270,7 +368,7 @@ export function TeamStandingsBoard({
         total: "var(--text-lg)",
       };
 
-  const columns = setColumns(teams);
+  const columns = setLabels;
   const showTimes = anyPenalty(teams);
 
   if (teams.length === 0) {
@@ -315,8 +413,11 @@ export function TeamStandingsBoard({
           : "72rem",
       }}
     >
+      {/* `rounded-panel` on the interactive board only: DataTable already frames the app's other
+          table that way, and two table treatments in one product is one too many. The projector
+          wall keeps square corners — a section radius says "card", and a wall is not a card. */}
       <div
-        className={`w-full overflow-x-auto border ${grid} ${projector ? "" : "bg-paper"}`}
+        className={`w-full overflow-x-auto border ${grid} ${projector ? "" : "rounded-panel bg-paper"}`}
       >
         <table
           aria-label="Team standings"
@@ -369,7 +470,9 @@ export function TeamStandingsBoard({
                   key={label}
                   scope="col"
                   aria-label={`Set ${label}`}
-                  className={`numeric border ${grid} ${cellPad} text-center font-bold`}
+                  /* `font-body`, not `numeric`: tabular figures are for quantities, and a set
+                     letter over the word "set" is a label. The mono stays on the digits below. */
+                  className={`font-body border ${grid} ${cellPad} text-center font-bold`}
                   style={{ fontSize: size.head, ...numericCol }}
                 >
                   {/* CF's column head is the problem letter over what it is worth. The letter is
@@ -393,14 +496,14 @@ export function TeamStandingsBoard({
 
               <th
                 scope="col"
-                className={`numeric border ${grid} ${cellPad} text-center font-normal ${muted}`}
+                className={`font-body border ${grid} ${cellPad} text-center font-normal ${muted}`}
                 style={{ fontSize: size.head, ...numericCol }}
               >
                 Group
               </th>
               <th
                 scope="col"
-                className={`numeric border ${grid} ${cellPad} text-center font-normal ${muted}`}
+                className={`font-body border ${grid} ${cellPad} text-center font-normal ${muted}`}
                 style={{ fontSize: size.head, ...numericCol }}
               >
                 Side
@@ -408,337 +511,376 @@ export function TeamStandingsBoard({
             </tr>
           </thead>
 
-          <tbody>
-            {teams.map((team) => {
-              const isOpen = projector
-                ? openTeamId === team.teamId
-                : expanded.has(team.teamId);
-              const mine =
-                highlightTeamId !== null && team.teamId === highlightTeamId;
-              const rowTint = mine
-                ? projector
-                  ? "bg-gold/10"
-                  : "bg-panther/8"
-                : "";
+          {teams.map((team, index) => {
+            const isOpen = projector
+              ? openTeamIds.has(team.teamId)
+              : expanded.has(team.teamId);
+            const toggleTeam = projector ? toggleWall : toggle;
+            const mine =
+              highlightTeamId !== null && team.teamId === highlightTeamId;
+            const zebra = index % 2 === 1 ? "bg-ink/[0.03]" : "";
+            const rowTint = mine ? "bg-panther/8" : zebra;
+            const rosterId = `team-roster-${team.teamId}`;
+            const groupInsidePool = groupPointsInsideMean && team.groupPoints > 0;
 
-              /* A tint is a colour, and colour is never the only channel (DESIGN.md §3). The word
-                 is what actually says whose row this is. Lifted out of the name cell because that
-                 cell is a button on the wall and a plain span everywhere else, and the label
-                 belongs to both. */
-              const mineTag = mine ? (
-                <span
-                  className={`ml-2 font-body font-normal ${accent}`}
-                  style={{ fontSize: size.sub }}
-                >
-                  your team
-                </span>
-              ) : null;
+            const mineTag = mine ? (
+              <span
+                className={`ml-2 font-body font-normal ${accent}`}
+                style={{ fontSize: size.sub }}
+              >
+                your team
+              </span>
+            ) : null;
 
-              return [
-                <tr key={team.teamId} className={rowTint}>
-                  <td
-                    className={`numeric border ${grid} ${cellPad} text-right align-top font-display font-bold ${accent}`}
-                    style={{
-                      fontSize: size.rank,
-                      /* The rail (DESIGN.md §5) on the leading edge of the row. Here it marks the
-                       viewer's own team, and it is reserved on every row so that no row is a
-                       rail-width wider than its neighbours. */
-                      borderLeftWidth: "var(--rail-width)",
-                      borderLeftStyle: "solid",
-                      // Gold was the projector's marker while the stage was dark; it measures
-                      // 1.39:1 on paper. One accent, both grounds.
-                      borderLeftColor: mine ? "var(--color-panther)" : "transparent",
-                    }}
+            const activateTeam = (): void => {
+              if (!projector && isOpen) {
+                const prefix = `${team.teamId}:`;
+                setExpandedPlayers((current) => {
+                  const next = new Set(
+                    [...current].filter((key) => !key.startsWith(prefix)),
+                  );
+                  return next.size === current.size ? current : next;
+                });
+              }
+              toggleTeam?.(team.teamId);
+            };
+
+            return (
+              <Fragment key={team.teamId}>
+                <tbody>
+                  <tr
+                    className={`${rowTint} ${toggleTeam === undefined ? "" : styles.teamStandingRow}`}
+                    onClick={toggleTeam === undefined ? undefined : activateTeam}
                   >
-                    {team.rank}
-                    {/* A genuine tie is shown as one. Two teams level on every key did equally well,
-                      and inventing an order would be a lie the projector tells the room. */}
-                    {team.isTied && (
-                      <span
-                        className={dim}
-                        aria-label="tied"
-                        style={{ fontSize: size.sub }}
-                      >
-                        =
-                      </span>
-                    )}
-                  </td>
-
-                  <td className={`border ${grid} ${cellPad} align-top`}>
-                    {/*
-                      On the wall the TEAM NAME is the control, and that is a height decision
-                      rather than a taste one. The interactive board puts its expander on a line of
-                      its own under the arithmetic; a third line on the projector takes a team row
-                      from ~93px to ~120px, which costs two of the seven teams on the board before
-                      anybody has opened anything. The caret is the second channel for the state,
-                      since `aria-expanded` is invisible and a room cannot hear it.
-                    */}
-                    {toggleWall !== undefined ? (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          toggleWall(team.teamId);
-                        }}
-                        aria-expanded={isOpen}
-                        /*
-                          `inline-block` and shrink-to-fit, NOT `block w-full`.
-
-                          A full-width button is wider than a narrow window, and clicking it makes
-                          the browser scroll the table's own `overflow-x` box to bring the focused
-                          element into view — which slid the `#` column off the left edge the
-                          moment a row was opened. Measured at 360px. A button only as wide as its
-                          own text is already fully visible, so there is nothing to scroll to.
-                        */
-                        className="inline-block max-w-full truncate text-left font-display font-bold"
-                        style={{ fontSize: size.name }}
-                      >
-                        <span aria-hidden="true" className={accent}>
-                          {isOpen ? "▾ " : "▸ "}
-                        </span>
-                        {team.name}
-                        {/* A button whose whole accessible name is a team's name says nothing
-                            about what pressing it does. */}
-                        <span className={styles.visuallyHidden}>
-                          : who scored what
-                        </span>
-                        {mineTag}
-                      </button>
-                    ) : (
-                      <span
-                        className="block truncate font-display font-bold"
-                        style={{ fontSize: size.name }}
-                      >
-                        {team.name}
-                        {mineTag}
-                      </span>
-                    )}
-                    <span
-                      className={`numeric block ${muted}`}
+                    <td
+                      className={`numeric border ${grid} ${cellPad} text-right align-top font-display font-bold ${accent}`}
                       style={{
-                        fontSize: size.sub,
-                        /* One line on the projector, where a wrap costs a third of a row's height
-                           on every row and pushes teams off the bottom of the board. On a phone it
-                           is allowed to wrap, because there the alternative is a horizontal
-                           scroll to read your own team's arithmetic. */
-                        whiteSpace: projector ? "nowrap" : "normal",
+                        fontSize: size.rank,
+                        borderLeftWidth: "var(--rail-width)",
+                        borderLeftStyle: "solid",
+                        borderLeftColor: mine
+                          ? "var(--color-panther)"
+                          : "transparent",
                       }}
                     >
-                      {arithmeticFor(team)}
-                      {team.teamSize === 1 && (
-                        // Team size is the divisor, so a team of one is worth flagging: it is usually
-                        // a roster mistake rather than an intended format.
-                        <span className={`ml-2 ${accent}`}>
-                          · one player only
+                      {team.rank}
+                      {team.isTied && (
+                        <span
+                          className={dim}
+                          aria-label="tied"
+                          style={{ fontSize: size.sub }}
+                        >
+                          =
                         </span>
                       )}
-                    </span>
-                    {!projector && (
-                      <button
-                        type="button"
-                        onClick={() => toggle(team.teamId)}
-                        aria-expanded={isOpen}
-                        className="mt-0.5 text-panther underline underline-offset-2"
-                        style={{ fontSize: size.sub }}
-                      >
-                        {isOpen
-                          ? "Hide players"
-                          : `${String(team.players.length)} player${team.players.length === 1 ? "" : "s"}`}
-                      </button>
-                    )}
-                  </td>
+                    </td>
 
-                  {/*
-                    THE TEAM SCORE IS RED ON THE WALL, numerals and all.
-                    "for the projector view i meant that the SCORES would be red not just the
-                    question" — the accent used to be on the set letters in the header while the
-                    number the room is actually there to read was ink like everything else.
-
-                    Full strength, no alpha: `--panther` is 5.08:1 on `--paper`, which clears AA
-                    here and clears AAA at this size (`--fs-lg`, bold), and ANY alpha on it drops
-                    below the floor (DESIGN.md §7). Weight and position already separate this
-                    column, so the colour is a third channel rather than the only one.
-
-                    Interactive boards keep ink. `/team` and `/admin/awards` are paper surfaces
-                    read at 30cm where `--panther` is the link and control colour, and a red total
-                    there reads as something to press.
-                  */}
-                  <td
-                    className={`numeric border ${grid} ${cellPad} text-right align-top font-display font-bold ${projector ? accent : ""}`}
-                    style={{ fontSize: size.total }}
-                  >
-                    {formatScore(team.score)}
-                  </td>
-
-                  {columns.map((label) => {
-                    const cell = cellFor(team, label);
-                    return (
-                      <td
-                        key={label}
-                        className={`numeric border ${grid} ${cellPad} text-center align-top`}
-                      >
-                        {cell === null ? (
-                          // Nobody on this team is in this set. A rule, not a zero: zero is a
-                          // score somebody earned and this is the absence of a player. An EN dash
-                          // rather than an em dash, because the em dash is banned from anything a
-                          // user can read (tests/unit/no-em-dash.test.ts, which counts `&mdash;`
-                          // as the same character it renders to). The meaning was never in the
-                          // width of the glyph anyway; it is in the aria-label and in the contrast
-                          // with a real digit.
-                          <span
-                            className={dim}
-                            aria-label="no player in this set"
-                          >
-                            &ndash;
-                          </span>
-                        ) : (
-                          <>
-                            <span
-                              className={`block font-bold ${cell.points > 0 ? scored : unscored}`}
-                              style={{ fontSize: size.cell }}
-                            >
-                              {cell.points}
-                            </span>
-                            {/* CF's second line is the time. Ours is the penalty the preset charged,
-                              and it appears only on a board that charges any — see `anyPenalty`. */}
-                            {showTimes && (
-                              <span
-                                className={`block ${dim}`}
-                                style={{ fontSize: size.sub }}
-                              >
-                                <span aria-hidden="true">
-                                  {cell.penaltyMinutes}m
-                                </span>
-                                <span className={styles.visuallyHidden}>
-                                  {cell.penaltyMinutes} minutes penalty
-                                </span>
-                              </span>
-                            )}
-                            {!projector && (
-                              <span
-                                className={`block truncate ${muted}`}
-                                style={{ fontSize: size.sub, maxWidth: "9rem" }}
-                              >
-                                {cell.names.join(", ")}
-                              </span>
-                            )}
-                          </>
-                        )}
-                      </td>
-                    );
-                  })}
-
-                  <td
-                    className={`numeric border ${grid} ${cellPad} text-center align-top`}
-                  >
-                    {team.groupPoints === 0 ? (
-                      <span className={dim} aria-label="none">&ndash;</span>
-                    ) : (
-                      <span
-                        className={`font-bold ${scored}`}
-                        style={{ fontSize: size.cell }}
-                      >
-                        {team.groupPoints}
-                      </span>
-                    )}
-                  </td>
-                  <td
-                    className={`numeric border ${grid} ${cellPad} text-center align-top`}
-                  >
-                    {team.sideActivityPoints === 0 ? (
-                      <span className={dim} aria-label="none">&ndash;</span>
-                    ) : (
-                      <span
-                        className={`font-bold ${scored}`}
-                        style={{ fontSize: size.cell }}
-                      >
-                        {team.sideActivityPoints}
-                      </span>
-                    )}
-                  </td>
-                </tr>,
-
-                isOpen && projector ? (
-                  /*
-                    The wall's breakdown: MORE ROWS OF THIS TABLE, one per member, in these columns.
-
-                    Not a component inside a spanning cell, which is what this was. The organizer
-                    asked for "a smaller version of that for each team member" and the whole force
-                    of that is column alignment — a member's points sitting directly under the set
-                    column they were scored in, so a room can read down a column and watch it add up
-                    to the team's cell. A nested grid in a `colSpan` cell can be made to look like
-                    that and cannot be made to STAY like that: it has its own widths, and they drift
-                    the moment a set is added or a name gets longer. Rows of one table cannot drift.
-
-                    Still not `TeamPlayerDetail`: that renders one line per player and would print
-                    "Per-problem detail is shown for your own team." under every one of them, since
-                    the projector is anonymous and the payload sends `problems: null` to anonymous
-                    readers. See TeamRosterStrip for the rest of the reasoning.
-                  */
-                  <TeamRosterStrip
-                    key={`${team.teamId}-detail`}
-                    team={team}
-                    /* The BOARD's columns, not this team's. A team that is not in every set would
-                       otherwise get a shorter list and every one of its cells would land a column
-                       to the left of where it belongs. */
-                    columns={columns}
-                    mine={mine}
-                  />
-                ) : isOpen && !projector ? (
-                  <tr key={`${team.teamId}-detail`} className="bg-ink/3">
-                    <td className={`border ${grid} ${cellPad}`} />
-                    <td
-                      className={`border ${grid} ${cellPad}`}
-                      /*
-                        Team, `=`, every set column, Group and Side — everything except the rank
-                        cell to its left. This was `3 + columns.length`, one short, which left the
-                        browser inventing an anonymous column at the right edge and squeezed the
-                        breakdown into less width than the row above it.
-                      */
-                      colSpan={4 + columns.length}
+                    <th
+                      scope="row"
+                      className={`border ${grid} ${cellPad} text-left align-top`}
                     >
-                      {/* Level one, unchanged and public: who is on the team, on which set, for
-                        how many points. Each line carries its own level-two disclosure when the
-                        payload entitled this viewer to it — see TeamPlayerDetail. */}
-                      <ul className="space-y-1">
-                        {team.players.map((player) => (
-                          <TeamPlayerLine
-                            key={player.participantId}
-                            player={player}
-                          />
-                        ))}
-                      </ul>
-
-                      <dl
-                        className="numeric mt-2 grid grid-cols-2 gap-x-4 border-t border-ink/10 pt-2 text-ink/65"
-                        style={{ fontSize: "var(--text-xs)" }}
-                      >
-                        <dt>Group problems</dt>
-                        <dd className="text-right">{team.groupPoints}</dd>
-                        <dt>Player pool (÷ {team.teamSize})</dt>
-                        <dd className="text-right">{team.playerPoolPoints}</dd>
-                        <dt>Side activities (flat)</dt>
-                        <dd className="text-right">
-                          {team.sideActivityPoints}
-                        </dd>
-                        {team.penaltyMinutes > 0 && (
-                          <>
-                            <dt>Penalty</dt>
-                            <dd className="text-right">
-                              {team.penaltyMinutes} min
-                            </dd>
-                          </>
+                      <span className={styles.teamNameLine}>
+                        {toggleTeam !== undefined && (
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              activateTeam();
+                            }}
+                            aria-expanded={isOpen}
+                            aria-controls={rosterId}
+                            aria-label={
+                              isOpen
+                                ? `Hide players for ${team.name}`
+                                : `Show ${String(team.players.length)} player${team.players.length === 1 ? "" : "s"} for ${team.name}`
+                            }
+                            className={styles.teamDisclosure}
+                          >
+                            <svg
+                              aria-hidden="true"
+                              focusable="false"
+                              width={10}
+                              height={7}
+                              viewBox="0 0 10 6"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth={1.5}
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              className={isOpen ? "" : "-rotate-90"}
+                            >
+                              <path d="M1 1L5 5L9 1" />
+                            </svg>
+                          </button>
                         )}
-                        <dt className="font-bold text-ink">Team score</dt>
-                        <dd className="text-right font-bold text-ink">
-                          {formatScore(team.score)}
-                        </dd>
-                      </dl>
+                        <span
+                          className="min-w-0 truncate font-display font-bold"
+                          style={{ fontSize: size.name }}
+                        >
+                          {team.name}
+                        </span>
+                        {mineTag}
+                      </span>
+                      <span
+                        className={`numeric block ${muted}`}
+                        style={{
+                          fontSize: size.sub,
+                          whiteSpace: projector ? "nowrap" : "normal",
+                        }}
+                      >
+                        {arithmeticFor(
+                          team,
+                          groupPointsInsideMean,
+                          sideActivitiesFlat,
+                        )}
+                        {team.teamSize === 1 && (
+                          <span className={`ml-2 ${accent}`}>
+                            · one player only
+                          </span>
+                        )}
+                      </span>
+                    </th>
+
+                    <td
+                      className={`numeric border ${grid} ${cellPad} text-right align-top font-display font-bold ${projector ? accent : ""}`}
+                      style={{ fontSize: size.total }}
+                    >
+                      {formatScore(team.score)}
+                    </td>
+
+                    {columns.map((label) => {
+                      const cell = cellFor(team, label);
+                      return (
+                        <td
+                          key={label}
+                          className={`numeric border ${grid} ${cellPad} text-center align-top`}
+                        >
+                          {cell === null ? (
+                            <span
+                              className={dim}
+                              aria-label="no player in this set"
+                            >
+                              &ndash;
+                            </span>
+                          ) : (
+                            <>
+                              <span
+                                className={`block font-bold ${cell.points > 0 ? scored : unscored}`}
+                                style={{ fontSize: size.cell }}
+                              >
+                                {cell.points}
+                              </span>
+                              {showTimes && (
+                                <span
+                                  className={`block ${dim}`}
+                                  style={{ fontSize: size.sub }}
+                                >
+                                  <span aria-hidden="true">
+                                    {cell.penaltyMinutes}m
+                                  </span>
+                                  <span className={styles.visuallyHidden}>
+                                    {cell.penaltyMinutes} minutes penalty
+                                  </span>
+                                </span>
+                              )}
+                            </>
+                          )}
+                        </td>
+                      );
+                    })}
+
+                    <td
+                      className={`numeric border ${grid} ${cellPad} text-center align-top`}
+                    >
+                      {team.groupPoints === 0 ? (
+                        <span className={dim} aria-label="none">
+                          &ndash;
+                        </span>
+                      ) : (
+                        <span
+                          className={`font-bold ${scored}`}
+                          style={{ fontSize: size.cell }}
+                        >
+                          {team.groupPoints}
+                        </span>
+                      )}
+                    </td>
+                    <td
+                      className={`numeric border ${grid} ${cellPad} text-center align-top`}
+                    >
+                      {team.sideActivityPoints === 0 ? (
+                        <span
+                          className={dim}
+                          aria-label="none"
+                          title="No side-activity points yet"
+                        >
+                          &ndash;
+                        </span>
+                      ) : (
+                        <span
+                          className={`font-bold ${scored}`}
+                          style={{ fontSize: size.cell }}
+                        >
+                          {team.sideActivityPoints}
+                        </span>
+                      )}
                     </td>
                   </tr>
-                ) : null,
-              ];
-            })}
-          </tbody>
+                </tbody>
+
+                <tbody
+                  id={rosterId}
+                  aria-hidden={!isOpen}
+                  className={`${styles.rosterRows} ${isOpen ? styles.rosterRowsOpen : ""}`}
+                >
+                  {projector ? (
+                    <TeamRosterStrip
+                      team={team}
+                      columns={columns}
+                      mine={mine}
+                      groupPointsInsideMean={groupPointsInsideMean}
+                    />
+                  ) : (
+                    <>
+                      {team.players.map((player) => {
+                        const playerKey = `${team.teamId}:${player.participantId}`;
+                        const playerOpen = expandedPlayers.has(playerKey);
+                        const mayOpen =
+                          player.problems !== null && player.problems.length > 0;
+
+                        return (
+                          <Fragment key={player.participantId}>
+                            <tr className={styles.memberRow}>
+                              <td
+                                className={styles.memberCell}
+                                style={{
+                                  borderLeftWidth: "var(--rail-width)",
+                                  borderLeftStyle: "solid",
+                                  borderLeftColor: mine
+                                    ? "var(--color-panther)"
+                                    : "transparent",
+                                }}
+                              />
+                              <th
+                                scope="row"
+                                className={`${styles.memberCell} ${styles.memberNameCell}`}
+                              >
+                                {mayOpen ? (
+                                  <button
+                                    type="button"
+                                    aria-expanded={playerOpen}
+                                    aria-controls={`${playerKey}-problems`}
+                                    aria-label={`${player.displayName}: problem by problem`}
+                                    onClick={() => togglePlayer(playerKey)}
+                                    className={styles.playerDisclosure}
+                                  >
+                                    <svg
+                                      aria-hidden="true"
+                                      focusable="false"
+                                      width={9}
+                                      height={6}
+                                      viewBox="0 0 10 6"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      strokeWidth={1.5}
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      className={playerOpen ? "" : "-rotate-90"}
+                                    >
+                                      <path d="M1 1L5 5L9 1" />
+                                    </svg>
+                                    <span>{player.displayName}</span>
+                                  </button>
+                                ) : (
+                                  <span className={styles.memberName}>
+                                    {player.displayName}
+                                  </span>
+                                )}
+                                {player.chosenSetLabel === null && (
+                                  <span className={styles.memberTag}>No set</span>
+                                )}
+                              </th>
+                              <td
+                                className={`numeric ${styles.memberCell} ${styles.memberTotal}`}
+                              >
+                                {player.score}
+                              </td>
+                              {columns.map((label) => (
+                                <td
+                                  key={label}
+                                  className={`numeric ${styles.memberCell} ${styles.memberNumber}`}
+                                >
+                                  {player.chosenSetLabel === label
+                                    ? player.score
+                                    : ""}
+                                </td>
+                              ))}
+                              <td className={styles.memberCell} />
+                              <td className={styles.memberCell} />
+                            </tr>
+
+                            {mayOpen && playerOpen && (
+                              <tr
+                                id={`${playerKey}-problems`}
+                                className={styles.playerProblemRow}
+                              >
+                                <td className={styles.memberCell} />
+                                <td
+                                  colSpan={4 + columns.length}
+                                  className={styles.playerProblemCell}
+                                >
+                                  {player.lastScoreIncreaseAt !== null && (
+                                    <p className={styles.playerLastScore}>
+                                      Last scored at{" "}
+                                      {timeOfDay(player.lastScoreIncreaseAt)}
+                                    </p>
+                                  )}
+                                  <PlayerProblemList player={player} />
+                                </td>
+                              </tr>
+                            )}
+                          </Fragment>
+                        );
+                      })}
+
+                      <tr className={`${styles.memberRow} ${styles.poolRow}`}>
+                        <td
+                          className={styles.memberCell}
+                          style={{
+                            borderLeftWidth: "var(--rail-width)",
+                            borderLeftStyle: "solid",
+                            borderLeftColor: mine
+                              ? "var(--color-panther)"
+                              : "transparent",
+                          }}
+                        />
+                        <th
+                          scope="row"
+                          className={`${styles.memberCell} ${styles.memberNameCell}`}
+                        >
+                          <span className={styles.poolLabel}>Player pool</span>
+                        </th>
+                        <td
+                          className={`numeric ${styles.memberCell} ${styles.memberTotal}`}
+                        >
+                          {team.playerPoolPoints}
+                        </td>
+                        {columns.map((label) => (
+                          <td key={label} className={styles.memberCell} />
+                        ))}
+                        <td
+                          className={`numeric ${styles.memberCell} ${styles.memberNumber}`}
+                        >
+                          {groupInsidePool ? team.groupPoints : ""}
+                        </td>
+                        <td className={styles.memberCell} />
+                      </tr>
+                    </>
+                  )}
+                </tbody>
+              </Fragment>
+            );
+          })}
         </table>
       </div>
 
@@ -753,6 +895,13 @@ export function TeamStandingsBoard({
           style={{ fontSize: "var(--text-xs)" }}
         >
           Scroll the table sideways for the set, group and side columns.
+        </p>
+      )}
+      {/* The wall gets no legend: a footnote at `--text-xs` is unreadable from a desk, and the
+          projector's footnote budget is already spent on the freeze line. */}
+      {!projector && (
+        <p className={`mt-1.5 ${dim}`} style={{ fontSize: "var(--text-xs)" }}>
+          &ndash; means there is no player in that set or no points in that category yet.
         </p>
       )}
     </div>

@@ -179,7 +179,9 @@ test.describe("an organizer creates a contest and never has to find it again", (
     await expect(page.getByRole("heading", { name: /This contest's line-up/i })).toBeVisible({
       timeout: 30_000,
     });
-    await expect(page.locator("table tbody tr")).toHaveCount(1);
+    await expect(
+      page.getByRole("table", { name: "Problems in this contest" }).locator("tbody tr"),
+    ).toHaveCount(1);
   });
 
   test("publishing happens inside the contest, and the checklist follows", async ({ page }) => {

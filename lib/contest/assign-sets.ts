@@ -3,6 +3,7 @@ import { randomBytes } from "node:crypto";
 import { DomainError, NotFoundError } from "@/lib/errors";
 import { prisma } from "@/lib/db";
 import { AUDIT_ACTIONS, writeAudit } from "@/lib/contest/audit";
+import { lockContestMutations } from "@/lib/contest/locks";
 import { assignSets } from "@/lib/contest/set-assignment";
 import { invalidateScoringInput } from "@/lib/contest/standings";
 import { actorLabel, type AdminViewer } from "@/lib/contest/viewer";
@@ -51,62 +52,85 @@ export async function runSetAssignment(
   now: Date,
   options: { readonly reassign?: boolean; readonly seed?: string } = {},
 ): Promise<AssignmentSummary> {
-  const contest = await prisma.contest.findUnique({
-    where: { id: contestId },
-    select: {
-      id: true,
-      setSelection: true,
-      setAssignmentSeed: true,
-      problemSets: { select: { id: true, label: true } },
-      participants: { select: { id: true, teamId: true, chosenSetId: true } },
-    },
-  });
+  const summary = await prisma.$transaction(async (tx) => {
+    await lockContestMutations(tx, contestId);
 
-  if (contest === null) throw new NotFoundError("Contest");
+    // Read every assignment input after taking the same contest lock used by roster and line-up
+    // mutations. Otherwise a concurrent move can be absent from this shuffle and then commit with
+    // a duplicate set immediately afterward.
+    const contest = await tx.contest.findUnique({
+      where: { id: contestId },
+      select: {
+        id: true,
+        state: true,
+        setSelection: true,
+        setAssignmentSeed: true,
+        problemSets: { select: { id: true, label: true } },
+        participants: { select: { id: true, teamId: true } },
+        teams: { select: { name: true, _count: { select: { members: true } } } },
+      },
+    });
 
-  if (contest.setSelection !== "RANDOM_ASSIGNED") {
-    throw new DomainError(
-      "VALIDATION",
-      `This contest is configured as ${contest.setSelection}, so sets are not assigned by the platform`,
+    if (contest === null) throw new NotFoundError("Contest");
+    if (contest.state !== "DRAFT" && contest.state !== "SCHEDULED") {
+      throw new DomainError(
+        "CONFLICT",
+        "This contest has already started, so the full set assignment cannot be changed.",
+      );
+    }
+    if (contest.setSelection !== "RANDOM_ASSIGNED") {
+      throw new DomainError(
+        "VALIDATION",
+        `This contest is configured as ${contest.setSelection}, so sets are not assigned by the platform`,
+      );
+    }
+    if (contest.problemSets.length === 0) {
+      throw new DomainError(
+        "VALIDATION",
+        "Create the problem sets (A, B, C, D) before assigning them",
+      );
+    }
+
+    const crowdedTeams = contest.teams.filter(
+      (team) => team._count.members > contest.problemSets.length,
     );
-  }
+    if (crowdedTeams.length > 0) {
+      throw new DomainError(
+        "VALIDATION",
+        `Create at least one set per teammate before assigning. ${crowdedTeams
+          .map((team) => `${team.name} has ${String(team._count.members)}`)
+          .join(", ")}, but this contest has ${String(contest.problemSets.length)} sets.`,
+      );
+    }
 
-  if (contest.problemSets.length === 0) {
-    throw new DomainError(
-      "VALIDATION",
-      "Create the problem sets (A, B, C, D) before assigning them",
-    );
-  }
+    const alreadyAssigned = contest.setAssignmentSeed !== null;
+    if (alreadyAssigned && options.reassign !== true) {
+      throw new DomainError(
+        "CONFLICT",
+        "This contest has already been assigned. Re-assigning moves students off problems they may " +
+          "have started, so it has to be asked for explicitly.",
+      );
+    }
 
-  const alreadyAssigned = contest.setAssignmentSeed !== null;
-  if (alreadyAssigned && options.reassign !== true) {
-    throw new DomainError(
-      "CONFLICT",
-      "This contest has already been assigned. Re-assigning moves students off problems they may " +
-        "have started, so it has to be asked for explicitly.",
-    );
-  }
+    const seed = options.seed ?? newSeed();
+    const setIds = contest.problemSets.map((set) => set.id);
+    const assignments = assignSets({
+      seed,
+      setIds,
+      participants: contest.participants.map((participant) => ({
+        participantId: participant.id,
+        teamId: participant.teamId,
+      })),
+    });
 
-  const seed = options.seed ?? newSeed();
-  const setIds = contest.problemSets.map((s) => s.id);
+    const labelOf = new Map(contest.problemSets.map((set) => [set.id, set.label]));
+    const distribution: Record<string, number> = {};
+    for (const set of contest.problemSets) distribution[set.label] = 0;
+    for (const assignment of assignments) {
+      const label = labelOf.get(assignment.setId);
+      if (label !== undefined) distribution[label] = (distribution[label] ?? 0) + 1;
+    }
 
-  const assignments = assignSets({
-    seed,
-    setIds,
-    participants: contest.participants.map((p) => ({ participantId: p.id, teamId: p.teamId })),
-  });
-
-  const labelOf = new Map(contest.problemSets.map((s) => [s.id, s.label]));
-  const distribution: Record<string, number> = {};
-  for (const set of contest.problemSets) distribution[set.label] = 0;
-  for (const a of assignments) {
-    const label = labelOf.get(a.setId);
-    if (label !== undefined) distribution[label] = (distribution[label] ?? 0) + 1;
-  }
-
-  // One transaction: an assignment half-written would leave some students with problems and others
-  // staring at an empty list, which is worse than a failed request.
-  await prisma.$transaction(async (tx) => {
     for (const assignment of assignments) {
       await tx.participant.update({
         where: { id: assignment.participantId },
@@ -140,17 +164,18 @@ export async function runSetAssignment(
       },
       tx,
     );
+
+    return {
+      contestId,
+      seed,
+      assigned: assignments.length,
+      distribution,
+      reassigned: alreadyAssigned,
+    };
   });
 
   invalidateScoringInput(contestId);
-
-  return {
-    contestId,
-    seed,
-    assigned: assignments.length,
-    distribution,
-    reassigned: alreadyAssigned,
-  };
+  return summary;
 }
 
 export interface AssignmentAudit {
@@ -183,12 +208,24 @@ export async function reDeriveAssignment(contestId: string): Promise<AssignmentA
       participants: {
         select: { id: true, displayName: true, teamId: true, chosenSetId: true },
       },
+      teams: { select: { name: true, _count: { select: { members: true } } } },
     },
   });
 
   if (contest === null) throw new NotFoundError("Contest");
   if (contest.setAssignmentSeed === null) {
     throw new DomainError("VALIDATION", "This contest has not been assigned yet");
+  }
+
+  const crowdedTeams = contest.teams.filter(
+    (team) => team._count.members > contest.problemSets.length,
+  );
+  if (crowdedTeams.length > 0) {
+    throw new DomainError(
+      "VALIDATION",
+      "The current roster has a team with more members than problem sets, so it cannot be " +
+        "re-derived without repeating a set. Fix the roster or build more sets first.",
+    );
   }
 
   const seed = contest.setAssignmentSeed;

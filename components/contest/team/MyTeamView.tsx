@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { TeamStandingsBoard, useTeamStandings } from "@/components/leaderboard";
 import { Crumbs } from "@/components/ui";
 
+import { useParticipant } from "../data/participant";
 import { SignInRequired } from "../lobby/SignInRequired";
 
 /**
@@ -53,15 +54,21 @@ function readSession(body: unknown): SessionInfo | null {
 }
 
 export function MyTeamView() {
+  const participant = useParticipant();
+  const scopeKey = participant.status === "joined" ? participant.scopeKey : participant.status;
   const [session, setSession] = useState<SessionInfo | null>(null);
   const [sessionError, setSessionError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
+    const controller = new AbortController();
 
     void (async () => {
       try {
-        const response = await fetch("/api/auth/session", { cache: "no-store" });
+        const response = await fetch("/api/auth/session", {
+          cache: "no-store",
+          signal: controller.signal,
+        });
         const parsed = readSession(await response.json());
         if (cancelled) return;
         if (parsed === null) {
@@ -69,17 +76,19 @@ export function MyTeamView() {
           setSessionError("Could not read your session. Reload the page to try again.");
           return;
         }
+        setSessionError(null);
         setSession(parsed);
       } catch {
-        if (cancelled) return;
+        if (cancelled || controller.signal.aborted) return;
         setSessionError("Could not reach the server. Retrying will usually fix it.");
       }
     })();
 
     return () => {
       cancelled = true;
+      controller.abort();
     };
-  }, []);
+  }, [scopeKey]);
 
   const { standings, error } = useTeamStandings(session?.contestId ?? null);
 
@@ -103,7 +112,7 @@ export function MyTeamView() {
   const signedOut = notice === null && session !== null && !session.signedIn;
 
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex flex-col gap-group">
       <header>
         <Crumbs
           trail={[
@@ -114,7 +123,9 @@ export function MyTeamView() {
             ...(session?.teamName == null ? [] : [{ label: session.teamName }]),
           ]}
         />
-        <h1 className="mt-1 font-display font-bold" style={{ fontSize: "var(--text-xl)" }}>
+        {/* Steps down to --text-lg below `sm` (the pattern ProblemWorkspace set): a flat 40px
+            h1 wraps at 360 and spends 120px+ of the first screen before any content. */}
+        <h1 className="mt-1 font-display font-bold text-[length:var(--text-lg)] sm:text-[length:var(--text-xl)]">
           {session?.teamName ?? "My team"}
         </h1>
 
@@ -145,15 +156,14 @@ export function MyTeamView() {
               You are not on a team yet, so your points are not part of any team score.
             </p>
             <p className="mt-1">
-              An organizer will add you, and there is nothing for you to do. Everything you solve
-              before then joins your team&apos;s total the moment you are on it.
+              This page updates automatically when an organizer adds you. Points you earn now will
+              move with you to your team.
             </p>
           </div>
         ) : (
           <p className="mt-1 text-ink/60" style={{ fontSize: "var(--text-sm)" }}>
-            Your team&apos;s score is every member&apos;s points, group problems included, divided by
-            the number of people on the team, plus side activity points. Expand a row to see the
-            whole calculation.
+            Your team score is the player pool divided by team size, plus side-activity points.
+            Expand a row to see each player&apos;s contribution.
           </p>
         )}
       </header>
@@ -216,7 +226,13 @@ export function MyTeamView() {
             instead, and a student who followed the instruction dragged the layout off screen.
           */
           <div className="relative min-w-0 overflow-x-clip">
-            <TeamStandingsBoard teams={standings.teams} highlightTeamId={session?.teamId ?? null} />
+            <TeamStandingsBoard
+              teams={standings.teams}
+              setLabels={standings.setLabels}
+              groupPointsInsideMean={standings.groupPointsInsideMean}
+              sideActivitiesFlat={standings.sideActivitiesFlat}
+              highlightTeamId={session?.teamId ?? null}
+            />
           </div>
         ))}
     </div>

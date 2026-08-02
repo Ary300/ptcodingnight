@@ -74,11 +74,11 @@ async function openMyTeamAsATeamMember(page: Page): Promise<void> {
  * exists on their own rows. An earlier version clicked `.first()` and passed or failed depending on
  * whether the probe's team happened to be leading, which is a coin toss dressed as a test.
  *
- * The accessible name changes to "Hide players" once open, so the loop drains the list rather than
- * indexing into a set that is changing underneath it.
+ * The accessible name changes from "Show players" to "Hide players" once open, so the loop drains
+ * the list rather than indexing into a set that is changing underneath it.
  */
 async function expandEveryTeam(page: Page): Promise<void> {
-  const closed = page.getByRole("button", { name: /^\d+ players?$/ });
+  const closed = page.getByRole("button", { name: /^Show \d+ players? for .+$/ });
   for (let guard = 0; guard < 20; guard += 1) {
     if ((await closed.count()) === 0) return;
     await closed.first().click();

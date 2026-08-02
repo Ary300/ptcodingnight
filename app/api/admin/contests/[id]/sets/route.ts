@@ -24,11 +24,9 @@ import {
  * same computation. A preview an organizer approves and an apply that deals differently is the
  * exact failure this screen exists to prevent, and two handlers are two chances to diverge.
  *
- * **A preview returns its seed, and the apply must be given it back.** Same recipe, same pool and
- * same seed is the same split, byte for byte; omit the seed on the apply and it mints a fresh one,
- * producing a different and equally valid split from the one that was on screen. The seed is what
- * makes a disputed set explainable rather than arguable (docs/PRD.md §6.2), so it is carried
- * deliberately rather than hidden.
+ * **A preview returns its seed and pool fingerprint, and the apply must be given both.** The seed
+ * reproduces the shuffle; the fingerprint refuses the write if the usable bank changed between
+ * clicks. Together they make a disputed set explainable rather than arguable (docs/PRD.md §6.2).
  *
  * A recipe the bank cannot fill comes back as a 200 with `plan.ok: false` and the exact shortfalls
  * — "12 Hard problems are needed for 4 sets and the bank has 9". That is not an error condition:
@@ -54,7 +52,10 @@ export async function POST(
 
     const result =
       input.mode === "apply"
-        ? await applySets(id, input.composition, input.setCount, admin, now, { seed: input.seed })
+        ? await applySets(id, input.composition, input.setCount, admin, now, {
+            seed: input.seed,
+            poolVersion: input.poolVersion,
+          })
         : await previewSets(id, input.composition, input.setCount, { seed: input.seed });
 
     return jsonOk(SetPlanResponseSchema.parse(result), NO_STORE);

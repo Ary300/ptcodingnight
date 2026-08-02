@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 
 import { NotFoundError, ValidationError } from "@/lib/errors";
 import { prisma } from "@/lib/db";
+import { lockContestMutations, lockProblemMutations } from "@/lib/contest/locks";
+import { AUDIT_ACTIONS, writeAudit } from "@/lib/contest/audit";
 
 import type { AdminContestList } from "@/lib/schemas/api";
 
@@ -160,7 +162,8 @@ function randomJoinCode(): string {
  * belongs to and the set is created on demand, because a set with no problems in it is not a
  * thing an organizer needs to manage separately — it is an artifact of the layout.
  *
- * A problem with `set: null` is a GROUP problem: every team works it regardless of assignment.
+ * The caller names the round explicitly. A GROUP problem has no set and every team works it;
+ * an INDIVIDUAL problem names the shared set assigned to one teammate.
  *
  * ## Replace, not append
  *
@@ -178,33 +181,99 @@ export async function setContestProblems(
     readonly problemId: string;
     readonly slotLabel: string;
     readonly basePoints: number;
+    readonly round: "INDIVIDUAL" | "GROUP";
     readonly setLabel: string | null;
     readonly divisionId: string | null;
   }[],
+  audit: { readonly actor: string; readonly reason: string },
 ): Promise<{ count: number }> {
-  const contest = await prisma.contest.findUnique({
-    where: { id: contestId },
-    select: { state: true },
-  });
-  if (contest === null) throw new NotFoundError("Contest");
-  if (contest.state !== "DRAFT" && contest.state !== "SCHEDULED") {
+  const normalized = entries.map((entry) => ({
+    ...entry,
+    slotLabel: entry.slotLabel.trim(),
+    setLabel: entry.setLabel?.trim() ?? null,
+  }));
+
+  const entryKeys = normalized.map(
+    (entry) => `${entry.problemId}\u0000${entry.divisionId ?? ""}`,
+  );
+  if (new Set(entryKeys).size !== entryKeys.length) {
     throw new ValidationError(
-      "This contest has already started. Changing its problems now would move the ground under " +
-        "submissions that already exist.",
+      "The same problem appears twice for the same division in this line-up",
     );
   }
 
-  if (new Set(entries.map((e) => e.problemId)).size !== entries.length) {
-    throw new ValidationError("The same problem appears twice in this line-up");
+  const slotKeys = normalized.map((entry) => entry.slotLabel.toLowerCase());
+  if (slotKeys.some((label) => label === "") || new Set(slotKeys).size !== slotKeys.length) {
+    throw new ValidationError("Every problem needs its own unique slot label");
   }
 
+  for (const entry of normalized) {
+    if (entry.round === "GROUP" && entry.setLabel !== null) {
+      throw new ValidationError("A group question cannot belong to an individual set");
+    }
+    if (entry.round === "INDIVIDUAL" && entry.setLabel === null) {
+      throw new ValidationError("An individual question needs a set");
+    }
+  }
+
+  const problemIds = [...new Set(normalized.map((entry) => entry.problemId))].sort();
+
   return prisma.$transaction(async (tx) => {
+    // Problem locks come first everywhere. This makes a line-up replacement and a concurrent
+    // edit/delete one ordered decision rather than a preflight check followed by a race.
+    for (const problemId of problemIds) await lockProblemMutations(tx, problemId);
+    await lockContestMutations(tx, contestId);
+
+    const contest = await tx.contest.findUnique({
+      where: { id: contestId },
+      select: {
+        state: true,
+        problemSets: { select: { label: true } },
+      },
+    });
+    if (contest === null) throw new NotFoundError("Contest");
+    if (contest.state !== "DRAFT" && contest.state !== "SCHEDULED") {
+      throw new ValidationError(
+        "This contest has already started. Changing its problems now would move the ground under " +
+          "submissions that already exist.",
+      );
+    }
+
+    const foundProblems = await tx.problem.findMany({
+      where: { id: { in: problemIds } },
+      select: { id: true },
+    });
+    if (foundProblems.length !== problemIds.length) {
+      throw new ValidationError("One of those problems no longer exists in the problem bank");
+    }
+
+    const divisionIds = [
+      ...new Set(
+        normalized.flatMap((entry) =>
+          entry.divisionId === null ? [] : [entry.divisionId],
+        ),
+      ),
+    ];
+    if (divisionIds.length > 0) {
+      const ownedDivisions = await tx.division.count({
+        where: { contestId, id: { in: divisionIds } },
+      });
+      if (ownedDivisions !== divisionIds.length) {
+        throw new ValidationError("One of those divisions belongs to a different contest");
+      }
+    }
+
     await tx.contestProblem.deleteMany({ where: { contestId } });
 
     // Sets first, because every problem row needs its id. `upsert` rather than `create`: a
     // previous call may have made them, and the unique key is (contestId, label).
+    const labels = new Set(
+      normalized
+        .map((entry) => entry.setLabel)
+        .filter((label): label is string => label !== null),
+    );
     const setIds = new Map<string, string>();
-    for (const label of new Set(entries.map((e) => e.setLabel).filter((l): l is string => l !== null))) {
+    for (const label of labels) {
       const set = await tx.problemSet.upsert({
         where: { contestId_label: { contestId, label } },
         create: { contestId, label },
@@ -214,18 +283,58 @@ export async function setContestProblems(
       setIds.set(label, set.id);
     }
 
+    // A PUT replaces the line-up, including its set columns. Keeping an old ProblemSet row would
+    // let assignment hand somebody a set with no questions in it. Deleting it is safe and honest:
+    // `Participant.chosenSetId` uses SetNull, so the organizer sees that assignment must be run
+    // again instead of carrying a ghost column into the contest.
+    await tx.problemSet.deleteMany({
+      where:
+        labels.size === 0
+          ? { contestId }
+          : { contestId, label: { notIn: [...labels] } },
+    });
+
+    const previousLabels = new Set(contest.problemSets.map((set) => set.label));
+    const labelsChanged =
+      previousLabels.size !== labels.size ||
+      [...labels].some((label) => !previousLabels.has(label));
+    if (labelsChanged) {
+      // Assignment is a seeded function of the available set ids. Once that input changes, the
+      // old seed no longer explains the stored result. Clearing it also makes the setup screen's
+      // first-run assignment button a real repair path instead of a guaranteed conflict.
+      await tx.contest.update({
+        where: { id: contestId },
+        data: { setAssignmentSeed: null },
+      });
+    }
+
     await tx.contestProblem.createMany({
-      data: entries.map((entry) => ({
+      data: normalized.map((entry) => ({
         contestId,
         problemId: entry.problemId,
         divisionId: entry.divisionId,
+        round: entry.round,
         setId: entry.setLabel === null ? null : (setIds.get(entry.setLabel) ?? null),
         slotLabel: entry.slotLabel,
         basePoints: entry.basePoints,
       })),
     });
 
-    return { count: entries.length };
+    await writeAudit(
+      {
+        actor: audit.actor,
+        action: AUDIT_ACTIONS.contestProblemsSet,
+        entity: `Contest:${contestId}`,
+        after: {
+          count: normalized.length,
+          slots: normalized.map((entry) => entry.slotLabel).join(", "),
+        },
+        reason: audit.reason,
+      },
+      tx,
+    );
+
+    return { count: normalized.length };
   });
 }
 
@@ -248,9 +357,13 @@ export async function setContestProblems(
 export async function setContestState(
   contestId: string,
   next: "SCHEDULED" | "RUNNING" | "ENDED",
+  audit: { readonly actor: string; readonly reason: string },
   now: Date = new Date(),
 ): Promise<{ state: string }> {
-  const contest = await prisma.contest.findUnique({
+  return prisma.$transaction(async (tx) => {
+  await lockContestMutations(tx, contestId);
+
+  const contest = await tx.contest.findUnique({
     where: { id: contestId },
     select: {
       state: true,
@@ -258,6 +371,9 @@ export async function setContestState(
       endsAt: true,
       freezeAt: true,
       _count: { select: { contestProblems: true } },
+      contestProblems: {
+        select: { problem: { select: { title: true, state: true } } },
+      },
     },
   });
   if (contest === null) throw new NotFoundError("Contest");
@@ -267,6 +383,23 @@ export async function setContestState(
       "This contest has no problems in it yet. Add the line-up before publishing, or students " +
         "will sign in to an empty screen.",
     );
+  }
+
+  if (next !== "ENDED") {
+    const blocked = contest.contestProblems.filter(
+      (entry) => entry.problem.state !== "PUBLISHED",
+    );
+    if (blocked.length > 0) {
+      const names = [
+        ...new Set(blocked.map((entry) => `“${entry.problem.title}”`)),
+      ];
+      const shown = names.slice(0, 3).join(", ");
+      const rest = names.length > 3 ? ` and ${String(names.length - 3)} more` : "";
+      throw new ValidationError(
+        `${shown}${rest} ${names.length === 1 ? "is" : "are"} not published. ` +
+          "Finish those questions before publishing this contest, or students will see an empty slot.",
+      );
+    }
   }
 
   const allowed: Record<string, readonly string[]> = {
@@ -282,6 +415,88 @@ export async function setContestState(
   }
 
   /*
+    A team may use each individual set at most once. Checking only when assignments run is not
+    enough: organizers can move people and manually change sets afterward, and older data may
+    predate the invariant. Starting is the last safe point to refuse a broken roster before it
+    changes which questions competitors may read.
+
+    Only sets represented by an INDIVIDUAL line-up row count. A stale ProblemSet row left behind by
+    an edited line-up is not a usable assignment, even though its foreign key is still valid.
+  */
+  if (next === "RUNNING") {
+    const setup = await tx.contest.findUnique({
+      where: { id: contestId },
+      select: {
+        setSelection: true,
+        contestProblems: {
+          where: { round: "INDIVIDUAL" },
+          select: { setId: true },
+        },
+        teams: {
+          select: {
+            name: true,
+            members: {
+              orderBy: { id: "asc" },
+              select: { displayName: true, chosenSetId: true },
+            },
+          },
+        },
+      },
+    });
+    if (setup === null) throw new NotFoundError("Contest");
+
+    const individualSetIds = new Set(
+      setup.contestProblems.flatMap((problem) =>
+        problem.setId === null ? [] : [problem.setId],
+      ),
+    );
+    if (setup.contestProblems.some((problem) => problem.setId === null)) {
+      throw new ValidationError(
+        "An individual question in this line-up has no set. Fix the line-up before starting.",
+      );
+    }
+
+    if (individualSetIds.size > 0) {
+      for (const team of setup.teams) {
+        if (
+          setup.setSelection === "RANDOM_ASSIGNED" &&
+          team.members.length > individualSetIds.size
+        ) {
+          throw new ValidationError(
+            `${team.name} has ${String(team.members.length)} teammates but the line-up has only ` +
+              `${String(individualSetIds.size)} individual sets. Add a set or change the roster.`,
+          );
+        }
+
+        const seen = new Set<string>();
+        for (const member of team.members) {
+          if (member.chosenSetId === null || !individualSetIds.has(member.chosenSetId)) {
+            throw new ValidationError(
+              `${member.displayName} on ${team.name} does not have a set from this line-up. ` +
+                "Assign sets before starting.",
+            );
+          }
+          if (
+            setup.setSelection === "RANDOM_ASSIGNED" &&
+            seen.has(member.chosenSetId)
+          ) {
+            throw new ValidationError(
+              `${team.name} has two teammates on the same set. Reassign sets before starting.`,
+            );
+          }
+          seen.add(member.chosenSetId);
+        }
+
+        if (setup.setSelection === "ONE_SET_PER_TEAM" && seen.size > 1) {
+          throw new ValidationError(
+            `${team.name} has teammates on different sets. This format gives the whole team one set.`,
+          );
+        }
+      }
+    }
+  }
+
+  /*
     STARTING A CONTEST MOVES ITS CLOCK, or the button is a lie.
 
     This function's own doc comment always promised "open it now, regardless of the clock", but it
@@ -291,10 +506,11 @@ export async function setContestState(
     `assertCanSubmit` keys on the window and answered every submission "This contest has not
     started yet" — the organizer's report, verbatim, reproduced against a RUNNING contest.
 
-    So: starting early slides the WHOLE window by the same delta. The duration is what the
-    organizer planned ("start the contest to give everyone all the time"); the start time is when
-    they pressed the button. freezeAt is part of the window and slides with it — a freeze offset
-    is a decision about the last N minutes, not about a wall-clock time of day.
+    So: every Start anchors the WHOLE window at the instant the organizer pressed the button,
+    whether that is early, late-but-still-inside the planned window, or after a rehearsal expired.
+    The duration is what the organizer planned ("start the contest to give everyone all the
+    time"). freezeAt is part of the window and slides with it — a freeze offset is a decision about
+    the last N minutes, not about a wall-clock time of day.
 
     Ending early pulls endsAt back to now for the same invariant, stated once: THE STORED WINDOW
     DESCRIBES WHAT ACTUALLY HAPPENED. Scoring cutoffs and the review lobby both read it.
@@ -302,11 +518,15 @@ export async function setContestState(
     the contest's own end.
   */
   const window: { startsAt?: Date; endsAt?: Date; freezeAt?: Date | null } = {};
-  if (next === "RUNNING" && contest.startsAt.getTime() > now.getTime()) {
-    const slide = contest.startsAt.getTime() - now.getTime();
+  if (next === "RUNNING") {
+    const duration = contest.endsAt.getTime() - contest.startsAt.getTime();
+    const freezeOffset =
+      contest.freezeAt === null
+        ? null
+        : contest.freezeAt.getTime() - contest.startsAt.getTime();
     window.startsAt = now;
-    window.endsAt = new Date(contest.endsAt.getTime() - slide);
-    if (contest.freezeAt !== null) window.freezeAt = new Date(contest.freezeAt.getTime() - slide);
+    window.endsAt = new Date(now.getTime() + duration);
+    if (freezeOffset !== null) window.freezeAt = new Date(now.getTime() + freezeOffset);
   }
   if (next === "ENDED" && contest.endsAt.getTime() > now.getTime()) {
     window.endsAt = now;
@@ -315,10 +535,22 @@ export async function setContestState(
     }
   }
 
-  const updated = await prisma.contest.update({
+  const updated = await tx.contest.update({
     where: { id: contestId },
     data: { state: next, ...window },
     select: { state: true },
   });
+  await writeAudit(
+    {
+      actor: audit.actor,
+      action: AUDIT_ACTIONS.contestStateSet,
+      entity: `Contest:${contestId}`,
+      before: { state: contest.state },
+      after: { state: updated.state },
+      reason: audit.reason,
+    },
+    tx,
+  );
   return { state: updated.state };
+  });
 }

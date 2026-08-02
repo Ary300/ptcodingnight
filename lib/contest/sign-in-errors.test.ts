@@ -75,7 +75,7 @@ describe("signInErrorMessage", () => {
 
   it("tells an organizer what to DO, for every code", () => {
     // A sign-in error with no next step is a dead end, and the room has one organizer for forty
-    // students. Each message names an alternative: retry, the other button, or an organizer.
+    // students. Each message names an alternative: retry, an available option, or an organizer.
     for (const code of SIGN_IN_ERROR_CODES) {
       const message = (signInErrorMessage(code, "google") ?? "").toLowerCase();
       expect(

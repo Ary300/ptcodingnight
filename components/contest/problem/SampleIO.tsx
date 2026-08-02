@@ -45,13 +45,20 @@ function Block({ title, value, what }: { title: string; value: string; what: str
         the exact bytes, so a soft wrap costs nothing to anyone pasting it.
 
         Vertical `overflow-auto` stays: a long sample is genuinely long, and the box is capped so
-        it does not push the editor off the screen.
+        it does not push the editor off the screen. The cap is 384px, not the old 192px, because
+        the reference lets samples run essentially full height and a sample is the one text a
+        student reads end to end.
+
+        The block is a pale tint on the statement's own paper, not a `bg-ink` slab. The dark-editor
+        rationale (gold/rise/fall are AAA only on ink) is about syntax colour, and these blocks
+        carry none — so six full-width dark bands per problem was polarity for nothing, where the
+        reference sits its samples quietly inside a white statement.
       */}
       <pre
         tabIndex={0}
         role="region"
         aria-label={what}
-        className="mt-1 max-h-48 overflow-y-auto rounded bg-ink p-3 font-mono break-words whitespace-pre-wrap text-paper"
+        className="mt-1 max-h-96 overflow-y-auto rounded bg-ink/[0.04] p-3 font-mono break-words whitespace-pre-wrap text-ink"
         style={{ fontSize: "var(--text-xs)", lineHeight: "1.6" }}
       >
         {value}

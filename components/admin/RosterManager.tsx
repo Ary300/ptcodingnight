@@ -5,7 +5,12 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui";
 import { Panel } from "@/components/admin/Panel";
 import { Select, TextInput } from "@/components/admin/Field";
-import { API_ROUTES, type AddableUser, type AdminRoster, type RosterMember } from "@/lib/schemas/api";
+import {
+  API_ROUTES,
+  type AddableUser,
+  type AdminRoster,
+  type RosterMember,
+} from "@/lib/schemas/api";
 
 /**
  * The organizer's roster: every team, every member, and everybody on no team at all.
@@ -109,9 +114,15 @@ export function RosterManager({ contestId }: RosterManagerProps) {
   const [busy, setBusy] = useState(false);
 
   const [newTeamName, setNewTeamName] = useState("");
-  const [moving, setMoving] = useState<{ participantId: string; displayName: string } | null>(null);
+  const [moving, setMoving] = useState<{
+    participantId: string;
+    displayName: string;
+  } | null>(null);
   const [moveTarget, setMoveTarget] = useState<string>("");
   const [reason, setReason] = useState("");
+  const [settingSet, setSettingSet] = useState<RosterMember | null>(null);
+  const [setTarget, setSetTarget] = useState("");
+  const [assignmentReason, setAssignmentReason] = useState("");
 
   const [teamForm, setTeamForm] = useState<TeamForm>(null);
   const [teamFormName, setTeamFormName] = useState("");
@@ -141,6 +152,9 @@ export function RosterManager({ contestId }: RosterManagerProps) {
   /** Only ever one form open, so a stray Enter cannot reach a different person's action. */
   const closeEveryForm = (): void => {
     setMoving(null);
+    setSettingSet(null);
+    setSetTarget("");
+    setAssignmentReason("");
     closeTeamForm();
     closeRemoveForm();
   };
@@ -149,7 +163,9 @@ export function RosterManager({ contestId }: RosterManagerProps) {
     let cancelled = false;
     void (async () => {
       try {
-        const response = await fetch(API_ROUTES.adminRoster(contestId), { cache: "no-store" });
+        const response = await fetch(API_ROUTES.adminRoster(contestId), {
+          cache: "no-store",
+        });
         const body: unknown = await response.json();
         if (cancelled) return;
         if (!response.ok) {
@@ -184,9 +200,12 @@ export function RosterManager({ contestId }: RosterManagerProps) {
     const timer = setTimeout(() => {
       void (async () => {
         try {
-          const response = await fetch(API_ROUTES.adminAddableUsers(contestId, search), {
-            cache: "no-store",
-          });
+          const response = await fetch(
+            API_ROUTES.adminAddableUsers(contestId, search),
+            {
+              cache: "no-store",
+            },
+          );
           const body: unknown = await response.json();
           if (cancelled) return;
           if (!response.ok) {
@@ -194,7 +213,9 @@ export function RosterManager({ contestId }: RosterManagerProps) {
             setCandidates([]);
             return;
           }
-          const data = (body as { data: { users: AddableUser[]; truncated: boolean } }).data;
+          const data = (
+            body as { data: { users: AddableUser[]; truncated: boolean } }
+          ).data;
           setCandidates(data.users);
           setCandidatesTruncated(data.truncated);
           setSearchError(null);
@@ -212,7 +233,11 @@ export function RosterManager({ contestId }: RosterManagerProps) {
     };
   }, [contestId, search, attempt]);
 
-  const send = async (url: string, method: string, payload: unknown): Promise<void> => {
+  const send = async (
+    url: string,
+    method: string,
+    payload: unknown,
+  ): Promise<void> => {
     setBusy(true);
     setError(null);
     try {
@@ -247,11 +272,19 @@ export function RosterManager({ contestId }: RosterManagerProps) {
       `role` is chosen by which it is: a failure is announced, a spinner is not.
     */
     return error === null ? (
-      <p role="status" className="text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
+      <p
+        role="status"
+        className="text-ink/70"
+        style={{ fontSize: "var(--text-sm)" }}
+      >
         Loading the roster…
       </p>
     ) : (
-      <p role="alert" className="font-semibold text-panther" style={{ fontSize: "var(--text-sm)" }}>
+      <p
+        role="alert"
+        className="font-semibold text-panther"
+        style={{ fontSize: "var(--text-sm)" }}
+      >
         {error}
       </p>
     );
@@ -263,7 +296,11 @@ export function RosterManager({ contestId }: RosterManagerProps) {
    * Shared between the unassigned list and each team's member list so the two cannot drift — the
    * remove action in particular has to carry the same submission warning wherever it appears.
    */
-  const personRow = (person: RosterMember, moveVerb: "assign" | "move", onMove: () => void) => (
+  const personRow = (
+    person: RosterMember,
+    moveVerb: "assign" | "move",
+    onMove: () => void,
+  ) => (
     <li key={person.participantId} className="flex min-w-0 flex-col gap-1">
       <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
         {/*
@@ -303,13 +340,36 @@ export function RosterManager({ contestId }: RosterManagerProps) {
           aria-expanded={removing?.participantId === person.participantId}
           disabled={busy}
           onClick={() => {
-            const alreadyOpen = removing?.participantId === person.participantId;
+            const alreadyOpen =
+              removing?.participantId === person.participantId;
             closeEveryForm();
             if (!alreadyOpen) setRemoving(person);
           }}
         >
           Remove from contest
         </Button>
+        {roster.problemSets.length > 0 && (
+          <Button
+            type="button"
+            variant="quiet"
+            className="justify-start text-left aria-expanded:font-semibold aria-expanded:text-ink aria-expanded:underline"
+            aria-expanded={settingSet?.participantId === person.participantId}
+            disabled={busy}
+            onClick={() => {
+              const alreadyOpen =
+                settingSet?.participantId === person.participantId;
+              closeEveryForm();
+              if (!alreadyOpen) {
+                setSettingSet(person);
+                setSetTarget(person.chosenSetId ?? "");
+              }
+            }}
+          >
+            {person.chosenSetLabel === null
+              ? "Choose set"
+              : `Set ${person.chosenSetLabel} · change`}
+          </Button>
+        )}
       </div>
 
       {/*
@@ -330,27 +390,39 @@ export function RosterManager({ contestId }: RosterManagerProps) {
             event.preventDefault();
             if (removeReason.trim().length < MIN_REASON) return;
             if (person.submissionCount > 0 && !removeConfirmed) return;
-            void send(API_ROUTES.adminContestParticipants(contestId), "DELETE", {
-              participantId: person.participantId,
-              reason: removeReason.trim(),
-              deleteSubmissions: removeConfirmed,
-            });
+            void send(
+              API_ROUTES.adminContestParticipants(contestId),
+              "DELETE",
+              {
+                participantId: person.participantId,
+                reason: removeReason.trim(),
+                deleteSubmissions: removeConfirmed,
+              },
+            );
           }}
         >
-          <p role="alert" className="font-semibold" style={{ fontSize: "var(--text-sm)" }}>
+          <p
+            role="alert"
+            className="font-semibold"
+            style={{ fontSize: "var(--text-sm)" }}
+          >
             {person.submissionCount === 0 ? (
               <>
-                {person.displayName} has made no submissions, so removing them from this contest
-                takes nothing else with it. They can be added again from the search above.
+                {person.displayName} has made no submissions, so removing them
+                from this contest takes nothing else with it. They can be added
+                again from the search above.
               </>
             ) : (
               <>
                 {person.displayName} has{" "}
-                <span className="numeric">{person.submissionCount}</span> judged submission
-                {person.submissionCount === 1 ? "" : "s"}. Removing them from this contest deletes
-                those submissions too, and the standings are recomputed from them, so every score
-                they contributed to changes. To keep the record instead, move them to &ldquo;no
-                team&rdquo;: that takes them out of every divisor and leaves their work in place.
+                <span className="numeric">{person.submissionCount}</span> judged
+                submission
+                {person.submissionCount === 1 ? "" : "s"}. Removing them from
+                this contest deletes those submissions too, and the standings
+                are recomputed from them, so every score they contributed to
+                changes. To keep the record instead, move them to &ldquo;no
+                team&rdquo;: that takes them out of every divisor and leaves
+                their work in place.
               </>
             )}
           </p>
@@ -377,7 +449,8 @@ export function RosterManager({ contestId }: RosterManagerProps) {
               </span>
               <span>
                 Yes, delete their {person.submissionCount} submission
-                {person.submissionCount === 1 ? "" : "s"} as well. This cannot be undone.
+                {person.submissionCount === 1 ? "" : "s"} as well. This cannot
+                be undone.
               </span>
             </label>
           )}
@@ -403,7 +476,12 @@ export function RosterManager({ contestId }: RosterManagerProps) {
             >
               {busy ? "Removing…" : "Remove from contest"}
             </Button>
-            <Button type="button" variant="quiet" onClick={closeRemoveForm} disabled={busy}>
+            <Button
+              type="button"
+              variant="quiet"
+              onClick={closeRemoveForm}
+              disabled={busy}
+            >
               Cancel
             </Button>
           </div>
@@ -419,9 +497,10 @@ export function RosterManager({ contestId }: RosterManagerProps) {
         level="framed"
         description={
           <>
-            Anybody with an account can be put on this contest, whether or not they have signed
-            into it. That includes everyone from previous contests. Adding somebody creates their
-            place in this contest with no team, so no score moves.
+            Anybody with an account can be put on this contest, whether or not
+            they have signed into it. That includes everyone from previous
+            contests. Adding somebody creates their place in this contest with
+            no team, so no score moves.
           </>
         }
       >
@@ -446,7 +525,11 @@ export function RosterManager({ contestId }: RosterManagerProps) {
           )}
 
           {candidates === null ? (
-            <p role="status" className="text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
+            <p
+              role="status"
+              className="text-ink/70"
+              style={{ fontSize: "var(--text-sm)" }}
+            >
               Loading accounts…
             </p>
           ) : candidates.length === 0 ? (
@@ -463,13 +546,19 @@ export function RosterManager({ contestId }: RosterManagerProps) {
                   className="flex min-w-0 flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b border-rule-hair pb-2"
                 >
                   <div className="flex min-w-0 flex-col">
-                    <span className="font-semibold" style={{ fontSize: "var(--text-sm)" }}>
+                    <span
+                      className="font-semibold"
+                      style={{ fontSize: "var(--text-sm)" }}
+                    >
                       {candidate.displayName}
                       {candidate.role === "ADMIN" && (
                         // Said in words, never by colour alone. An organizer added as a competitor
                         // lands in a team's divisor, which is a scoring change, so the screen has
                         // to say which kind of account this is before the click.
-                        <span className="ml-2 font-normal text-ink/70" style={{ fontSize: "var(--text-xs)" }}>
+                        <span
+                          className="ml-2 font-normal text-ink/70"
+                          style={{ fontSize: "var(--text-xs)" }}
+                        >
                           (organizer account)
                         </span>
                       )}
@@ -479,10 +568,15 @@ export function RosterManager({ contestId }: RosterManagerProps) {
                       name alone is not enough: the participant table has to invent a "(2)" suffix
                       precisely because two people share one.
                     */}
-                    <span className="text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
+                    <span
+                      className="text-ink/60"
+                      style={{ fontSize: "var(--text-xs)" }}
+                    >
                       {[
                         candidate.email,
-                        candidate.gradYear === null ? null : `class of ${String(candidate.gradYear)}`,
+                        candidate.gradYear === null
+                          ? null
+                          : `class of ${String(candidate.gradYear)}`,
                         candidate.pastContests.length === 0
                           ? "no previous contests"
                           : `was in ${candidate.pastContests.slice(0, 2).join(", ")}`,
@@ -502,9 +596,13 @@ export function RosterManager({ contestId }: RosterManagerProps) {
                     variant="quiet"
                     disabled={busy}
                     onClick={() => {
-                      void send(API_ROUTES.adminContestParticipants(contestId), "POST", {
-                        userId: candidate.userId,
-                      });
+                      void send(
+                        API_ROUTES.adminContestParticipants(contestId),
+                        "POST",
+                        {
+                          userId: candidate.userId,
+                        },
+                      );
                     }}
                   >
                     Add
@@ -516,7 +614,8 @@ export function RosterManager({ contestId }: RosterManagerProps) {
 
           {candidatesTruncated && (
             <p className="text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
-              More accounts match than are shown. Type more of the name to narrow it down.
+              More accounts match than are shown. Type more of the name to
+              narrow it down.
             </p>
           )}
         </div>
@@ -526,7 +625,10 @@ export function RosterManager({ contestId }: RosterManagerProps) {
         title="Not on a team"
         level="bare"
         aside={
-          <span className="numeric text-ink/60" style={{ fontSize: "var(--text-sm)" }}>
+          <span
+            className="numeric text-ink/60"
+            style={{ fontSize: "var(--text-sm)" }}
+          >
             {roster.unassigned.length}
           </span>
         }
@@ -539,8 +641,9 @@ export function RosterManager({ contestId }: RosterManagerProps) {
               easy to lose to a formatter, and a missing space inside a sentence about scoring is
               not a thing to leave to chance.
             */}
-            These participants contribute to <strong>no team score</strong>, and their points are
-            in nobody&rsquo;s pool. This list is the first thing to empty on the night.
+            These participants contribute to <strong>no team score</strong>, and
+            their points are in nobody&rsquo;s pool. Assign everyone before the
+            contest begins.
           </>
         }
       >
@@ -610,7 +713,10 @@ export function RosterManager({ contestId }: RosterManagerProps) {
             />
 
             <div className="flex flex-wrap gap-2">
-              <Button type="submit" disabled={busy || reason.trim().length < MIN_REASON}>
+              <Button
+                type="submit"
+                disabled={busy || reason.trim().length < MIN_REASON}
+              >
                 {busy ? "Moving…" : "Move"}
               </Button>
               <Button
@@ -626,11 +732,81 @@ export function RosterManager({ contestId }: RosterManagerProps) {
         </Panel>
       )}
 
+      {settingSet !== null && (
+        <Panel
+          title={`Problem set for ${settingSet.displayName}`}
+          level="framed"
+        >
+          <form
+            className="flex flex-col gap-group"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (assignmentReason.trim().length < MIN_REASON) return;
+              void send(API_ROUTES.adminReassignSet(contestId), "POST", {
+                participantId: settingSet.participantId,
+                setId: setTarget === "" ? null : setTarget,
+                reason: assignmentReason.trim(),
+              });
+            }}
+          >
+            <Select
+              label="Problem set"
+              value={setTarget}
+              onChange={(event) => setSetTarget(event.target.value)}
+            >
+              <option value="">(no individual set)</option>
+              {roster.problemSets.map((set) => (
+                <option key={set.setId} value={set.setId}>
+                  Set {set.label}
+                </option>
+              ))}
+            </Select>
+
+            <p className="text-ink/70" style={{ fontSize: "var(--text-xs)" }}>
+              {roster.setSelection === "RANDOM_ASSIGNED"
+                ? "Teammates must hold different sets. A conflicting choice will be refused."
+                : roster.setSelection === "ONE_SET_PER_TEAM"
+                  ? "Every member of one team should hold the same set."
+                  : "Players choose independently in this contest format."}
+            </p>
+
+            <TextInput
+              label="Reason"
+              required
+              value={assignmentReason}
+              placeholder="Why this assignment is being changed"
+              hint="This can change which questions the student may open, so it is recorded in the audit log."
+              onChange={(event) => setAssignmentReason(event.target.value)}
+            />
+
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="submit"
+                disabled={busy || assignmentReason.trim().length < MIN_REASON}
+              >
+                {busy ? "Saving…" : "Save set"}
+              </Button>
+              <Button
+                type="button"
+                variant="quiet"
+                onClick={() => setSettingSet(null)}
+                disabled={busy}
+              >
+                Cancel
+              </Button>
+            </div>
+          </form>
+        </Panel>
+      )}
+
       <Panel
         title="Teams"
         level="bare"
         aside={
-          <span className="numeric text-ink/60" style={{ fontSize: "var(--text-sm)" }}>
+          <span
+            className="numeric text-ink/60"
+            style={{ fontSize: "var(--text-sm)" }}
+          >
             {roster.teams.length} · max {roster.maxTeamSize}
           </span>
         }
@@ -639,7 +815,9 @@ export function RosterManager({ contestId }: RosterManagerProps) {
           className="mb-group flex flex-wrap items-end gap-2"
           onSubmit={(event) => {
             event.preventDefault();
-            void send(API_ROUTES.adminTeams(contestId), "POST", { name: newTeamName });
+            void send(API_ROUTES.adminTeams(contestId), "POST", {
+              name: newTeamName,
+            });
           }}
         >
           <div className="w-64">
@@ -670,7 +848,10 @@ export function RosterManager({ contestId }: RosterManagerProps) {
                 className="rounded-panel border border-rule-edge p-4"
               >
                 <div className="flex flex-wrap items-baseline justify-between gap-2">
-                  <span className="font-semibold" style={{ fontSize: "var(--text-sm)" }}>
+                  <span
+                    className="font-semibold"
+                    style={{ fontSize: "var(--text-sm)" }}
+                  >
                     {team.name}
                   </span>
                   {/*
@@ -679,8 +860,12 @@ export function RosterManager({ contestId }: RosterManagerProps) {
                     that looked actionable and was not, on the screen where a wrong action changes
                     two team scores. The size is what matters here: it IS the divisor.
                   */}
-                  <span className="numeric text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
-                    {team.memberCount}/{team.maxTeamSize} · divisor {team.memberCount}
+                  <span
+                    className="numeric text-ink/60"
+                    style={{ fontSize: "var(--text-xs)" }}
+                  >
+                    {team.memberCount}/{team.maxTeamSize} · divisor{" "}
+                    {team.memberCount}
                   </span>
                 </div>
 
@@ -704,7 +889,10 @@ export function RosterManager({ contestId }: RosterManagerProps) {
                     }),
                   )}
                   {team.members.length === 0 && (
-                    <li className="text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
+                    <li
+                      className="text-ink/60"
+                      style={{ fontSize: "var(--text-xs)" }}
+                    >
                       No members, so this team scores nothing.
                     </li>
                   )}
@@ -719,14 +907,19 @@ export function RosterManager({ contestId }: RosterManagerProps) {
                     type="button"
                     variant="quiet"
                     className="aria-expanded:font-semibold aria-expanded:text-ink aria-expanded:underline"
-                    aria-expanded={teamForm?.kind === "rename" && teamForm.teamId === team.teamId}
+                    aria-expanded={
+                      teamForm?.kind === "rename" &&
+                      teamForm.teamId === team.teamId
+                    }
                     disabled={busy}
                     onClick={() => {
                       const alreadyOpen =
-                        teamForm?.kind === "rename" && teamForm.teamId === team.teamId;
+                        teamForm?.kind === "rename" &&
+                        teamForm.teamId === team.teamId;
                       closeEveryForm();
                       setTeamFormName(team.name);
-                      if (!alreadyOpen) setTeamForm({ kind: "rename", teamId: team.teamId });
+                      if (!alreadyOpen)
+                        setTeamForm({ kind: "rename", teamId: team.teamId });
                     }}
                   >
                     Rename
@@ -735,13 +928,18 @@ export function RosterManager({ contestId }: RosterManagerProps) {
                     type="button"
                     variant="quiet"
                     className="aria-expanded:font-semibold aria-expanded:text-ink aria-expanded:underline"
-                    aria-expanded={teamForm?.kind === "dissolve" && teamForm.teamId === team.teamId}
+                    aria-expanded={
+                      teamForm?.kind === "dissolve" &&
+                      teamForm.teamId === team.teamId
+                    }
                     disabled={busy}
                     onClick={() => {
                       const alreadyOpen =
-                        teamForm?.kind === "dissolve" && teamForm.teamId === team.teamId;
+                        teamForm?.kind === "dissolve" &&
+                        teamForm.teamId === team.teamId;
                       closeEveryForm();
-                      if (!alreadyOpen) setTeamForm({ kind: "dissolve", teamId: team.teamId });
+                      if (!alreadyOpen)
+                        setTeamForm({ kind: "dissolve", teamId: team.teamId });
                     }}
                   >
                     Dissolve
@@ -772,13 +970,20 @@ export function RosterManager({ contestId }: RosterManagerProps) {
                         label={`New name for ${team.name}`}
                         required
                         value={teamFormName}
-                        onChange={(event) => setTeamFormName(event.target.value)}
+                        onChange={(event) =>
+                          setTeamFormName(event.target.value)
+                        }
                       />
                     ) : (
-                      <p role="alert" className="font-semibold" style={{ fontSize: "var(--text-sm)" }}>
-                        Dissolving &ldquo;{team.name}&rdquo; makes its {team.memberCount} member
-                        {team.memberCount === 1 ? "" : "s"} teamless. Their points then count for
-                        nobody until they are reassigned.
+                      <p
+                        role="alert"
+                        className="font-semibold"
+                        style={{ fontSize: "var(--text-sm)" }}
+                      >
+                        Dissolving &ldquo;{team.name}&rdquo; makes its{" "}
+                        {team.memberCount} member
+                        {team.memberCount === 1 ? "" : "s"} teamless. Their
+                        points then count for nobody until they are reassigned.
                       </p>
                     )}
 
@@ -787,23 +992,35 @@ export function RosterManager({ contestId }: RosterManagerProps) {
                       required
                       value={teamFormReason}
                       placeholder="Why this is being changed"
-                      hint="Goes in the audit log. A roster change is a score change, so this is the answer to “why did our score move?” at 9pm."
-                      onChange={(event) => setTeamFormReason(event.target.value)}
+                      hint="Recorded in the audit log because roster changes can affect scores."
+                      onChange={(event) =>
+                        setTeamFormReason(event.target.value)
+                      }
                     />
 
                     <div className="flex flex-wrap gap-2">
                       <Button
                         type="submit"
-                        variant={teamForm.kind === "dissolve" ? "danger" : "secondary"}
+                        variant={
+                          teamForm.kind === "dissolve" ? "danger" : "secondary"
+                        }
                         disabled={
                           busy ||
                           teamFormReason.trim().length < MIN_REASON ||
-                          (teamForm.kind === "rename" && teamFormName.trim() === "")
+                          (teamForm.kind === "rename" &&
+                            teamFormName.trim() === "")
                         }
                       >
-                        {teamForm.kind === "rename" ? "Rename team" : "Dissolve team"}
+                        {teamForm.kind === "rename"
+                          ? "Rename team"
+                          : "Dissolve team"}
                       </Button>
-                      <Button type="button" variant="quiet" onClick={closeTeamForm} disabled={busy}>
+                      <Button
+                        type="button"
+                        variant="quiet"
+                        onClick={closeTeamForm}
+                        disabled={busy}
+                      >
                         Cancel
                       </Button>
                     </div>

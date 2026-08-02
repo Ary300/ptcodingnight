@@ -159,13 +159,21 @@ test.describe("axe-core: team-mode screens", () => {
     // outcome here, since the breakdown is all muted secondary text and is where a contrast
     // mistake is most likely to hide.
     await expect(page.getByRole("table", { name: /team standings/i })).toBeVisible();
+    await expect(
+      page.getByText(
+        "– means there is no player in that set or no points in that category yet.",
+      ),
+    ).toBeVisible();
 
-    const expander = page.getByRole("button", { name: /players$/ }).first();
+    const expander = page.getByRole("button", { name: /^Show \d+ players? for .+$/ }).first();
     await expect(expander).toBeVisible();
     await expander.click();
 
-    // The breakdown is a different DOM: a definition list of the arithmetic.
-    await expect(page.getByText(/Player pool/)).toBeVisible();
+    // Every closed roster stays in the DOM for the disclosure animation, so scope the assertion
+    // to the one row group that the button exposed.
+    await expect(
+      page.locator('tbody[aria-hidden="false"]').getByText("Player pool", { exact: true }),
+    ).toBeVisible();
     await auditPage(page, "/team (breakdown expanded)");
   });
 

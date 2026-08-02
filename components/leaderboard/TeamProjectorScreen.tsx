@@ -23,8 +23,8 @@ import { useTeamStandings } from "./useTeamStandings";
  *
  * This screen used to say, in this comment, that the per-player breakdown was deliberately not
  * here. The organizer disagreed, in as many words: "there is no drop down menu in that to show what
- * every individual is contributing to the score there". So the breakdown is here, one team at a
- * time, and the screen pays for it in rows.
+ * every individual is contributing to the score there". So the breakdown is here, and the screen
+ * pays for every open team in rows.
  *
  * It was first built as a wrapped LINE of chips, on the grounds that a column of subtotals would
  * not be legible at projector size. The organizer looked at that and asked for the column after
@@ -34,22 +34,22 @@ import { useTeamStandings } from "./useTeamStandings";
  * rather than a block inside one cell, which is what makes a member's points sit under the same
  * column heading as the team's, and there is exactly one set of columns so nothing can drift.
  *
- * **One team at a time, not a mode toggle, and not free.** The three options were: expand every
- * team (impossible, the board is already full at seven rows), a separate "breakdown mode" screen
- * that replaces the standings (the room loses the ranking it is watching, at the exact moment the
- * organizer wants to talk about one team's place in it), or one open row inline. The last keeps the
- * Codeforces shape: the ranking never leaves the wall, and the strip appears directly under the row
- * it explains, so the addends sit under the arithmetic that consumes them.
+ * **Independent, inline, and not free.** Every team row controls its own roster. Opening another
+ * team does not close the first, because comparing two rosters is a normal use of a standings
+ * board and disclosure state should not behave like navigation. The ranking stays on the wall and
+ * every strip sits directly under the row it explains, so its addends remain aligned with the
+ * arithmetic that consumes them.
  *
- * The price is stated rather than hidden. A projector does not scroll, so the open strip is paid
- * for out of `TEAM_VISIBLE_ROWS` (see `TEAM_EXPANDED_ROW_COST`), the footnote says how many teams
- * are drawn and out of how many, and the open team is drawn even when it ranks below the cut. The
+ * The price is stated rather than hidden. Each strip is paid for out of `TEAM_VISIBLE_ROWS` (see
+ * `TEAM_EXPANDED_ROW_COST`), the footnote says how many teams are drawn and out of how many, and
+ * every open team stays drawn even when it ranks below the cut. The
  * failure being designed against is specific and has happened here: a change that silently clipped
  * five rows under a footnote that claimed to show ten.
  *
- * No login, no chrome, no scrollbars (PRD §9.3). A dropped poll keeps the previous rows rather than
+ * No login and no app chrome (PRD §9.3). A dropped poll keeps the previous rows rather than
  * blanking — the room cannot tell a five-second-stale board from a live one, and can very much tell
- * an empty one.
+ * an empty one. Vertical scrolling appears only if the organizer opens more roster rows than the
+ * measured canvas can hold; clipping an explicitly open section would be worse.
  */
 
 export interface TeamProjectorScreenProps {
@@ -75,28 +75,30 @@ export function TeamProjectorScreen({
   const { standings, source, error } = useTeamStandings(contestId);
 
   /**
-   * The one open team, held HERE rather than in the board.
+   * The open teams, held HERE rather than in the board.
    *
    * The board draws whatever rows it is given; this screen is what decides how many rows there is
    * room for. Those two facts have to be decided together, so they live in one place.
    */
-  const [openTeamId, setOpenTeamId] = useState<string | null>(null);
+  const [openTeamIds, setOpenTeamIds] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
 
   // Escape closes, because the organizer opening this is at a laptop and the board is behind them.
   // Bound to the window rather than to the row: once the strip is open, the focused element may be
   // anything, and a projector is not a screen anyone wants to hunt for a close button on.
   useEffect(() => {
-    if (openTeamId === null) return undefined;
+    if (openTeamIds.size === 0) return undefined;
 
     const onKey = (event: KeyboardEvent): void => {
-      if (event.key === "Escape") setOpenTeamId(null);
+      if (event.key === "Escape") setOpenTeamIds(new Set());
     };
 
     window.addEventListener("keydown", onKey);
     return () => {
       window.removeEventListener("keydown", onKey);
     };
-  }, [openTeamId]);
+  }, [openTeamIds.size]);
 
   // The HEADER RENDERS IN EVERY STATE, including "still loading" and "the API said no".
   //
@@ -120,26 +122,45 @@ export function TeamProjectorScreen({
   /*
     How many rows fit, and which ones.
 
-    `openIndex` is looked up by id on every poll rather than remembered as a position, because the
-    board reorders under the strip: a team that was rank 5 when it was opened can be rank 3 four
-    seconds later, and a remembered index would then have the wrong team's roster open under the
-    wrong row. A team that has vanished from the payload resolves to null, which is closed.
+    Open indices are looked up by id on every poll rather than remembered as positions, because the
+    board reorders under an open strip. A team that was rank 5 can be rank 3 four seconds later, and
+    a remembered index would then put the wrong roster under the wrong row. IDs that vanished from
+    the payload are ignored rather than reassigned to their old positions.
   */
   const teams = standings === null ? [] : standings.teams;
-  const found = openTeamId === null ? -1 : teams.findIndex((t) => t.teamId === openTeamId);
-  const openIndex = found === -1 ? null : found;
+  const openIndices = teams.flatMap((team, index) =>
+    openTeamIds.has(team.teamId) ? [index] : [],
+  );
+  const validOpenTeamIds = new Set(
+    openIndices.flatMap((index) => {
+      const team = teams[index];
+      return team === undefined ? [] : [team.teamId];
+    }),
+  );
 
-  const cap =
-    openIndex === null ? maxRows : Math.max(1, maxRows - TEAM_EXPANDED_ROW_COST);
-  const { indices, jumped } = drawnTeamRows(teams.length, cap, openIndex);
+  /*
+   * Every roster costs two collapsed team rows. The minimum preserves the stronger promise that
+   * an open control always has its content on screen. If enough rosters are opened to exceed the
+   * measured wall budget, the board scrolls vertically instead of clipping open content.
+   */
+  const cap = Math.max(
+    openIndices.length,
+    maxRows - openIndices.length * TEAM_EXPANDED_ROW_COST,
+  );
+  const { indices, jumped } = drawnTeamRows(teams.length, cap, openIndices);
   const visible = indices.flatMap((at) => {
     const team = teams[at];
     return team === undefined ? [] : [team];
   });
 
-  /** What the footnote may honestly claim as "the top N". A pulled-up row is not part of it. */
-  const topCount = jumped ? visible.length - 1 : visible.length;
-  const openRank = openIndex === null ? null : (teams[openIndex]?.rank ?? null);
+  /** What the footnote may honestly call "the top N" before the first pulled-up rank. */
+  let topCount = 0;
+  while (indices[topCount] === topCount) topCount += 1;
+  const pulledOpenRanks = openIndices.flatMap((index) => {
+    if (index < topCount) return [];
+    const team = teams[index];
+    return team === undefined ? [] : [team.rank];
+  });
 
   /*
     Live or frozen, IN WORDS — DESIGN.md §7, and the individual board has always said it. The team
@@ -232,12 +253,18 @@ export function TeamProjectorScreen({
           ) : (
             <TeamStandingsBoard
               teams={visible}
+              setLabels={standings?.setLabels ?? []}
+              groupPointsInsideMean={standings?.groupPointsInsideMean ?? true}
+              sideActivitiesFlat={standings?.sideActivitiesFlat ?? true}
               variant="projector"
-              openTeamId={openTeamId}
+              openTeamIds={validOpenTeamIds}
               onToggleTeam={(teamId) => {
-                // One at a time. Two open strips is four rows off a seven-row board, and a room
-                // reading two breakdowns at once is reading neither.
-                setOpenTeamId((current) => (current === teamId ? null : teamId));
+                setOpenTeamIds((current) => {
+                  const next = new Set(current);
+                  if (next.has(teamId)) next.delete(teamId);
+                  else next.add(teamId);
+                  return next;
+                });
               }}
             />
           )}
@@ -255,9 +282,10 @@ export function TeamProjectorScreen({
             <span>
               Showing top <span className="numeric">{topCount}</span> of{" "}
               <span className="numeric">{standings.teams.length}</span> teams
-              {jumped && openRank !== null && (
+              {jumped && pulledOpenRanks.length > 0 && (
                 <>
-                  , plus rank <span className="numeric">{openRank}</span>
+                  , plus {pulledOpenRanks.length === 1 ? "rank" : "ranks"}{" "}
+                  <span className="numeric">{pulledOpenRanks.join(", ")}</span>
                 </>
               )}
             </span>
@@ -271,8 +299,12 @@ export function TeamProjectorScreen({
             field fits with a strip open, and announcing a squeeze that did not happen is its own
             small lie.
           */}
-          {openIndex !== null && teams.length > cap && (
-            <span>A breakdown is open, so fewer teams fit.</span>
+          {openIndices.length > 0 && teams.length > cap && (
+            <span>
+              {openIndices.length === 1
+                ? "A breakdown is open, so fewer teams fit."
+                : `${String(openIndices.length)} breakdowns are open, so fewer teams fit.`}
+            </span>
           )}
 
           {/* A board that has lost contact says so rather than pretending. It keeps the last

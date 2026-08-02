@@ -407,6 +407,40 @@ describe("edge cases", () => {
     expect(unfrozen?.score).toBe(100);
   });
 
+  it("replays the pre-freeze answer after a later override or rejudge tombstone", () => {
+    const freeze = at(10);
+    const original: SubmissionRecord = {
+      submissionId: "temporal-answer",
+      participantId: "u1",
+      contestProblemId: "p1",
+      submittedAt: at(4),
+      effectiveAt: at(5),
+      verdict: "AC",
+      score: 100,
+      revisionOrder: 1,
+    };
+    const override: SubmissionRecord = {
+      ...original,
+      effectiveAt: at(20),
+      verdict: "WA",
+      score: 40,
+      revisionOrder: 2,
+    };
+    const rejudgeTombstone: SubmissionRecord = {
+      ...original,
+      effectiveAt: at(30),
+      verdict: null,
+      score: 0,
+      revisionOrder: 3,
+    };
+
+    expect(only([original, override, rejudgeTombstone], [], config(), { upTo: freeze })?.score).toBe(
+      100,
+    );
+    expect(only([original, override])?.score).toBe(40);
+    expect(only([original, override, rejudgeTombstone])?.score).toBe(0);
+  });
+
   it("orders same-instant submissions by id so replay is stable", () => {
     const sameTime = at(10);
     const a: SubmissionRecord = {

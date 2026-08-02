@@ -4,7 +4,14 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { computeTeamStandings } from "@/lib/scoring/team";
-import { POINT_SCALE, divideRoundHalfAway, type ContestConfig } from "@/lib/types/scoring";
+import {
+  POINT_SCALE,
+  divideRoundHalfAway,
+  type ContestConfig,
+  type ParticipantRecord,
+  type SubmissionRecord,
+  type TeamRecord,
+} from "@/lib/types/scoring";
 
 import { loadGoldenTeamContest } from "@/fixtures/scoring/load";
 
@@ -139,6 +146,105 @@ describe("a group problem is solved once by the team", () => {
   });
 });
 
+describe("group problems use one team event timeline", () => {
+  const start = new Date("2026-04-10T18:00:00.000Z");
+  const at = (minutes: number) => new Date(start.getTime() + minutes * 60_000);
+  const teams: TeamRecord[] = [
+    { teamId: "alpha", name: "Alpha" },
+    { teamId: "beta", name: "Beta" },
+  ];
+  const participants: ParticipantRecord[] = [
+    { participantId: "a1", displayName: "A One", divisionId: null, teamId: "alpha", chosenSetId: "A" },
+    { participantId: "a2", displayName: "A Two", divisionId: null, teamId: "alpha", chosenSetId: "B" },
+    { participantId: "b1", displayName: "B One", divisionId: null, teamId: "beta", chosenSetId: "A" },
+    { participantId: "b2", displayName: "B Two", divisionId: null, teamId: "beta", chosenSetId: "B" },
+  ];
+  const baseConfig: ContestConfig = {
+    contestId: "team-events",
+    presetId: "coding-night-classic",
+    startsAt: start,
+    endsAt: at(120),
+    freezeAt: null,
+    divisions: [],
+    problems: [
+      {
+        contestProblemId: "group-1",
+        divisionId: null,
+        setId: null,
+        basePoints: 100,
+        round: "GROUP",
+      },
+    ],
+    groupPointsInsideMean: true,
+    sideActivitiesFlat: true,
+  };
+  const submission = (
+    submissionId: string,
+    participantId: string,
+    minutes: number,
+    verdict: SubmissionRecord["verdict"],
+    score: number,
+  ): SubmissionRecord => ({
+    submissionId,
+    participantId,
+    contestProblemId: "group-1",
+    submittedAt: at(minutes),
+    effectiveAt: at(minutes),
+    verdict,
+    score,
+  });
+  const runEvents = (log: readonly SubmissionRecord[], config = baseConfig) =>
+    computeTeamStandings(config, teams, participants, log, [], []);
+
+  it("does not move the team tiebreak for a later teammate's duplicate AC", () => {
+    const standings = runEvents([
+      submission("a-first", "a1", 10, "AC", 100),
+      submission("b-first", "b1", 20, "AC", 100),
+      submission("a-duplicate", "a2", 90, "AC", 100),
+    ]);
+
+    const alpha = standings.find((team) => team.teamId === "alpha");
+    const beta = standings.find((team) => team.teamId === "beta");
+
+    expect(alpha?.groupPoints).toBe(100);
+    expect(alpha?.lastScoreIncreaseAt?.toISOString()).toBe(at(10).toISOString());
+    expect(beta?.lastScoreIncreaseAt?.toISOString()).toBe(at(20).toISOString());
+    expect(alpha?.rank).toBe(1);
+    expect(beta?.rank).toBe(2);
+  });
+
+  it("charges each teammate's Classic rejection once when the team eventually scores", () => {
+    const standings = runEvents([
+      submission("a1-wa", "a1", 5, "WA", 0),
+      submission("a2-ce", "a2", 6, "CE", 0),
+      submission("a2-ac", "a2", 10, "AC", 100),
+    ]);
+    const alpha = standings.find((team) => team.teamId === "alpha");
+
+    expect(alpha?.penaltyMinutes).toBe(10);
+    // Group penalties are a team fact, just like group points. They are not attributed to an
+    // arbitrary player's individual contribution row.
+    expect(alpha?.players.map((player) => player.penaltyMinutes)).toEqual([0, 0]);
+  });
+
+  it("applies ICPC's post-solve rule to the team, not separately to each teammate", () => {
+    const standings = runEvents(
+      [
+        submission("a1-wa", "a1", 5, "WA", 0),
+        submission("a1-ac", "a1", 10, "AC", 100),
+        submission("a2-wa-after-team-solve", "a2", 20, "WA", 0),
+        submission("a2-ac-after-team-solve", "a2", 30, "AC", 100),
+      ],
+      { ...baseConfig, presetId: "icpc" },
+    );
+    const alpha = standings.find((team) => team.teamId === "alpha");
+
+    expect(alpha?.groupPoints).toBe(1);
+    expect(alpha?.penaltyMinutes).toBe(20);
+    expect(alpha?.lastScoreIncreaseAt?.toISOString()).toBe(at(10).toISOString());
+  });
+});
+
 describe("a participant with no team", () => {
   it("contributes to no team total", () => {
     // The orphan scored 400 — more than most Cubs — and must be invisible to every team score.
@@ -150,6 +256,40 @@ describe("a participant with no team", () => {
     for (const team of standings) {
       expect(team.players.map((p) => p.participantId)).not.toContain("orphan");
     }
+  });
+});
+
+describe("side activities at a standings cutoff", () => {
+  it("keeps awards entered after the freeze off the frozen board", () => {
+    const input = loadGoldenTeamContest();
+    const freeze = new Date(input.config.startsAt.getTime() + 30 * 60_000);
+    const lateAward = {
+      teamId: "panthers",
+      label: "Late tie-break challenge",
+      points: 1_000,
+      enteredAt: new Date(freeze.getTime() + 1),
+    };
+
+    const frozen = computeTeamStandings(
+      input.config,
+      input.teams,
+      input.participants,
+      input.submissions,
+      input.hintGrants,
+      [...input.sideActivities, lateAward],
+      { upTo: freeze },
+    ).find((team) => team.teamId === "panthers");
+    const live = computeTeamStandings(
+      input.config,
+      input.teams,
+      input.participants,
+      input.submissions,
+      input.hintGrants,
+      [...input.sideActivities, lateAward],
+    ).find((team) => team.teamId === "panthers");
+
+    expect(frozen?.sideActivityPoints).toBe(150);
+    expect(live?.sideActivityPoints).toBe(1_150);
   });
 });
 

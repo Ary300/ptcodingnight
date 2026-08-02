@@ -104,7 +104,7 @@ export async function listProblems(
 ): Promise<ProblemSummary[]> {
   const contest = await prisma.contest.findUnique({
     where: { id: contestId },
-    select: { id: true, state: true, allowReadingUnassignedSets: true },
+    select: { id: true, state: true, startsAt: true, allowReadingUnassignedSets: true },
   });
   if (contest === null) throw new NotFoundError("Contest");
 
@@ -117,14 +117,17 @@ export async function listProblems(
       id: true,
       divisionId: true,
       setId: true,
+      round: true,
       slotLabel: true,
       basePoints: true,
       unlockAt: true,
       problem: {
-        select: { slug: true, title: true, difficulty: true, state: true, round: true },
+        select: { slug: true, title: true, difficulty: true, state: true },
       },
     },
-    orderBy: { slotLabel: "asc" },
+    // Slot labels are validated as unique on write, and id still breaks ties for legacy rows so a
+    // replay cannot reorder just because Postgres chose a different plan.
+    orderBy: [{ slotLabel: "asc" }, { id: "asc" }],
   });
 
   const visible = contestProblems.filter(
@@ -157,7 +160,9 @@ export async function listProblems(
     Withheld, not omitted: the row still exists, still carries its slot and its points, and still
     reports `unlocked: false`, so the lobby can render a real locked list.
   */
-  const started = contest.state !== "SCHEDULED";
+  const started =
+    scope.admin ||
+    (contest.state !== "SCHEDULED" && now.getTime() >= contest.startsAt.getTime());
 
   return visible.map((cp) =>
     ProblemSummarySchema.parse({
@@ -167,7 +172,7 @@ export async function listProblems(
       slotLabel: cp.slotLabel,
       difficulty: cp.problem.difficulty,
       basePoints: cp.basePoints,
-      isGroupProblem: cp.problem.round === "GROUP",
+      isGroupProblem: cp.round === "GROUP",
       bestScore: scores.get(cp.id)?.score ?? null,
       solved: solvedIds.has(cp.id),
       unlocked: scope.admin || (started && isUnlocked(cp.unlockAt, now)),
@@ -199,12 +204,12 @@ export async function getProblemDetail(
 ): Promise<ProblemDetail> {
   const contest = await prisma.contest.findUnique({
     where: { id: contestId },
-    select: { id: true, state: true, allowReadingUnassignedSets: true },
+    select: { id: true, state: true, startsAt: true, allowReadingUnassignedSets: true },
   });
   if (contest === null) throw new NotFoundError("Contest");
 
   const scope = await scopeFor(contestId, viewer);
-  if (!scope.admin) assertCanReadProblems(contest.state);
+  if (!scope.admin) assertCanReadProblems(contest, now);
 
   const contestProblem = await prisma.contestProblem.findFirst({
     where: { contestId, problem: { slug } },
@@ -212,6 +217,7 @@ export async function getProblemDetail(
       id: true,
       divisionId: true,
       setId: true,
+      round: true,
       slotLabel: true,
       basePoints: true,
       unlockAt: true,
@@ -226,7 +232,6 @@ export async function getProblemDetail(
           constraints: true,
           difficulty: true,
           state: true,
-          round: true,
           timeLimitMs: true,
           memoryLimitMb: true,
           allowedLanguages: true,
@@ -272,7 +277,7 @@ export async function getProblemDetail(
     slotLabel: contestProblem.slotLabel,
     difficulty: contestProblem.problem.difficulty,
     basePoints: contestProblem.basePoints,
-    isGroupProblem: contestProblem.problem.round === "GROUP",
+    isGroupProblem: contestProblem.round === "GROUP",
     bestScore: scores.get(contestProblem.id)?.score ?? null,
     solved: solvedIds.has(contestProblem.id),
     unlocked: scope.admin || isUnlocked(contestProblem.unlockAt, now),

@@ -134,8 +134,8 @@ test.describe("the language picker offers what the problem allows", () => {
   });
 });
 
-test.describe("the problem screen does not claim a score it cannot award", () => {
-  test("the rail states a rated figure and says the award comes from the tests", async ({ page }) => {
+test.describe("the problem screen states the score the contest awards", () => {
+  test("the rail labels ContestProblem.basePoints as the maximum", async ({ page }) => {
     await signIn(page);
     const problem = liveProblem(seeded);
     await page.goto(`/contest/${problem.slug}`);
@@ -143,15 +143,9 @@ test.describe("the problem screen does not claim a score it cannot award", () =>
     const rail = page.getByRole("complementary", { name: "Problem details" });
     await expect(rail).toBeVisible({ timeout: 30_000 });
 
-    /*
-      "Max Score" was the wording, and it was false: the judge awards the SUM of per-test points
-      (`aggregateScore`), while the rail printed `basePoints`. On the demo contest that rendered
-      "Max Score 100" two rows above "Your best 140" on a correct solve — a ceiling the student
-      had already passed, which reads as a scoring bug rather than a mislabel.
-    */
-    await expect(rail).not.toContainText("Max Score");
-    await expect(rail).toContainText("Rated points");
-    await expect(rail).toContainText(/awarded per test case/i);
+    await expect(rail).toContainText("Max points");
+    await expect(rail).toContainText(String(problem.basePoints));
+    await expect(rail).not.toContainText(/full solve can be worth more or less/i);
   });
 
   test("the Hints card is not rendered, because there is no hint endpoint behind it", async ({
@@ -185,8 +179,10 @@ test.describe("submission history never shows a database key", () => {
     await page.waitForTimeout(500);
 
     await page.goto("/submissions");
-    const list = page.getByRole("list", { name: "Submissions" });
-    await expect(list).toBeVisible({ timeout: 30_000 });
+    // Desktop uses the reference-style table and phones use stacked cards. Both carry the same
+    // accessible name, and CSS guarantees that exactly one is visible at a time.
+    const history = page.locator('[aria-label="Submissions"]:visible');
+    await expect(history).toHaveCount(1, { timeout: 30_000 });
 
     /*
       The failure this pins: `listSubmissions()` and `listProblems()` were independent reads and
@@ -195,11 +191,11 @@ test.describe("submission history never shows a database key", () => {
       characters of base36 — assert its SHAPE rather than any particular value, because the whole
       point is that no id should ever reach this screen.
     */
-    const text = await list.innerText();
+    const text = await history.innerText();
     expect(text, "a raw cuid is rendered in the submission history").not.toMatch(
       /\bc[a-z0-9]{24}\b/,
     );
-    await expect(list.getByText(problem.title)).toBeVisible();
+    await expect(history.getByText(problem.title)).toBeVisible();
   });
 });
 

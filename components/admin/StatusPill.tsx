@@ -27,7 +27,9 @@ export function ProblemStatePill({ state }: { state: ProblemState }) {
   return (
     <span
       className={`inline-flex items-center rounded-chip px-2 py-0.5 font-semibold whitespace-nowrap ${
-        emphatic ? "border border-panther text-panther" : "border border-rule-edge text-ink/75"
+        // rule-firm (ink/45, 3.13:1), not rule-edge (1.50:1): a standalone chip's border is its
+        // only boundary, so it does the 3:1 non-text-contrast work a table column would otherwise do.
+        emphatic ? "border border-panther text-panther" : "border border-rule-firm text-ink/75"
       }`}
       style={{ fontSize: "var(--text-xs)" }}
       title={copy.hint}
@@ -70,7 +72,8 @@ export function ContestStatePill({ state }: { state: ContestState }) {
   return (
     <span
       className={`inline-flex items-center gap-1.5 rounded-chip px-2 py-0.5 font-semibold whitespace-nowrap ${
-        emphatic ? "border border-panther text-panther" : "border border-rule-edge text-ink/75"
+        // Same rule as ProblemStatePill: the chip's edge is real boundary work, so it clears 3:1.
+        emphatic ? "border border-panther text-panther" : "border border-rule-firm text-ink/75"
       }`}
       style={{ fontSize: "var(--text-xs)" }}
       title={hint}

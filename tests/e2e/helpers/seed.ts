@@ -330,6 +330,7 @@ export async function seedE2EContest(options: SeedOptions = {}): Promise<SeededC
         contestId: contest.id,
         problemId: created.id,
         divisionId,
+        round: problem.round,
         setId,
         slotLabel: problem.slotLabel,
         basePoints: problem.basePoints,

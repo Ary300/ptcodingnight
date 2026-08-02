@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { API_ROUTES } from "@/lib/schemas/api";
 
@@ -111,6 +111,17 @@ export function UserMenu({
   onSignOut,
 }: UserMenuProps) {
   const [open, setOpen] = useState(false);
+  /*
+    Where the phone sheet's top edge sits, in viewport pixels — null on `sm` and up, where the
+    panel is the ordinary anchored dropdown.
+
+    Below `sm` the header stacks (avatar row, then the Problems / My team / My submissions row),
+    and a panel anchored `mt-2` under the trigger opened at y=106 — exactly over the nav tabs at
+    y=106-158, so an open account menu hid the three destinations it does not contain. The sheet
+    is anchored to the HEADER's bottom edge instead, measured rather than hard-coded because the
+    stub banner and the wrapping rows both move it.
+  */
+  const [sheetTop, setSheetTop] = useState<number | null>(null);
   const root = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -122,12 +133,42 @@ export function UserMenu({
     const onClick = (event: MouseEvent): void => {
       if (root.current !== null && !root.current.contains(event.target as Node)) setOpen(false);
     };
+    // The sheet is `position: fixed` while the header scrolls with the page, so a scroll would
+    // detach it from the edge it claims to hang from. Closing is the honest response, and it is
+    // what a student scrolling to read the page wants from an overlay anyway. Phone only: the
+    // desktop dropdown is anchored to its trigger and moves with it.
+    const onScroll = (): void => {
+      if (!window.matchMedia("(min-width: 640px)").matches) setOpen(false);
+    };
 
     document.addEventListener("keydown", onKey);
     document.addEventListener("mousedown", onClick);
+    window.addEventListener("scroll", onScroll);
     return () => {
       document.removeEventListener("keydown", onKey);
       document.removeEventListener("mousedown", onClick);
+      window.removeEventListener("scroll", onScroll);
+    };
+  }, [open]);
+
+  // Layout effect, not effect: the measurement decides where the panel PAINTS, and running it
+  // after paint shows one frame of the dropdown covering the nav before it jumps to the sheet.
+  useLayoutEffect(() => {
+    if (!open) return undefined;
+
+    const place = (): void => {
+      if (window.matchMedia("(min-width: 640px)").matches) {
+        setSheetTop(null);
+        return;
+      }
+      const header = root.current?.closest("header");
+      setSheetTop(header == null ? null : header.getBoundingClientRect().bottom);
+    };
+
+    place();
+    window.addEventListener("resize", place);
+    return () => {
+      window.removeEventListener("resize", place);
     };
   }, [open]);
 
@@ -184,7 +225,12 @@ export function UserMenu({
             Stating the colour at the surface, rather than on each item, is what stops the next
             item added here from disappearing.
           */
-          className="absolute right-0 z-50 mt-2 w-64 overflow-hidden rounded border border-ink/20 bg-paper text-ink shadow-lg"
+          className={
+            sheetTop !== null
+              ? "fixed inset-x-0 z-50 overflow-hidden border-y border-ink/20 bg-paper text-ink shadow-lg"
+              : "absolute right-0 z-50 mt-2 w-64 overflow-hidden rounded border border-ink/20 bg-paper text-ink shadow-lg"
+          }
+          style={sheetTop !== null ? { top: sheetTop } : undefined}
         >
           {/*
             The highlighted slot. Panther red with paper text rather than red text on paper: at
@@ -234,9 +280,16 @@ export function UserMenu({
             Caught by the audit added alongside this component, which is the argument for auditing
             an open dropdown rather than only the page behind it.
           */}
+          {/*
+            The row dividers are inset to the panel's 14px content gutter (`mx-3.5`, the same
+            gutter the team slot and every label sit on) rather than run edge to edge — the
+            reference keeps one alignment line governing chip, labels and rules. Drawn as their
+            own element because a border on the `li` can only be full-bleed.
+          */}
           <ul role="menu" aria-label="Account">
             {ITEMS.map((item) => (
-              <li key={item.href} role="none" className="border-t border-ink/10">
+              <li key={item.href} role="none">
+                <div aria-hidden="true" className="mx-3.5 border-t border-ink/10" />
                 <Link
                   href={item.href}
                   role="menuitem"
@@ -248,7 +301,13 @@ export function UserMenu({
                 </Link>
               </li>
             ))}
-            <li role="none" className="border-t border-ink/10">
+            <li role="none">
+              <div aria-hidden="true" className="mx-3.5 border-t border-ink/10" />
+              {/*
+                Styled like every other row, as the reference styles Logout. It carried
+                `font-semibold text-panther`, which made the one action a student least wants
+                mid-round the only emphasized, destructive-looking row in the menu.
+              */}
               <button
                 type="button"
                 role="menuitem"
@@ -256,7 +315,7 @@ export function UserMenu({
                   setOpen(false);
                   onSignOut();
                 }}
-                className="block w-full px-3.5 py-2.5 text-left font-semibold text-panther hover:bg-ink/5"
+                className="block w-full px-3.5 py-2.5 text-left hover:bg-ink/5"
                 style={{ fontSize: "var(--text-sm)" }}
               >
                 Sign out

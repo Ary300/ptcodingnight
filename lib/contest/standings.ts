@@ -38,11 +38,16 @@ export interface LoadedContest extends ContestGateInput {
   readonly presetId: ScoringPresetId;
 }
 
+/** A participant row with the instant it first became part of this contest. */
+export interface LoadedParticipant extends ParticipantRecord {
+  readonly joinedAt: Date;
+}
+
 export interface ScoringInput {
   readonly contest: LoadedContest;
   readonly config: ContestConfig;
   readonly teams: readonly TeamRecord[];
-  readonly participants: readonly ParticipantRecord[];
+  readonly participants: readonly LoadedParticipant[];
   readonly submissions: readonly SubmissionRecord[];
   readonly hintGrants: readonly HintGrantRecord[];
   readonly sideActivities: readonly SideActivityRecord[];
@@ -83,15 +88,24 @@ function asPresetId(value: string): ScoringPresetId {
  * query set. It is a cache of *inputs*, never of scores, so replay is untouched.
  */
 const INPUT_TTL_MS = 1_000;
-const inputCache = new Map<string, { loadedAtMs: number; input: Promise<ScoringInput> }>();
+const inputCache = new Map<
+  string,
+  { loadedAtMs: number; input: Promise<ScoringInput> }
+>();
 
 export function invalidateScoringInput(contestId: string): void {
   inputCache.delete(contestId);
 }
 
-export function loadScoringInput(contestId: string, now: Date): Promise<ScoringInput> {
+export function loadScoringInput(
+  contestId: string,
+  now: Date,
+): Promise<ScoringInput> {
   const cached = inputCache.get(contestId);
-  if (cached !== undefined && now.getTime() - cached.loadedAtMs < INPUT_TTL_MS) {
+  if (
+    cached !== undefined &&
+    now.getTime() - cached.loadedAtMs < INPUT_TTL_MS
+  ) {
     return cached.input;
   }
 
@@ -121,10 +135,11 @@ async function queryScoringInput(contestId: string): Promise<ScoringInput> {
           id: true,
           divisionId: true,
           basePoints: true,
+          round: true,
           // `title` and `slotLabel` are read for the breakdown's benefit only. They are put on
           // `problemLabels` below and never on `config`, so nothing in `lib/scoring/` can see them.
           slotLabel: true,
-          problem: { select: { round: true, title: true } },
+          problem: { select: { title: true } },
           setId: true,
         },
       },
@@ -135,41 +150,71 @@ async function queryScoringInput(contestId: string): Promise<ScoringInput> {
           divisionId: true,
           teamId: true,
           chosenSetId: true,
+          joinedAt: true,
         },
       },
       teams: { select: { id: true, name: true } },
-      problemSets: { select: { id: true, label: true } },
+      problemSets: {
+        select: { id: true, label: true },
+        orderBy: [{ label: "asc" }, { id: "asc" }],
+      },
     },
   });
 
   if (contest === null) throw new NotFoundError("Contest");
 
-  const [submissions, hintGrants, sideActivities] = await Promise.all([
-    prisma.submission.findMany({
-      where: { contestProblem: { contestId }, verdict: { not: null } },
-      select: {
-        id: true,
-        participantId: true,
-        contestProblemId: true,
-        submittedAt: true,
-        effectiveAt: true,
-        verdict: true,
-        score: true,
-      },
-    }),
-    prisma.hintGrant.findMany({
-      where: { contestProblem: { contestId } },
-      select: { participantId: true, contestProblemId: true, hintIndex: true, grantedAt: true },
-    }),
-    // Admin-entered, no submission behind it. Ordered so replay is byte-identical: two activities
-    // entered in the same millisecond would otherwise be summed in whatever order Postgres felt
-    // like returning, and while addition commutes, the emitted JSON would not.
-    prisma.teamSideActivity.findMany({
-      where: { team: { contestId } },
-      select: { teamId: true, label: true, points: true },
-      orderBy: [{ enteredAt: "asc" }, { id: "asc" }],
-    }),
-  ]);
+  const [currentSubmissions, scoreRevisions, hintGrants, sideActivities] =
+    await Promise.all([
+      prisma.submission.findMany({
+        // Compatibility fallback for a row written by an old process during a rolling deploy. New
+        // score writes always append a revision in the same transaction.
+        where: { contestProblem: { contestId }, verdict: { not: null } },
+        select: {
+          id: true,
+          participantId: true,
+          contestProblemId: true,
+          submittedAt: true,
+          effectiveAt: true,
+          verdict: true,
+          score: true,
+        },
+      }),
+      prisma.submissionScoreRevision.findMany({
+        where: { submission: { contestProblem: { contestId } } },
+        select: {
+          id: true,
+          verdict: true,
+          score: true,
+          effectiveAt: true,
+          submission: {
+            select: {
+              id: true,
+              participantId: true,
+              contestProblemId: true,
+              submittedAt: true,
+            },
+          },
+        },
+        orderBy: { id: "asc" },
+      }),
+      prisma.hintGrant.findMany({
+        where: { contestProblem: { contestId } },
+        select: {
+          participantId: true,
+          contestProblemId: true,
+          hintIndex: true,
+          grantedAt: true,
+        },
+      }),
+      // Admin-entered, no submission behind it. Ordered so replay is byte-identical: two activities
+      // entered in the same millisecond would otherwise be summed in whatever order Postgres felt
+      // like returning, and while addition commutes, the emitted JSON would not.
+      prisma.teamSideActivity.findMany({
+        where: { team: { contestId } },
+        select: { teamId: true, label: true, points: true, enteredAt: true },
+        orderBy: [{ enteredAt: "asc" }, { id: "asc" }],
+      }),
+    ]);
 
   const config: ContestConfig = {
     contestId: contest.id,
@@ -187,11 +232,14 @@ async function queryScoringInput(contestId: string): Promise<ScoringInput> {
       divisionId: cp.divisionId,
       basePoints: cp.basePoints,
       setId: cp.setId,
-      round: cp.problem.round,
+      round: cp.round,
     })),
     groupPointsInsideMean: contest.groupPointsInsideMean,
     sideActivitiesFlat: contest.sideActivitiesFlat,
   };
+  const submissionsWithRevisions = new Set(
+    scoreRevisions.map((revision) => revision.submission.id),
+  );
 
   return {
     contest: {
@@ -210,20 +258,40 @@ async function queryScoringInput(contestId: string): Promise<ScoringInput> {
       divisionId: p.divisionId,
       teamId: p.teamId,
       chosenSetId: p.chosenSetId,
+      joinedAt: p.joinedAt,
     })),
     teams: contest.teams.map((t) => ({ teamId: t.id, name: t.name })),
     sideActivities,
-    submissions: submissions
-      .filter((s): s is typeof s & { verdict: NonNullable<typeof s.verdict> } => s.verdict !== null)
-      .map((s) => ({
-        submissionId: s.id,
-        participantId: s.participantId,
-        contestProblemId: s.contestProblemId,
-        submittedAt: s.submittedAt,
-        effectiveAt: s.effectiveAt,
-        verdict: s.verdict,
-        score: s.score,
+    submissions: [
+      ...scoreRevisions.map((revision) => ({
+        submissionId: revision.submission.id,
+        participantId: revision.submission.participantId,
+        contestProblemId: revision.submission.contestProblemId,
+        submittedAt: revision.submission.submittedAt,
+        effectiveAt: revision.effectiveAt,
+        verdict: revision.verdict,
+        score: revision.score,
+        revisionOrder: revision.id,
       })),
+      // A revision wins whenever one exists. This fallback keeps standings available across a
+      // rolling deploy where an older web process may still write only Submission for a moment.
+      ...currentSubmissions
+        .filter(
+          (submission) =>
+            submission.verdict !== null &&
+            !submissionsWithRevisions.has(submission.id),
+        )
+        .map((submission) => ({
+          submissionId: submission.id,
+          participantId: submission.participantId,
+          contestProblemId: submission.contestProblemId,
+          submittedAt: submission.submittedAt,
+          effectiveAt: submission.effectiveAt,
+          verdict: submission.verdict,
+          score: submission.score,
+          revisionOrder: 0,
+        })),
+    ],
     hintGrants: hintGrants.map((h) => ({
       participantId: h.participantId,
       contestProblemId: h.contestProblemId,
@@ -231,7 +299,9 @@ async function queryScoringInput(contestId: string): Promise<ScoringInput> {
       grantedAt: h.grantedAt,
     })),
     divisionNames: new Map(contest.divisions.map((d) => [d.id, d.name])),
-    problemSetLabels: contest.problemSets.map((set) => [set.id, set.label] as const),
+    problemSetLabels: contest.problemSets.map(
+      (set) => [set.id, set.label] as const,
+    ),
     problemLabels: contest.contestProblems.map(
       (cp) =>
         [
@@ -240,7 +310,7 @@ async function queryScoringInput(contestId: string): Promise<ScoringInput> {
             slotLabel: cp.slotLabel,
             title: cp.problem.title,
             basePoints: cp.basePoints,
-            isGroupProblem: cp.problem.round === "GROUP",
+            isGroupProblem: cp.round === "GROUP",
           },
         ] as const,
     ),
@@ -257,10 +327,30 @@ async function queryScoringInput(contestId: string): Promise<ScoringInput> {
  * produced it, showing an empty board is the wrong-but-safe answer and showing live scores
  * during a freeze is the wrong-and-unsafe one.
  */
-function cutoffFor(contest: LoadedContest, now: Date, admin: boolean): Date | null {
+function cutoffFor(
+  contest: LoadedContest,
+  now: Date,
+  admin: boolean,
+): Date | null {
   if (admin) return null;
   if (!isPublicBoardFrozen(contest, now)) return null;
   return contest.freezeAt ?? contest.startsAt;
+}
+
+/**
+ * A frozen board is a view of the whole contest at one instant, including who had joined by then.
+ * Late sign-in remains useful during a freeze, but it must not add a new zero-score row, change a
+ * tie, or move anyone's rank on the public board before the reveal.
+ */
+function participantsAt(
+  participants: readonly LoadedParticipant[],
+  upTo: Date | null,
+): readonly LoadedParticipant[] {
+  if (upTo === null) return participants;
+  const cutoffMs = upTo.getTime();
+  return participants.filter(
+    (participant) => participant.joinedAt.getTime() <= cutoffMs,
+  );
 }
 
 export interface ComputedStandings {
@@ -278,12 +368,13 @@ export async function computeFor(
   const admin = isAdmin(viewer);
   const input = await loadScoringInput(contestId, now);
   const upTo = cutoffFor(input.contest, now, admin);
+  const visibleParticipants = participantsAt(input.participants, upTo);
 
   return {
     input,
     standings: computeStandings(
       input.config,
-      input.participants,
+      visibleParticipants,
       input.submissions,
       input.hintGrants,
       { upTo },
@@ -374,7 +465,6 @@ export async function problemStandingsFor(
   return byProblem;
 }
 
-
 /**
  * Team standings — **the board Coding Night actually ranks by** (PRD §9.3).
  *
@@ -415,11 +505,12 @@ export async function getTeamStandings(
   const admin = isAdmin(viewer);
   const input = await loadScoringInput(contestId, now);
   const upTo = cutoffFor(input.contest, now, admin);
+  const visibleParticipants = participantsAt(input.participants, upTo);
 
   const teams = computeTeamStandings(
     input.config,
     input.teams,
-    input.participants,
+    visibleParticipants,
     input.submissions,
     input.hintGrants,
     input.sideActivities,
@@ -440,7 +531,9 @@ export async function getTeamStandings(
    */
   const viewerTeamId =
     viewer.kind === "competitor"
-      ? (input.participants.find((p) => p.participantId === viewer.participantId)?.teamId ?? null)
+      ? (visibleParticipants.find(
+          (p) => p.participantId === viewer.participantId,
+        )?.teamId ?? null)
       : null;
 
   return TeamStandingsResponseSchema.parse({
@@ -448,11 +541,15 @@ export async function getTeamStandings(
     frozen: !admin && isPublicBoardFrozen(input.contest, now),
     asOf: (upTo ?? now).toISOString(),
     endsAt: input.contest.endsAt.toISOString(),
+    setLabels: input.problemSetLabels.map(([, label]) => label),
+    groupPointsInsideMean: input.config.groupPointsInsideMean,
+    sideActivitiesFlat: input.config.sideActivitiesFlat,
     teams: teams.map((team) => {
       // Decided once, per team, here — the one place that knows both who is asking and whose row
       // this is. A component cannot make this decision, because by the time it renders the data
       // has already crossed the wire.
-      const mayReadDetail = admin || (viewerTeamId !== null && team.teamId === viewerTeamId);
+      const mayReadDetail =
+        admin || (viewerTeamId !== null && team.teamId === viewerTeamId);
 
       return {
         teamId: team.teamId,
@@ -472,14 +569,21 @@ export async function getTeamStandings(
           score: player.score,
           penaltyMinutes: player.penaltyMinutes,
           chosenSetLabel:
-            player.chosenSetId === null ? null : (setLabel.get(player.chosenSetId) ?? null),
+            player.chosenSetId === null
+              ? null
+              : (setLabel.get(player.chosenSetId) ?? null),
           // Computed here, off the same problems `score` sums, so a solve count can never
           // disagree with the total printed beside it.
           solvedCount: player.problems.filter(
-            (p) => p.score > 0 && problemLabel.get(p.contestProblemId)?.isGroupProblem !== true,
+            (p) =>
+              p.score > 0 &&
+              problemLabel.get(p.contestProblemId)?.isGroupProblem !== true,
           ).length,
-          lastScoreIncreaseAt: player.lastScoreIncreaseAt?.toISOString() ?? null,
-          problems: mayReadDetail ? detailFor(player.problems, problemLabel) : null,
+          lastScoreIncreaseAt:
+            player.lastScoreIncreaseAt?.toISOString() ?? null,
+          problems: mayReadDetail
+            ? detailFor(player.problems, problemLabel)
+            : null,
         })),
       };
     }),

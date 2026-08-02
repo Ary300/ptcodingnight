@@ -66,12 +66,10 @@ describe("assignSets is balanced within a team", () => {
     expect(new Set(assignments.map((a) => a.setId)).size).toBe(2);
   });
 
-  it("wraps for a team larger than the set count, rather than failing", () => {
-    // Five players, four sets: exactly one set must repeat, and no player may go unassigned.
-    const assignments = assignSets({ seed: "s", setIds: SETS, participants: team("t1", 5) });
-
-    expect(assignments).toHaveLength(5);
-    expect(new Set(assignments.map((a) => a.setId)).size).toBe(4);
+  it("refuses a team larger than the set count", () => {
+    expect(() =>
+      assignSets({ seed: "s", setIds: SETS, participants: team("t1", 5) }),
+    ).toThrow(/5 members but only 4 sets/);
   });
 
   it("stays balanced for every team independently", () => {
@@ -104,7 +102,7 @@ describe("assignSets edge cases", () => {
   });
 
   it("assigns every participant exactly once", () => {
-    const participants = [...team("t1", 4), ...team("t2", 5), { participantId: "x", teamId: null }];
+    const participants = [...team("t1", 4), ...team("t2", 4), { participantId: "x", teamId: null }];
     const assignments = assignSets({ seed: "s", setIds: SETS, participants });
 
     expect(assignments).toHaveLength(participants.length);
@@ -239,5 +237,26 @@ describe("assignSetForOne is idempotent", () => {
       ),
     );
     expect(drawn.size).toBeGreaterThan(1);
+  });
+
+  it("never repeats a teammate's set", () => {
+    const choice = assignSetForOne({
+      seed: SEED,
+      setIds: SETS,
+      participantId: PARTICIPANT,
+      takenInTeam: ["A", "B", "C"],
+    });
+    expect(choice).toBe("D");
+  });
+
+  it("returns null when the team already uses every set", () => {
+    expect(
+      assignSetForOne({
+        seed: SEED,
+        setIds: SETS,
+        participantId: PARTICIPANT,
+        takenInTeam: SETS,
+      }),
+    ).toBeNull();
   });
 });

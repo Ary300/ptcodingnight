@@ -70,7 +70,7 @@ export default async function ProblemBankPage({
 
       <Panel
         title="Cleared for a live contest"
-        description="An original statement, own-generated test data, and a reference solution that survived the real judge. These are the problems a line-up can be built from tonight."
+        description="Ready questions have a statement, test data, and a reference solution that passed the judge."
         aside={
           <span className="numeric text-ink/70" style={{ fontSize: "var(--text-xs)" }}>
             {ready.length} of {problems.length}
@@ -79,9 +79,8 @@ export default async function ProblemBankPage({
       >
         {ready.length === 0 ? (
           <p className="text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
-            Nothing is cleared yet. A problem leaves DRAFT once it has an original statement and its
-            own test data, and <code>npm run test:content</code> is what proves it survives the real
-            judge. Passing locally is not the same claim.
+            No questions are ready yet. Finish a draft and verify its reference solution before
+            adding it to a live contest.
           </p>
         ) : (
           <ul className="flex flex-col" style={{ fontSize: "var(--text-sm)" }}>
@@ -107,8 +106,8 @@ export default async function ProblemBankPage({
 
       {neverScored.length > 0 && (
         <Panel
-          title="Do not repeat these by accident"
-          description="Used in a past contest, zero points from anybody. The single most useful thing the old spreadsheet remembered."
+          title="Previously unused in scoring"
+          description="These questions appeared in a past contest, but nobody earned points on them."
         >
           <ul className="flex flex-col gap-2" style={{ fontSize: "var(--text-sm)" }}>
             {neverScored.map((problem) => (

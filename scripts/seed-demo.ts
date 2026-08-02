@@ -98,23 +98,21 @@ const PROBLEM_COUNT = 6;
 const BASE_POINTS = 100;
 
 /**
- * How the six problems divide: two per set, two shared by everyone.
+ * How the six problems divide: four across three sets, two shared by everyone.
  *
  * Module scope because it decides TWO things in two different places, and they must agree:
  *
- *   - `ContestProblem.setId` — which set a problem belongs to, `null` meaning every player sees it.
- *   - `Problem.round` — whether the scoring engine counts it as GROUP points.
+ *   - `ContestProblem.setId` says which set controls visibility.
+ *   - `ContestProblem.round` says whether scoring treats the row as shared team work.
  *
- * Those are not the same field and getting only the first right is the mistake this shape exists
- * to prevent: a problem with `setId: null` is visible to everyone and still scores to the
- * individual pool, so the board's Group column stays empty while the problems look shared. Group
- * detection reads `Problem.round`, and nothing else.
+ * The authored `Problem.round` is kept in agreement for the reusable demo content, but the contest
+ * join is authoritative because another contest may use the same question differently.
  */
-const LAYOUT: readonly { readonly set: "A" | "B" | null; readonly slot: string }[] = [
+const LAYOUT: readonly { readonly set: "A" | "B" | "C" | null; readonly slot: string }[] = [
   { set: "A", slot: "A1" },
   { set: "A", slot: "A2" },
   { set: "B", slot: "B1" },
-  { set: "B", slot: "B2" },
+  { set: "C", slot: "C1" },
   { set: null, slot: "G1" },
   { set: null, slot: "G2" },
 ];
@@ -208,9 +206,9 @@ function testCasesFor(
   });
 }
 
-/** A whole-number score for a verdict. The judge computes these for real; this is history. */
-function scoreFor(verdict: "AC" | "WA", testCount: number): number {
-  return verdict === "AC" ? testCount * 10 : 0;
+/** A whole-number contest score for a verdict. The judge computes these for real; this is history. */
+function scoreFor(verdict: "AC" | "WA", basePoints: number): number {
+  return verdict === "AC" ? basePoints : 0;
 }
 
 async function main(): Promise<void> {
@@ -227,7 +225,6 @@ async function main(): Promise<void> {
     console.log(`Publishing ${String(manifests.length)} authored problems…`);
 
     const problemIds = new Map<string, string>();
-    const testCounts = new Map<string, number>();
 
     for (const [index, manifest] of manifests.entries()) {
       const statementPath = path.join(CONTENT, manifest.slug, "statement.md");
@@ -298,7 +295,6 @@ async function main(): Promise<void> {
       });
 
       problemIds.set(manifest.slug, problem.id);
-      testCounts.set(manifest.slug, cases.length);
       console.log(`  ${manifest.slug}: ${String(cases.length)} test cases`);
     }
 
@@ -375,7 +371,7 @@ async function main(): Promise<void> {
         */
         setAssignmentSeed: "demo-set-seed-2026",
         allowReadingUnassignedSets: true,
-        problemSets: { create: [{ label: "A" }, { label: "B" }] },
+        problemSets: { create: [{ label: "A" }, { label: "B" }, { label: "C" }] },
         // Fixed join codes, unlike the CONTEST code above which is generated. These are not a
         // credential — a team code only puts you on a team an organizer can move you off — and a
         // demo whose team codes change on every seed is one nobody can write instructions for.
@@ -403,6 +399,7 @@ async function main(): Promise<void> {
           data: {
             contestId: contest.id,
             problemId,
+            round: layout?.set === null ? "GROUP" : "INDIVIDUAL",
             setId: layout?.set === undefined || layout.set === null ? null : (setId.get(layout.set) ?? null),
             divisionId: null,
             slotLabel: layout?.slot ?? String.fromCharCode(65 + index),
@@ -423,16 +420,15 @@ async function main(): Promise<void> {
     /**
      * Sets are mixed WITHIN each team on purpose.
      *
-     * The board's set columns only demonstrate anything if both teams have somebody in both, and
-     * a roster where one team is all-A and the other all-B produces a grid full of em-dashes that
-     * looks broken rather than sparse. Panthers field two in A and one in B; Cubs one of each —
-     * which also puts two names in a single cell, so the "more than one player in a set" case is
-     * visible rather than theoretical.
+     * The board's set columns only demonstrate anything if both teams use several sets. A roster
+     * where one team is all A and the other all B produces a sparse grid that looks broken. Each
+     * teammate here holds a different set because assignment and roster mutations now reject a
+     * repeated set inside one team.
      */
-    const roster: readonly { name: string; team: string; set: "A" | "B" }[] = [
+    const roster: readonly { name: string; team: string; set: "A" | "B" | "C" }[] = [
       { name: "Ada", team: "Panthers", set: "A" },
       { name: "Grace", team: "Panthers", set: "B" },
-      { name: "Alan", team: "Panthers", set: "A" },
+      { name: "Alan", team: "Panthers", set: "C" },
       { name: "Katherine", team: "Cubs", set: "B" },
       { name: "Dorothy", team: "Cubs", set: "A" },
     ];
@@ -467,7 +463,7 @@ async function main(): Promise<void> {
      * is worse than a demo with less data: the first person to notice cannot tell whether they
      * have found a seeding shortcut or a hole in the set gate.
      *
-     * Indices follow LAYOUT above: 0,1 are set A; 2,3 are set B; 4,5 are group.
+     * Indices follow LAYOUT above: 0,1 are set A; 2 is B; 3 is C; 4,5 are group.
      */
     const history: readonly { who: string; slugIndex: number; verdict: "AC" | "WA" }[] = [
       // Ada (A) — a WA before the AC, so penalty minutes are not uniformly zero.
@@ -476,13 +472,11 @@ async function main(): Promise<void> {
       { who: "Ada", slugIndex: 1, verdict: "AC" },
       // Grace (B)
       { who: "Grace", slugIndex: 2, verdict: "AC" },
-      { who: "Grace", slugIndex: 3, verdict: "AC" },
-      // Alan (A) — plus a group problem, which scores for the TEAM rather than the player.
-      { who: "Alan", slugIndex: 0, verdict: "AC" },
+      // Alan (C), plus a group problem, which scores for the team rather than the player.
+      { who: "Alan", slugIndex: 3, verdict: "AC" },
       { who: "Alan", slugIndex: 4, verdict: "AC" },
       // Katherine (B)
       { who: "Katherine", slugIndex: 2, verdict: "AC" },
-      { who: "Katherine", slugIndex: 3, verdict: "AC" },
       // Dorothy (A) — and the other group problem, so both teams have one.
       { who: "Dorothy", slugIndex: 1, verdict: "AC" },
       { who: "Dorothy", slugIndex: 5, verdict: "WA" },
@@ -509,7 +503,7 @@ async function main(): Promise<void> {
           sourceCode: "# seeded demo submission — see scripts/seed-demo.ts\n",
           submittedAt,
           verdict: entry.verdict,
-          score: scoreFor(entry.verdict, testCounts.get(slug) ?? 10),
+          score: scoreFor(entry.verdict, BASE_POINTS),
           runtimeMs: 30 + (minute % 7) * 11,
           memoryKb: 12_000,
           judgedAt: new Date(submittedAt.getTime() + 4_000),

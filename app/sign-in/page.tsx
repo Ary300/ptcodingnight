@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import Link from "next/link";
 
 import { BrandPanel } from "@/components/contest/join/BrandPanel";
 import { SignInForm } from "@/components/contest/join/SignInForm";
+import { oauthProviderAvailability } from "@/lib/contest/env";
 import { signInErrorMessage } from "@/lib/contest/sign-in-errors";
 
 export const metadata: Metadata = {
@@ -43,6 +45,8 @@ export default async function SignInPage({
   const code = typeof params.error === "string" ? params.error : null;
   const provider = typeof params.provider === "string" ? params.provider : null;
   const error = signInErrorMessage(code, provider);
+  const providerAvailability = oauthProviderAvailability();
+  const studentSignInAvailable = providerAvailability.google || providerAvailability.github;
 
   return (
     <div className="grid min-h-screen lg:grid-cols-2">
@@ -54,7 +58,9 @@ export default async function SignInPage({
           Coding Night
         </p>
         <p className="mt-3 text-paper/75" style={{ fontSize: "var(--text-sm)" }}>
-          Sign in with your school account to compete. Organizers sign in here too.
+          {studentSignInAvailable
+            ? "Use an available account to compete. Organizers sign in here too."
+            : "Organizer sign-in is available. Student provider sign-in is not configured on this server."}
         </p>
       </BrandPanel>
 
@@ -66,8 +72,14 @@ export default async function SignInPage({
         the brand panel. It also gives the specs a scope — `getByRole("alert")` matched two nodes
         without one, because Next's route announcer is an `alert` too.
       */}
+      {/*
+        `max-w-md mx-auto`, not a flush-left `max-w-sm`: `justify-center` on the flex column only
+        centres vertically, so the form sat pinned to the panel's left edge with a growing void
+        beside it (585px of bare ground at 985px wide). 448px centred lands within 7px of the
+        reference's measured 441px column.
+      */}
       <main className="flex flex-col justify-center px-4 py-10 lg:px-14">
-        <div className="w-full max-w-sm">
+        <div className="mx-auto w-full max-w-md">
           {/*
             The way out.
 
@@ -87,7 +99,11 @@ export default async function SignInPage({
           */}
           <Link
             href="/"
-            className="mb-6 inline-flex items-center gap-1.5 rounded text-ink/70 underline-offset-4 hover:text-ink hover:underline"
+            /*
+              `py-1` lifts the target from 19px to 27px, over WCAG 2.5.8's 24px floor - this is a
+              standalone link with nothing else near it, so the inline exception does not apply.
+            */
+            className="mb-5 inline-flex items-center gap-1.5 rounded-chip py-1 text-ink/70 underline-offset-4 hover:text-ink hover:underline"
             style={{ fontSize: "var(--text-xs)" }}
           >
             <svg
@@ -106,15 +122,42 @@ export default async function SignInPage({
             Back to the home page
           </Link>
 
+          {/*
+            Below `lg` the BrandPanel is display:none, which left this page with zero brand
+            identity on a phone: a student opening a texted link saw "Sign in" over a form on
+            off-white, with the product named nowhere but the browser tab. The mark and the one
+            line render only where the panel does not, so the name appears exactly once at every
+            width.
+          */}
+          <div className="mb-5 flex items-center gap-2.5 lg:hidden">
+            <Image
+              src="/brand/pt-panther.png"
+              alt=""
+              aria-hidden="true"
+              width={275}
+              height={235}
+              priority
+              className="h-8 w-auto"
+            />
+            <span className="font-display font-bold" style={{ fontSize: "var(--text-sm)" }}>
+              Park Tudor Coding Night
+            </span>
+          </div>
+
           <h1 className="font-display font-bold" style={{ fontSize: "var(--text-xl)" }}>
             Sign in
           </h1>
           <p className="mt-2 text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
-            Students and organizers both start here.
+            {studentSignInAvailable
+              ? "Students and organizers both start here."
+              : "Organizer sign-in is available below."}
           </p>
 
           <div className="mt-6">
-            <SignInForm initialError={error} />
+            <SignInForm
+              initialError={error}
+              providerAvailability={providerAvailability}
+            />
           </div>
         </div>
       </main>

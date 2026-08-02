@@ -9,6 +9,8 @@ import { API_ROUTES } from "@/lib/schemas/api";
 import { POLL_INTERVAL_MS } from "./constants";
 import { PROJECTOR_SAMPLE_STANDINGS } from "./sample-standings";
 
+const POLL_REQUEST_TIMEOUT_MS = 10_000;
+
 /**
  * Where the rows currently on screen came from. Surfaced in the footer, because a board
  * showing sample data must say so.
@@ -58,16 +60,20 @@ export function useStandings(contestId: string | null): UseStandingsResult {
 
   useEffect(() => {
     let cancelled = false;
-    const controller = new AbortController();
+    let timer: number | null = null;
+    let requestController: AbortController | null = null;
 
     // Omitting the id is meaningful, not a fallback: the projector shows whichever contest is
     // running, because nobody types an id into a screen on a wall.
     const url = API_ROUTES.publicStandings(contestId ?? undefined);
 
     const poll = async () => {
+      requestController = new AbortController();
+      const currentRequest = requestController;
+      const timeout = window.setTimeout(() => currentRequest.abort(), POLL_REQUEST_TIMEOUT_MS);
       try {
         const response = await fetch(url, {
-          signal: controller.signal,
+          signal: currentRequest.signal,
           cache: "no-store",
           headers: { accept: "application/json" },
         });
@@ -87,16 +93,22 @@ export function useStandings(contestId: string | null): UseStandingsResult {
         // than blank the projector mid-contest. `source` only drops to "sample" while the
         // board has never successfully loaded.
         if (!cancelled) setSource((current) => (current === "api" ? "api" : "sample"));
+      } finally {
+        window.clearTimeout(timeout);
+        if (requestController === currentRequest) requestController = null;
+        // Schedule only after this response settles. setInterval can start a second request while
+        // the first is slow; if the older response then arrives last, scores and frozen state move
+        // backwards on the projector.
+        if (!cancelled) timer = window.setTimeout(() => void poll(), POLL_INTERVAL_MS);
       }
     };
 
     void poll();
-    const timer = window.setInterval(() => void poll(), POLL_INTERVAL_MS);
 
     return () => {
       cancelled = true;
-      controller.abort();
-      window.clearInterval(timer);
+      requestController?.abort();
+      if (timer !== null) window.clearTimeout(timer);
     };
   }, [contestId]);
 

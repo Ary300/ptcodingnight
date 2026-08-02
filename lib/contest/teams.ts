@@ -1,6 +1,10 @@
+import type { ContestState } from "@prisma/client";
+
 import { DomainError, NotFoundError, ValidationError } from "@/lib/errors";
 import { prisma } from "@/lib/db";
 import { AUDIT_ACTIONS, writeAudit, type Db } from "@/lib/contest/audit";
+import { lockContestMutations } from "@/lib/contest/locks";
+import { assertCanMutateStandingsInputs } from "@/lib/contest/gate";
 import { assignSetForOne } from "@/lib/contest/set-assignment";
 import { uniqueDisplayName } from "@/lib/contest/enrolment";
 import { invalidateScoringInput } from "@/lib/contest/standings";
@@ -27,10 +31,10 @@ import { newTeamCode } from "@/lib/contest/team-code";
  *
  * ## Set assignment on join
  *
- * Joining a team asks for a set, and the ask is **idempotent**: a participant who already has one
- * keeps it. That is deliberate even though it costs some balance — re-rolling on every team change
- * would let a student shop for a set by hopping teams, which is the T5 vector wearing a different
- * hat. The seed makes the assignment re-derivable either way.
+ * Joining a team asks for a set. A valid existing assignment stays put, so moving between
+ * compatible rosters cannot be used to shop for another set. If the destination already uses that
+ * set, the participant moves to an unused one; preserving it would give two teammates the same
+ * questions. The seed keeps either answer reproducible.
  */
 
 /** What a competitor is allowed to see about their own team, and about others on the board. */
@@ -44,27 +48,31 @@ export interface TeamView {
 
 interface ContestForTeams {
   readonly id: string;
-  readonly state: string;
+  readonly state: ContestState;
   readonly startsAt: Date;
+  readonly endsAt: Date;
+  readonly freezeAt: Date | null;
   readonly teamFormationClosesAt: Date | null;
   readonly maxTeamSize: number;
   readonly setSelection: string;
   readonly setAssignmentSeed: string | null;
-  readonly problemSets: readonly { id: string }[];
+  readonly problemSets: readonly { id: string; label: string }[];
 }
 
-async function contestForTeams(contestId: string): Promise<ContestForTeams> {
-  const contest = await prisma.contest.findUnique({
+async function contestForTeams(contestId: string, db: Db = prisma): Promise<ContestForTeams> {
+  const contest = await db.contest.findUnique({
     where: { id: contestId },
     select: {
       id: true,
       state: true,
       startsAt: true,
+      endsAt: true,
+      freezeAt: true,
       teamFormationClosesAt: true,
       maxTeamSize: true,
       setSelection: true,
       setAssignmentSeed: true,
-      problemSets: { select: { id: true } },
+      problemSets: { select: { id: true, label: true }, orderBy: { label: "asc" } },
     },
   });
   if (contest === null) throw new NotFoundError("Contest");
@@ -96,11 +104,11 @@ export function teamFormationOpen(
 }
 
 /**
- * Give a participant a set if they do not have one, balanced within their team.
+ * Give a participant a set that no teammate holds.
  *
- * Idempotent by construction: an existing `chosenSetId` is returned untouched. Called on every
- * team join, so a student who joins a team after assignment has run is not left with nothing to
- * solve — which is the "late joiner" case in `assignSetForOne`'s own docstring.
+ * An existing assignment stays put when it is valid. If an organizer moves the participant onto a
+ * team already using that set, the participant is deterministically moved to a free one. The move
+ * is refused when none exists; silently keeping a duplicate would break the question-set format.
  */
 async function ensureSetAssigned(
   db: Db,
@@ -113,14 +121,11 @@ async function ensureSetAssigned(
     select: { chosenSetId: true },
   });
 
-  if (participant?.chosenSetId != null) return participant.chosenSetId;
-
-  if (
-    contest.setSelection !== "RANDOM_ASSIGNED" ||
-    contest.setAssignmentSeed === null ||
-    contest.problemSets.length === 0
-  ) {
-    return null;
+  // The two alternate formats intentionally do not impose per-teammate uniqueness here:
+  // PLAYER_CHOOSES permits independent choices, and ONE_SET_PER_TEAM requires teammates to share.
+  // Automatic, distinct assignment is the contract of RANDOM_ASSIGNED only.
+  if (contest.setSelection !== "RANDOM_ASSIGNED") {
+    return participant?.chosenSetId ?? null;
   }
 
   const takenInTeam =
@@ -138,6 +143,40 @@ async function ensureSetAssigned(
           })
         ).flatMap((p) => (p.chosenSetId === null ? [] : [p.chosenSetId]));
 
+  const validSetIds = new Set(contest.problemSets.map((set) => set.id));
+  if (
+    participant?.chosenSetId != null &&
+    validSetIds.has(participant.chosenSetId) &&
+    !takenInTeam.includes(participant.chosenSetId)
+  ) {
+    return participant.chosenSetId;
+  }
+
+  if (
+    participant?.chosenSetId != null &&
+    contest.state !== "DRAFT" &&
+    contest.state !== "SCHEDULED"
+  ) {
+    throw new DomainError(
+      "CONFLICT",
+      "That move would change this student's problem set after the contest started. " +
+        "Choose a different destination or make an explicit audited set correction first.",
+    );
+  }
+
+  if (
+    contest.setAssignmentSeed === null ||
+    contest.problemSets.length === 0
+  ) {
+    if (participant?.chosenSetId != null && takenInTeam.includes(participant.chosenSetId)) {
+      throw new DomainError(
+        "VALIDATION",
+        "That move would give two teammates the same set. Assign more sets before moving them.",
+      );
+    }
+    return participant?.chosenSetId ?? null;
+  }
+
   const chosenSetId = assignSetForOne({
     seed: contest.setAssignmentSeed,
     setIds: contest.problemSets.map((set) => set.id),
@@ -147,6 +186,11 @@ async function ensureSetAssigned(
 
   if (chosenSetId !== null) {
     await db.participant.update({ where: { id: participantId }, data: { chosenSetId } });
+  } else {
+    throw new DomainError(
+      "VALIDATION",
+      "That team already uses every available set. Build another set before adding a teammate.",
+    );
   }
   return chosenSetId;
 }
@@ -221,20 +265,21 @@ export async function adminCreateTeam(
   actor: string,
   name: string,
 ): Promise<TeamView> {
-  const contest = await contestForTeams(contestId);
-
   const trimmed = name.trim();
-  const existing = await prisma.team.findFirst({
-    where: { contestId, name: trimmed },
-    select: { id: true },
-  });
-  if (existing !== null) {
-    throw new DomainError("CONFLICT", "A team with that name already exists in this contest");
-  }
+  const result = await prisma.$transaction(async (tx) => {
+    await lockContestMutations(tx, contestId);
+    const contest = await contestForTeams(contestId, tx);
+    assertCanMutateStandingsInputs(contest, new Date());
 
-  const joinCode = await unusedTeamCode(prisma, contestId);
+    const existing = await tx.team.findFirst({
+      where: { contestId, name: trimmed },
+      select: { id: true },
+    });
+    if (existing !== null) {
+      throw new DomainError("CONFLICT", "A team with that name already exists in this contest");
+    }
 
-  const team = await prisma.$transaction(async (tx) => {
+    const joinCode = await unusedTeamCode(tx, contestId);
     const created = await tx.team.create({
       data: { contestId, name: trimmed, joinCode, createdByParticipantId: null },
       select: { id: true },
@@ -248,11 +293,11 @@ export async function adminCreateTeam(
       },
       tx,
     );
-    return created;
+    return { teamId: created.id, maxTeamSize: contest.maxTeamSize };
   });
 
   invalidateScoringInput(contestId);
-  return teamViewFor(team.id, contest.maxTeamSize);
+  return teamViewFor(result.teamId, result.maxTeamSize);
 }
 
 export async function adminRenameTeam(
@@ -261,22 +306,35 @@ export async function adminRenameTeam(
   name: string,
   reason: string,
 ): Promise<TeamView> {
-  const team = await prisma.team.findUnique({
+  const owner = await prisma.team.findUnique({
     where: { id: teamId },
-    select: { id: true, name: true, contestId: true, contest: { select: { maxTeamSize: true } } },
+    select: { contestId: true },
   });
-  if (team === null) throw new NotFoundError("Team");
+  if (owner === null) throw new NotFoundError("Team");
 
   const trimmed = name.trim();
-  const clash = await prisma.team.findFirst({
-    where: { contestId: team.contestId, name: trimmed, id: { not: teamId } },
-    select: { id: true },
-  });
-  if (clash !== null) {
-    throw new DomainError("CONFLICT", "Another team in this contest already has that name");
-  }
+  const result = await prisma.$transaction(async (tx) => {
+    await lockContestMutations(tx, owner.contestId);
+    const contest = await contestForTeams(owner.contestId, tx);
+    assertCanMutateStandingsInputs(contest, new Date());
 
-  await prisma.$transaction(async (tx) => {
+    const team = await tx.team.findUnique({
+      where: { id: teamId },
+      select: { name: true, contestId: true },
+    });
+    if (team === null) throw new NotFoundError("Team");
+    if (team.contestId !== owner.contestId) {
+      throw new DomainError("CONFLICT", "The team changed contests while it was being edited");
+    }
+
+    const clash = await tx.team.findFirst({
+      where: { contestId: team.contestId, name: trimmed, id: { not: teamId } },
+      select: { id: true },
+    });
+    if (clash !== null) {
+      throw new DomainError("CONFLICT", "Another team in this contest already has that name");
+    }
+
     await tx.team.update({ where: { id: teamId }, data: { name: trimmed } });
     await writeAudit(
       {
@@ -289,10 +347,11 @@ export async function adminRenameTeam(
       },
       tx,
     );
+    return { contestId: team.contestId, maxTeamSize: contest.maxTeamSize };
   });
 
-  invalidateScoringInput(team.contestId);
-  return teamViewFor(teamId, team.contest.maxTeamSize);
+  invalidateScoringInput(result.contestId);
+  return teamViewFor(teamId, result.maxTeamSize);
 }
 
 /**
@@ -312,47 +371,55 @@ export async function adminMoveParticipant(
   actor: string,
   reason: string,
 ): Promise<void> {
-  const participant = await prisma.participant.findUnique({
+  // Contest id is immutable and tells us which advisory lock to take. Every mutable fact is read
+  // again after that lock, inside the transaction.
+  const owner = await prisma.participant.findUnique({
     where: { id: participantId },
-    select: {
-      id: true,
-      displayName: true,
-      contestId: true,
-      teamId: true,
-      team: { select: { name: true } },
-    },
+    select: { contestId: true },
   });
-  if (participant === null) throw new NotFoundError("Participant");
-
-  let target: { id: string; name: string } | null = null;
-  if (teamId !== null) {
-    const found = await prisma.team.findUnique({
-      where: { id: teamId },
-      select: { id: true, name: true, contestId: true },
-    });
-    if (found === null) throw new NotFoundError("Team");
-    if (found.contestId !== participant.contestId) {
-      throw new ValidationError("That team belongs to a different contest");
-    }
-    target = { id: found.id, name: found.name };
-  }
-
-  if (participant.teamId === teamId) {
-    throw new DomainError("CONFLICT", "That participant is already on that team");
-  }
-
-  // Needed for set assignment below: the seed and the set list live on the contest row.
-  const contest = await contestForTeams(participant.contestId);
-
-  // Sizes on BOTH sides, read before the move, so the audit row says what the divisors were.
-  const [fromSize, toSize] = await Promise.all([
-    participant.teamId === null
-      ? Promise.resolve(0)
-      : prisma.participant.count({ where: { teamId: participant.teamId } }),
-    teamId === null ? Promise.resolve(0) : prisma.participant.count({ where: { teamId } }),
-  ]);
+  if (owner === null) throw new NotFoundError("Participant");
 
   await prisma.$transaction(async (tx) => {
+    await lockContestMutations(tx, owner.contestId);
+
+    const participant = await tx.participant.findUnique({
+      where: { id: participantId },
+      select: {
+        id: true,
+        displayName: true,
+        contestId: true,
+        teamId: true,
+        chosenSetId: true,
+        team: { select: { name: true } },
+      },
+    });
+    if (participant === null) throw new NotFoundError("Participant");
+
+    let target: { id: string; name: string } | null = null;
+    if (teamId !== null) {
+      const found = await tx.team.findUnique({
+        where: { id: teamId },
+        select: { id: true, name: true, contestId: true },
+      });
+      if (found === null) throw new NotFoundError("Team");
+      if (found.contestId !== participant.contestId) {
+        throw new ValidationError("That team belongs to a different contest");
+      }
+      target = { id: found.id, name: found.name };
+    }
+
+    if (participant.teamId === teamId) {
+      throw new DomainError("CONFLICT", "That participant is already on that team");
+    }
+
+    const contest = await contestForTeams(participant.contestId, tx);
+    assertCanMutateStandingsInputs(contest, new Date());
+    const fromSize =
+      participant.teamId === null
+        ? 0
+        : await tx.participant.count({ where: { teamId: participant.teamId } });
+    const toSize = teamId === null ? 0 : await tx.participant.count({ where: { teamId } });
+
     await tx.participant.update({ where: { id: participantId }, data: { teamId } });
 
     /*
@@ -365,13 +432,14 @@ export async function adminMoveParticipant(
       but the group problems. The removal of the student path would have taken set assignment with
       it, silently.
 
-      Idempotent: `ensureSetAssigned` returns the existing set if there is one, so re-moving a
-      player between teams never re-rolls their set. That property is the whole of T5 — a re-roll
-      is a way to preview the other sets.
+      `ensureSetAssigned` keeps the existing set when the destination does not already use it. If
+      it does, the player receives a deterministic unused set. This preserves the anti-shopping
+      property without allowing two teammates to land on identical questions.
     */
-    if (teamId !== null) {
-      await ensureSetAssigned(tx, contest, participantId, teamId);
-    }
+    const chosenSetId =
+      teamId === null
+        ? participant.chosenSetId
+        : await ensureSetAssigned(tx, contest, participantId, teamId);
 
     await writeAudit(
       {
@@ -387,6 +455,7 @@ export async function adminMoveParticipant(
           teamId,
           teamName: target?.name ?? null,
           teamSize: teamId === null ? 0 : toSize + 1,
+          chosenSetId,
           displayName: participant.displayName,
         },
         reason,
@@ -395,7 +464,7 @@ export async function adminMoveParticipant(
     );
   });
 
-  invalidateScoringInput(participant.contestId);
+  invalidateScoringInput(owner.contestId);
 }
 
 /**
@@ -410,18 +479,30 @@ export async function adminDissolveTeam(
   actor: string,
   reason: string,
 ): Promise<void> {
-  const team = await prisma.team.findUnique({
+  const owner = await prisma.team.findUnique({
     where: { id: teamId },
-    select: {
-      id: true,
-      name: true,
-      contestId: true,
-      members: { select: { id: true, displayName: true }, orderBy: { id: "asc" } },
-    },
+    select: { contestId: true },
   });
-  if (team === null) throw new NotFoundError("Team");
+  if (owner === null) throw new NotFoundError("Team");
 
   await prisma.$transaction(async (tx) => {
+    await lockContestMutations(tx, owner.contestId);
+    const contest = await contestForTeams(owner.contestId, tx);
+    assertCanMutateStandingsInputs(contest, new Date());
+
+    const team = await tx.team.findUnique({
+      where: { id: teamId },
+      select: {
+        name: true,
+        contestId: true,
+        members: { select: { displayName: true }, orderBy: { id: "asc" } },
+      },
+    });
+    if (team === null) throw new NotFoundError("Team");
+    if (team.contestId !== owner.contestId) {
+      throw new DomainError("CONFLICT", "The team changed contests while it was being edited");
+    }
+
     await tx.participant.updateMany({ where: { teamId }, data: { teamId: null } });
     await writeAudit(
       {
@@ -442,7 +523,7 @@ export async function adminDissolveTeam(
     await tx.team.delete({ where: { id: teamId } });
   });
 
-  invalidateScoringInput(team.contestId);
+  invalidateScoringInput(owner.contestId);
 }
 
 /**
@@ -459,24 +540,60 @@ export async function adminReassignSet(
   actor: string,
   reason: string,
 ): Promise<void> {
-  const participant = await prisma.participant.findUnique({
+  const owner = await prisma.participant.findUnique({
     where: { id: participantId },
-    select: { id: true, displayName: true, contestId: true, chosenSetId: true },
+    select: { contestId: true },
   });
-  if (participant === null) throw new NotFoundError("Participant");
-
-  if (setId !== null) {
-    const set = await prisma.problemSet.findUnique({
-      where: { id: setId },
-      select: { id: true, contestId: true },
-    });
-    if (set === null) throw new NotFoundError("Problem set");
-    if (set.contestId !== participant.contestId) {
-      throw new ValidationError("That problem set belongs to a different contest");
-    }
-  }
+  if (owner === null) throw new NotFoundError("Participant");
 
   await prisma.$transaction(async (tx) => {
+    await lockContestMutations(tx, owner.contestId);
+
+    const participant = await tx.participant.findUnique({
+      where: { id: participantId },
+      select: {
+        id: true,
+        displayName: true,
+        contestId: true,
+        teamId: true,
+        chosenSetId: true,
+        contest: { select: { setSelection: true } },
+      },
+    });
+    if (participant === null) throw new NotFoundError("Participant");
+
+    const contest = await contestForTeams(participant.contestId, tx);
+    assertCanMutateStandingsInputs(contest, new Date());
+
+    if (setId !== null) {
+      const set = await tx.problemSet.findUnique({
+        where: { id: setId },
+        select: { id: true, contestId: true },
+      });
+      if (set === null) throw new NotFoundError("Problem set");
+      if (set.contestId !== participant.contestId) {
+        throw new ValidationError("That problem set belongs to a different contest");
+      }
+      if (
+        participant.teamId !== null &&
+        participant.contest.setSelection === "RANDOM_ASSIGNED"
+      ) {
+        const duplicate = await tx.participant.findFirst({
+          where: {
+            teamId: participant.teamId,
+            id: { not: participant.id },
+            chosenSetId: setId,
+          },
+          select: { displayName: true },
+        });
+        if (duplicate !== null) {
+          throw new ValidationError(
+            `${duplicate.displayName} already has that set. Teammates need different sets.`,
+          );
+        }
+      }
+    }
+
     await tx.participant.update({ where: { id: participantId }, data: { chosenSetId: setId } });
     await writeAudit(
       {
@@ -491,7 +608,7 @@ export async function adminReassignSet(
     );
   });
 
-  invalidateScoringInput(participant.contestId);
+  invalidateScoringInput(owner.contestId);
 }
 
 /* ------------------------------------------------------------------------ */
@@ -624,17 +741,15 @@ export interface AddParticipantResult {
 /**
  * Put a known account on this contest's roster, creating the `Participant`.
  *
- * **No contest-state gate.** Building a roster while the contest is DRAFT or SCHEDULED is the
- * normal case — it is the entire point — and a late arrival on the night has to be addable while
- * it is RUNNING. The one state worth refusing is a contest that is over, because adding somebody
- * to a finished contest produces a competitor with no possible submissions and a place in a
- * divisor that has already been published.
+ * Building a roster while the contest is DRAFT or SCHEDULED is the normal case — it is the entire
+ * point — and a late arrival on the night remains addable while it is RUNNING. A frozen board is
+ * the exception: participant identity is not versioned like score events, so adding a row then
+ * would rewrite the public payload at its old cutoff. Finished contests are refused as well.
  *
  * Idempotent on `(contestId, userId)`: adding the same person twice hands back the row they
- * already have. Without that, a double-clicked button mints a second participant that competes
- * against the first for the same person's submissions, and `Participant` has no unique constraint
- * on `(contestId, userId)` to catch it — `userId` is nullable, because join-by-code participants
- * predate accounts.
+ * already have. The database also enforces the pair uniquely; the explicit check gives a
+ * double-click the useful idempotent response instead of exposing a constraint error. `userId`
+ * remains nullable because join-by-code participants predate accounts.
  */
 export async function adminAddParticipant(
   contestId: string,
@@ -672,7 +787,25 @@ export async function adminAddParticipant(
 
   const displayName = await uniqueDisplayName(contestId, user.displayName);
 
-  const created = await prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx) => {
+    await lockContestMutations(tx, contestId);
+    const lockedContest = await contestForTeams(contestId, tx);
+    assertCanMutateStandingsInputs(lockedContest, new Date());
+
+    // Recheck after the contest lock. Two double-clicked requests can both pass the optimistic
+    // read above, but only the first may create the one participant allowed for this account.
+    const concurrentExisting = await tx.participant.findFirst({
+      where: { contestId, userId },
+      select: { id: true, displayName: true },
+    });
+    if (concurrentExisting !== null) {
+      return {
+        participantId: concurrentExisting.id,
+        displayName: concurrentExisting.displayName,
+        created: false,
+      };
+    }
+
     const participant = await tx.participant.create({
       data: {
         contestId,
@@ -694,11 +827,15 @@ export async function adminAddParticipant(
       },
       tx,
     );
-    return participant;
+    return {
+      participantId: participant.id,
+      displayName: participant.displayName,
+      created: true,
+    };
   });
 
   invalidateScoringInput(contestId);
-  return { participantId: created.id, displayName: created.displayName, created: true };
+  return result;
 }
 
 /** What removing a participant would destroy. Read before the delete so the audit row can say it. */
@@ -771,6 +908,10 @@ export async function adminRemoveParticipant(
   }
 
   await prisma.$transaction(async (tx) => {
+    await lockContestMutations(tx, contestId);
+    const contest = await contestForTeams(contestId, tx);
+    assertCanMutateStandingsInputs(contest, new Date());
+
     await writeAudit(
       {
         actor,
@@ -831,12 +972,16 @@ export interface RosterMember {
   readonly userId: string | null;
   readonly email: string | null;
   readonly submissionCount: number;
+  readonly chosenSetId: string | null;
+  readonly chosenSetLabel: string | null;
 }
 
 /** The organizer's roster: every team, its members, and everybody on no team at all. */
 export async function adminRoster(contestId: string): Promise<{
   readonly maxTeamSize: number;
   readonly formationOpen: boolean;
+  readonly setSelection: "RANDOM_ASSIGNED" | "PLAYER_CHOOSES" | "ONE_SET_PER_TEAM";
+  readonly problemSets: readonly { readonly setId: string; readonly label: string }[];
   readonly teams: readonly (Omit<TeamView, "members"> & {
     readonly memberCount: number;
     readonly members: readonly RosterMember[];
@@ -850,6 +995,8 @@ export async function adminRoster(contestId: string): Promise<{
     displayName: true,
     userId: true,
     user: { select: { email: true } },
+    chosenSetId: true,
+    chosenSet: { select: { label: true } },
     _count: { select: { submissions: true } },
   } as const;
 
@@ -859,6 +1006,8 @@ export async function adminRoster(contestId: string): Promise<{
     userId: string | null;
     user: { email: string | null } | null;
     _count: { submissions: number };
+    chosenSetId: string | null;
+    chosenSet: { label: string } | null;
   };
 
   const toMember = (row: MemberRow): RosterMember => ({
@@ -867,6 +1016,8 @@ export async function adminRoster(contestId: string): Promise<{
     userId: row.userId,
     email: row.user?.email ?? null,
     submissionCount: row._count.submissions,
+    chosenSetId: row.chosenSetId,
+    chosenSetLabel: row.chosenSet?.label ?? null,
   });
 
   const [teams, unassigned] = await Promise.all([
@@ -890,6 +1041,11 @@ export async function adminRoster(contestId: string): Promise<{
   return {
     maxTeamSize: contest.maxTeamSize,
     formationOpen: teamFormationOpen(contest, new Date()),
+    setSelection: contest.setSelection as
+      | "RANDOM_ASSIGNED"
+      | "PLAYER_CHOOSES"
+      | "ONE_SET_PER_TEAM",
+    problemSets: contest.problemSets.map((set) => ({ setId: set.id, label: set.label })),
     teams: teams.map((team) => ({
       teamId: team.id,
       name: team.name,

@@ -6,6 +6,8 @@ import { TeamStandingsResponseSchema, type TeamStandingsResponse } from "@/lib/s
 
 import { POLL_INTERVAL_MS } from "./constants";
 
+const POLL_REQUEST_TIMEOUT_MS = 10_000;
+
 /**
  * Polls the team board.
  *
@@ -82,11 +84,17 @@ export function useTeamStandings(contestId: string | null): UseTeamStandingsResu
 
   useEffect(() => {
     let cancelled = false;
+    let timer: number | null = null;
+    let requestController: AbortController | null = null;
     const url = urlFor(contestId);
 
     const poll = async (): Promise<void> => {
+      requestController = new AbortController();
+      const currentRequest = requestController;
+      const timeout = window.setTimeout(() => currentRequest.abort(), POLL_REQUEST_TIMEOUT_MS);
       try {
         const response = await fetch(url, {
+          signal: currentRequest.signal,
           cache: "no-store",
           headers: { accept: "application/json" },
         });
@@ -111,15 +119,20 @@ export function useTeamStandings(contestId: string | null): UseTeamStandingsResu
         // difference until it recovers.
         setSource("error");
         setError("Lost contact with the scoreboard. Retrying.");
+      } finally {
+        window.clearTimeout(timeout);
+        if (requestController === currentRequest) requestController = null;
+        // One request at a time: an older score payload must not arrive after a newer one and win.
+        if (!cancelled) timer = window.setTimeout(() => void poll(), POLL_INTERVAL_MS);
       }
     };
 
     void poll();
-    const timer = setInterval(() => void poll(), POLL_INTERVAL_MS);
 
     return () => {
       cancelled = true;
-      clearInterval(timer);
+      requestController?.abort();
+      if (timer !== null) window.clearTimeout(timer);
     };
   }, [contestId]);
 

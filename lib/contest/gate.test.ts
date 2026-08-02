@@ -4,6 +4,7 @@ import type { ContestState, ProblemState } from "@prisma/client";
 
 import { DomainError, DraftProblemError, ForbiddenError } from "@/lib/errors";
 import {
+  assertCanMutateStandingsInputs,
   assertCanJoin,
   assertCanReadProblems,
   assertCanSubmit,
@@ -36,11 +37,26 @@ describe("assertCanJoin", () => {
 
 describe("assertCanReadProblems", () => {
   it.each<ContestState>(["RUNNING", "FROZEN", "ENDED"])("allows %s", (state) => {
-    expect(() => assertCanReadProblems(state)).not.toThrow();
+    expect(() => assertCanReadProblems(contest({ state }), STARTS)).not.toThrow();
   });
 
   it("refuses a contest that has not started, so problems cannot be read early", () => {
-    expect(() => assertCanReadProblems("SCHEDULED")).toThrow(DomainError);
+    expect(() => assertCanReadProblems(contest({ state: "SCHEDULED" }), STARTS)).toThrow(
+      DomainError,
+    );
+  });
+
+  it.each<ContestState>(["RUNNING", "FROZEN", "ENDED"])(
+    "refuses future %s rows even when their state says statements are readable",
+    (state) => {
+      expect(() =>
+        assertCanReadProblems(contest({ state }), new Date(STARTS.getTime() - 1)),
+      ).toThrow(/not started/i);
+    },
+  );
+
+  it("opens at the exact start instant", () => {
+    expect(() => assertCanReadProblems(contest(), STARTS)).not.toThrow();
   });
 });
 
@@ -137,6 +153,30 @@ describe("isPublicBoardFrozen", () => {
   });
 });
 
+describe("assertCanMutateStandingsInputs", () => {
+  it("refuses mutations after a scheduled freeze cutoff", () => {
+    expect(() =>
+      assertCanMutateStandingsInputs(contest({ freezeAt: FREEZE }), FREEZE),
+    ).toThrow(/public board is frozen/i);
+  });
+
+  it("refuses mutations while manually frozen and allows them again after unfreeze", () => {
+    expect(() =>
+      assertCanMutateStandingsInputs(contest({ state: "FROZEN", freezeAt: FREEZE }), ENDS),
+    ).toThrow(DomainError);
+    expect(() => assertCanMutateStandingsInputs(contest(), ENDS)).not.toThrow();
+  });
+
+  it.each<ContestState>(["ENDED", "ARCHIVED"])(
+    "keeps %s results immutable after the reveal",
+    (state) => {
+      expect(() => assertCanMutateStandingsInputs(contest({ state }), ENDS)).toThrow(
+        /final standings/i,
+      );
+    },
+  );
+});
+
 describe("standingsCutoff", () => {
   it("gives an organizer live truth even during a freeze", () => {
     expect(standingsCutoff(contest({ state: "FROZEN", freezeAt: FREEZE }), ENDS, true)).toBeNull();
@@ -164,7 +204,7 @@ describe("listing a contest's problems is looser than reading one", () => {
   */
   it("a SCHEDULED contest can be listed but its statements cannot be read", () => {
     expect(() => assertCanListProblems("SCHEDULED")).not.toThrow();
-    expect(() => assertCanReadProblems("SCHEDULED")).toThrow();
+    expect(() => assertCanReadProblems(contest({ state: "SCHEDULED" }), STARTS)).toThrow();
   });
 
   it("a DRAFT contest is not listable either, and says why", () => {
@@ -176,7 +216,7 @@ describe("listing a contest's problems is looser than reading one", () => {
   it("everything from RUNNING onwards allows both", () => {
     for (const state of ["RUNNING", "FROZEN", "ENDED"] as const) {
       expect(() => assertCanListProblems(state), state).not.toThrow();
-      expect(() => assertCanReadProblems(state), state).not.toThrow();
+      expect(() => assertCanReadProblems(contest({ state }), STARTS), state).not.toThrow();
     }
   });
 

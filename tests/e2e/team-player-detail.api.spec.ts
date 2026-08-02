@@ -1,6 +1,9 @@
-import { expect, test, type PlaywrightWorkerArgs } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 
-import { ContestApi } from "./helpers/api";
+import { SESSION_COOKIE } from "@/lib/contest/session";
+import { issueSession } from "@/lib/contest/session-store";
+import { TeamViewSchema } from "@/lib/schemas/api";
+import { ContestApi, readOk } from "./helpers/api";
 import { requiredEnv } from "./helpers/env";
 import { closeTestDb, seedE2EContest, testDb, type SeededContest } from "./helpers/seed";
 
@@ -33,16 +36,16 @@ let anon: ContestApi;
 let admin: ContestApi;
 
 /**
- * One competitor, on Panthers, shared by every test below.
+ * One existing Panthers competitor, shared by every test below.
  *
- * Deliberately built once. Each probe costs a sign-in plus an organizer `moveParticipant`, and
- * building a fresh one per test pushed this file past the 30 s per-test budget on a loaded host —
- * a precondition failure wearing a gate failure's clothes. Nothing here mutates the probe, so one
- * is enough, and the entitlement being asserted is a property of the ROUTE rather than of any
- * particular session.
+ * The fixture already contains Grace, her accepted and rejected submissions, and a valid set.
+ * Minting the session that OAuth would issue lets this suite inspect that real history without
+ * adding a third player to a two-set RANDOM_ASSIGNED team, which the product correctly refuses.
  */
 let member: ContestApi;
 let memberTeamId: string;
+let freshMember: ContestApi;
+let freshMemberTeamId: string;
 
 const ADMIN_PASSCODE = requiredEnv("ADMIN_PASSCODE");
 
@@ -54,38 +57,50 @@ test.beforeAll(async ({ playwright }) => {
 
   await admin.adminLogin(ADMIN_PASSCODE);
 
-  const probe = await competitorOnTeam(playwright, "panthers");
-  member = probe.api;
-  memberTeamId = probe.teamId;
+  const participantId = seeded.rivalIds.get("E2E Grace") ?? "";
+  memberTeamId = seeded.teamIds.get("panthers") ?? "";
+  expect(participantId, "fixture has no E2E Grace participant").not.toBe("");
+  expect(memberTeamId, "fixture has no panthers team").not.toBe("");
+
+  const session = await issueSession(
+    {
+      role: "COMPETITOR",
+      method: "GOOGLE",
+      displayName: "E2E Grace",
+      participantId,
+      contestId: seeded.contestId,
+    },
+    new Date(),
+  );
+  member = new ContestApi(await playwright.request.newContext(), seeded.contestId);
+  member.useSession(`${SESSION_COOKIE}=${session.token}`);
+
+  // A separate, valid one-player team supplies the empty-history case. Panthers already uses
+  // both available sets, so adding a third member there would make the fixture violate the same
+  // RANDOM_ASSIGNED capacity rule the product enforces.
+  freshMember = new ContestApi(await playwright.request.newContext(), seeded.contestId);
+  const fresh = await freshMember.signIn({
+    displayName: `E2E Detail Fresh ${String(Date.now())}`,
+    divisionId: seeded.divisionIds.get("intermediate") ?? null,
+  });
+  const created = await readOk(
+    await admin.createTeamAsAdminRaw({ name: `E2E Detail Probe ${String(Date.now())}` }),
+  );
+  expect(created.status, "the organizer could not create the detail probe team").toBeLessThan(300);
+  freshMemberTeamId = TeamViewSchema.parse(created.data).teamId;
+  const placed = await admin.moveParticipantRaw({
+    participantId: fresh.participantId,
+    teamId: freshMemberTeamId,
+    reason: "Entitlement needs a valid teammate with no submission history",
+  });
+  expect(placed.status(), "the organizer could not place the empty-history probe").toBeLessThan(
+    300,
+  );
 });
 
 test.afterAll(async () => {
   await closeTestDb();
 });
-
-/** Sign a fresh competitor in and have the organizer put them on `teamKey`, as a human would. */
-async function competitorOnTeam(
-  playwright: PlaywrightWorkerArgs["playwright"],
-  teamKey: string,
-): Promise<{ api: ContestApi; teamId: string }> {
-  const api = new ContestApi(await playwright.request.newContext(), seeded.contestId);
-  const joined = await api.signIn({
-    displayName: `E2E Detail ${String(Date.now())}`,
-    divisionId: seeded.divisionIds.get("intermediate") ?? null,
-  });
-
-  const teamId = seeded.teamIds.get(teamKey) ?? "";
-  expect(teamId, `fixture has no ${teamKey} team`).not.toBe("");
-
-  const placed = await admin.moveParticipantRaw({
-    participantId: joined.participantId,
-    teamId,
-    reason: "Entitlement is a fact about a team member, so the probe has to be one",
-  });
-  expect(placed.status(), "the organizer could not place the probe").toBeLessThan(300);
-
-  return { api, teamId };
-}
 
 test.describe("the per-player breakdown is entitled, not public", () => {
   test("an anonymous reader — the projector — gets null on every player of every team", async () => {
@@ -152,8 +167,8 @@ test.describe("the per-player breakdown is entitled, not public", () => {
     // The two are different claims and the UI renders them differently: `[]` is "attempted
     // nothing", `null` is "not yours to read". A viewer entitled to a teammate with no
     // submissions must get the empty array, or the screen says "not yours" about their own team.
-    const board = await member.teamStandings();
-    const teamId = memberTeamId;
+    const board = await freshMember.teamStandings();
+    const teamId = freshMemberTeamId;
     const mine = board.teams.find((team) => team.teamId === teamId);
     expect(mine).toBeDefined();
     if (mine === undefined) return;
@@ -250,7 +265,7 @@ test.describe("what the breakdown says", () => {
     const rows = (mine?.players ?? []).flatMap((player) => player.problems ?? []);
 
     const groupProblems = await testDb().contestProblem.findMany({
-      where: { contestId: seeded.contestId, problem: { round: "GROUP" } },
+      where: { contestId: seeded.contestId, round: "GROUP" },
       select: { id: true },
     });
 

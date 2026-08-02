@@ -18,7 +18,10 @@ import {
   TR,
 } from "@/components/ui";
 import { useResource } from "@/components/contest/data/useResource";
-import { AdminProblemBankSchema, type AdminProblemRow } from "@/lib/schemas/api";
+import {
+  AdminProblemBankSchema,
+  type AdminProblemRow,
+} from "@/lib/schemas/api";
 
 import { TextInput } from "@/components/admin/Field";
 import { AlertPlate, Panel } from "@/components/admin/Panel";
@@ -59,9 +62,8 @@ import { ProblemStatePill } from "@/components/admin/StatusPill";
  * The two kinds of problem in this format are not variations on a theme. An INDIVIDUAL problem
  * belongs to one of the sets (A, B, C…), and every member of a team holds a different set, so
  * exactly one person on each team ever works it. A GROUP problem belongs to no set: the whole
- * team works it together, and every team gets the same ones. In the schema that is
- * `ContestProblem.setId` being null, and it is the distinction the whole Coding Night format
- * rests on.
+ * team works it together, and every team gets the same ones. The contest-scoped
+ * `ContestProblem.round` stores that choice, while `setId` stores the compatible set assignment.
  *
  * This screen used to encode it as *leave the set box blank and it becomes a group problem*. The
  * defect in that is not that it is hard to discover, though it is: it is that **the two states
@@ -80,8 +82,8 @@ import { ProblemStatePill } from "@/components/admin/StatusPill";
  * as a group problem, because a designation the organizer can read on screen and the row that
  * gets written have to agree, which is the entire point of making it explicit.
  *
- * The request shape is untouched: `setLabel: null` has always been how the PUT says "group".
- * What changed is that the organizer now says it rather than implies it.
+ * The request carries both `round` and `setLabel`, so the server can reject a contradictory row
+ * rather than inferring the scoring rule from a blank field.
  *
  * ## Add and Remove edit a draft, and the screen says so
  *
@@ -131,37 +133,32 @@ export interface ContestLineupProps {
 type SlotKind = "individual" | "group";
 
 /**
- * A line-up row as the SERVER hands it down, with no kind on it.
- *
- * The database has nowhere to put one: the distinction lives in `ContestProblem.setId` being null
- * or not, which the server flattens to `setLabel: ""`. So this shape stays exactly as the page's
- * `LineupSlot` produces it, and the kind is derived once on mount by `withKind`. Deriving it from
- * stored data is sound — a stored null genuinely IS a group problem. What was never sound was
- * deriving it from a box the organizer was still typing into.
+ * A line-up row as the server hands it down. Round is explicit because the same problem-bank row
+ * may be used differently in different contests.
  */
 export interface StoredSlot {
   readonly problemId: string;
   readonly title: string;
   readonly slotLabel: string;
   readonly basePoints: number;
+  readonly round: "INDIVIDUAL" | "GROUP";
   readonly setLabel: string;
 }
 
 /** A row while it is being edited: the stored shape plus the kind the organizer chose, explicitly. */
-interface Slot extends StoredSlot {
+type Slot = Omit<StoredSlot, "round"> & {
   readonly kind: SlotKind;
-}
+};
 
 /**
  * Read the stored rows into editable ones.
  *
- * `setLabel === ""` here is the SERVER saying `setId` was null, not an organizer leaving a box
- * empty, so this is the one place the old convention is still a correct reading of the data.
+ * The database round is the source of truth. A set label can no longer silently decide scoring.
  */
 function withKind(stored: readonly StoredSlot[]): readonly Slot[] {
-  return stored.map((slot): Slot => ({
+  return stored.map(({ round, ...slot }): Slot => ({
     ...slot,
-    kind: slot.setLabel.trim() === "" ? "group" : "individual",
+    kind: round === "GROUP" ? "group" : "individual",
   }));
 }
 
@@ -186,7 +183,13 @@ function rowControlBorder(invalid: boolean): string {
  * section it describes. Never a whole-screen replacement — that is the bug the bank's loading
  * state used to be, and the placement is the fix.
  */
-function PanelNote({ status, children }: { status?: boolean; children: ReactNode }) {
+function PanelNote({
+  status,
+  children,
+}: {
+  status?: boolean;
+  children: ReactNode;
+}) {
   return (
     <div
       role={status === true ? "status" : undefined}
@@ -244,7 +247,9 @@ async function loadBank(): Promise<readonly AdminProblemRow[]> {
       typeof body === "object" && body !== null && "error" in body
         ? String((body as { error: { message?: unknown } }).error.message ?? "")
         : "";
-    throw new Error(message === "" ? "The problem bank could not be loaded." : message);
+    throw new Error(
+      message === "" ? "The problem bank could not be loaded." : message,
+    );
   }
   const data =
     typeof body === "object" && body !== null && "data" in body
@@ -260,7 +265,9 @@ export function ContestLineup({ contestId, initial = [] }: ContestLineupProps) {
   // What the server currently holds, as far as this screen knows. `slots` differing from it is
   // the definition of "unsaved changes", which bug (b) requires the screen to name.
   // Read through the same `withKind`, so opening a saved line-up is never dirty on arrival.
-  const [savedSlots, setSavedSlots] = useState<readonly Slot[]>(() => withKind(initial));
+  const [savedSlots, setSavedSlots] = useState<readonly Slot[]>(() =>
+    withKind(initial),
+  );
   const [filter, setFilter] = useState("");
   const [bankFilter, setBankFilter] = useState<BankFilter>("ready");
   const [busy, setBusy] = useState(false);
@@ -293,13 +300,17 @@ export function ContestLineup({ contestId, initial = [] }: ContestLineupProps) {
   const patch = (problemId: string, change: Partial<Slot>): void => {
     setSaved(false);
     setSlots((current) =>
-      current.map((slot) => (slot.problemId === problemId ? { ...slot, ...change } : slot)),
+      current.map((slot) =>
+        slot.problemId === problemId ? { ...slot, ...change } : slot,
+      ),
     );
   };
 
   const remove = (problemId: string): void => {
     setSaved(false);
-    setSlots((current) => current.filter((slot) => slot.problemId !== problemId));
+    setSlots((current) =>
+      current.filter((slot) => slot.problemId !== problemId),
+    );
   };
 
   const save = async (): Promise<void> => {
@@ -307,29 +318,33 @@ export function ContestLineup({ contestId, initial = [] }: ContestLineupProps) {
     setError(null);
     setSaved(false);
     try {
-      const response = await fetch(`/api/admin/contests/${contestId}/problems`, {
-        method: "PUT",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          reason: "Line-up set from the problem bank",
-          problems: slots.map((slot) => ({
-            problemId: slot.problemId,
-            slotLabel: slot.slotLabel,
-            basePoints: slot.basePoints,
-            // `null` is how this route has always said GROUP, so the request shape is unchanged.
-            // What it now comes from is the organizer's stated choice rather than an empty box.
-            // Trimmed, because a space is not a set label; an individual row that trims to
-            // nothing cannot reach here, since Save is disabled while one exists.
-            setLabel: slot.kind === "group" ? null : slot.setLabel.trim(),
-            divisionId: null,
-          })),
-        }),
-      });
+      const response = await fetch(
+        `/api/admin/contests/${contestId}/problems`,
+        {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            reason: "Line-up set from the problem bank",
+            problems: slots.map((slot) => ({
+              problemId: slot.problemId,
+              slotLabel: slot.slotLabel,
+              basePoints: slot.basePoints,
+              round: slot.kind === "group" ? "GROUP" : "INDIVIDUAL",
+              // Trimmed, because a space is not a set label; an individual row that trims to nothing
+              // cannot reach here, since Save is disabled while one exists.
+              setLabel: slot.kind === "group" ? null : slot.setLabel.trim(),
+              divisionId: null,
+            })),
+          }),
+        },
+      );
       if (!response.ok) {
         const body: unknown = await response.json();
         const message =
           typeof body === "object" && body !== null && "error" in body
-            ? String((body as { error: { message?: unknown } }).error.message ?? "")
+            ? String(
+                (body as { error: { message?: unknown } }).error.message ?? "",
+              )
             : "";
         setError(message === "" ? "That line-up was refused." : message);
         return;
@@ -367,16 +382,22 @@ export function ContestLineup({ contestId, initial = [] }: ContestLineupProps) {
 
   const chosen = new Set(slots.map((s) => s.problemId));
   const needle = filter.trim().toLowerCase();
-  const readyCount = bankRows.filter((p) => p.readyBlockers.length === 0).length;
+  const readyCount = bankRows.filter(
+    (p) => p.readyBlockers.length === 0,
+  ).length;
   const available = bankRows.filter(
     (p) =>
       !chosen.has(p.problemId) &&
       (bankFilter === "all" || p.readyBlockers.length === 0) &&
-      (needle === "" || p.title.toLowerCase().includes(needle) || p.slug.includes(needle)),
+      (needle === "" ||
+        p.title.toLowerCase().includes(needle) ||
+        p.slug.includes(needle)),
   );
 
   const duplicates = duplicateSlotLabels(slots);
-  const blankCount = slots.filter((slot) => slot.slotLabel.trim() === "").length;
+  const blankCount = slots.filter(
+    (slot) => slot.slotLabel.trim() === "",
+  ).length;
   /*
     An Individual row with no set label is a REFUSAL, not a silent group problem.
 
@@ -405,7 +426,8 @@ export function ContestLineup({ contestId, initial = [] }: ContestLineupProps) {
   } else if (slotLabelBlocked) {
     lineupBlockedFix = "Give every problem its own slot label to save.";
   } else {
-    lineupBlockedFix = "Name a set on each of those, or change them to Group, to save.";
+    lineupBlockedFix =
+      "Name a set on each of those, or change them to Group, to save.";
   }
 
   const slotInvalid = (slot: Slot): boolean => {
@@ -421,19 +443,24 @@ export function ContestLineup({ contestId, initial = [] }: ContestLineupProps) {
       <Panel
         title="This contest's line-up"
         aside={
-          <span className="numeric text-ink/70" style={{ fontSize: "var(--text-xs)" }}>
+          // Open Sans, not `numeric`: the mono face is for digit runs that align in a column,
+          // and this is a phrase that happens to start with a number.
+          <span className="text-ink/70" style={{ fontSize: "var(--text-xs)" }}>
             {slots.length} {slots.length === 1 ? "problem" : "problems"}
             {/* The draft flag rides with the count so it stays visible when the Save row has
                 scrolled away under a long table. Words, not colour: DESIGN.md §3. */}
             {dirty ? " (not saved yet)" : ""}
           </span>
         }
-        description="Saving REPLACES the whole line-up. Say of each problem whether it is Individual, meaning it sits in one set so one member of each team works it, or Group, meaning the whole team works it together and every team gets it."
+        description="Individual questions belong to one set. Group questions are shared by every team. Saving updates the full line-up."
       >
         {slots.length === 0 ? (
           <PanelNote>Nothing chosen yet. Pick from the bank below.</PanelNote>
         ) : (
-          <div className="min-w-0 overflow-x-auto">
+          // `relative` so the sr-only header labels resolve against THIS box, not the page:
+          // absolutely positioned children of a static scroller land past the viewport's right
+          // edge and grow the document's scrollWidth, which pans the whole page at 360.
+          <div className="relative min-w-0 overflow-x-auto">
             {/* Wider than it was: the set column now holds a choice and its set label side by
                 side. It scrolls inside its own box rather than pushing the page sideways. */}
             <Table caption="Problems in this contest" className="min-w-[44rem]">
@@ -465,9 +492,15 @@ export function ContestLineup({ contestId, initial = [] }: ContestLineupProps) {
                           <input
                             aria-label={`Slot label for ${slot.title}`}
                             aria-invalid={invalid || undefined}
-                            aria-describedby={invalid ? lineupErrorId : undefined}
+                            aria-describedby={
+                              invalid ? lineupErrorId : undefined
+                            }
                             value={slot.slotLabel}
-                            onChange={(e) => patch(slot.problemId, { slotLabel: e.target.value })}
+                            onChange={(e) =>
+                              patch(slot.problemId, {
+                                slotLabel: e.target.value,
+                              })
+                            }
                             className={`${ROW_CONTROL} ${rowControlBorder(invalid)}`}
                             style={{ fontSize: CONTROL_FONT_SIZE.sm }}
                           />
@@ -481,7 +514,9 @@ export function ContestLineup({ contestId, initial = [] }: ContestLineupProps) {
                             min={0}
                             value={slot.basePoints}
                             onChange={(e) =>
-                              patch(slot.problemId, { basePoints: Number(e.target.value) || 0 })
+                              patch(slot.problemId, {
+                                basePoints: Number(e.target.value) || 0,
+                              })
                             }
                             className={`${ROW_CONTROL} ${rowControlBorder(false)}`}
                             style={{ fontSize: CONTROL_FONT_SIZE.sm }}
@@ -506,10 +541,14 @@ export function ContestLineup({ contestId, initial = [] }: ContestLineupProps) {
                                 kept unable to express anything else.
                               */
                               const kind: SlotKind =
-                                e.target.value === "group" ? "group" : "individual";
+                                e.target.value === "group"
+                                  ? "group"
+                                  : "individual";
                               patch(
                                 slot.problemId,
-                                kind === "group" ? { kind, setLabel: "" } : { kind },
+                                kind === "group"
+                                  ? { kind, setLabel: "" }
+                                  : { kind },
                               );
                             }}
                           >
@@ -530,11 +569,15 @@ export function ContestLineup({ contestId, initial = [] }: ContestLineupProps) {
                               <input
                                 aria-label={`Set label for ${slot.title}`}
                                 aria-invalid={setMissing || undefined}
-                                aria-describedby={setMissing ? lineupErrorId : undefined}
+                                aria-describedby={
+                                  setMissing ? lineupErrorId : undefined
+                                }
                                 value={slot.setLabel}
                                 placeholder="A"
                                 onChange={(e) =>
-                                  patch(slot.problemId, { setLabel: e.target.value })
+                                  patch(slot.problemId, {
+                                    setLabel: e.target.value,
+                                  })
                                 }
                                 className={`${ROW_CONTROL} ${rowControlBorder(setMissing)}`}
                                 style={{ fontSize: CONTROL_FONT_SIZE.sm }}
@@ -576,7 +619,9 @@ export function ContestLineup({ contestId, initial = [] }: ContestLineupProps) {
             {duplicates.length > 0 &&
               `${duplicates.length === 1 ? "Duplicate slot label" : "Duplicate slot labels"}: ${duplicates
                 .map((label) => `"${label}"`)
-                .join(", ")}. Two problems cannot share a slot, or the board cannot order them. `}
+                .join(
+                  ", ",
+                )}. Two problems cannot share a slot, or the board cannot order them. `}
             {blankCount > 0 &&
               `${String(blankCount)} ${blankCount === 1 ? "problem has" : "problems have"} no slot label. `}
             {setMissingCount > 0 &&
@@ -592,13 +637,28 @@ export function ContestLineup({ contestId, initial = [] }: ContestLineupProps) {
         )}
 
         {error !== null && (
-          <p role="alert" className="mt-4 font-semibold text-panther" style={{ fontSize: "var(--text-sm)" }}>
+          <p
+            role="alert"
+            className="mt-4 font-semibold text-panther"
+            style={{ fontSize: "var(--text-sm)" }}
+          >
             {error}
           </p>
         )}
 
-        <div className="mt-4 flex flex-wrap items-center gap-3">
-          <Button type="button" onClick={() => void save()} disabled={busy || lineupBlocked}>
+        {/*
+          Sticky, because on any contest with 5+ problems the Save row sat below the fold and
+          every Add pushed it 50px lower — the dirty-flag moved to the header for exactly that
+          reason and left the button behind. Negative margins run the bar to the panel's own
+          edges so it reads as a bar, not a floating row; `bottom-0` pins it only while the
+          panel is taller than the viewport.
+        */}
+        <div className="sticky bottom-0 -mx-8 -mb-8 mt-4 flex flex-wrap items-center gap-3 rounded-b-panel border-t border-rule-edge bg-paper px-8 py-4">
+          <Button
+            type="button"
+            onClick={() => void save()}
+            disabled={busy || lineupBlocked}
+          >
             {busy ? "Saving…" : "Save this line-up"}
           </Button>
           {/*
@@ -607,12 +667,21 @@ export function ContestLineup({ contestId, initial = [] }: ContestLineupProps) {
             the message says what is at stake rather than just waving a flag.
           */}
           {dirty && !busy && (
-            <span role="status" className="font-semibold" style={{ fontSize: "var(--text-sm)" }}>
-              Not saved yet. Add, Remove and edits change only this list until you press Save.
+            <span
+              role="status"
+              className="font-semibold"
+              style={{ fontSize: "var(--text-sm)" }}
+            >
+              Not saved yet. Add, Remove and edits change only this list until
+              you press Save.
             </span>
           )}
           {!dirty && saved && (
-            <span role="status" className="font-semibold" style={{ fontSize: "var(--text-sm)" }}>
+            <span
+              role="status"
+              className="font-semibold"
+              style={{ fontSize: "var(--text-sm)" }}
+            >
               Saved. Publish it from the Setup tab when the line-up is settled.
             </span>
           )}
@@ -625,12 +694,13 @@ export function ContestLineup({ contestId, initial = [] }: ContestLineupProps) {
           // Counted against the POOL THE FILTER IS SHOWING, not against the whole bank. "6 of 130"
           // under a Ready-only filter reads as "124 problems are hidden from you" when the true
           // statement is "6 of the 9 ready ones are not already in this contest".
-          <span className="numeric text-ink/70" style={{ fontSize: "var(--text-xs)" }}>
-            {available.length} of {bankFilter === "ready" ? readyCount : bankRows.length}{" "}
+          <span className="text-ink/70" style={{ fontSize: "var(--text-xs)" }}>
+            {available.length} of{" "}
+            {bankFilter === "ready" ? readyCount : bankRows.length}{" "}
             {bankFilter === "ready" ? "ready" : "in the bank"}
           </span>
         }
-        description="A problem that is not ready can still be slotted now. The API refuses a DRAFT in a live contest, and the reasons are shown so the refusal is never a surprise."
+        description="Ready questions can be published. Draft questions may be added while you finish them."
       >
         <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
           <div className="w-64 max-w-full">
@@ -652,10 +722,16 @@ export function ContestLineup({ contestId, initial = [] }: ContestLineupProps) {
             problems still being written is a real thing to want.
           */}
           <fieldset className="flex flex-col gap-1">
-            <legend className="mb-1 font-semibold" style={{ fontSize: "var(--text-sm)" }}>
+            <legend
+              className="mb-1 font-semibold"
+              style={{ fontSize: "var(--text-sm)" }}
+            >
               Show
             </legend>
-            <div className="flex gap-4 pb-2" style={{ fontSize: "var(--text-sm)" }}>
+            <div
+              className="flex gap-4 pb-2"
+              style={{ fontSize: "var(--text-sm)" }}
+            >
               <label className="flex items-center gap-1.5">
                 <input
                   type="radio"
@@ -684,10 +760,15 @@ export function ContestLineup({ contestId, initial = [] }: ContestLineupProps) {
           depend on this fetch and must never be hidden by it.
         */}
         <div className="mt-4">
-          {bank.status === "loading" && <PanelNote status>Loading the problem bank…</PanelNote>}
+          {bank.status === "loading" && (
+            <PanelNote status>Loading the problem bank…</PanelNote>
+          )}
 
           {bank.status === "error" && (
-            <AlertPlate tone="alarm" title="The problem bank could not be loaded">
+            <AlertPlate
+              tone="alarm"
+              title="The problem bank could not be loaded"
+            >
               {bank.error ?? "Unknown error."}
             </AlertPlate>
           )}
@@ -695,13 +776,15 @@ export function ContestLineup({ contestId, initial = [] }: ContestLineupProps) {
           {bank.status === "ready" && available.length === 0 && (
             <PanelNote>
               {bankFilter === "ready"
-                ? "Nothing in the bank is both ready and unused here. Switch to Everything to slot a problem that is still being written. The API will refuse it in a live contest, and will say why."
+                ? "Nothing in the bank is both ready and unused here. Switch to Everything to review questions that are still being written. Only ready questions can be added once the contest is live."
                 : "No problem in the bank matches that search."}
             </PanelNote>
           )}
 
           {bank.status === "ready" && available.length > 0 && (
-            <div className="min-w-0 overflow-x-auto">
+            // `relative` for the same reason as the line-up's scroller above: the sr-only "Add to
+            // contest" header otherwise positions against the page and widens it at 360.
+            <div className="relative min-w-0 overflow-x-auto">
               {/* The hover tint rides on the CELLS so it can never lose a specificity fight with
                   the body's zebra, which is painted on the rows. 4% ink is the header's own
                   ground; every text alpha in these cells is measured against more than that
@@ -735,7 +818,9 @@ export function ContestLineup({ contestId, initial = [] }: ContestLineupProps) {
                       <TD>
                         <ProblemStatePill state={problem.state} />
                       </TD>
-                      <TD className="whitespace-nowrap text-ink/70">{problem.difficulty ?? ""}</TD>
+                      <TD className="whitespace-nowrap text-ink/70">
+                        {problem.difficulty ?? ""}
+                      </TD>
                       <TD numeric>
                         <Stacked
                           className="items-end"
@@ -766,9 +851,12 @@ export function ContestLineup({ contestId, initial = [] }: ContestLineupProps) {
         </div>
 
         {available.length > 60 && (
-          <p className="mt-3 text-ink/70" style={{ fontSize: "var(--text-xs)" }}>
-            Showing the first 60 of {available.length}. Narrow the search rather than scrolling,
-            and note this is a cap on what is DRAWN, not on what exists.
+          <p
+            className="mt-3 text-ink/70"
+            style={{ fontSize: "var(--text-xs)" }}
+          >
+            Showing the first 60 of {available.length}. Narrow your search to
+            find the question you need.
           </p>
         )}
       </Panel>

@@ -64,11 +64,16 @@ export interface LobbyViewProps {
 export function LobbyView({ phase = null, viewerKind }: LobbyViewProps) {
   const participant = useParticipant();
 
+  const assignmentKey =
+    participant.status === "joined" ? participant.scopeKey : participant.status;
+
   const loadProblems = useCallback(() => contestApi.listProblems(), []);
   const loadStandings = useCallback(() => contestApi.getStandings(), []);
 
-  const problems = useResource(loadProblems);
-  const standings = useResource(loadStandings);
+  // Assignment is authorization scope, not only a label. Passing it as an explicit resource key
+  // forces both reads to leave their pre-assignment snapshot behind when the session poll changes.
+  const problems = useResource(loadProblems, assignmentKey);
+  const standings = useResource(loadStandings, assignmentKey);
 
   // An organizer took the "View as a student" link and has no competitor identity to show. That
   // is not a sign-in failure, so it does not get the sign-in panel; it gets a true sentence and a
@@ -76,6 +81,30 @@ export function LobbyView({ phase = null, viewerKind }: LobbyViewProps) {
   // an admin as anonymous.
   if (viewerKind === "admin") {
     return <OrganizerViewingNotice />;
+  }
+
+  if (participant.status === "loading") {
+    return (
+      <p role="status" className="text-ink/60" style={{ fontSize: "var(--text-sm)" }}>
+        Checking your sign-in…
+      </p>
+    );
+  }
+
+  if (participant.status === "error") {
+    return (
+      <div role="alert" className="max-w-md rounded border border-panther/35 bg-paper p-4">
+        <h1 className="font-display font-bold" style={{ fontSize: "var(--text-md)" }}>
+          We could not check your sign-in
+        </h1>
+        <p className="mt-1 text-ink/75" style={{ fontSize: "var(--text-sm)" }}>
+          {participant.message}
+        </p>
+        <Button className="mt-3" variant="secondary" onClick={() => window.location.reload()}>
+          Reload the page
+        </Button>
+      </div>
+    );
   }
 
   // The wording, the button and the tone now come from one place — see `SignInRequired`, which is
@@ -119,7 +148,9 @@ export function LobbyView({ phase = null, viewerKind }: LobbyViewProps) {
           Before the start the contest's own name is the heading, because "Problems" is not what
           this screen is yet and the student has nowhere else to read what they signed in to.
         */}
-        <h1 className="mt-1 font-display font-bold" style={{ fontSize: "var(--text-xl)" }}>
+        {/* Steps down to --text-lg below `sm` (the pattern ProblemWorkspace set): a flat 40px
+            h1 wraps at 360 and spends 120px+ of the first screen before any content. */}
+        <h1 className="mt-1 font-display font-bold text-[length:var(--text-lg)] sm:text-[length:var(--text-xl)]">
           {beforeStart && phase !== null ? phase.name : "Problems"}
         </h1>
 
@@ -279,9 +310,8 @@ function OrganizerViewingNotice() {
         This is the student view
       </h1>
       <p className="mt-2 text-ink/75" style={{ fontSize: "var(--text-sm)" }}>
-        You are signed in as an organizer, so you are not on a team and have no problem set of your
-        own. To see a real student lobby, open a contest and use a test account, or manage the
-        contest from the console.
+        Organizer accounts do not have a team or problem set. Use a student account to test the
+        participant flow, or return to the console to manage the contest.
       </p>
       <Link
         href="/admin"

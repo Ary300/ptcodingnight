@@ -33,9 +33,7 @@ export default async function ContestProblemsPage({
           Problems
         </h2>
         <p className="mt-1 max-w-[70ch] text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
-          Statements and test data are written in this repository under{" "}
-          <code>content/problems/</code> and loaded by the seed, never copied from anywhere. This
-          tab decides which of them are in this contest, and what each one is worth.
+          Choose the questions for this contest and set how many points each one is worth.
         </p>
       </header>
 

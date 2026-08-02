@@ -90,10 +90,11 @@ test.describe("keyboard-only", () => {
     await tabUntil(
       page,
       "a problem in the list",
-      // Comma, not an em dash. The problem link's accessible name reads
-      // "<slot>, <title>, rated N points, <status>" since em dashes were removed from all
-      // user-visible text (a screen reader reads an aria-label aloud, so it is user-visible).
-      (snapshot) => snapshot.tag === "a" && /rated .*points/.test(snapshot.name),
+      // The problem link's accessible name reads
+      // "<slot>, <title>, N points, <status>". Match that spoken contract rather than the
+      // visible metadata abbreviation ("pts"), which is deliberately different.
+      (snapshot) =>
+        snapshot.tag === "a" && /, \d+(?:\.\d+)? points, (?:Solved|Unsolved)$/.test(snapshot.name),
     );
     await page.keyboard.press("Enter");
 

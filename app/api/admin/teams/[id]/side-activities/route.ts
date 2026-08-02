@@ -5,9 +5,20 @@ import { z } from "zod";
 import { NotFoundError } from "@/lib/errors";
 import { prisma } from "@/lib/db";
 import { AUDIT_ACTIONS, writeAudit } from "@/lib/contest/audit";
-import { NO_STORE, handle, jsonOk, readJson, readParams } from "@/lib/contest/http";
+import {
+  NO_STORE,
+  handle,
+  jsonOk,
+  readJson,
+  readParams,
+} from "@/lib/contest/http";
+import { lockContestMutations } from "@/lib/contest/locks";
 import { invalidateScoringInput } from "@/lib/contest/standings";
-import { actorLabel, requireAdmin, viewerFromRequest } from "@/lib/contest/viewer";
+import {
+  actorLabel,
+  requireAdmin,
+  viewerFromRequest,
+} from "@/lib/contest/viewer";
 
 /**
  * `GET  /api/admin/teams/{id}/side-activities` — what this team has been awarded.
@@ -52,7 +63,13 @@ export async function GET(
         id: true,
         name: true,
         sideActivities: {
-          select: { id: true, label: true, points: true, enteredBy: true, enteredAt: true },
+          select: {
+            id: true,
+            label: true,
+            points: true,
+            enteredBy: true,
+            enteredAt: true,
+          },
           orderBy: [{ enteredAt: "asc" }, { id: "asc" }],
         },
       },
@@ -88,22 +105,30 @@ export async function POST(
     const admin = requireAdmin(await viewerFromRequest(request, now));
     const input = await readJson(request, SideActivitySchema);
 
-    const team = await prisma.team.findUnique({
+    const owner = await prisma.team.findUnique({
       where: { id },
-      select: { id: true, name: true, contestId: true },
+      select: { contestId: true },
     });
-    if (team === null) throw new NotFoundError("Team");
+    if (owner === null) throw new NotFoundError("Team");
 
     // One transaction: an award without its audit row is exactly the state this feature exists to
     // prevent, since the audit row is the only evidence the award ever happened.
     const created = await prisma.$transaction(async (tx) => {
+      await lockContestMutations(tx, owner.contestId);
+      const enteredAt = new Date();
+      const team = await tx.team.findUnique({
+        where: { id },
+        select: { id: true, name: true, contestId: true },
+      });
+      if (team === null) throw new NotFoundError("Team");
+
       const row = await tx.teamSideActivity.create({
         data: {
           teamId: team.id,
           label: input.label,
           points: input.points,
           enteredBy: actorLabel(admin),
-          enteredAt: now,
+          enteredAt,
         },
         select: { id: true, label: true, points: true, enteredAt: true },
       });
@@ -123,20 +148,20 @@ export async function POST(
         tx,
       );
 
-      return row;
+      return { row, contestId: team.contestId };
     });
 
     // The board is stale the instant this lands, and side activity points are part of the team
     // score — so the cached scoring input has to go.
-    invalidateScoringInput(team.contestId);
+    invalidateScoringInput(created.contestId);
 
     return jsonOk(
       {
-        id: created.id,
-        teamId: team.id,
-        label: created.label,
-        points: created.points,
-        enteredAt: created.enteredAt.toISOString(),
+        id: created.row.id,
+        teamId: id,
+        label: created.row.label,
+        points: created.row.points,
+        enteredAt: created.row.enteredAt.toISOString(),
       },
       NO_STORE,
     );

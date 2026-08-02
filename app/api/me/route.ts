@@ -27,10 +27,9 @@ export async function GET(request: Request): Promise<NextResponse> {
 
 export async function PATCH(request: Request): Promise<NextResponse> {
   return handle(async () => {
-    const now = new Date();
-    const viewer = await viewerFromRequest(request, now);
+    const viewer = await viewerFromRequest(request, new Date());
     const userId = requireAccountUserId(viewer);
     const { displayName } = await readJson(request, RenameAccountRequestSchema);
-    return jsonOk(await renameAccount(userId, displayName, now), NO_STORE);
+    return jsonOk(await renameAccount(userId, displayName), NO_STORE);
   });
 }

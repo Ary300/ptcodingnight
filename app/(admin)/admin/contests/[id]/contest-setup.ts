@@ -33,6 +33,7 @@ export interface ContestSetup {
   readonly startsAt: Date;
   readonly endsAt: Date;
   readonly freezeAt: Date | null;
+  readonly setSelection: "RANDOM_ASSIGNED" | "PLAYER_CHOOSES" | "ONE_SET_PER_TEAM";
   /** Slots in the line-up. Zero is what `setContestState` refuses to publish. */
   readonly problemCount: number;
   readonly teamCount: number;
@@ -56,6 +57,7 @@ export async function contestSetup(contestId: string): Promise<ContestSetup | nu
       startsAt: true,
       endsAt: true,
       freezeAt: true,
+      setSelection: true,
       _count: { select: { contestProblems: true, teams: true, participants: true } },
     },
   });
@@ -73,6 +75,7 @@ export async function contestSetup(contestId: string): Promise<ContestSetup | nu
     startsAt: contest.startsAt,
     endsAt: contest.endsAt,
     freezeAt: contest.freezeAt,
+    setSelection: contest.setSelection,
     problemCount: contest._count.contestProblems,
     teamCount: contest._count.teams,
     participantCount: contest._count.participants,
@@ -94,7 +97,8 @@ export interface LineupSlot {
   readonly title: string;
   readonly slotLabel: string;
   readonly basePoints: number;
-  /** "" is a GROUP problem, matching what `ContestLineup` sends back. */
+  readonly round: "INDIVIDUAL" | "GROUP";
+  /** Empty for a group problem. The round itself is stored separately and is authoritative. */
   readonly setLabel: string;
 }
 
@@ -108,6 +112,7 @@ export async function contestLineup(contestId: string): Promise<readonly LineupS
       problemId: true,
       slotLabel: true,
       basePoints: true,
+      round: true,
       set: { select: { label: true } },
       problem: { select: { title: true } },
     },
@@ -118,6 +123,7 @@ export async function contestLineup(contestId: string): Promise<readonly LineupS
     title: row.problem.title,
     slotLabel: row.slotLabel,
     basePoints: row.basePoints,
+    round: row.round,
     setLabel: row.set?.label ?? "",
   }));
 }

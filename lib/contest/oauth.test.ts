@@ -1,3 +1,4 @@
+import { exportJWK, generateKeyPair, SignJWT, type CryptoKey } from "jose";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -26,9 +27,30 @@ const config: OAuthProviderConfig = {
   redirectUri: "http://contest.local/api/auth/google/callback",
 };
 
-function jwt(payload: Record<string, unknown>): string {
-  const b64 = (o: unknown) => Buffer.from(JSON.stringify(o)).toString("base64url");
-  return `${b64({ alg: "RS256" })}.${b64(payload)}.signature-not-checked`;
+const googleKeyPair = await generateKeyPair("RS256");
+const otherKeyPair = await generateKeyPair("RS256");
+const googleJwk = {
+  ...(await exportJWK(googleKeyPair.publicKey)),
+  alg: "RS256",
+  kid: "google-test-key",
+  use: "sig",
+};
+
+interface JwtOptions {
+  readonly key?: CryptoKey;
+  readonly issuer?: string;
+  readonly audience?: string;
+  readonly expiresAt?: number | string;
+}
+
+async function jwt(payload: Record<string, unknown>, options: JwtOptions = {}): Promise<string> {
+  return new SignJWT(payload)
+    .setProtectedHeader({ alg: "RS256", kid: "google-test-key" })
+    .setIssuer(options.issuer ?? "https://accounts.google.com")
+    .setAudience(options.audience ?? config.clientId)
+    .setIssuedAt()
+    .setExpirationTime(options.expiresAt ?? "5m")
+    .sign(options.key ?? googleKeyPair.privateKey);
 }
 
 /** A fetch stub that answers by URL substring. */
@@ -36,14 +58,25 @@ function stubFetch(routes: Record<string, { ok?: boolean; body: unknown }>): Fet
   return (input) => {
     for (const [fragment, response] of Object.entries(routes)) {
       if (input.includes(fragment)) {
-        return Promise.resolve({
-          ok: response.ok ?? true,
-          json: () => Promise.resolve(response.body),
-        } as Response);
+        return Promise.resolve(
+          new Response(JSON.stringify(response.body), {
+            status: (response.ok ?? true) ? 200 : 400,
+            headers: { "content-type": "application/json" },
+          }),
+        );
       }
     }
-    return Promise.resolve({ ok: false, json: () => Promise.resolve({}) } as Response);
+    return Promise.resolve(
+      new Response("{}", { status: 404, headers: { "content-type": "application/json" } }),
+    );
   };
+}
+
+function googleFetch(idToken: string, jwk: Record<string, unknown> = googleJwk): FetchLike {
+  return stubFetch({
+    "oauth2.googleapis.com/token": { body: { id_token: idToken } },
+    "googleapis.com/oauth2/v3/certs": { body: { keys: [jwk] } },
+  });
 }
 
 describe("state (CSRF)", () => {
@@ -104,22 +137,17 @@ describe("authorizeUrlFor", () => {
 
 describe("identityFromCode — Google", () => {
   it("reads the subject and verified email from the id_token", async () => {
+    const idToken = await jwt({
+      sub: "google-subject-1",
+      email: "ada@parktudor.org",
+      email_verified: true,
+      name: "Ada L",
+    });
     const identity = await identityFromCode(
       "google",
       config,
       "the-code",
-      stubFetch({
-        "oauth2.googleapis.com/token": {
-          body: {
-            id_token: jwt({
-              sub: "google-subject-1",
-              email: "ada@parktudor.org",
-              email_verified: true,
-              name: "Ada L",
-            }),
-          },
-        },
-      }),
+      googleFetch(idToken),
     );
 
     expect(identity.provider).toBe("google");
@@ -132,27 +160,23 @@ describe("identityFromCode — Google", () => {
   it('accepts email_verified as the string "true"', async () => {
     // Google really does send it as a string in some flows, and reading it as a boolean silently
     // makes every email unverified — which would make Google sign-in never match an account.
-    const identity = await identityFromCode(
-      "google",
-      config,
-      "c",
-      stubFetch({
-        token: { body: { id_token: jwt({ sub: "s", email: "ada@parktudor.org", email_verified: "true" }) } },
-      }),
-    );
+    const idToken = await jwt({
+      sub: "s",
+      email: "ada@parktudor.org",
+      email_verified: "true",
+    });
+    const identity = await identityFromCode("google", config, "c", googleFetch(idToken));
 
     expect(identity.emailVerified).toBe(true);
   });
 
   it("reports an unverified email as unverified", async () => {
-    const identity = await identityFromCode(
-      "google",
-      config,
-      "c",
-      stubFetch({
-        token: { body: { id_token: jwt({ sub: "s", email: "ada@parktudor.org", email_verified: false }) } },
-      }),
-    );
+    const idToken = await jwt({
+      sub: "s",
+      email: "ada@parktudor.org",
+      email_verified: false,
+    });
+    const identity = await identityFromCode("google", config, "c", googleFetch(idToken));
 
     expect(identity.emailVerified).toBe(false);
   });
@@ -173,6 +197,32 @@ describe("identityFromCode — Google", () => {
     await expect(
       identityFromCode("google", config, "c", stubFetch({ token: { body: { id_token: "nonsense" } } })),
     ).rejects.toThrow(OAuthError);
+  });
+
+  it("rejects a forged signature before the identity can reach account linking", async () => {
+    const forged = await jwt(
+      { sub: "forged-admin", email: "admin@parktudor.org", email_verified: true },
+      { key: otherKeyPair.privateKey },
+    );
+
+    await expect(identityFromCode("google", config, "c", googleFetch(forged))).rejects.toThrow(
+      /invalid id_token/,
+    );
+  });
+
+  it.each([
+    ["wrong issuer", { issuer: "https://attacker.example" }],
+    ["wrong audience", { audience: "some-other-client" }],
+    ["expired token", { expiresAt: Math.floor(Date.now() / 1000) - 60 }],
+  ] as const)("rejects a token with %s", async (_name, tokenOptions) => {
+    const idToken = await jwt(
+      { sub: "s", email: "ada@parktudor.org", email_verified: true },
+      tokenOptions,
+    );
+
+    await expect(identityFromCode("google", config, "c", googleFetch(idToken))).rejects.toThrow(
+      /invalid id_token/,
+    );
   });
 });
 

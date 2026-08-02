@@ -108,6 +108,22 @@ export const ContestEnvSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
 })
   .superRefine((env, ctx) => {
+    for (const provider of [
+      ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "Google"],
+      ["GITHUB_CLIENT_ID", "GITHUB_CLIENT_SECRET", "GitHub"],
+    ] as const) {
+      const [idKey, secretKey, label] = provider;
+      const hasId = env[idKey] !== undefined;
+      const hasSecret = env[secretKey] !== undefined;
+      if (hasId !== hasSecret) {
+        ctx.addIssue({
+          code: "custom",
+          path: [hasId ? secretKey : idKey],
+          message: `${label} sign-in needs both ${idKey} and ${secretKey}`,
+        });
+      }
+    }
+
     /**
      * Production must not serve a cookie that a network observer can lift. This is checked in the
      * schema rather than at the call site so that *every* entry point inherits it — the web
@@ -135,7 +151,10 @@ export const ContestEnvSchema = z.object({
      * is not forced to set a variable it does not use.
      */
     const oauthConfigured =
-      env.GOOGLE_CLIENT_ID !== undefined || env.GITHUB_CLIENT_ID !== undefined;
+      env.GOOGLE_CLIENT_ID !== undefined ||
+      env.GOOGLE_CLIENT_SECRET !== undefined ||
+      env.GITHUB_CLIENT_ID !== undefined ||
+      env.GITHUB_CLIENT_SECRET !== undefined;
     if (env.NODE_ENV === "production" && oauthConfigured) {
       if (env.PUBLIC_ORIGIN === undefined) {
         ctx.addIssue({
@@ -156,6 +175,18 @@ export const ContestEnvSchema = z.object({
   });
 
 export type ContestEnv = z.infer<typeof ContestEnvSchema>;
+
+/**
+ * The only OAuth configuration detail a rendered page may receive.
+ *
+ * Client ids are less sensitive than client secrets, but neither belongs in the React payload.
+ * The sign-in screen only needs to know whether each complete credential pair exists, so this
+ * deliberately exposes two booleans and nothing else.
+ */
+export interface OAuthProviderAvailability {
+  readonly google: boolean;
+  readonly github: boolean;
+}
 
 export function parseContestEnv(source: EnvSource = process.env): ContestEnv {
   const result = ContestEnvSchema.safeParse(source);
@@ -204,6 +235,23 @@ export function resetSessionSecretForTests(): void {
 
 export function adminPasscode(source: EnvSource = process.env): string | null {
   return parseContestEnv(source).ADMIN_PASSCODE ?? null;
+}
+
+/**
+ * Which OAuth starts can actually succeed on this server.
+ *
+ * A provider is available only when both halves of its credential pair are present. This mirrors
+ * `oauthConfig`: a lone client id or secret must not produce a button that can only bounce the
+ * student back with `provider_unconfigured`.
+ */
+export function oauthProviderAvailability(
+  source: EnvSource = process.env,
+): OAuthProviderAvailability {
+  const env = parseContestEnv(source);
+  return {
+    google: env.GOOGLE_CLIENT_ID !== undefined && env.GOOGLE_CLIENT_SECRET !== undefined,
+    github: env.GITHUB_CLIENT_ID !== undefined && env.GITHUB_CLIENT_SECRET !== undefined,
+  };
 }
 
 /**

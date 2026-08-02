@@ -1,6 +1,11 @@
 import { randomUUID } from "node:crypto";
 
-import { DomainError, ForbiddenError, NotFoundError, ValidationError } from "@/lib/errors";
+import {
+  DomainError,
+  ForbiddenError,
+  NotFoundError,
+  ValidationError,
+} from "@/lib/errors";
 import { prisma } from "@/lib/db";
 import type { z } from "zod";
 
@@ -8,17 +13,36 @@ import type { PublicTestResult, SubmissionView } from "@/lib/schemas/api";
 import type { RunSamplesResponseSchema } from "@/lib/schemas/api";
 import type { JudgeResult, Language } from "@/lib/schemas/judge";
 import { AUDIT_ACTIONS, writeAudit } from "@/lib/contest/audit";
-import { assertCanSubmit, assertProblemIsLive, assertUnlocked } from "@/lib/contest/gate";
+import {
+  assertCanSubmit,
+  assertProblemIsLive,
+  assertUnlocked,
+} from "@/lib/contest/gate";
 import { hostLimits } from "@/lib/contest/host";
+import { lockContestMutations } from "@/lib/contest/locks";
 import { canReadSet } from "@/lib/contest/set-assignment";
 import { buildJudgeJob, type TestCaseInput } from "@/lib/contest/judge-job";
 import { runtimeFor } from "@/lib/judge/runtimes";
 import { readCompileError, writeJudgeLog } from "@/lib/contest/judge-log";
-import { enqueueJudgeJob, jobOutcome, runJobAndWait } from "@/lib/contest/queue";
+import {
+  enqueueJudgeJob,
+  jobOutcome,
+  runJobAndWait,
+} from "@/lib/contest/queue";
 import { runSamplesLimiter, submitLimiter } from "@/lib/contest/rate-limit";
-import { toPublicTestResult, toSubmissionView, type TestResultRow } from "@/lib/contest/serialize";
+import { normalizeJudgeScore } from "@/lib/contest/score-normalization";
+import { preserveCurrentScoreRevision } from "@/lib/contest/score-revisions";
+import {
+  toPublicTestResult,
+  toSubmissionView,
+  type TestResultRow,
+} from "@/lib/contest/serialize";
 import { invalidateScoringInput } from "@/lib/contest/standings";
-import { canReadSubmission, type CompetitorViewer, type Viewer } from "@/lib/contest/viewer";
+import {
+  canReadSubmission,
+  type CompetitorViewer,
+  type Viewer,
+} from "@/lib/contest/viewer";
 
 /**
  * Submission intake and verdict readback.
@@ -132,7 +156,10 @@ async function resolveTarget(
   });
   if (participant === null) throw new ForbiddenError("Join the contest first");
 
-  if (contestProblem.divisionId !== null && contestProblem.divisionId !== participant.divisionId) {
+  if (
+    contestProblem.divisionId !== null &&
+    contestProblem.divisionId !== participant.divisionId
+  ) {
     throw new ForbiddenError("That problem belongs to another division");
   }
 
@@ -143,7 +170,8 @@ async function resolveTarget(
     !canReadSet({
       problemSetId: contestProblem.setId,
       participantSetId: participant.chosenSetId,
-      allowReadingUnassignedSets: contestProblem.contest.allowReadingUnassignedSets,
+      allowReadingUnassignedSets:
+        contestProblem.contest.allowReadingUnassignedSets,
     })
   ) {
     throw new ForbiddenError("That problem is in a set you were not assigned");
@@ -151,7 +179,10 @@ async function resolveTarget(
 
   assertCanSubmit(contestProblem.contest, now);
   // The DRAFT gate again, on the path that actually awards points.
-  assertProblemIsLive(contestProblem.problem.state, contestProblem.problem.slug);
+  assertProblemIsLive(
+    contestProblem.problem.state,
+    contestProblem.problem.slug,
+  );
   assertUnlocked(contestProblem.unlockAt, now, contestProblem.problem.slug);
 
   if (!contestProblem.problem.allowedLanguages.includes(language)) {
@@ -186,7 +217,12 @@ export async function createSubmission(
     "You are submitting very quickly — wait a moment and try again",
   );
 
-  const target = await resolveTarget(input.contestProblemId, input.language, viewer, now);
+  const target = await resolveTarget(
+    input.contestProblemId,
+    input.language,
+    viewer,
+    now,
+  );
 
   const submission = await prisma.submission.create({
     data: {
@@ -220,10 +256,16 @@ export async function createSubmission(
     );
   } catch (error: unknown) {
     // A row with no job would sit "judging" forever and count as an attempt. Take it back.
-    await prisma.submission.delete({ where: { id: submission.id } }).catch(() => undefined);
-    throw new DomainError("INTERNAL", "The judge queue is unavailable. Try again in a moment.", {
-      cause: error,
-    });
+    await prisma.submission
+      .delete({ where: { id: submission.id } })
+      .catch(() => undefined);
+    throw new DomainError(
+      "INTERNAL",
+      "The judge queue is unavailable. Try again in a moment.",
+      {
+        cause: error,
+      },
+    );
   }
 
   return toSubmissionView(submission, [], null);
@@ -234,10 +276,18 @@ export async function createSubmission(
  * once: the update is conditional on the submission still being unjudged, so exactly one caller
  * writes the verdict and exactly one audit row is produced.
  */
-export async function reconcile(submissionId: string, now: Date): Promise<void> {
+export async function reconcile(
+  submissionId: string,
+  now: Date,
+): Promise<void> {
   const submission = await prisma.submission.findUnique({
     where: { id: submissionId },
-    select: { id: true, verdict: true, submittedAt: true, contestProblemId: true },
+    select: {
+      id: true,
+      verdict: true,
+      submittedAt: true,
+      contestProblemId: true,
+    },
   });
   if (submission === null || submission.verdict !== null) return;
 
@@ -259,82 +309,167 @@ export async function reconcile(submissionId: string, now: Date): Promise<void> 
     outcome.status === "missing" &&
     now.getTime() - submission.submittedAt.getTime() > ORPHAN_GRACE_MS
   ) {
-    await persistInternalError(submissionId, "The judge never reported on this submission");
+    await persistInternalError(
+      submissionId,
+      "The judge never reported on this submission",
+    );
   }
 }
 
-async function persistResult(submissionId: string, result: JudgeResult): Promise<void> {
+async function persistResult(
+  submissionId: string,
+  result: JudgeResult,
+): Promise<void> {
   const judgeLogRef = await writeJudgeLog(result);
 
-  const updated = await prisma.submission.updateMany({
-    // A real verdict also overwrites a provisional `IE`, and that is the point.
-    //
-    // `IE` is our failure, never the student's (PRD §7.2), and it is explicitly retryable — so
-    // it must not be terminal in the database either. Guarding only on `verdict: null` meant a
-    // transient `IE` written while a job was still in flight permanently discarded the `AC`
-    // that followed. Every other verdict stays write-once: the guard still refuses to
-    // overwrite AC, WA, TLE, MLE, RE or CE.
-    where: { id: submissionId, OR: [{ verdict: null }, { verdict: "IE" }] },
-    data: {
-      verdict: result.verdict,
-      score: result.score,
-      // The judge's answer is now the current answer. `judgedAt` records when the judge RAN;
-      // `effectiveAt` records when what it said became true. They are equal here and diverge the
-      // moment an organizer overrides the verdict.
-      effectiveAt: new Date(),
-      runtimeMs: result.runtimeMs,
-      memoryKb: result.memoryKb,
-      judgedAt: new Date(),
-      judgeLogRef,
+  const scoringTarget = await prisma.submission.findUnique({
+    where: { id: submissionId },
+    select: {
+      contestProblem: {
+        select: {
+          contestId: true,
+          basePoints: true,
+          problem: { select: { testCases: { select: { points: true } } } },
+        },
+      },
     },
   });
+  if (scoringTarget === null) return;
 
-  // Another request got there first. Its audit row and test rows are already in.
-  if (updated.count === 0) return;
-
-  if (result.testResults.length > 0) {
-    await prisma.testResult.createMany({
-      data: result.testResults.map((test) => ({
-        submissionId,
-        testCaseId: test.testCaseId,
-        verdict: test.verdict,
-        runtimeMs: test.runtimeMs,
-        memoryKb: test.memoryKb,
-        diffSnippet: test.diffSnippet,
-      })),
-      skipDuplicates: true,
-    });
-  }
-
-  await writeAudit({
-    actor: "judge",
-    action: AUDIT_ACTIONS.judgeVerdict,
-    entity: `Submission:${submissionId}`,
-    before: { verdict: null, score: 0 },
-    after: { verdict: result.verdict, score: result.score },
+  const achievablePoints =
+    scoringTarget.contestProblem.problem.testCases.reduce(
+      (sum, testCase) => sum + Math.max(0, testCase.points),
+      0,
+    );
+  const normalizedScore = normalizeJudgeScore({
+    rawScore: result.score,
+    achievablePoints,
+    basePoints: Math.max(0, scoringTarget.contestProblem.basePoints),
+    accepted: result.verdict === "AC",
   });
 
-  await invalidateAfterScoreChange(submissionId);
+  const persisted = await prisma.$transaction(async (tx) => {
+    await lockContestMutations(tx, scoringTarget.contestProblem.contestId);
+    const judgedAt = new Date();
+    const before = await tx.submission.findUnique({
+      where: { id: submissionId },
+      select: {
+        id: true,
+        verdict: true,
+        score: true,
+        effectiveAt: true,
+        judgedAt: true,
+        submittedAt: true,
+      },
+    });
+    if (before === null || (before.verdict !== null && before.verdict !== "IE"))
+      return false;
+
+    await preserveCurrentScoreRevision(tx, before);
+    const updated = await tx.submission.updateMany({
+      // A real verdict also overwrites a provisional `IE`, and that is the point.
+      // Every other verdict stays write-once.
+      where: { id: submissionId, OR: [{ verdict: null }, { verdict: "IE" }] },
+      data: {
+        verdict: result.verdict,
+        score: normalizedScore,
+        effectiveAt: judgedAt,
+        runtimeMs: result.runtimeMs,
+        memoryKb: result.memoryKb,
+        judgedAt,
+        judgeLogRef,
+      },
+    });
+
+    // Another request got there first. Its audit row and test rows committed together.
+    if (updated.count === 0) return false;
+
+    if (result.testResults.length > 0) {
+      await tx.testResult.createMany({
+        data: result.testResults.map((test) => ({
+          submissionId,
+          testCaseId: test.testCaseId,
+          verdict: test.verdict,
+          runtimeMs: test.runtimeMs,
+          memoryKb: test.memoryKb,
+          diffSnippet: test.diffSnippet,
+        })),
+        skipDuplicates: true,
+      });
+    }
+
+    await tx.submissionScoreRevision.create({
+      data: {
+        submissionId,
+        verdict: result.verdict,
+        score: normalizedScore,
+        effectiveAt: judgedAt,
+      },
+    });
+
+    await writeAudit(
+      {
+        actor: "judge",
+        action: AUDIT_ACTIONS.judgeVerdict,
+        entity: `Submission:${submissionId}`,
+        before: { verdict: null, score: 0 },
+        after: {
+          verdict: result.verdict,
+          score: normalizedScore,
+          rawJudgeScore: result.score,
+        },
+      },
+      tx,
+    );
+    return true;
+  });
+
+  if (!persisted) return;
+
+  invalidateScoringInput(scoringTarget.contestProblem.contestId);
 }
 
 /**
  * `IE` is our failure, not the student's, and is never presented as one (PRD §7.2). BullMQ has
  * already spent its one retry by the time we get here, so this row is also the admin alert.
  */
-async function persistInternalError(submissionId: string, message: string): Promise<void> {
-  const updated = await prisma.submission.updateMany({
-    where: { id: submissionId, verdict: null },
-    data: { verdict: "IE", score: 0, judgedAt: new Date() },
+async function persistInternalError(
+  submissionId: string,
+  message: string,
+): Promise<void> {
+  const owner = await prisma.submission.findUnique({
+    where: { id: submissionId },
+    select: { contestProblem: { select: { contestId: true } } },
   });
-  if (updated.count === 0) return;
+  if (owner === null) return;
 
-  await writeAudit({
-    actor: "judge",
-    action: AUDIT_ACTIONS.judgeInternalError,
-    entity: `Submission:${submissionId}`,
-    after: { verdict: "IE", score: 0 },
-    reason: message,
+  const persisted = await prisma.$transaction(async (tx) => {
+    await lockContestMutations(tx, owner.contestProblem.contestId);
+    const effectiveAt = new Date();
+    const updated = await tx.submission.updateMany({
+      where: { id: submissionId, verdict: null },
+      data: { verdict: "IE", score: 0, judgedAt: effectiveAt, effectiveAt },
+    });
+    if (updated.count === 0) return false;
+
+    await tx.submissionScoreRevision.create({
+      data: { submissionId, verdict: "IE", score: 0, effectiveAt },
+    });
+
+    await writeAudit(
+      {
+        actor: "judge",
+        action: AUDIT_ACTIONS.judgeInternalError,
+        entity: `Submission:${submissionId}`,
+        after: { verdict: "IE", score: 0 },
+        reason: message,
+      },
+      tx,
+    );
+    return true;
   });
+
+  if (!persisted) return;
 
   console.error(
     JSON.stringify({
@@ -344,14 +479,6 @@ async function persistInternalError(submissionId: string, message: string): Prom
       message,
     }),
   );
-}
-
-async function invalidateAfterScoreChange(submissionId: string): Promise<void> {
-  const row = await prisma.submission.findUnique({
-    where: { id: submissionId },
-    select: { contestProblem: { select: { contestId: true } } },
-  });
-  if (row !== null) invalidateScoringInput(row.contestProblem.contestId);
 }
 
 export async function getSubmissionView(
@@ -450,7 +577,12 @@ export async function runSamples(
     "You are running samples very quickly — wait a moment and try again",
   );
 
-  const target = await resolveTarget(input.contestProblemId, input.language, viewer, now);
+  const target = await resolveTarget(
+    input.contestProblemId,
+    input.language,
+    viewer,
+    now,
+  );
 
   const job = buildJudgeJob({
     submissionId: `sample-${randomUUID()}`,
@@ -491,7 +623,11 @@ export async function runSamples(
 
 function samplesToPublic(
   result: JudgeResult,
-  testCases: readonly { testCaseId: string; ordinal: number; isSample: boolean }[],
+  testCases: readonly {
+    testCaseId: string;
+    ordinal: number;
+    isSample: boolean;
+  }[],
 ): PublicTestResult[] {
   // A compile failure runs no tests, and `RunSamplesResponse` carries only rows — so the
   // compiler's message rides in on one synthetic row rather than vanishing. The text is the

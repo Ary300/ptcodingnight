@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 
 import type { AdminConsoleView, AdminSubmissionRow, JudgeHealthView } from "@/lib/schemas/api";
 import type { Language, Verdict } from "@/lib/schemas/judge";
+import { isPublicBoardFrozen } from "./gate";
 import { judgeQueue } from "./queue";
 import { reconcile } from "./submissions";
 
@@ -63,7 +64,14 @@ export async function adminConsole(contestId: string): Promise<AdminConsoleView>
   const [contest, rows, total, health] = await Promise.all([
     prisma.contest.findUnique({
       where: { id: contestId },
-      select: { id: true, name: true, state: true },
+      select: {
+        id: true,
+        name: true,
+        state: true,
+        startsAt: true,
+        endsAt: true,
+        freezeAt: true,
+      },
     }),
     prisma.submission.findMany({
       where: { contestProblem: { contestId } },
@@ -105,10 +113,10 @@ export async function adminConsole(contestId: string): Promise<AdminConsoleView>
   return {
     contestId: contest.id,
     contestName: contest.name,
-    // The STATE is the truth, not a nullable timestamp. `setFrozen` moves the contest to FROZEN
-    // and back to RUNNING/ENDED, and `freezeAt` is the moment it happened — reading the timestamp
-    // would report a contest that has since been unfrozen and ended as still frozen.
-    frozen: contest.state === "FROZEN",
+    // The same predicate the public board uses. A configured cutoff can pass while the contest's
+    // lifecycle state remains RUNNING; reporting that as LIVE made the console disagree with the
+    // projector and offered a second freeze that advanced the cutoff.
+    frozen: isPublicBoardFrozen(contest, now),
     total,
     submissions: rows.map(toRow),
     health,

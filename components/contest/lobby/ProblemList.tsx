@@ -82,14 +82,19 @@ function ProblemCard({ problem }: { problem: ProblemSummary }) {
   const body = (
     <div className="flex flex-1 items-center gap-3 px-3 py-3 sm:gap-4 sm:px-4">
       <span
-        className="numeric w-8 shrink-0 font-semibold text-panther"
-        style={{ fontSize: "var(--text-md)" }}
+        data-problem-slot
+        className="numeric w-20 min-w-0 shrink-0 font-semibold leading-tight text-panther sm:w-28"
+        style={{ fontSize: "var(--text-xs)", overflowWrap: "anywhere" }}
       >
         {problem.slotLabel}
       </span>
 
       <span className="min-w-0 flex-1">
-        <span className="block font-display font-bold" style={{ fontSize: "var(--text-sm)" }}>
+        <span
+          data-problem-title
+          className="block font-display font-bold"
+          style={{ fontSize: "var(--text-sm)" }}
+        >
           {problem.title}
         </span>
         {/*
@@ -105,16 +110,7 @@ function ProblemCard({ problem }: { problem: ProblemSummary }) {
             {problem.difficulty === null ? "Unrated" : DIFFICULTY_LABEL[problem.difficulty]}
           </span>
           <Dot />
-          {/*
-            "rated N", not "N pts". The judge awards the sum of per-test points, not `basePoints`
-            — on the demo contest all six rows carry `basePoints: 100` while the achievable totals
-            are 130 to 180. Printing "100 pts" told a student the six problems were worth the same
-            amount, which is the one thing this row exists to help them decide and the one thing it
-            got wrong. The word "rated" says the number is a weight rather than an award; the real
-            figure needs `achievablePoints` on the wire, which is not this file's to add. See
-            `ProblemMetaRail` for the full note.
-          */}
-          <span className="numeric">rated {problem.basePoints}</span>
+          <span className="numeric">{problem.basePoints} pts</span>
           {problem.isGroupProblem && (
             <>
               <Dot />
@@ -164,12 +160,13 @@ function ProblemCard({ problem }: { problem: ProblemSummary }) {
     <li className="flex items-stretch">
       <Rail state="brand" />
       <Link
+        data-problem-row
         href={`/contest/${problem.slug}`}
         className="flex flex-1 transition-colors hover:bg-ink/[0.04]"
         // The whole row is the target; the accessible name carries what the layout implies.
         // A comma, not an em dash. A screen reader reads this string out, so it is user-visible
         // text like any other, and no em dash may appear in text a person using this site reads.
-        aria-label={`${problem.slotLabel}, ${problem.title}, rated ${problem.basePoints} points, ${status}`}
+        aria-label={`${problem.slotLabel}, ${problem.title}, ${problem.basePoints} points, ${status}`}
       >
         {body}
       </Link>
@@ -184,11 +181,15 @@ export interface ProblemListProps {
 export function ProblemList({ problems }: ProblemListProps) {
   if (problems.length === 0) {
     return (
+      // Centred inside the full list card, matching the reference's empty state and the grammar
+      // SubmissionHistory already uses. A left-aligned shrink-wrapped sentence read as a stray
+      // paragraph, not as the list saying it is empty.
       <p
-        className="rounded border border-ink/15 bg-paper p-4 text-ink/70"
+        className="rounded border border-ink/15 bg-paper p-4 py-8 text-center text-ink/70"
         style={{ fontSize: "var(--text-sm)" }}
       >
-        No problems are open yet. The board will fill in when the round starts.
+        No problems are available to you yet. Check the team and set assignment above, or ask an
+        organizer.
       </p>
     );
   }

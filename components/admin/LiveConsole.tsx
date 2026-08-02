@@ -5,9 +5,15 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ConfirmButton } from "@/components/admin/ConfirmButton";
 import { JudgeHealthBar } from "@/components/admin/JudgeHealthBar";
 import { AlertPlate, Panel } from "@/components/admin/Panel";
-import { SubmissionFeed, type OverridePayload } from "@/components/admin/SubmissionFeed";
+import {
+  SubmissionFeed,
+  type OverridePayload,
+} from "@/components/admin/SubmissionFeed";
 import { TBody, TD, TH, THead, TR, Table } from "@/components/ui";
-import { AdminConsoleViewSchema, type AdminConsoleView } from "@/lib/schemas/api";
+import {
+  AdminConsoleViewSchema,
+  type AdminConsoleView,
+} from "@/lib/schemas/api";
 
 /**
  * The live console — everything an organiser touches while the contest is running.
@@ -111,7 +117,9 @@ function ResultToken({ failed }: { failed: boolean }) {
 export function LiveConsole({ contestId }: LiveConsoleProps) {
   const [view, setView] = useState<AdminConsoleView | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [participantFilter, setParticipantFilter] = useState<string | null>(null);
+  const [participantFilter, setParticipantFilter] = useState<string | null>(
+    null,
+  );
   const [log, setLog] = useState<readonly LoggedAction[]>([]);
   const [busy, setBusy] = useState(false);
 
@@ -244,7 +252,11 @@ export function LiveConsole({ contestId }: LiveConsoleProps) {
 
   if (view === null) {
     return loadError === null ? (
-      <p role="status" className="text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
+      <p
+        role="status"
+        className="text-ink/70"
+        style={{ fontSize: "var(--text-sm)" }}
+      >
         Loading the console…
       </p>
     ) : (
@@ -304,9 +316,9 @@ export function LiveConsole({ contestId }: LiveConsoleProps) {
             />
           }
         >
-          Students and the projector are seeing the standings as they were at the freeze.
-          Judging is still running and the console below is live truth. Unfreezing is the
-          reveal, so do it when the room is watching.
+          Students and the projector are seeing the standings as they were at
+          the freeze. Judging is still running and the console below is live
+          truth. Unfreezing is the reveal, so do it when the room is watching.
         </AlertPlate>
       )}
 
@@ -319,7 +331,10 @@ export function LiveConsole({ contestId }: LiveConsoleProps) {
         title="Submissions"
         level="bare"
         aside={
-          <span className="numeric text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
+          <span
+            className="numeric text-ink/60"
+            style={{ fontSize: "var(--text-xs)" }}
+          >
             {/*
               Says WHICH submissions when the feed is windowed. A list that silently stops at 200
               reads as "that is all of them", and the one thing an organizer uses this feed for is
@@ -340,15 +355,21 @@ export function LiveConsole({ contestId }: LiveConsoleProps) {
           */}
           <div className="flex flex-wrap items-center gap-x-4 gap-y-tight rounded-chip border border-rule-edge bg-ink/[0.04] px-3 py-2">
             <div className="flex items-center gap-tight">
-              <span className="font-semibold" style={{ fontSize: "var(--text-sm)" }}>
+              <span
+                className="font-semibold"
+                style={{ fontSize: "var(--text-sm)" }}
+              >
                 Public board
               </span>
               <BoardStateToken frozen={frozen} />
             </div>
-            <p className="min-w-0 flex-1 basis-52 text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
+            <p
+              className="min-w-0 flex-1 basis-52 text-ink/60"
+              style={{ fontSize: "var(--text-xs)" }}
+            >
               {frozen
                 ? "Unfreeze from the notice above, when the room is watching."
-                : "Freezing stops the public standings updating while judging continues. This console stays live either way (PRD §6.3)."}
+                : "Freezing holds the public standings in place while judging continues. You will still see live results here."}
             </p>
             {!frozen && (
               <ConfirmButton
@@ -375,11 +396,12 @@ export function LiveConsole({ contestId }: LiveConsoleProps) {
       <Panel
         title="Activity log"
         level="bare"
-        description="What this session has done, and what the server said back. AuditLog is the authoritative record."
+        description="Recent freezes, rejudges, overrides, and server responses."
       >
         {log.length === 0 ? (
           <p className="text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
-            Nothing yet. Freezes, rejudges and overrides land here as the server answers them.
+            Nothing yet. Freezes, rejudges and overrides land here as the server
+            answers them.
           </p>
         ) : (
           /*
@@ -412,7 +434,9 @@ export function LiveConsole({ contestId }: LiveConsoleProps) {
                       <ResultToken failed={entry.failed} />
                     </TD>
                     <TD className="w-full align-top">
-                      <p className={`min-w-0 break-words ${entry.failed ? "font-semibold" : ""}`}>
+                      <p
+                        className={`min-w-0 break-words ${entry.failed ? "font-semibold" : ""}`}
+                      >
                         {entry.text}
                       </p>
                       {entry.detail !== null && (

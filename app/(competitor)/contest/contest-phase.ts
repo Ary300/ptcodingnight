@@ -27,9 +27,8 @@ import { viewerFromCookies } from "@/lib/contest/viewer";
  * and recording whether they threw. Nothing here re-implements "RUNNING or FROZEN, and inside the
  * window" — the whole job of this screen is telling a student what they may do, and a second copy
  * of that rule is a second thing to get wrong. Using an assertion as a predicate is deliberate:
- * the gate exposes no boolean for either question, and inventing one would have meant editing
- * `gate.ts`, which is not this task's to edit. See the report note on `canSubmit`/`canReadProblems`
- * predicates.
+ * the gate exposes no boolean for either question, and catching its refusal keeps this phase read
+ * on the same state-and-clock rule as the problem API.
  *
  * Returning `null` means "there is no competitor session here" — an anonymous visitor or an
  * organizer. The lobby draws its sign-in state for that and never sees a phase.
@@ -62,7 +61,7 @@ export async function loadContestPhase(): Promise<ContestPhase | null> {
 
   let statementsOpen = true;
   try {
-    assertCanReadProblems(contest.state);
+    assertCanReadProblems(contest, now);
   } catch {
     statementsOpen = false;
   }

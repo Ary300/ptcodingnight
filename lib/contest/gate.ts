@@ -68,9 +68,18 @@ export function assertCanListProblems(state: ContestState): void {
   }
 }
 
+/** The part of a contest row needed to decide whether statements are available. */
+export type ProblemReadGateInput = Pick<ContestGateInput, "state" | "startsAt">;
+
 /** May this viewer read a problem's STATEMENT. Strictly narrower than listing. */
-export function assertCanReadProblems(state: ContestState): void {
-  if (!READABLE.includes(state)) {
+export function assertCanReadProblems(contest: ProblemReadGateInput, now: Date): void {
+  if (!READABLE.includes(contest.state)) {
+    throw new DomainError("CONTEST_NOT_RUNNING", "This contest has not started yet");
+  }
+  // State can become inconsistent with the scheduled window after a manual database edit or a
+  // partial deployment. The problem statement is valuable contest material, so the clock must
+  // independently agree that the start has happened.
+  if (now.getTime() < contest.startsAt.getTime()) {
     throw new DomainError("CONTEST_NOT_RUNNING", "This contest has not started yet");
   }
 }
@@ -134,6 +143,27 @@ export function isPublicBoardFrozen(contest: ContestGateInput, now: Date): boole
   if (contest.freezeAt === null) return false;
   if (contest.state !== "RUNNING" && contest.state !== "SCHEDULED") return false;
   return now.getTime() >= contest.freezeAt.getTime();
+}
+
+/**
+ * Refuse a mutation whose result is part of the public standings payload while its cutoff is
+ * frozen or after its final reveal. Score events may continue during a freeze and are replayed
+ * temporally; roster/team identity has no temporal history, so changing it would rewrite the
+ * frozen board itself. Final results are immutable for the same reason.
+ */
+export function assertCanMutateStandingsInputs(contest: ContestGateInput, now: Date): void {
+  if (contest.state === "ENDED" || contest.state === "ARCHIVED") {
+    throw new DomainError(
+      "CONFLICT",
+      "This contest is over. Teams and roster membership cannot rewrite its final standings.",
+    );
+  }
+  if (isPublicBoardFrozen(contest, now)) {
+    throw new DomainError(
+      "CONFLICT",
+      "The public board is frozen. Unfreeze it before changing teams or roster membership.",
+    );
+  }
 }
 
 /**

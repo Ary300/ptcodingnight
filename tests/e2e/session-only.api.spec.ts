@@ -67,7 +67,6 @@ test("a session cookie alone gets a student into the contest", async ({ browser 
   // both of which are the session being read correctly, which is the point.
   await expect(page.getByText(/CookieOnly/).first()).toBeVisible();
 
-  await page.screenshot({ path: "/private/tmp/claude-501/-Users-aryavdas-Downloads-Park-Tudor-CS-Club/b63bccc3-af19-4bcc-bcdd-74febcb24e27/scratchpad/after-fix-contest.png", fullPage: true });
   await context.close();
   await closeTestDb();
 });

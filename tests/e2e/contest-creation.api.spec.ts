@@ -99,6 +99,47 @@ test.describe("an organizer builds a contest from nothing", () => {
     expect(state.state).toBe("DRAFT");
   });
 
+  test("refuses to publish a line-up containing an unfinished question", async () => {
+    const problem = await testDb().problem.findFirstOrThrow({
+      where: { state: "PUBLISHED" },
+      orderBy: { slug: "asc" },
+      select: { id: true, state: true },
+    });
+    await testDb().problem.update({ where: { id: problem.id }, data: { state: "DRAFT" } });
+
+    try {
+      await readOk(
+        await admin.setContestProblemsRaw(builtId, {
+          reason: "E2E: deliberately unfinished question",
+          problems: [
+            {
+              problemId: problem.id,
+              slotLabel: "A1",
+              basePoints: 100,
+              round: "INDIVIDUAL",
+              setLabel: "A",
+              divisionId: null,
+            },
+          ],
+        }),
+      );
+      const response = await readEnvelope(
+        await admin.setContestStateRaw(builtId, "SCHEDULED", "E2E: reject draft question"),
+      );
+      expect(response.status).toBeGreaterThanOrEqual(400);
+      expect(response.status).toBeLessThan(500);
+      expect((response.message ?? "").toLowerCase()).toContain("not published");
+      expect(
+        (await testDb().contest.findUniqueOrThrow({
+          where: { id: builtId },
+          select: { state: true },
+        })).state,
+      ).toBe("DRAFT");
+    } finally {
+      await testDb().problem.update({ where: { id: problem.id }, data: { state: problem.state } });
+    }
+  });
+
   test("takes a line-up, including a GROUP problem and two sets", async () => {
     const problems = await testDb().problem.findMany({
       where: { state: "PUBLISHED" },
@@ -112,11 +153,11 @@ test.describe("an organizer builds a contest from nothing", () => {
       await admin.setContestProblemsRaw(builtId, {
         reason: "E2E: initial line-up",
         problems: [
-          { problemId: problems[0]!.id, slotLabel: "A1", basePoints: 100, setLabel: "A", divisionId: null },
-          { problemId: problems[1]!.id, slotLabel: "B1", basePoints: 100, setLabel: "B", divisionId: null },
-          // setLabel null is a GROUP problem: every team works it regardless of assignment. That
-          // distinction is the whole Coding Night format, so it is asserted rather than assumed.
-          { problemId: problems[2]!.id, slotLabel: "Group 1", basePoints: 150, setLabel: null, divisionId: null },
+          { problemId: problems[0]!.id, slotLabel: "A1", basePoints: 100, round: "INDIVIDUAL", setLabel: "A", divisionId: null },
+          { problemId: problems[1]!.id, slotLabel: "B1", basePoints: 100, round: "INDIVIDUAL", setLabel: "B", divisionId: null },
+          // Round is contest-scoped and explicit. The null set is the compatible visibility fact,
+          // not a second hidden way to decide how scoring treats the question.
+          { problemId: problems[2]!.id, slotLabel: "Group 1", basePoints: 150, round: "GROUP", setLabel: null, divisionId: null },
         ],
       }),
     );
@@ -124,11 +165,12 @@ test.describe("an organizer builds a contest from nothing", () => {
 
     const rows = await testDb().contestProblem.findMany({
       where: { contestId: builtId },
-      select: { slotLabel: true, basePoints: true, setId: true, set: { select: { label: true } } },
+      select: { slotLabel: true, basePoints: true, round: true, setId: true, set: { select: { label: true } } },
       orderBy: { slotLabel: "asc" },
     });
     expect(rows).toHaveLength(3);
     expect(rows.filter((r) => r.setId === null)).toHaveLength(1);
+    expect(rows.filter((r) => r.round === "GROUP")).toHaveLength(1);
     expect(new Set(rows.map((r) => r.set?.label).filter(Boolean))).toEqual(new Set(["A", "B"]));
 
     // The sets were created on demand and are contest-scoped.
@@ -137,6 +179,65 @@ test.describe("an organizer builds a contest from nothing", () => {
       select: { label: true },
     });
     expect(new Set(sets.map((s) => s.label))).toEqual(new Set(["A", "B"]));
+  });
+
+  test("scores the line-up's GROUP choice once for the team", async ({ playwright }) => {
+    const db = testDb();
+    const groupProblem = await db.contestProblem.findFirstOrThrow({
+      where: { contestId: builtId, round: "GROUP" },
+      select: { id: true, basePoints: true },
+    });
+    const sets = await db.problemSet.findMany({
+      where: { contestId: builtId },
+      orderBy: { label: "asc" },
+      select: { id: true },
+    });
+    const team = await db.team.create({
+      data: { contestId: builtId, name: "Round-trip team", joinCode: "ROUND1" },
+      select: { id: true },
+    });
+    const players = await Promise.all(
+      ["Round-trip one", "Round-trip two"].map((displayName, index) =>
+        db.participant.create({
+          data: {
+            contestId: builtId,
+            displayName,
+            teamId: team.id,
+            chosenSetId: sets[index]?.id ?? null,
+          },
+          select: { id: true },
+        }),
+      ),
+    );
+
+    // Both teammates may press Submit on shared work. Scoring must take the team's best answer
+    // once, not add one copy to each player's individual total.
+    await db.submission.createMany({
+      data: players.map((player, index) => ({
+        participantId: player.id,
+        contestProblemId: groupProblem.id,
+        language: "PYTHON_312" as const,
+        sourceCode: `# group submitter ${String(index + 1)}`,
+        verdict: "AC" as const,
+        score: groupProblem.basePoints,
+        effectiveAt: new Date(),
+      })),
+    });
+
+    const builtAdmin = new ContestApi(await playwright.request.newContext(), builtId);
+    await builtAdmin.adminLogin(ADMIN_PASSCODE);
+    const board = await builtAdmin.teamStandings();
+    const scored = board.teams.find((entry) => entry.teamId === team.id);
+
+    expect(scored).toBeDefined();
+    expect(scored?.groupPoints).toBe(groupProblem.basePoints);
+    expect(scored?.players.map((player) => player.score)).toEqual([0, 0]);
+    expect(scored?.score).toBe(groupProblem.basePoints / players.length);
+
+    // This team exists only to prove the scoring round-trip. Remove it before the lifecycle test
+    // below, which deliberately replaces the line-up and invalidates these assignments.
+    await db.participant.deleteMany({ where: { id: { in: players.map((player) => player.id) } } });
+    await db.team.delete({ where: { id: team.id } });
   });
 
   test("setting the line-up again REPLACES it rather than duplicating", async () => {
@@ -153,8 +254,8 @@ test.describe("an organizer builds a contest from nothing", () => {
       await admin.setContestProblemsRaw(builtId, {
         reason: "E2E: trimmed line-up",
         problems: [
-          { problemId: problems[0]!.id, slotLabel: "A1", basePoints: 100, setLabel: "A", divisionId: null },
-          { problemId: problems[1]!.id, slotLabel: "Group 1", basePoints: 150, setLabel: null, divisionId: null },
+          { problemId: problems[0]!.id, slotLabel: "A1", basePoints: 100, round: "INDIVIDUAL", setLabel: "A", divisionId: null },
+          { problemId: problems[1]!.id, slotLabel: "Group 1", basePoints: 150, round: "GROUP", setLabel: null, divisionId: null },
         ],
       }),
     );
@@ -216,7 +317,7 @@ test.describe("an organizer builds a contest from nothing", () => {
       await admin.setContestProblemsRaw(futureId, {
         reason: "E2E: future line-up",
         problems: [
-          { problemId: problems[0]!.id, slotLabel: "A1", basePoints: 100, setLabel: null, divisionId: null },
+          { problemId: problems[0]!.id, slotLabel: "A1", basePoints: 100, round: "INDIVIDUAL", setLabel: "A", divisionId: null },
         ],
       }),
     );
@@ -240,6 +341,213 @@ test.describe("an organizer builds a contest from nothing", () => {
     expect(Math.abs(durationMs - 2 * 60 * 60_000)).toBeLessThan(5000);
 
     await testDb().contest.deleteMany({ where: { id: futureId } });
+  });
+
+  test("starting late inside the scheduled window still gives the configured duration", async () => {
+    const plannedStart = new Date(Date.now() + 60 * 60_000);
+    const durationMs = 2 * 60 * 60_000;
+    const created = await readOk(
+      await admin.createContestRaw({
+        name: `E2E Built Late Start ${Date.now()}`,
+        startsAt: plannedStart.toISOString(),
+        endsAt: new Date(plannedStart.getTime() + durationMs).toISOString(),
+        freezeAt: new Date(plannedStart.getTime() + 90 * 60_000).toISOString(),
+        scoringPresetId: "classic",
+        divisions: [],
+      }),
+    );
+    const contestId = (created.data as { contestId: string }).contestId;
+    const problem = await testDb().problem.findFirstOrThrow({
+      where: { state: "PUBLISHED" },
+      orderBy: { slug: "asc" },
+      select: { id: true },
+    });
+
+    await readOk(
+      await admin.setContestProblemsRaw(contestId, {
+        reason: "E2E: late-start line-up",
+        problems: [
+          {
+            problemId: problem.id,
+            slotLabel: "A1",
+            basePoints: 100,
+            round: "INDIVIDUAL",
+            setLabel: "A",
+            divisionId: null,
+          },
+        ],
+      }),
+    );
+    await readOk(await admin.setContestStateRaw(contestId, "SCHEDULED", "E2E: publish late"));
+
+    // Put the published contest thirty minutes into its two-hour scheduled window. This is the
+    // branch that previously kept the old clock and quietly gave competitors only 90 minutes.
+    const oldStart = new Date(Date.now() - 30 * 60_000);
+    await testDb().contest.update({
+      where: { id: contestId },
+      data: {
+        startsAt: oldStart,
+        endsAt: new Date(oldStart.getTime() + durationMs),
+        freezeAt: new Date(oldStart.getTime() + 90 * 60_000),
+      },
+    });
+
+    const before = Date.now();
+    await readOk(await admin.setContestStateRaw(contestId, "RUNNING", "E2E: start late"));
+    const after = Date.now();
+    const row = await testDb().contest.findUniqueOrThrow({
+      where: { id: contestId },
+      select: { startsAt: true, endsAt: true, freezeAt: true },
+    });
+
+    expect(row.startsAt.getTime()).toBeGreaterThanOrEqual(before - 1000);
+    expect(row.startsAt.getTime()).toBeLessThanOrEqual(after + 1000);
+    expect(row.endsAt.getTime() - row.startsAt.getTime()).toBe(durationMs);
+    expect((row.freezeAt?.getTime() ?? 0) - row.startsAt.getTime()).toBe(90 * 60_000);
+
+    await testDb().contest.delete({ where: { id: contestId } });
+  });
+
+  test("starting an expired rehearsal restores a usable full contest window", async () => {
+    const startsAt = new Date(Date.now() + 60 * 60_000);
+    const created = await readOk(
+      await admin.createContestRaw({
+        name: `E2E Built Expired ${Date.now()}`,
+        startsAt: startsAt.toISOString(),
+        endsAt: new Date(startsAt.getTime() + 2 * 60 * 60_000).toISOString(),
+        freezeAt: new Date(startsAt.getTime() + 90 * 60_000).toISOString(),
+        scoringPresetId: "classic",
+        divisions: [],
+      }),
+    );
+    const contestId = (created.data as { contestId: string }).contestId;
+    const problem = await testDb().problem.findFirstOrThrow({
+      where: { state: "PUBLISHED" },
+      orderBy: { slug: "asc" },
+      select: { id: true },
+    });
+    await readOk(
+      await admin.setContestProblemsRaw(contestId, {
+        reason: "E2E: expired rehearsal line-up",
+        problems: [
+          {
+            problemId: problem.id,
+            slotLabel: "A1",
+            basePoints: 100,
+            round: "INDIVIDUAL",
+            setLabel: "A",
+            divisionId: null,
+          },
+        ],
+      }),
+    );
+    await readOk(
+      await admin.setContestStateRaw(contestId, "SCHEDULED", "E2E: publish rehearsal"),
+    );
+
+    const oldStart = new Date(Date.now() - 3 * 60 * 60_000);
+    await testDb().contest.update({
+      where: { id: contestId },
+      data: {
+        startsAt: oldStart,
+        endsAt: new Date(oldStart.getTime() + 2 * 60 * 60_000),
+        freezeAt: new Date(oldStart.getTime() + 90 * 60_000),
+      },
+    });
+
+    const before = Date.now();
+    await readOk(
+      await admin.setContestStateRaw(contestId, "RUNNING", "E2E: restart expired rehearsal"),
+    );
+    const after = Date.now();
+    const row = await testDb().contest.findUniqueOrThrow({
+      where: { id: contestId },
+      select: { state: true, startsAt: true, endsAt: true, freezeAt: true },
+    });
+    expect(row.state).toBe("RUNNING");
+    expect(row.startsAt.getTime()).toBeGreaterThanOrEqual(before - 1000);
+    expect(row.startsAt.getTime()).toBeLessThanOrEqual(after + 1000);
+    expect(row.endsAt.getTime() - row.startsAt.getTime()).toBe(2 * 60 * 60_000);
+    expect((row.freezeAt?.getTime() ?? 0) - row.startsAt.getTime()).toBe(90 * 60_000);
+
+    await testDb().contest.delete({ where: { id: contestId } });
+  });
+
+  test("refuses to start while teammates share an individual set", async () => {
+    const db = testDb();
+    const startsAt = new Date(Date.now() + 60 * 60_000);
+    const created = await readOk(
+      await admin.createContestRaw({
+        name: `E2E Built Duplicate Sets ${Date.now()}`,
+        startsAt: startsAt.toISOString(),
+        endsAt: new Date(startsAt.getTime() + 60 * 60_000).toISOString(),
+        freezeAt: null,
+        scoringPresetId: "classic",
+        divisions: [],
+      }),
+    );
+    const contestId = (created.data as { contestId: string }).contestId;
+    const problems = await db.problem.findMany({
+      where: { state: "PUBLISHED" },
+      take: 2,
+      orderBy: { slug: "asc" },
+      select: { id: true },
+    });
+    expect(problems).toHaveLength(2);
+
+    await readOk(
+      await admin.setContestProblemsRaw(contestId, {
+        reason: "E2E: two shared sets",
+        problems: [
+          { problemId: problems[0]!.id, slotLabel: "A1", basePoints: 100, round: "INDIVIDUAL", setLabel: "A", divisionId: null },
+          { problemId: problems[1]!.id, slotLabel: "B1", basePoints: 100, round: "INDIVIDUAL", setLabel: "B", divisionId: null },
+        ],
+      }),
+    );
+    const setA = await db.problemSet.findFirstOrThrow({
+      where: { contestId, label: "A" },
+      select: { id: true },
+    });
+    const team = await db.team.create({
+      data: { contestId, name: "Duplicate set team", joinCode: `DUP${Date.now()}` },
+      select: { id: true },
+    });
+    await db.participant.createMany({
+      data: ["One", "Two"].map((displayName) => ({
+        contestId,
+        displayName,
+        teamId: team.id,
+        chosenSetId: setA.id,
+      })),
+    });
+
+    await readOk(
+      await admin.setContestStateRaw(contestId, "SCHEDULED", "E2E: publish invalid roster"),
+    );
+    const start = await readEnvelope(
+      await admin.setContestStateRaw(contestId, "RUNNING", "E2E: reject duplicate sets"),
+    );
+    expect(start.status).toBeGreaterThanOrEqual(400);
+    expect(start.status).toBeLessThan(500);
+    expect((start.message ?? "").toLowerCase()).toContain("same set");
+    expect(
+      (await db.contest.findUniqueOrThrow({ where: { id: contestId }, select: { state: true } }))
+        .state,
+    ).toBe("SCHEDULED");
+
+    // Sharing is the rule, not an error, in the alternate whole-team format. The invariant is
+    // scoped to RANDOM_ASSIGNED rather than accidentally banning a documented contest mode.
+    await db.contest.update({
+      where: { id: contestId },
+      data: { setSelection: "ONE_SET_PER_TEAM" },
+    });
+    expect(
+      (await readEnvelope(
+        await admin.setContestStateRaw(contestId, "RUNNING", "E2E: shared team set is valid"),
+      )).status,
+    ).toBe(200);
+
+    await db.contest.delete({ where: { id: contestId } });
   });
 
   test("refuses a line-up change once the contest is running", async () => {

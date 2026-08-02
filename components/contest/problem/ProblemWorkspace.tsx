@@ -52,15 +52,20 @@ function StatementSection({ title, source }: { title: string; source: string }) 
       <h2 className="font-display font-bold" style={{ fontSize: "var(--text-md)" }}>
         {title}
       </h2>
-      <Markdown source={source} className="mt-1" />
+      {/* `max-w-none`: the statement grid column is already the measure, so Markdown's own
+          70ch cap would leave a dead gutter inside it. See the main statement below. */}
+      <Markdown source={source} className="mt-1 max-w-none" />
     </section>
   );
 }
 
 export function ProblemWorkspace({ slug }: ProblemWorkspaceProps) {
   const participant = useParticipant();
+  const scopeKey = participant.status === "joined" ? participant.scopeKey : participant.status;
   const load = useCallback(() => contestApi.getProblem(slug), [slug]);
-  const problem = useResource(load);
+  // A set move revokes this statement even if the route slug does not change. Key the detail on
+  // the same server scope as the lobby so stale authorized content disappears immediately.
+  const problem = useResource(load, scopeKey);
 
   // Derived, not synced. The default is the problem's first allowed language, and an
   // explicit choice overrides it — so there is no effect racing the load to set it, and no
@@ -155,18 +160,39 @@ export function ProblemWorkspace({ slug }: ProblemWorkspaceProps) {
       Signed out is a state, not an error — but it is only reported HERE, after the problem read
       has actually failed, and the ordering is deliberate.
 
-      `fetchParticipant()` returns null for "not signed in" and for "could not ask" alike: a
-      timeout, a 500 and a genuine anonymous visitor are the same value. Short-circuiting on
-      `participant.status === "anonymous"` before the read therefore reproduces this project's
-      worst-ever bug from a new direction — a student with a valid cookie told they are not signed
-      in, on a page that would have rendered fine. I watched exactly that happen on an overloaded
-      dev server while writing this.
+      `fetchParticipant()` now keeps "not signed in" separate from "the session route failed".
+      Short-circuiting on the participant read before the problem read would still be wrong: a
+      transient session check must not hide a statement that already loaded for a valid cookie.
 
-      So the problem wins. If it loaded, the student works, whatever the session read said. Only
-      when the read has also failed does the anonymous answer get to explain why, and then it
-      explains it with a button instead of "You are not signed in to a contest." with nothing to
-      click — the third of the four wordings this one state used to have across four screens.
+      So the problem wins. If it loaded, the student works. Only when both reads fail does the
+      session state explain whether the student should sign in or simply reload after a server
+      failure.
     */
+    if (participant.status === "error") {
+      return (
+        <div className="max-w-md rounded border border-panther/35 bg-paper p-4">
+          <h1 className="font-display font-bold" style={{ fontSize: "var(--text-md)" }}>
+            We could not check your sign-in
+          </h1>
+          <p role="alert" className="mt-1 text-ink/75" style={{ fontSize: "var(--text-sm)" }}>
+            {participant.message}
+          </p>
+          <div className="mt-3 flex flex-wrap gap-3">
+            <Button variant="secondary" onClick={() => window.location.reload()}>
+              Reload the page
+            </Button>
+            <Link
+              href="/contest"
+              className="inline-flex items-center text-panther underline underline-offset-2"
+              style={{ fontSize: "var(--text-xs)" }}
+            >
+              Back to the problem list
+            </Link>
+          </div>
+        </div>
+      );
+    }
+
     if (participant.status === "anonymous") {
       return <SignInRequired level={1} what="this problem" />;
     }
@@ -223,9 +249,16 @@ export function ProblemWorkspace({ slug }: ProblemWorkspaceProps) {
       <div className="mt-6 grid gap-8 lg:grid-cols-[minmax(0,1fr)_16rem]">
         {/* ---- statement ---- */}
         <article className="min-w-0">
+          {/*
+            `max-w-none` lifts Markdown's default 70ch measure INSIDE this column only. The grid
+            already bounds the statement at `minmax(0,1fr)` next to a 16rem rail, so the 640px cap
+            was a second, tighter limit that left a ~190px dead gutter at 1440 — the reference
+            runs its statement to the column edge. Every other Markdown call site keeps the 70ch
+            default, because nothing else gives it a column that is already a measure.
+          */}
           <Markdown
             source={statementWithoutRepeatedTitle(detail.statementMd, detail.title)}
-            className="mt-5"
+            className="mt-5 max-w-none"
           />
 
           {/*
@@ -333,6 +366,10 @@ export function ProblemWorkspace({ slug }: ProblemWorkspaceProps) {
             </Button>
           </div>
         </div>
+
+        <p className="mt-2 text-right text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
+          Running samples is free. Submitting counts.
+        </p>
 
         <div className="mt-4 space-y-4">
           {actionError !== null && (

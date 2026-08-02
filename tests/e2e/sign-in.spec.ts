@@ -43,13 +43,13 @@ test.describe("the error banner", () => {
     await expect(banner).toContainText("Google sign-in is not set up on this server");
     // Names an alternative. A sign-in error with no next step is a dead end, and the room has one
     // organizer for forty students.
-    await expect(banner).toContainText("Try the other button");
+    await expect(banner).toContainText("Ask an organizer");
 
     await page.reload();
     await expect(alerts(page)).toContainText("not set up on this server");
   });
 
-  test("sits ABOVE the OAuth buttons, which are what produced it", async ({ page }) => {
+  test("sits above every sign-in option", async ({ page }) => {
     /*
       The bug: there was one error slot and it lived under the organizer PASSWORD field, far below
       the two buttons a student presses. On a 360px phone the real three-line message rendered
@@ -59,16 +59,22 @@ test.describe("the error banner", () => {
     await page.goto("/sign-in?error=provider_unconfigured&provider=google");
 
     const banner = await alerts(page).boundingBox();
-    const google = await page.getByRole("link", { name: /Continue with Google/ }).boundingBox();
     const password = await page.locator(passwordField).boundingBox();
 
     expect(banner).not.toBeNull();
-    expect(google).not.toBeNull();
     expect(password).not.toBeNull();
-    expect(banner!.y, "the reason renders below the button that caused it").toBeLessThan(google!.y);
     expect(banner!.y, "the reason renders under an unrelated password field").toBeLessThan(
       password!.y,
     );
+
+    // If Google is configured, its real navigation follows the banner. If it is not configured,
+    // there is deliberately no Google link to click and fail again.
+    const google = page.getByRole("link", { name: /Continue with Google/ });
+    if ((await google.count()) === 1) {
+      const googleBox = await google.boundingBox();
+      expect(googleBox).not.toBeNull();
+      expect(banner!.y, "the reason renders below the provider option").toBeLessThan(googleBox!.y);
+    }
 
     // And it is on screen without scrolling, at whatever viewport this profile uses.
     const viewport = page.viewportSize();
@@ -224,23 +230,46 @@ test.describe("the organizer forms", () => {
 });
 
 test.describe("the page a student meets", () => {
-  test("offers both providers and does not ask for a code", async ({ page }) => {
+  test("offers only providers configured on the server and does not ask for a code", async ({
+    page,
+    request,
+  }) => {
     // The join code is gone. A page that still asks for one is a page that turns students away.
     await page.goto("/sign-in");
 
-    await expect(page.getByRole("link", { name: /Continue with Google/ })).toBeVisible();
-    await expect(page.getByRole("link", { name: /Continue with GitHub/ })).toBeVisible();
+    const configured = {
+      google: await providerIsConfigured(request, "google"),
+      github: await providerIsConfigured(request, "github"),
+    };
+
+    for (const provider of ["google", "github"] as const) {
+      const label = provider === "google" ? /Continue with Google/ : /Continue with GitHub/;
+      await expect(page.getByRole("link", { name: label })).toHaveCount(
+        configured[provider] ? 1 : 0,
+      );
+    }
+
+    if (!configured.google && !configured.github) {
+      await expect(page.getByTestId("student-signin-unavailable")).toContainText(
+        "Google and GitHub sign-in are unavailable",
+      );
+    }
 
     const text = await page.evaluate(() => document.body.innerText);
     expect(text).toContain("Students do not need a code");
   });
 
-  test("the OAuth buttons are document navigations, not fetches", async ({ page }) => {
+  test("configured OAuth buttons are document navigations, not fetches", async ({
+    page,
+    request,
+  }) => {
     // `/api/auth/{provider}` sets a state cookie and 302s to another origin. A client-side
     // navigation cannot follow that, so these have to stay `<a href>`.
     await page.goto("/sign-in");
     for (const provider of ["google", "github"]) {
-      await expect(page.locator(`a[href="/api/auth/${provider}"]`)).toHaveCount(1);
+      await expect(page.locator(`a[href="/api/auth/${provider}"]`)).toHaveCount(
+        (await providerIsConfigured(request, provider as "google" | "github")) ? 1 : 0,
+      );
     }
   });
 
@@ -265,3 +294,12 @@ test.describe("the page a student meets", () => {
     }
   });
 });
+
+async function providerIsConfigured(
+  request: import("@playwright/test").APIRequestContext,
+  provider: "google" | "github",
+): Promise<boolean> {
+  const response = await request.get(`/api/auth/${provider}`, { maxRedirects: 0 });
+  const location = response.headers().location ?? "";
+  return !location.startsWith("/sign-in?error=provider_unconfigured");
+}

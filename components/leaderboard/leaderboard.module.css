@@ -66,6 +66,20 @@
   }
 }
 
+/*
+ * Phones are not projectors, but the projector URL gets opened on them — an organizer checking
+ * the board from their pocket, a parent following a texted link. The stage is `fixed; inset: 0;
+ * overflow: hidden`, so anything wider than the viewport is not scrolled to, it is GONE: at 360px
+ * the 0.667 step still drew the countdown off the right edge and the room's clock read "02:58:1".
+ * Same uniform-scale degradation as 1280×720, one more step down. Must follow the 0.667 rule in
+ * source order, because both match at 360px and equal specificity is settled by position.
+ */
+@media (max-width: 640px) {
+  .stage {
+    --proj-scale: 0.42;
+  }
+}
+
 /* ---------------------------------------------------------------------------
  * Two zones: standings left ~72%, clock and division tabs stacked right.
  * ------------------------------------------------------------------------ */
@@ -480,9 +494,9 @@
 }
 
 /*
- * The board clips rather than scrolls. A projector has no scrollbar and nobody is holding
- * its mouse, so a row that does not fit must be counted in the footnote instead — which is
- * what `maxRows` and the "showing top N of M" line are for.
+ * Closed standings fit without scrolling. When an organizer deliberately opens enough independent
+ * roster sections to exceed that measured height, vertical scrolling is safer than clipping an
+ * expanded control's content while its arrow continues to say it is open.
  */
 .teamBoard {
   display: flex;
@@ -493,7 +507,8 @@
      empty space belongs at the bottom, where the crest already lives. */
   align-items: flex-start;
   justify-content: center;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 .teamFootnote {
@@ -535,11 +550,84 @@
  * the bottom of a canvas that does not scroll. See `MEMBER_ROWS_MAX` for the measurement.
  * ------------------------------------------------------------------------ */
 
+/* The whole team row is a generous pointer target; the arrow remains the semantic button. */
+.teamStandingRow {
+  cursor: pointer;
+  transition: background-color 160ms ease;
+}
+
+.teamStandingRow:hover {
+  background: color-mix(in srgb, var(--color-panther) 6%, var(--color-paper));
+}
+
+.teamNameLine {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.4em;
+}
+
+.teamDisclosure,
+.playerDisclosure {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: transparent;
+  color: var(--color-panther);
+  cursor: pointer;
+}
+
+.teamDisclosure {
+  width: 1.5em;
+  min-width: 24px;
+  height: 1.5em;
+  min-height: 24px;
+}
+
+.teamDisclosure svg,
+.playerDisclosure svg {
+  transition: transform 180ms ease;
+}
+
+.teamDisclosure:focus-visible,
+.playerDisclosure:focus-visible {
+  outline: 2px solid var(--color-panther);
+  outline-offset: 2px;
+}
+
+/*
+ * Consecutive `<tbody>` elements let one team own a row group without nesting another table. The
+ * discrete display transition keeps the closing rows in layout until their opacity has finished,
+ * while older browsers simply fall back to an immediate close and the same correct final state.
+ */
+.rosterRows {
+  display: none;
+  pointer-events: none;
+  transform: translateY(-0.25em);
+  transition:
+    transform 180ms ease,
+    display 180ms allow-discrete;
+}
+
+.rosterRowsOpen {
+  display: table-row-group;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+@starting-style {
+  .rosterRowsOpen {
+    transform: translateY(-0.25em);
+  }
+}
+
 /*
  * The tint is what groups the block under its team, and it is a SECOND channel rather than the
- * only one: the rows are half the height of a team row, their names are boxed, and the team's
- * caret above them has turned. A tint alone would say nothing in greyscale, which this board spends
- * part of the night in behind the freeze (DESIGN.md §3).
+ * only one: the rows are half the height of a team row, the white name cell is indented, and the
+ * team's caret above them has turned. A tint alone would say nothing in greyscale, which this board
+ * spends part of the night in behind the freeze (DESIGN.md §3).
  */
 .memberRow {
   /*
@@ -547,8 +635,8 @@
     every point of tint under it spends some of that: 4% lands the pool label at 4.67:1 and 5% at
     4.57:1, against a 4.5 floor that applies at 1280x720 where the label is 16px bold and therefore
     NOT large text. Tint is also not the channel that groups this block: the rows are a third the
-    height of a team row and the names are boxed, both of which survive the greyscale the board
-    spends part of the night in (DESIGN.md §3).
+    height of a team row and their name cells are indented, both of which survive the greyscale the
+    board spends part of the night in (DESIGN.md §3).
   */
   background: color-mix(in srgb, var(--color-ink) 4%, var(--color-paper));
 }
@@ -560,17 +648,16 @@
  * which is why the smaller canvas is tighter than a straight two-thirds and is the one
  * `MEMBER_BLOCK_ROWS` is measured on.
  *
- * SIDE RULES ONLY, no top or bottom. The vertical rules are what carry the column alignment and
- * they are kept; the horizontal ones separate members, which the boxed names already do, and each
- * one costs a pixel that does not scale down. Six of them was a member row's worth of height on the
- * canvas with none to spare.
+ * The vertical rules carry the column alignment. A one-pixel inset rule separates member rows
+ * without changing the measured table height, which matters on the smaller projector canvas.
  */
 .memberCell {
   border-top: 0;
   border-right: 1px solid color-mix(in srgb, var(--color-ink) 20%, transparent);
   border-bottom: 0;
   border-left: 1px solid color-mix(in srgb, var(--color-ink) 20%, transparent);
-  font-size: var(--fs-sm, var(--text-proj-sm));
+  box-shadow: inset 0 -1px color-mix(in srgb, var(--color-ink) 14%, transparent);
+  font-size: var(--fs-sm, var(--text-xs));
   font-weight: 400;
   line-height: 1.05;
   padding: 0.05em 0.5em;
@@ -583,43 +670,74 @@
  * difference between an outline and a second table.
  */
 .memberNameCell {
-  padding-left: calc(var(--pad) * 1.9);
+  background: var(--color-paper);
+  max-width: 0;
+  padding-left: calc(var(--pad, 1rem) * 3.5);
   text-align: left;
+  width: 100%;
 }
 
 /*
- * "in a box the team member's name is there". Literally a box: the border is what separates one
- * person from the next at ten metres, where a change of weight alone does not survive.
- *
- * The border is a rule, not text, so a low-alpha ink mix is legal on it. The NAME is full-strength
- * ink.
+ * The legacy class name remains because the projector helper already uses it, but this is no
+ * longer a box inside the cell. The full white cell and shared table rules provide the boundary;
+ * another rounded outline around the text made the name look like a detached badge.
  */
 .memberBox {
   display: inline-block;
   max-width: 100%;
   overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--color-ink) 35%, transparent);
-  border-radius: 2px;
-  background: var(--color-paper);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   font-weight: 700;
-  padding: 0 0.4em;
+  padding: 0;
   text-overflow: ellipsis;
   vertical-align: middle;
   white-space: nowrap;
 }
 
 /*
- * The remainder box, when a roster is longer than the block can draw. Dashed, because it stands for
- * people rather than naming one, and the difference has to be visible from the back of the room.
+ * A muted remainder label when a roster is longer than the projector block can draw.
  */
 .memberBoxRest {
-  border-style: dashed;
+  color: var(
+    --muted,
+    color-mix(in srgb, var(--color-ink) 70%, var(--color-paper))
+  );
   font-weight: 400;
+}
+
+.memberName {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.playerDisclosure {
+  max-width: 100%;
+  gap: 0.45em;
+  overflow: hidden;
+  color: var(--color-ink);
+  font-weight: 700;
+  text-align: left;
+}
+
+.playerDisclosure span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* "no set", next to a name. `--muted` is ink at 72%, above the 57% floor for ink on paper. */
 .memberTag {
-  color: var(--muted);
+  color: var(
+    --muted,
+    color-mix(in srgb, var(--color-ink) 70%, var(--color-paper))
+  );
   margin-left: 0.5em;
   white-space: nowrap;
 }
@@ -654,6 +772,72 @@
   letter-spacing: 0.08em;
   text-transform: uppercase;
   white-space: nowrap;
+}
+
+.playerProblemRow {
+  background: color-mix(in srgb, var(--color-ink) 2%, var(--color-paper));
+}
+
+.playerProblemCell {
+  border: 1px solid color-mix(in srgb, var(--color-ink) 20%, transparent);
+  padding: 0.45rem 0.75rem 0.55rem calc(var(--pad, 1rem) * 3.5);
+}
+
+.playerLastScore {
+  color: var(--muted);
+  font-size: var(--text-xs);
+  margin-bottom: 0.25rem;
+}
+
+.playerProblemList {
+  min-width: 0;
+}
+
+.playerProblemLine {
+  display: grid;
+  min-width: 0;
+  align-items: baseline;
+  border-top: 1px solid color-mix(in srgb, var(--color-ink) 12%, transparent);
+  column-gap: 0.65rem;
+  font-size: var(--text-xs);
+  grid-template-columns: auto minmax(8rem, 1fr) auto auto;
+  padding: 0.3rem 0;
+}
+
+.playerProblemLine:first-child {
+  border-top: 0;
+}
+
+.playerProblemTitle {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.playerProblemFacts {
+  grid-column: 2 / -1;
+  color: var(--muted);
+}
+
+@media (max-width: 640px) {
+  .playerProblemLine {
+    grid-template-columns: auto minmax(7rem, 1fr) auto;
+  }
+
+  .playerProblemLine > :nth-child(4) {
+    grid-column: 3;
+  }
+
+  .playerProblemFacts {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rosterRows,
+  .teamDisclosure svg,
+  .playerDisclosure svg {
+    transition-duration: 0ms;
+  }
 }
 
 /* ---------------------------------------------------------------------------

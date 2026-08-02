@@ -1,4 +1,8 @@
+import type { Prisma } from "@prisma/client";
+
 import { prisma } from "@/lib/db";
+import { lockContestMutations } from "@/lib/contest/locks";
+import { invalidateScoringInput } from "@/lib/contest/standings";
 
 /**
  * Put a signed-in account into the contest the organizer is running, with no team.
@@ -29,22 +33,20 @@ export interface Enrolment {
 /**
  * How an enrollable contest is chosen when there is more than one.
  *
- * A RUNNING contest beats one that has not started, always. Ordering by `startsAt` alone — which
- * is what this did — picks the contest that starts FURTHEST IN THE FUTURE, so the moment an
- * organizer drafts next month's Coding Night, every student signing in tonight is enrolled in next
- * month's instead. Nothing errors. They land on a contest with no problems published, the roster
- * for tonight shows nobody, and the only visible symptom is two screens that are quietly empty —
- * the same signature as the "site looked dead" failure, from a different cause.
+ * A contest whose real window contains `now` beats one that has not started, always. The clock is
+ * checked as well as the state: a future contest accidentally marked RUNNING is not running for a
+ * student yet and must not steal their sign-in.
  *
  * FROZEN sits between RUNNING and SCHEDULED because a frozen contest is a running one with the
  * public board held still: `assertCanJoin` in gate.ts treats it as joinable, and a student
  * arriving late during a freeze belongs in the contest the room is in.
  */
-const STATE_PRIORITY: Readonly<Record<"RUNNING" | "FROZEN" | "SCHEDULED" | "DRAFT", number>> = {
+const STATE_PRIORITY: Readonly<
+  Record<"RUNNING" | "FROZEN" | "SCHEDULED", number>
+> = {
   RUNNING: 0,
   FROZEN: 1,
   SCHEDULED: 2,
-  DRAFT: 3,
 };
 
 /**
@@ -52,7 +54,7 @@ const STATE_PRIORITY: Readonly<Record<"RUNNING" | "FROZEN" | "SCHEDULED" | "DRAF
  * read-only history, and landing a sign-in there is what "I could not add anybody to the new
  * contest" looked like from the student's side.
  */
-const SIGN_IN_STATES = ["DRAFT", "SCHEDULED", "RUNNING", "FROZEN"] as const;
+const SIGN_IN_STATES = ["SCHEDULED", "RUNNING", "FROZEN"] as const;
 
 /** One contest a given user could be signed into, with the facts the ranking is built from. */
 export interface ContestChoice {
@@ -83,21 +85,14 @@ export interface ContestChoice {
  *
  * Ranked ascending on:
  *
- *  1. **A contest whose window has already closed is a last resort.** `endsAt` in the past is a
- *     fact about the clock that no state column can contradict: a contest left in DRAFT or
- *     SCHEDULED with last month's window is abandoned, not upcoming. Without this key, being on
- *     an abandoned contest's roster would outrank tonight's contest forever.
- *  2. **A contest this user is ALREADY a participant of.** Being on a roster is an organizer's
- *     explicit decision about this person; state and clock are ambient facts about the room. The
- *     explicit decision wins. This is the key that fixes the reported bug.
- *  3. **A contest whose window contains now.** The old first key, and it still decides every case
- *     it was introduced for — a student signing in for the first time is a participant of nothing,
- *     so key 2 is a tie for them and this one takes over. Two contests can be RUNNING at once (a
- *     rehearsal left open, last year's board never ended, the seeded demo beside the real thing)
- *     and "is it on right now" is the question a student signing in is actually asking.
- *  4. **State priority**, which orders contests that are equally in or out of their window — the
- *     DRAFT/SCHEDULED case the roster is built in, before any window has opened.
- *  5. `startsAt desc`, inherited from the query and preserved by a stable sort.
+ *  1. **The real window contains now.** State alone is not sufficient. This prevents a future
+ *     RUNNING/FROZEN row, usually left behind by a rehearsal or manual edit, from winning over the
+ *     event happening in the room.
+ *  2. **The user is already a participant.** Within the same clock phase, the organizer's roster
+ *     decision beats an unrelated contest.
+ *  3. **State priority.** RUNNING, then FROZEN, then SCHEDULED.
+ *  4. **Start time.** The closest upcoming SCHEDULED contest wins, rather than the event furthest
+ *     in the future.
  *
  * The list is returned whole rather than reduced to a winner because a student can legitimately be
  * a participant of two open contests at once, and in that case the choice is theirs to make rather
@@ -108,8 +103,19 @@ export async function contestsForUser(
   now: Date = new Date(),
 ): Promise<ContestChoice[]> {
   const contests = await prisma.contest.findMany({
-    where: { state: { in: [...SIGN_IN_STATES] } },
-    orderBy: { startsAt: "desc" },
+    where: {
+      state: { in: [...SIGN_IN_STATES] },
+      endsAt: { gt: now },
+      OR: [
+        // Published contests remain available before their start so an organizer can build the
+        // roster and a returning student can reach the pre-start lobby.
+        { state: "SCHEDULED" },
+        // A live-looking state cannot overrule the clock. Excluding these malformed/future rows
+        // here is stronger than merely sorting them later: `ensureEnrolled` cannot choose one.
+        { state: { in: ["RUNNING", "FROZEN"] }, startsAt: { lte: now } },
+      ],
+    },
+    orderBy: [{ startsAt: "asc" }, { id: "asc" }],
     select: { id: true, name: true, state: true, startsAt: true, endsAt: true },
   });
 
@@ -133,26 +139,29 @@ export async function contestsForUser(
     endsAt: contest.endsAt,
     alreadyParticipant: mine.has(contest.id),
     containsNow:
-      contest.startsAt.getTime() <= now.getTime() && now.getTime() < contest.endsAt.getTime(),
+      contest.startsAt.getTime() <= now.getTime() &&
+      now.getTime() < contest.endsAt.getTime(),
     windowClosed: contest.endsAt.getTime() <= now.getTime(),
   }));
 
   // Sorted on a copy: `Array.prototype.sort` mutates, and these rows are the query's, not ours.
-  // The sort is stable, so `startsAt desc` still decides ties inside a rank.
   return [...choices].sort((a, b) => {
-    const byClosed = Number(a.windowClosed) - Number(b.windowClosed);
-    if (byClosed !== 0) return byClosed;
+    const byWindow = Number(b.containsNow) - Number(a.containsNow);
+    if (byWindow !== 0) return byWindow;
 
     const byMine = Number(b.alreadyParticipant) - Number(a.alreadyParticipant);
     if (byMine !== 0) return byMine;
 
-    const byWindow = Number(b.containsNow) - Number(a.containsNow);
-    if (byWindow !== 0) return byWindow;
-
-    return (
+    const byState =
       STATE_PRIORITY[a.state as keyof typeof STATE_PRIORITY] -
-      STATE_PRIORITY[b.state as keyof typeof STATE_PRIORITY]
-    );
+      STATE_PRIORITY[b.state as keyof typeof STATE_PRIORITY];
+    if (byState !== 0) return byState;
+
+    // For live ties, prefer the event that started most recently. For future SCHEDULED ties,
+    // prefer the one that starts next rather than the furthest-away draft calendar entry.
+    return a.containsNow
+      ? b.startsAt.getTime() - a.startsAt.getTime()
+      : a.startsAt.getTime() - b.startsAt.getTime();
   });
 }
 
@@ -169,32 +178,88 @@ export async function contestsForUser(
 export async function ensureEnrolled(
   userId: string,
   displayName: string,
-  now: Date = new Date(),
+  now?: Date,
 ): Promise<Enrolment | null> {
-  const choices = await contestsForUser(userId, now);
+  const choiceNow = now ?? new Date();
+  const choices = await contestsForUser(userId, choiceNow);
   const best = choices[0];
   if (best === undefined) return null;
 
-  const existing = await prisma.participant.findFirst({
-    where: { contestId: best.contestId, userId },
-    select: { id: true },
-  });
-  if (existing !== null) {
-    return { contestId: best.contestId, participantId: existing.id, created: false };
-  }
+  const enrolment = await prisma.$transaction(async (tx) => {
+    // Freeze, lifecycle, roster and sign-in writes share one ordering point. In particular, a
+    // participant created after a freeze receives a joinedAt after its cutoff and remains hidden
+    // from the frozen public board until the reveal.
+    await lockContestMutations(tx, best.contestId);
+    const effectiveNow = now ?? new Date();
 
-  const created = await prisma.participant.create({
-    data: {
-      contestId: best.contestId,
-      userId,
-      displayName: await uniqueDisplayName(best.contestId, displayName),
-      // No team. The organizer assigns it from the roster, and that is the only place it happens.
-      teamId: null,
-    },
-    select: { id: true },
+    const [contest, existing] = await Promise.all([
+      tx.contest.findUnique({
+        where: { id: best.contestId },
+        select: { state: true, startsAt: true, endsAt: true },
+      }),
+      tx.participant.findUnique({
+        where: { contestId_userId: { contestId: best.contestId, userId } },
+        select: { id: true },
+      }),
+    ]);
+    if (existing !== null) {
+      return {
+        contestId: best.contestId,
+        participantId: existing.id,
+        created: false,
+      };
+    }
+
+    // The contest may have ended while this callback waited for the lock. Do not mint a new row
+    // into history after the choice query has gone stale.
+    const stillOpen =
+      contest !== null &&
+      contest.endsAt.getTime() > effectiveNow.getTime() &&
+      (contest.state === "SCHEDULED" ||
+        ((contest.state === "RUNNING" || contest.state === "FROZEN") &&
+          contest.startsAt.getTime() <= effectiveNow.getTime()));
+    if (!stillOpen) return null;
+
+    // Both the provider callback and a browser retry can reach this branch at once. The advisory
+    // lock serializes them; the database keys remain the final authority for retries from older
+    // processes during a rolling deploy.
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const displayNameForAttempt = await uniqueDisplayNameWith(
+        tx,
+        best.contestId,
+        displayName,
+      );
+      const inserted = await tx.participant.createMany({
+        data: [
+          {
+            contestId: best.contestId,
+            userId,
+            displayName: displayNameForAttempt,
+            // No team. The organizer assigns it from the roster, and that is the only place it happens.
+            teamId: null,
+          },
+        ],
+        skipDuplicates: true,
+      });
+      const enrolled = await tx.participant.findUnique({
+        where: { contestId_userId: { contestId: best.contestId, userId } },
+        select: { id: true },
+      });
+      if (enrolled !== null) {
+        return {
+          contestId: best.contestId,
+          participantId: enrolled.id,
+          created: inserted.count === 1,
+        };
+      }
+    }
+    throw new Error(
+      "Could not choose a unique participant name after repeated concurrent sign-ins",
+    );
   });
 
-  return { contestId: best.contestId, participantId: created.id, created: true };
+  if (enrolment?.created === true) invalidateScoringInput(enrolment.contestId);
+  return enrolment;
 }
 
 /**
@@ -211,10 +276,23 @@ export async function ensureEnrolled(
  * is ugly and visible, which is the point: an organizer renames them from the roster, and until
  * they do, the room can still tell the two apart.
  */
-export async function uniqueDisplayName(contestId: string, wanted: string): Promise<string> {
+export async function uniqueDisplayName(
+  contestId: string,
+  wanted: string,
+): Promise<string> {
+  return uniqueDisplayNameWith(prisma, contestId, wanted);
+}
+
+type ParticipantNameReader = Pick<Prisma.TransactionClient, "participant">;
+
+async function uniqueDisplayNameWith(
+  db: ParticipantNameReader,
+  contestId: string,
+  wanted: string,
+): Promise<string> {
   const base = wanted.trim().slice(0, 40) || "Competitor";
 
-  const taken = await prisma.participant.findMany({
+  const taken = await db.participant.findMany({
     where: { contestId, displayName: { startsWith: base } },
     select: { displayName: true },
   });

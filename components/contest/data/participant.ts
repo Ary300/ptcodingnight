@@ -34,8 +34,28 @@ import type { JoinResponse } from "./contract";
  */
 
 const STORAGE_KEY = "ptcn.participant";
+const SCOPE_STORAGE_KEY = "ptcn.participant-scope";
 /** Fired on write so two mounted components never disagree about who is joined. */
 const CHANGE_EVENT = "ptcn:participant-change";
+const PARTICIPANT_REQUEST_TIMEOUT_MS = 10_000;
+/** Newest-started session read owns the cache; a slower predecessor may never overwrite it. */
+let latestParticipantRequest = 0;
+/**
+ * Foreground consumers mount together in the competitor shell. Share their unsigned request so a
+ * failed session response reaches every consumer as the same error instead of making an older
+ * caller fall back to an empty cache and falsely render "not signed in". Background polling passes
+ * an AbortSignal and stays independent so unmounting it cannot cancel a page's foreground read.
+ */
+let sharedParticipantRequest: Promise<JoinResponse | null> | null = null;
+
+function participantFromNewerRequest(): JoinResponse {
+  const current = readParticipant();
+  if (current !== null) return current;
+
+  // Only a current, successful session response may establish anonymity. Returning null merely
+  // because a newer request exists turns an empty cache plus an HTTP failure into "signed out".
+  throw new Error("A newer sign-in check is still in progress.");
+}
 
 export function readParticipant(): JoinResponse | null {
   if (typeof window === "undefined") return null;
@@ -52,15 +72,26 @@ export function readParticipant(): JoinResponse | null {
   }
 }
 
-export function writeParticipant(participant: JoinResponse): void {
+function fallbackScopeKey(participant: JoinResponse): string {
+  return `${participant.participantId}:${participant.divisionId ?? "no-division"}:${participant.needsTeam ? "no-team" : "team"}:${participant.chosenSetId ?? "no-set"}`;
+}
+
+function readParticipantScope(participant: JoinResponse): string {
+  if (typeof window === "undefined") return fallbackScopeKey(participant);
+  return window.sessionStorage.getItem(SCOPE_STORAGE_KEY) ?? fallbackScopeKey(participant);
+}
+
+export function writeParticipant(participant: JoinResponse, scopeKey?: string): void {
   if (typeof window === "undefined") return;
   window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(participant));
+  window.sessionStorage.setItem(SCOPE_STORAGE_KEY, scopeKey ?? fallbackScopeKey(participant));
   window.dispatchEvent(new Event(CHANGE_EVENT));
 }
 
 export function clearParticipant(): void {
   if (typeof window === "undefined") return;
   window.sessionStorage.removeItem(STORAGE_KEY);
+  window.sessionStorage.removeItem(SCOPE_STORAGE_KEY);
   window.dispatchEvent(new Event(CHANGE_EVENT));
 }
 
@@ -70,56 +101,113 @@ export function clearParticipant(): void {
  * Exported because the data layer needs it too: `http-backend.ts` cannot call a contest-scoped
  * route without a contest id, and this is where that id comes from now.
  *
- * Returns null for anonymous AND for an organizer — an admin session is signed in but is not a
+ * Returns null for anonymous AND for an organizer. An admin session is signed in but is not a
  * competitor, and handing the competitor screens an identity with no `participantId` would swap
- * "you are not in this contest" for a crash.
+ * "you are not in this contest" for a crash. Network, HTTP, and schema failures throw so the UI
+ * cannot mislabel a server outage as a signed-out student.
  */
-export async function fetchParticipant(): Promise<JoinResponse | null> {
+async function fetchParticipantOnce(signal?: AbortSignal): Promise<JoinResponse | null> {
+  const request = ++latestParticipantRequest;
+  let response: Response;
   try {
-    const response = await fetch("/api/auth/session", { cache: "no-store" });
-    if (!response.ok) return null;
+    response = await fetch("/api/auth/session", { cache: "no-store", signal });
+  } catch (caught) {
+    if (request !== latestParticipantRequest) return participantFromNewerRequest();
+    if (signal?.aborted === true) throw caught;
+    throw new Error("Could not reach the contest server to check your sign-in.");
+  }
 
-    const body: unknown = await response.json();
-    const data =
-      typeof body === "object" && body !== null && "data" in body
-        ? (body as { data: unknown }).data
-        : null;
-    if (typeof data !== "object" || data === null) return null;
+  if (request !== latestParticipantRequest) return participantFromNewerRequest();
 
-    const session = data as Record<string, unknown>;
-    if (session.signedIn !== true || session.role !== "COMPETITOR") {
-      clearParticipant();
-      return null;
-    }
+  if (!response.ok) {
+    throw new Error("The contest server could not check your sign-in. Reload the page in a moment.");
+  }
 
-    // Built to the shape the rest of the client already consumes, and PARSED rather than cast —
-    // if the route stops sending a field this fails here instead of rendering `undefined` into a
-    // problem list.
-    const parsed = JoinResponseSchema.safeParse({
-      participantId: session.participantId,
-      contestId: session.contestId,
-      displayName: session.displayName,
-      divisionId: session.divisionId ?? null,
-      chosenSetId: session.chosenSetId ?? null,
-      chosenSetLabel: session.chosenSetLabel ?? null,
-      // Not a fact about this request. A session read is never "the moment you joined", and the
-      // banner that word drives would otherwise fire on every page load.
-      rejoined: true,
-      needsTeam: session.teamId === null || session.teamId === undefined,
-    });
-    if (!parsed.success) return null;
-
-    writeParticipant(parsed.data);
-    return parsed.data;
+  let body: unknown;
+  try {
+    body = await response.json();
   } catch {
+    if (request !== latestParticipantRequest) return participantFromNewerRequest();
+    throw new Error("The contest server sent an unreadable sign-in response.");
+  }
+
+  if (request !== latestParticipantRequest) return participantFromNewerRequest();
+
+  const data =
+    typeof body === "object" && body !== null && "data" in body
+      ? (body as { data: unknown }).data
+      : null;
+  if (typeof data !== "object" || data === null) {
+    throw new Error("The contest server sent an incomplete sign-in response.");
+  }
+
+  const session = data as Record<string, unknown>;
+  if (session.signedIn !== true || session.role !== "COMPETITOR") {
+    clearParticipant();
     return null;
   }
+
+  // Built to the shape the rest of the client already consumes, and PARSED rather than cast.
+  // If the route stops sending a field this fails here instead of rendering `undefined` into a
+  // problem list or falsely claiming that the student signed out.
+  const parsed = JoinResponseSchema.safeParse({
+    participantId: session.participantId,
+    contestId: session.contestId,
+    displayName: session.displayName,
+    divisionId: session.divisionId ?? null,
+    chosenSetId: session.chosenSetId ?? null,
+    chosenSetLabel: session.chosenSetLabel ?? null,
+    // Not a fact about this request. A session read is never "the moment you joined", and the
+    // banner that word drives would otherwise fire on every page load.
+    rejoined: true,
+    needsTeam: session.teamId === null || session.teamId === undefined,
+  });
+  if (!parsed.success) {
+    throw new Error("The contest server sent an incomplete competitor session.");
+  }
+
+  // Team identity is authorization scope for team detail and shared work. It is not part of the
+  // public JoinResponse contract, so retain it only in this private cache key. A move from Team A
+  // to Team B must invalidate resources even when division and chosen set happen to stay equal.
+  const teamId = typeof session.teamId === "string" ? session.teamId : "no-team";
+  writeParticipant(
+    parsed.data,
+    `${parsed.data.participantId}:${parsed.data.divisionId ?? "no-division"}:${teamId}:${parsed.data.chosenSetId ?? "no-set"}`,
+  );
+  return parsed.data;
+}
+
+export function fetchParticipant(signal?: AbortSignal): Promise<JoinResponse | null> {
+  // A background poll that happens to meet a foreground read joins it. Its controller does not
+  // own this request and therefore cannot cancel the page's read; the shared request has its own
+  // bound below, and the poll ignores the result after unmount.
+  if (sharedParticipantRequest !== null) return sharedParticipantRequest;
+  if (signal !== undefined) return fetchParticipantOnce(signal);
+
+  const controller = new AbortController();
+  const timeout = window.setTimeout(
+    () => controller.abort(),
+    PARTICIPANT_REQUEST_TIMEOUT_MS,
+  );
+  const request = fetchParticipantOnce(controller.signal).catch((caught: unknown) => {
+    if (controller.signal.aborted) {
+      throw new Error("Could not reach the contest server to check your sign-in.");
+    }
+    throw caught;
+  });
+  const shared = request.finally(() => {
+    window.clearTimeout(timeout);
+    if (sharedParticipantRequest === shared) sharedParticipantRequest = null;
+  });
+  sharedParticipantRequest = shared;
+  return shared;
 }
 
 export type ParticipantState =
   | { status: "loading"; participant: null }
+  | { status: "error"; participant: null; message: string }
   | { status: "anonymous"; participant: null }
-  | { status: "joined"; participant: JoinResponse };
+  | { status: "joined"; participant: JoinResponse; scopeKey: string };
 
 /**
  * Starts as `loading` on purpose. The server cannot know what is in `sessionStorage`, so
@@ -145,21 +233,33 @@ export function useParticipant(): ParticipantState {
       The cache still earns its place in `currentContestId()`, which is on the path of every read
       and cannot afford a round trip it does not need.
     */
-    void fetchParticipant().then((participant) => {
-      if (cancelled) return;
-      setState(
-        participant === null
-          ? { status: "anonymous", participant: null }
-          : { status: "joined", participant },
-      );
-    });
+    void fetchParticipant()
+      .then((participant) => {
+        if (cancelled) return;
+        setState(
+          participant === null
+            ? { status: "anonymous", participant: null }
+            : { status: "joined", participant, scopeKey: readParticipantScope(participant) },
+        );
+      })
+      .catch((caught: unknown) => {
+        if (cancelled) return;
+        setState({
+          status: "error",
+          participant: null,
+          message:
+            caught instanceof Error
+              ? caught.message
+              : "The contest server could not check your sign-in.",
+        });
+      });
 
     const sync = () => {
       const current = readParticipant();
       setState(
         current === null
           ? { status: "anonymous", participant: null }
-          : { status: "joined", participant: current },
+          : { status: "joined", participant: current, scopeKey: readParticipantScope(current) },
       );
     };
     window.addEventListener(CHANGE_EVENT, sync);

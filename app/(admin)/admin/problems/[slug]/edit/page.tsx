@@ -21,8 +21,9 @@ import { isDomainError } from "@/lib/errors";
  * between. Both refusals are knowable before a single field renders, so both are answered before
  * one does:
  *
- *  - **A contest is live on this question.** Its test data is what already-judged verdicts mean.
- *    `assertEditable` refuses the PATCH as well, because the screen is not the only door.
+ *  - **A contest is live on this question, or a submission already refers to it.** Its statement
+ *    and test data are historical facts. `assertEditable` refuses the PATCH as well, because the
+ *    screen is not the only door.
  *  - **A test case points at a file that cannot be read.** `loadAuthoredProblem` refuses rather
  *    than handing back an empty box, because an empty box beside a case that has real content is
  *    a screen that lies, and the first Save would make it true.
@@ -77,12 +78,30 @@ export default async function EditProblemPage({ params }: { params: Promise<{ sl
     );
   }
 
+  if (usage.submissionCount > 0) {
+    return (
+      <EditShell slug={slug} title={draft.title}>
+        <AlertPlate tone="alarm" title="This question already has submissions" live={false}>
+          <p>
+            {usage.submissionCount} submission{usage.submissionCount === 1 ? "" : "s"} refer to
+            this exact statement and test data. Editing it would rewrite that history. Create a new
+            question for the corrected version instead.
+          </p>
+          <p className="mt-tight">
+            <Link href="/admin/problems/new" className="underline underline-offset-4">
+              Create a new question
+            </Link>
+          </p>
+        </AlertPlate>
+      </EditShell>
+    );
+  }
+
   return (
     <EditShell slug={slug} title={draft.title}>
       <ProblemBuilder
         edit={{
           slug: draft.slug,
-          judgedSubmissionCount: usage.judgedSubmissionCount,
           initial: {
             title: draft.title,
             statementMd: draft.statementMd,
@@ -119,9 +138,14 @@ function EditShell({
           { label: "Edit" },
         ]}
       />
-      <h1 className="font-display font-bold" style={{ fontSize: "var(--text-xl)" }}>
-        Edit {title}
-      </h1>
+      <header>
+        <h1 className="font-display font-bold leading-tight" style={{ fontSize: "var(--text-xl)" }}>
+          Edit {title}
+        </h1>
+        <p className="mt-tight max-w-[70ch] text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
+          Update what students read and the cases used by the judge.
+        </p>
+      </header>
       {children}
     </div>
   );
@@ -132,9 +156,8 @@ function LockedByContest({ usage }: { usage: ProblemUsage }) {
     <>
       <AlertPlate tone="alarm" title="A contest is using this question right now" live={false}>
         <p>
-          Changing the statement or the test data would rewrite what verdicts the judge has already
-          written mean, and the board would keep showing scores derived from cases that no longer
-          exist. This question unlocks when the contest ends.
+          Editing this question now could make earlier results inconsistent with what students saw.
+          This question unlocks when the contest ends.
         </p>
         <ul className="mt-group list-disc pl-5">
           {usage.lockedBy.map((use) => (

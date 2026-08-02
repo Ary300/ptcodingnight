@@ -42,13 +42,27 @@ async function resizeToSquareWebp(file: File): Promise<Blob> {
   canvas.width = AVATAR_CANVAS_PX;
   canvas.height = AVATAR_CANVAS_PX;
   const ctx = canvas.getContext("2d");
-  if (ctx === null) throw new Error("Your browser could not process that image.");
-  ctx.drawImage(bitmap, sx, sy, side, side, 0, 0, AVATAR_CANVAS_PX, AVATAR_CANVAS_PX);
+  if (ctx === null)
+    throw new Error("Your browser could not process that image.");
+  ctx.drawImage(
+    bitmap,
+    sx,
+    sy,
+    side,
+    side,
+    0,
+    0,
+    AVATAR_CANVAS_PX,
+    AVATAR_CANVAS_PX,
+  );
   bitmap.close();
 
   return new Promise<Blob>((resolve, reject) => {
     canvas.toBlob(
-      (blob) => (blob === null ? reject(new Error("Could not read that image.")) : resolve(blob)),
+      (blob) =>
+        blob === null
+          ? reject(new Error("Could not read that image."))
+          : resolve(blob),
       "image/webp",
       0.9,
     );
@@ -128,7 +142,10 @@ export function SettingsView() {
           typeof body === "object" && body !== null && "error" in body
             ? (body as { error: { message?: string } }).error.message
             : undefined;
-        setNameFeedback({ kind: "error", text: message ?? "That name was not accepted." });
+        setNameFeedback({
+          kind: "error",
+          text: message ?? "That name was not accepted.",
+        });
         return;
       }
       const parsed = RenameAccountResponseSchema.safeParse(data);
@@ -137,14 +154,24 @@ export function SettingsView() {
         return;
       }
       setName(parsed.data.displayName);
+      setProfile((current) =>
+        current === null
+          ? current
+          : { ...current, displayName: parsed.data.displayName },
+      );
       setNameFeedback({
         kind: "ok",
-        text: parsed.data.adjustedOnABoard
-          ? "Saved. Someone in one of your contests already had this name, so the board shows yours with a number after it."
-          : "Saved. Your new name is live everywhere, including the leaderboard.",
+        text: parsed.data.preservedOnLockedBoards
+          ? "Saved for your account and open contests. Frozen and completed results keep the name you competed under."
+          : parsed.data.adjustedOnABoard
+            ? "Saved. Someone in one of your contests already had this name, so the board shows yours with a number after it."
+            : "Saved. Your new name is live on your account and current leaderboard.",
       });
     } catch {
-      setNameFeedback({ kind: "error", text: "We could not reach the server." });
+      setNameFeedback({
+        kind: "error",
+        text: "We could not reach the server.",
+      });
     } finally {
       setNameBusy(false);
     }
@@ -166,14 +193,20 @@ export function SettingsView() {
           typeof body === "object" && body !== null && "error" in body
             ? (body as { error: { message?: string } }).error.message
             : undefined;
-        setAvatarFeedback({ kind: "error", text: message ?? "That image was not accepted." });
+        setAvatarFeedback({
+          kind: "error",
+          text: message ?? "That image was not accepted.",
+        });
         return;
       }
       const updatedAt =
         typeof body === "object" && body !== null && "data" in body
-          ? (body as { data: { avatarUpdatedAt?: unknown } }).data.avatarUpdatedAt
+          ? (body as { data: { avatarUpdatedAt?: unknown } }).data
+              .avatarUpdatedAt
           : null;
-      setAvatarVersion(typeof updatedAt === "string" ? updatedAt : String(Date.now()));
+      setAvatarVersion(
+        typeof updatedAt === "string" ? updatedAt : String(Date.now()),
+      );
       setAvatarFeedback({ kind: "ok", text: "Your picture is updated." });
     } catch {
       setAvatarFeedback({
@@ -192,13 +225,19 @@ export function SettingsView() {
     try {
       const response = await fetch(API_ROUTES.myAvatar, { method: "DELETE" });
       if (!response.ok) {
-        setAvatarFeedback({ kind: "error", text: "We could not remove your picture." });
+        setAvatarFeedback({
+          kind: "error",
+          text: "We could not remove your picture.",
+        });
         return;
       }
       setAvatarVersion(null);
       setAvatarFeedback({ kind: "ok", text: "Your picture is removed." });
     } catch {
-      setAvatarFeedback({ kind: "error", text: "We could not reach the server." });
+      setAvatarFeedback({
+        kind: "error",
+        text: "We could not reach the server.",
+      });
     } finally {
       setAvatarBusy(false);
     }
@@ -207,10 +246,17 @@ export function SettingsView() {
   if (loadError !== null) {
     return (
       <div className="max-w-md">
-        <h1 className="font-display font-bold" style={{ fontSize: "var(--text-lg)" }}>
+        <h1
+          className="font-display font-bold"
+          style={{ fontSize: "var(--text-lg)" }}
+        >
           Settings
         </h1>
-        <p role="alert" className="mt-3 text-panther" style={{ fontSize: "var(--text-sm)" }}>
+        <p
+          role="alert"
+          className="mt-3 text-panther"
+          style={{ fontSize: "var(--text-sm)" }}
+        >
           {loadError}
         </p>
         <Link
@@ -229,8 +275,16 @@ export function SettingsView() {
 
   return (
     <div className="mx-auto max-w-2xl">
-      <Crumbs trail={[{ href: "/contest", label: "Coding Night" }, { label: "Settings" }]} />
-      <h1 className="mt-2 font-display font-bold" style={{ fontSize: "var(--text-xl)" }}>
+      <Crumbs
+        trail={[
+          { href: "/contest", label: "Coding Night" },
+          { label: "Settings" },
+        ]}
+      />
+      <h1
+        className="mt-2 font-display font-bold"
+        style={{ fontSize: "var(--text-xl)" }}
+      >
         Settings
       </h1>
       <p className="mt-1 text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
@@ -239,7 +293,10 @@ export function SettingsView() {
 
       {/* --- Profile picture ------------------------------------------------ */}
       <section className="mt-8 rounded border border-rule-edge bg-paper p-5">
-        <h2 className="font-display font-bold" style={{ fontSize: "var(--text-md)" }}>
+        <h2
+          className="font-display font-bold"
+          style={{ fontSize: "var(--text-md)" }}
+        >
           Profile picture
         </h2>
         <div className="mt-4 flex flex-wrap items-center gap-5">
@@ -269,7 +326,11 @@ export function SettingsView() {
                 disabled={avatarBusy}
                 onClick={() => fileInput.current?.click()}
               >
-                {avatarBusy ? "Working…" : hasAvatar ? "Change picture" : "Upload a picture"}
+                {avatarBusy
+                  ? "Working…"
+                  : hasAvatar
+                    ? "Change picture"
+                    : "Upload a picture"}
               </Button>
               {hasAvatar && (
                 <Button
@@ -284,7 +345,8 @@ export function SettingsView() {
               )}
             </div>
             <p className="text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
-              PNG, JPEG or WebP. It is cropped to a square and shrunk before it leaves your device.
+              PNG, JPEG or WebP. It is cropped to a square and shrunk before it
+              leaves your device.
             </p>
             <input
               ref={fileInput}
@@ -301,7 +363,11 @@ export function SettingsView() {
         {avatarFeedback !== null && (
           <p
             role={avatarFeedback.kind === "error" ? "alert" : "status"}
-            className={avatarFeedback.kind === "error" ? "mt-3 text-panther" : "mt-3 text-ink/75"}
+            className={
+              avatarFeedback.kind === "error"
+                ? "mt-3 text-panther"
+                : "mt-3 text-ink/75"
+            }
             style={{ fontSize: "var(--text-xs)" }}
           >
             {avatarFeedback.text}
@@ -311,7 +377,10 @@ export function SettingsView() {
 
       {/* --- Display name --------------------------------------------------- */}
       <section className="mt-6 rounded border border-rule-edge bg-paper p-5">
-        <h2 className="font-display font-bold" style={{ fontSize: "var(--text-md)" }}>
+        <h2
+          className="font-display font-bold"
+          style={{ fontSize: "var(--text-md)" }}
+        >
           Display name
         </h2>
         <label
@@ -333,7 +402,11 @@ export function SettingsView() {
           />
           <Button
             type="button"
-            disabled={nameBusy || name.trim() === "" || name.trim() === profile?.displayName}
+            disabled={
+              nameBusy ||
+              name.trim() === "" ||
+              name.trim() === profile?.displayName
+            }
             onClick={() => void saveName()}
           >
             {nameBusy ? "Saving…" : "Save"}
@@ -342,7 +415,11 @@ export function SettingsView() {
         {nameFeedback !== null && (
           <p
             role={nameFeedback.kind === "error" ? "alert" : "status"}
-            className={nameFeedback.kind === "error" ? "mt-3 text-panther" : "mt-3 text-ink/75"}
+            className={
+              nameFeedback.kind === "error"
+                ? "mt-3 text-panther"
+                : "mt-3 text-ink/75"
+            }
             style={{ fontSize: "var(--text-xs)" }}
           >
             {nameFeedback.text}
@@ -351,30 +428,41 @@ export function SettingsView() {
       </section>
 
       {/* --- Account facts (read-only) -------------------------------------- */}
-      {profile !== null && (profile.email !== null || profile.gradYear !== null) && (
-        <section className="mt-6 rounded border border-rule-edge bg-paper p-5">
-          <h2 className="font-display font-bold" style={{ fontSize: "var(--text-md)" }}>
-            Account
-          </h2>
-          <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5" style={{ fontSize: "var(--text-sm)" }}>
-            {profile.email !== null && (
-              <>
-                <dt className="text-ink/60">Email</dt>
-                <dd className="numeric">{profile.email}</dd>
-              </>
-            )}
-            {profile.gradYear !== null && (
-              <>
-                <dt className="text-ink/60">Class of</dt>
-                <dd className="numeric">{profile.gradYear}</dd>
-              </>
-            )}
-          </dl>
-          <p className="mt-3 text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
-            Your email comes from the account you signed in with and cannot be changed here.
-          </p>
-        </section>
-      )}
+      {profile !== null &&
+        (profile.email !== null || profile.gradYear !== null) && (
+          <section className="mt-6 rounded border border-rule-edge bg-paper p-5">
+            <h2
+              className="font-display font-bold"
+              style={{ fontSize: "var(--text-md)" }}
+            >
+              Account
+            </h2>
+            <dl
+              className="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5"
+              style={{ fontSize: "var(--text-sm)" }}
+            >
+              {profile.email !== null && (
+                <>
+                  <dt className="text-ink/60">Email</dt>
+                  <dd className="numeric">{profile.email}</dd>
+                </>
+              )}
+              {profile.gradYear !== null && (
+                <>
+                  <dt className="text-ink/60">Class of</dt>
+                  <dd className="numeric">{profile.gradYear}</dd>
+                </>
+              )}
+            </dl>
+            <p
+              className="mt-3 text-ink/60"
+              style={{ fontSize: "var(--text-xs)" }}
+            >
+              Your email comes from the account you signed in with and cannot be
+              changed here.
+            </p>
+          </section>
+        )}
     </div>
   );
 }

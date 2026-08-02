@@ -21,7 +21,10 @@ import Image from "next/image";
  */
 export function BrandPanel({ children }: { children?: React.ReactNode }) {
   return (
-    <div className="relative hidden flex-col justify-between overflow-hidden bg-ink px-10 pt-10 pb-14 text-paper lg:flex">
+    <aside
+      aria-label="Coding Night welcome"
+      className="relative hidden flex-col justify-between overflow-hidden bg-ink px-10 pt-10 pb-14 text-paper lg:flex"
+    >
       {/*
         The panther, oversized and bled off the corner at low opacity. HackerRank uses a dark
         globe photograph here; we have one brand image and no photograph, so the mark itself
@@ -51,6 +54,6 @@ export function BrandPanel({ children }: { children?: React.ReactNode }) {
       {/* A measure on the copy. Set across a half-screen panel it runs to ~90 characters, which
           is well past the 45-75 DESIGN.md §4 asks for and reads as a caption stretched to fit. */}
       <div className="relative max-w-md">{children}</div>
-    </div>
+    </aside>
   );
 }

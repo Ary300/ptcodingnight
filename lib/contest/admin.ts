@@ -7,6 +7,7 @@ import { prisma } from "@/lib/db";
 import type { SubmissionView } from "@/lib/schemas/api";
 import type { Verdict } from "@/lib/schemas/judge";
 import { AUDIT_ACTIONS, writeAudit } from "@/lib/contest/audit";
+import { lockContestMutations } from "@/lib/contest/locks";
 import { standingsToCsv, exportFilename } from "@/lib/contest/csv";
 import { rankSnapshots } from "@/lib/contest/delta";
 import { adminPasscode } from "@/lib/contest/env";
@@ -15,6 +16,7 @@ import { getStandings, invalidateScoringInput } from "@/lib/contest/standings";
 import { hostLimits } from "@/lib/contest/host";
 import { buildJudgeJob } from "@/lib/contest/judge-job";
 import { enqueueJudgeJob, removeJob } from "@/lib/contest/queue";
+import { preserveCurrentScoreRevision } from "@/lib/contest/score-revisions";
 import { getSubmissionView } from "@/lib/contest/submissions";
 import type { AdminViewer, Viewer } from "@/lib/contest/viewer";
 
@@ -47,7 +49,10 @@ export async function authenticateAdmin(input: AdminLogin): Promise<void> {
 
   const expected = adminPasscode();
   if (expected === null) {
-    throw new DomainError("UNAUTHORIZED", "Organizer sign-in is not configured on this server");
+    throw new DomainError(
+      "UNAUTHORIZED",
+      "Organizer sign-in is not configured on this server",
+    );
   }
 
   const a = Buffer.from(input.passcode, "utf8");
@@ -69,6 +74,10 @@ export interface FreezeResult {
   readonly freezeAt: string | null;
 }
 
+type Clock = () => Date;
+
+const systemClock: Clock = () => new Date();
+
 /**
  * Freeze and unfreeze the public board.
  *
@@ -81,51 +90,117 @@ export async function setFrozen(
   contestId: string,
   frozen: boolean,
   admin: AdminViewer,
-  now: Date,
+  clock: Clock = systemClock,
 ): Promise<FreezeResult> {
-  const contest = await prisma.contest.findUnique({
-    where: { id: contestId },
-    select: { id: true, state: true, endsAt: true, freezeAt: true },
-  });
-  if (contest === null) throw new NotFoundError("Contest");
+  const result = await prisma.$transaction(async (tx) => {
+    await lockContestMutations(tx, contestId);
+    // The cutoff belongs to the serialized mutation, not to the HTTP request that may have
+    // waited for another score write. Taking the time before this lock lets an older request
+    // commit after a newer freeze while still claiming to predate it.
+    const now = clock();
 
-  if (frozen && contest.state !== "RUNNING" && contest.state !== "FROZEN") {
-    throw new DomainError("CONTEST_NOT_RUNNING", "Only a running contest can be frozen");
-  }
+    const contest = await tx.contest.findUnique({
+      where: { id: contestId },
+      select: { id: true, state: true, endsAt: true, freezeAt: true },
+    });
+    if (contest === null) throw new NotFoundError("Contest");
 
-  const nextState = frozen ? "FROZEN" : now.getTime() >= contest.endsAt.getTime() ? "ENDED" : "RUNNING";
-  const nextFreezeAt = frozen ? now : null;
+    const scheduledFreezeIsActive =
+      contest.state === "RUNNING" &&
+      contest.freezeAt !== null &&
+      now.getTime() >= contest.freezeAt.getTime();
 
-  const updated = await prisma.contest.update({
-    where: { id: contestId },
-    data: { state: nextState, freezeAt: nextFreezeAt },
-    select: { id: true, state: true, freezeAt: true },
-  });
+    if (frozen) {
+      if (contest.state !== "RUNNING" && contest.state !== "FROZEN") {
+        throw new DomainError(
+          "CONTEST_NOT_RUNNING",
+          "Only a running contest can be frozen",
+        );
+      }
 
-  await writeAudit({
-    actor: `admin:${admin.sessionId}`,
-    action: frozen ? AUDIT_ACTIONS.contestFreeze : AUDIT_ACTIONS.contestUnfreeze,
-    entity: `Contest:${contestId}`,
-    before: {
-      state: contest.state,
-      freezeAt: contest.freezeAt === null ? null : contest.freezeAt.toISOString(),
-    },
-    after: {
+      // HTTP retries and double-clicks must not move the cutoff forward. Once the board is
+      // frozen, the original instant is the fact every public replay is computed against.
+      if (contest.state === "FROZEN") {
+        return {
+          contestId,
+          state: contest.state,
+          frozen: true,
+          freezeAt: contest.freezeAt?.toISOString() ?? null,
+        };
+      }
+    } else {
+      // Unfreeze is the inverse of freeze, not a second route into RUNNING. Previously a crafted
+      // false request changed DRAFT or SCHEDULED straight to RUNNING and skipped every start gate.
+      if (contest.state === "RUNNING" && contest.freezeAt === null) {
+        return {
+          contestId,
+          state: contest.state,
+          frozen: false,
+          freezeAt: null,
+        };
+      }
+      if (contest.state !== "FROZEN" && !scheduledFreezeIsActive) {
+        throw new DomainError(
+          "CONTEST_NOT_RUNNING",
+          "Only a frozen contest can be unfrozen",
+        );
+      }
+    }
+
+    const nextState = frozen
+      ? "FROZEN"
+      : now.getTime() >= contest.endsAt.getTime()
+        ? "ENDED"
+        : "RUNNING";
+    // A scheduled freeze may already be active while state is still RUNNING. Materialising that
+    // state must retain the configured cutoff rather than reveal everything before this click.
+    const nextFreezeAt = frozen
+      ? scheduledFreezeIsActive
+        ? contest.freezeAt
+        : now
+      : null;
+
+    const updated = await tx.contest.update({
+      where: { id: contestId },
+      data: { state: nextState, freezeAt: nextFreezeAt },
+      select: { state: true, freezeAt: true },
+    });
+
+    await writeAudit(
+      {
+        actor: `admin:${admin.sessionId}`,
+        action: frozen
+          ? AUDIT_ACTIONS.contestFreeze
+          : AUDIT_ACTIONS.contestUnfreeze,
+        entity: `Contest:${contestId}`,
+        before: {
+          state: contest.state,
+          freezeAt:
+            contest.freezeAt === null ? null : contest.freezeAt.toISOString(),
+        },
+        after: {
+          state: updated.state,
+          freezeAt:
+            updated.freezeAt === null ? null : updated.freezeAt.toISOString(),
+        },
+      },
+      tx,
+    );
+
+    return {
+      contestId,
       state: updated.state,
-      freezeAt: updated.freezeAt === null ? null : updated.freezeAt.toISOString(),
-    },
+      frozen,
+      freezeAt:
+        updated.freezeAt === null ? null : updated.freezeAt.toISOString(),
+    };
   });
 
   invalidateScoringInput(contestId);
   // Drop the movement baseline so the unfreeze reveals real movement rather than a flat board.
   rankSnapshots.forget(`${contestId}:`);
 
-  return {
-    contestId,
-    state: updated.state,
-    frozen,
-    freezeAt: updated.freezeAt === null ? null : updated.freezeAt.toISOString(),
-  };
+  return result;
 }
 
 export interface OverrideInput {
@@ -145,55 +220,75 @@ export interface OverrideInput {
 export async function overrideVerdict(
   input: OverrideInput,
   admin: AdminViewer,
-  now: Date,
+  viewNow: Date,
+  clock: Clock = systemClock,
 ): Promise<SubmissionView> {
-  const before = await prisma.submission.findUnique({
+  // ContestProblem never moves between contests. Resolve that immutable owner before opening the
+  // transaction so the contest lock is the first mutable operation inside it.
+  const owner = await prisma.submission.findUnique({
     where: { id: input.submissionId },
-    select: {
-      id: true,
-      verdict: true,
-      score: true,
-      judgedAt: true,
-      contestProblem: { select: { contestId: true } },
-    },
+    select: { contestProblem: { select: { contestId: true } } },
   });
-  if (before === null) throw new NotFoundError("Submission");
+  if (owner === null) throw new NotFoundError("Submission");
+  const contestId = owner.contestProblem.contestId;
 
-  /*
-    `judgedAt` IS NOT TOUCHED. An override is not a judge run.
+  await prisma.$transaction(async (tx) => {
+    await lockContestMutations(tx, contestId);
+    const effectiveAt = clock();
 
-    This used to write `judgedAt: now`, which destroyed the only record of when the judge actually
-    ran — and unlike the verdict and the score, that value was not captured anywhere else, so it
-    was gone. The audit row below carries the before and after of everything this changes, which
-    is what makes an override recoverable; `judgedAt` was the one field that fell outside it, and
-    the fix is to stop changing it rather than to log it as well.
-  */
-  await prisma.submission.update({
-    where: { id: input.submissionId },
-    // `effectiveAt: now`, `judgedAt` untouched. The override IS the current answer as of now —
-    // which is what keeps it off a board that is already frozen — while the judge's own timestamp
-    // survives so "what did the judge say, and when" stays answerable.
-    data: { verdict: input.verdict, score: input.score, effectiveAt: now },
+    const before = await tx.submission.findUnique({
+      where: { id: input.submissionId },
+      select: {
+        id: true,
+        verdict: true,
+        score: true,
+        judgedAt: true,
+        effectiveAt: true,
+        submittedAt: true,
+      },
+    });
+    if (before === null) throw new NotFoundError("Submission");
+
+    /*
+      `judgedAt` IS NOT TOUCHED. An override is not a judge run. `Submission` remains the current
+      answer, while the appended revision preserves both this answer and every answer before it for
+      an as-of freeze replay.
+    */
+    await preserveCurrentScoreRevision(tx, before);
+    await tx.submission.update({
+      where: { id: input.submissionId },
+      data: { verdict: input.verdict, score: input.score, effectiveAt },
+    });
+    await tx.submissionScoreRevision.create({
+      data: {
+        submissionId: input.submissionId,
+        verdict: input.verdict,
+        score: input.score,
+        effectiveAt,
+      },
+    });
+
+    await writeAudit(
+      {
+        actor: `admin:${admin.sessionId}`,
+        action: AUDIT_ACTIONS.verdictOverride,
+        entity: `Submission:${input.submissionId}`,
+        before: {
+          verdict: before.verdict,
+          score: before.score,
+          judgedAt:
+            before.judgedAt === null ? null : before.judgedAt.toISOString(),
+        },
+        after: { verdict: input.verdict, score: input.score },
+        reason: input.reason,
+      },
+      tx,
+    );
   });
 
-  await writeAudit({
-    actor: `admin:${admin.sessionId}`,
-    action: AUDIT_ACTIONS.verdictOverride,
-    entity: `Submission:${input.submissionId}`,
-    // The judge's own timestamp travels with the before-values, so "what did the judge say, and
-    // when" survives every override regardless of how many follow it.
-    before: {
-      verdict: before.verdict,
-      score: before.score,
-      judgedAt: before.judgedAt === null ? null : before.judgedAt.toISOString(),
-    },
-    after: { verdict: input.verdict, score: input.score },
-    reason: input.reason,
-  });
+  invalidateScoringInput(contestId);
 
-  invalidateScoringInput(before.contestProblem.contestId);
-
-  return getSubmissionView(input.submissionId, admin, now);
+  return getSubmissionView(input.submissionId, admin, viewNow);
 }
 
 export interface StandingsExport {
@@ -228,7 +323,6 @@ export async function exportStandings(
     filename: exportFilename(contest.name, standings.asOf),
   };
 }
-
 
 /**
  * Put a submission back through the judge.
@@ -267,7 +361,8 @@ export async function rejudgeSubmission(
   submissionId: string,
   reason: string,
   admin: AdminViewer,
-  now: Date,
+  viewNow: Date,
+  clock: Clock = systemClock,
 ): Promise<SubmissionView> {
   const submission = await prisma.submission.findUnique({
     where: { id: submissionId },
@@ -275,8 +370,6 @@ export async function rejudgeSubmission(
       id: true,
       language: true,
       sourceCode: true,
-      verdict: true,
-      score: true,
       contestProblem: {
         select: {
           contestId: true,
@@ -313,27 +406,50 @@ export async function rejudgeSubmission(
     host: hostLimits(),
   });
 
-  await writeAudit({
-    actor: `admin:${admin.sessionId}`,
-    action: AUDIT_ACTIONS.submissionRejudge,
-    entity: `Submission:${submissionId}`,
-    before: { verdict: submission.verdict, score: submission.score },
-    after: { verdict: null, score: 0 },
-    reason,
-  });
+  await prisma.$transaction(async (tx) => {
+    await lockContestMutations(tx, submission.contestProblem.contestId);
+    const effectiveAt = clock();
+    const before = await tx.submission.findUnique({
+      where: { id: submissionId },
+      select: {
+        id: true,
+        verdict: true,
+        score: true,
+        effectiveAt: true,
+        judgedAt: true,
+        submittedAt: true,
+      },
+    });
+    if (before === null) throw new NotFoundError("Submission");
 
-  await prisma.submission.update({
-    where: { id: submissionId },
-    data: {
-      verdict: null,
-      score: 0,
-      runtimeMs: null,
-      memoryKb: null,
-      judgedAt: null,
-      // Cleared with the verdict: until the judge answers again there IS no current answer, and a
-      // stale effectiveAt would keep the old score on a frozen board.
-      effectiveAt: null,
-    },
+    await preserveCurrentScoreRevision(tx, before);
+    await tx.submission.update({
+      where: { id: submissionId },
+      data: {
+        verdict: null,
+        score: 0,
+        runtimeMs: null,
+        memoryKb: null,
+        judgedAt: null,
+        effectiveAt: null,
+      },
+    });
+    // A null revision is a temporal tombstone. Live standings stop using the old answer, while a
+    // frozen cutoff before `effectiveAt` still selects the preceding non-null revision.
+    await tx.submissionScoreRevision.create({
+      data: { submissionId, verdict: null, score: 0, effectiveAt },
+    });
+    await writeAudit(
+      {
+        actor: `admin:${admin.sessionId}`,
+        action: AUDIT_ACTIONS.submissionRejudge,
+        entity: `Submission:${submissionId}`,
+        before: { verdict: before.verdict, score: before.score },
+        after: { verdict: null, score: 0 },
+        reason,
+      },
+      tx,
+    );
   });
 
   await removeJob(submissionId);
@@ -341,5 +457,5 @@ export async function rejudgeSubmission(
 
   invalidateScoringInput(submission.contestProblem.contestId);
 
-  return getSubmissionView(submissionId, admin, now);
+  return getSubmissionView(submissionId, admin, viewNow);
 }

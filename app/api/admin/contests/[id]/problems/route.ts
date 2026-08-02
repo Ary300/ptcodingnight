@@ -1,7 +1,6 @@
 import type { NextResponse } from "next/server";
 
 import { SetContestProblemsRequestSchema, SetContestProblemsResponseSchema } from "@/lib/schemas/api";
-import { AUDIT_ACTIONS, writeAudit } from "@/lib/contest/audit";
 import { setContestProblems } from "@/lib/contest/contests";
 import {
   ContestIdParamsSchema,
@@ -45,13 +44,8 @@ export async function PUT(
     const admin = requireAdmin(await viewerFromRequest(request, new Date()));
     const input = await readJson(request, SetContestProblemsRequestSchema);
 
-    const result = await setContestProblems(id, input.problems);
-
-    await writeAudit({
+    const result = await setContestProblems(id, input.problems, {
       actor: `admin:${admin.sessionId}`,
-      action: AUDIT_ACTIONS.contestProblemsSet,
-      entity: `Contest:${id}`,
-      after: { count: result.count, slots: input.problems.map((p) => p.slotLabel).join(", ") },
       reason: input.reason,
     });
 

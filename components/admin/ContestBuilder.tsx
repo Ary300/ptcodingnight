@@ -94,7 +94,10 @@ export function ContestBuilder({ initial = EMPTY_DRAFT }: ContestBuilderProps) {
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
-  const update = <K extends keyof ContestDraft>(key: K, value: ContestDraft[K]): void => {
+  const update = <K extends keyof ContestDraft>(
+    key: K,
+    value: ContestDraft[K],
+  ): void => {
     setDraft((previous) => ({ ...previous, [key]: value }));
   };
 
@@ -145,7 +148,10 @@ export function ContestBuilder({ initial = EMPTY_DRAFT }: ContestBuilderProps) {
           name: draft.name,
           startsAt: new Date(draft.startsAtLocal).toISOString(),
           endsAt: new Date(draft.endsAtLocal).toISOString(),
-          freezeAt: draft.freezeAtLocal === "" ? null : new Date(draft.freezeAtLocal).toISOString(),
+          freezeAt:
+            draft.freezeAtLocal === ""
+              ? null
+              : new Date(draft.freezeAtLocal).toISOString(),
           scoringPresetId: draft.scoringPresetId,
           divisions: draft.divisions.map((d) => d.name),
         }),
@@ -155,9 +161,13 @@ export function ContestBuilder({ initial = EMPTY_DRAFT }: ContestBuilderProps) {
       if (!response.ok) {
         const message =
           typeof body === "object" && body !== null && "error" in body
-            ? String((body as { error: { message?: unknown } }).error.message ?? "")
+            ? String(
+                (body as { error: { message?: unknown } }).error.message ?? "",
+              )
             : "";
-        setFormError(message === "" ? "That contest could not be created." : message);
+        setFormError(
+          message === "" ? "That contest could not be created." : message,
+        );
         setBusy(false);
         return;
       }
@@ -198,7 +208,7 @@ export function ContestBuilder({ initial = EMPTY_DRAFT }: ContestBuilderProps) {
       <Panel
         level="bare"
         title="Contest details"
-        description="The window, the preset and the freeze are what nobody wants to be deciding at 6:55pm. Set them now. A contest is created as a DRAFT, and students cannot see it until you publish it."
+        description="Set the contest schedule and scoring. New contests stay private until you publish them."
       >
         <div className="flex flex-col gap-group">
           <TextInput
@@ -218,7 +228,7 @@ export function ContestBuilder({ initial = EMPTY_DRAFT }: ContestBuilderProps) {
             numeric
             value={draft.startsAtLocal}
             error={errors["startsAtLocal"] ?? null}
-            hint="Your local time. The server stores the instant, so a UTC host cannot shift it."
+            hint="Enter the start in your local time zone."
             onChange={(e) => update("startsAtLocal", e.target.value)}
           />
 
@@ -249,7 +259,9 @@ export function ContestBuilder({ initial = EMPTY_DRAFT }: ContestBuilderProps) {
             value={draft.scoringPresetId}
             error={errors["scoringPresetId"] ?? null}
             hint={preset?.summary}
-            onChange={(e) => update("scoringPresetId", toPresetId(e.target.value))}
+            onChange={(e) =>
+              update("scoringPresetId", toPresetId(e.target.value))
+            }
           >
             {SCORING_PRESETS.map((p) => (
               <option key={p.id} value={p.id}>
@@ -276,16 +288,23 @@ export function ContestBuilder({ initial = EMPTY_DRAFT }: ContestBuilderProps) {
         level="bare"
         className="border-t border-rule-edge pt-6"
         title="Divisions"
-        description="Divisions rank independently: there is an Intermediate winner and an Advanced winner (PRD §6.1)."
+        description="Each division has its own standings and winner."
         aside={
-          <span className="numeric opacity-70" style={{ fontSize: "var(--text-xs)" }}>
-            {draft.divisions.length} division{draft.divisions.length === 1 ? "" : "s"}
+          <span
+            className="numeric opacity-70"
+            style={{ fontSize: "var(--text-xs)" }}
+          >
+            {draft.divisions.length} division
+            {draft.divisions.length === 1 ? "" : "s"}
           </span>
         }
       >
         <ul className="flex flex-col gap-3">
           {draft.divisions.map((division, index) => (
-            <li key={division.key} className="rounded-panel border border-rule-edge bg-paper p-4">
+            <li
+              key={division.key}
+              className="rounded-panel border border-rule-edge bg-paper p-4"
+            >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
                   {/*
@@ -299,7 +318,9 @@ export function ContestBuilder({ initial = EMPTY_DRAFT }: ContestBuilderProps) {
                     value={division.name}
                     maxLength={40}
                     error={errors[`divisions.${index}.name`] ?? null}
-                    onChange={(e) => renameDivision(division.key, e.target.value)}
+                    onChange={(e) =>
+                      renameDivision(division.key, e.target.value)
+                    }
                   />
                 </div>
                 {/*
@@ -321,7 +342,11 @@ export function ContestBuilder({ initial = EMPTY_DRAFT }: ContestBuilderProps) {
         </ul>
 
         {divisionError !== undefined && (
-          <p role="alert" className="mt-3 font-semibold text-panther" style={{ fontSize: "var(--text-xs)" }}>
+          <p
+            role="alert"
+            className="mt-3 font-semibold text-panther"
+            style={{ fontSize: "var(--text-xs)" }}
+          >
             {divisionError}
           </p>
         )}
@@ -343,22 +368,34 @@ export function ContestBuilder({ initial = EMPTY_DRAFT }: ContestBuilderProps) {
       */}
       <div className="flex flex-col gap-3 border-t border-rule-edge pt-4">
         {errorCount > 0 && (
-          <p role="alert" className="font-semibold text-panther" style={{ fontSize: "var(--text-sm)" }}>
+          <p
+            role="alert"
+            className="font-semibold text-panther"
+            style={{ fontSize: "var(--text-sm)" }}
+          >
             This contest will not save yet: fix the {errorCount} marked field
             {errorCount === 1 ? "" : "s"} above.
           </p>
         )}
 
         {formError !== null && (
-          <p role="alert" className="font-semibold text-panther" style={{ fontSize: "var(--text-sm)" }}>
+          <p
+            role="alert"
+            className="font-semibold text-panther"
+            style={{ fontSize: "var(--text-sm)" }}
+          >
             {formError}
           </p>
         )}
 
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="max-w-[60ch] text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
-            Created as a <strong>DRAFT</strong>. Students cannot see it. You will land on the
-            contest, with its problems, roster and side activities as tabs.
+          <p
+            className="max-w-[60ch] text-ink/70"
+            style={{ fontSize: "var(--text-sm)" }}
+          >
+            Created as a <strong>DRAFT</strong>. Students cannot see it. You
+            will land on the contest, with its problems, roster and side
+            activities as tabs.
           </p>
 
           <Button type="submit" disabled={busy}>

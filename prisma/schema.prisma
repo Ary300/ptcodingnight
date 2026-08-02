@@ -557,10 +557,17 @@ model TestCase {
 /// used in both divisions at different difficulties lives as two rows over one Problem
 /// (docs/DECISIONS.md D2).
 model ContestProblem {
-  id         String    @id @default(cuid())
+  id         String       @id @default(cuid())
   contestId  String
   problemId  String
   divisionId String?
+  /// Whether this problem is worked by one assigned player or by the whole team in this contest.
+  ///
+  /// This belongs on the contest join rather than only on `Problem`: the same authored question
+  /// may be an individual set question one night and a shared group question another night. Using
+  /// the bank row made the organizer's Group selector cosmetic and could count one group answer
+  /// once per teammate.
+  round      ProblemRound @default(INDIVIDUAL)
   /// Which Round 1 set this problem belongs to. Null for a GROUP problem, which every team
   /// works regardless of set.
   setId      String?
@@ -625,6 +632,9 @@ model Participant {
   sessions    Session[]
 
   @@unique([contestId, displayName])
+  /// One signed-in account is one competitor in a contest, even if two callback requests race.
+  /// Postgres permits multiple NULL userIds, so join-code/fallback participants remain valid.
+  @@unique([contestId, userId])
   @@index([contestId])
   @@index([divisionId])
   @@index([teamId])
@@ -641,12 +651,10 @@ model Participant {
 /// It is append-only for the JUDGE: nothing in the judging path ever rewrites a row, and
 /// `reconcile` only writes to a submission that is still unjudged (or holds a transient `IE`).
 ///
-/// It is NOT append-only for an ORGANIZER OVERRIDE, and this comment used to claim otherwise —
-/// "never mutate a row here to correct a score" — while `overrideVerdict` did exactly that. The
-/// comment was the thing that was wrong. An override writes `verdict` and `score` in place so
-/// that scoring has one value to read, and the previous values — including the judge's own
-/// `judgedAt` — are preserved in the `AuditLog` row that every override is required to write.
-/// `judgedAt` itself is never overwritten: an override is not a judge run.
+/// The current verdict remains here for ordinary reads, but every change also appends a
+/// `SubmissionScoreRevision`. That temporal log is what lets a frozen board recover the verdict
+/// that was current at its cutoff after an organizer overrides or rejudges this row later.
+/// `judgedAt` itself is never overwritten by an override: an override is not a judge run.
 ///
 /// The consequence to know: after an override, `testResults` still describes the JUDGE's run and
 /// will disagree with `verdict`. That is the honest state of affairs — the tests really did do
@@ -683,12 +691,32 @@ model Submission {
 
   participant    Participant    @relation(fields: [participantId], references: [id], onDelete: Cascade)
   contestProblem ContestProblem @relation(fields: [contestProblemId], references: [id], onDelete: Cascade)
+  scoreRevisions SubmissionScoreRevision[]
   testResults    TestResult[]
 
   @@index([participantId])
   @@index([contestProblemId])
   @@index([submittedAt])
+  @@index([effectiveAt])
   @@index([verdict])
+}
+
+/// One version of a submission's score-bearing answer.
+///
+/// `Submission` is the current answer; this is the history. Rejudge appends a null-verdict
+/// tombstone, and the next judge result appends a new answer. At a standings cutoff, the highest
+/// revision id whose `effectiveAt` is inside the window is the answer that existed then.
+model SubmissionScoreRevision {
+  id           Int      @id @default(autoincrement())
+  submissionId String
+  verdict      Verdict?
+  score        Int      @default(0)
+  effectiveAt  DateTime
+
+  submission Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+  @@index([submissionId, effectiveAt, id])
+  @@index([effectiveAt])
 }
 
 model TestResult {

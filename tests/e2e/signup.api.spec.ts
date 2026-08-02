@@ -168,6 +168,47 @@ test.describe("a brand-new account signs itself up", () => {
     expect(participants, "enrolment is idempotent, not a second competitor").toHaveLength(1);
   });
 
+  test("simultaneous callbacks create one account and one participant", async () => {
+    const suffix = `signup-race-${String(Date.now())}`;
+    const providerIdentity = googleIdentity(suffix, `${suffix}@parktudor.org`);
+
+    const users = await Promise.all(
+      Array.from({ length: 6 }, async () => linkedUserFor(providerIdentity)),
+    );
+    expect(new Set(users.map((user) => user.userId)).size).toBe(1);
+
+    const enrolments = await Promise.all(
+      users.map(async (user) => ensureEnrolled(user.userId, user.displayName)),
+    );
+    const participantIds = enrolments.map((entry) => entry?.participantId);
+    expect(new Set(participantIds).size).toBe(1);
+    expect(enrolments.filter((entry) => entry?.created === true)).toHaveLength(1);
+
+    const participants = await testDb().participant.count({
+      where: { contestId: seeded.contestId, userId: users[0]?.userId },
+    });
+    expect(participants).toBe(1);
+  });
+
+  test("simultaneous providers with one verified email link one account", async () => {
+    const suffix = `signup-cross-provider-${String(Date.now())}`;
+    const email = `${suffix}@parktudor.org`;
+    const [google, github] = await Promise.all([
+      linkedUserFor(googleIdentity(suffix, email)),
+      linkedUserFor(githubIdentity(suffix, email, true)),
+    ]);
+
+    expect(github.userId).toBe(google.userId);
+    const row = await testDb().user.findUnique({
+      where: { id: google.userId },
+      select: { googleSub: true, githubSub: true },
+    });
+    expect(row).toEqual({
+      googleSub: `google-sub-${suffix}`,
+      githubSub: `github-sub-${suffix}`,
+    });
+  });
+
   test("an UNVERIFIED email never takes over an existing account", async () => {
     // The one refusal that survives. Someone types an organizer's address into their GitHub
     // profile without verifying it; they must get their own new account, not the organizer's.

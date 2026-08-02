@@ -4,7 +4,12 @@ import { AdminConsoleViewSchema } from "@/lib/schemas/api";
 
 import { ContestApi, readEnvelope, readOk } from "./helpers/api";
 import { requiredEnv } from "./helpers/env";
-import { closeTestDb, seedE2EContest, testDb, type SeededContest } from "./helpers/seed";
+import {
+  closeTestDb,
+  seedE2EContest,
+  testDb,
+  type SeededContest,
+} from "./helpers/seed";
 
 /**
  * G7 — the organizer's live console, over HTTP.
@@ -33,7 +38,10 @@ const ADMIN_PASSCODE = requiredEnv("ADMIN_PASSCODE");
 
 test.beforeAll(async ({ playwright }) => {
   seeded = await seedE2EContest();
-  admin = new ContestApi(await playwright.request.newContext(), seeded.contestId);
+  admin = new ContestApi(
+    await playwright.request.newContext(),
+    seeded.contestId,
+  );
   await admin.adminLogin(ADMIN_PASSCODE);
 });
 
@@ -66,14 +74,23 @@ test.describe("the live console reads the server", () => {
     // indistinguishable from a healthy contest.
     expect(typeof health.reachable).toBe("boolean");
     if (!health.reachable) {
-      expect(health.queueDepth, "an unreachable queue must not report a depth").toBe(0);
+      expect(
+        health.queueDepth,
+        "an unreachable queue must not report a depth",
+      ).toBe(0);
       expect(health.workersOnline).toBe(0);
     }
   });
 
   test("a competitor cannot read it", async ({ playwright }) => {
-    const student = new ContestApi(await playwright.request.newContext(), seeded.contestId);
-    await student.signIn({ displayName: `E2E ConsoleProbe ${Date.now()}`, divisionId: null });
+    const student = new ContestApi(
+      await playwright.request.newContext(),
+      seeded.contestId,
+    );
+    await student.signIn({
+      displayName: `E2E ConsoleProbe ${Date.now()}`,
+      divisionId: null,
+    });
 
     // The console is every student's submissions plus the unfrozen board. It is the single most
     // valuable thing on this server to a competitor.
@@ -105,16 +122,37 @@ test.describe("freezing actually freezes", () => {
         where: { id: seeded.contestId },
         select: { state: true, freezeAt: true },
       });
-      expect(afterFreeze.state, "the console reported frozen and the contest was not").toBe(
-        "FROZEN",
+      expect(
+        afterFreeze.state,
+        "the console reported frozen and the contest was not",
+      ).toBe("FROZEN");
+      expect(
+        afterFreeze.freezeAt,
+        "a freeze with no timestamp cannot be replayed",
+      ).not.toBeNull();
+
+      // A double-click or HTTP retry must keep the original cutoff. Moving it forward would leak
+      // submissions that arrived between the two requests onto a board advertised as frozen.
+      expect((await readEnvelope(await admin.freezeRaw(true))).status).toBe(
+        200,
       );
-      expect(afterFreeze.freezeAt, "a freeze with no timestamp cannot be replayed").not.toBeNull();
+      const afterRepeatedFreeze = await testDb().contest.findUniqueOrThrow({
+        where: { id: seeded.contestId },
+        select: { freezeAt: true },
+      });
+      expect(afterRepeatedFreeze.freezeAt?.getTime()).toBe(
+        afterFreeze.freezeAt?.getTime(),
+      );
 
       // And the console REPORTS it, because the banner is what the organizer reads.
-      const view = AdminConsoleViewSchema.parse((await readOk(await admin.consoleRaw())).data);
+      const view = AdminConsoleViewSchema.parse(
+        (await readOk(await admin.consoleRaw())).data,
+      );
       expect(view.frozen).toBe(true);
 
-      expect((await readEnvelope(await admin.freezeRaw(false))).status).toBe(200);
+      expect((await readEnvelope(await admin.freezeRaw(false))).status).toBe(
+        200,
+      );
       const afterUnfreeze = await testDb().contest.findUniqueOrThrow({
         where: { id: seeded.contestId },
         select: { state: true, freezeAt: true },
@@ -128,13 +166,127 @@ test.describe("freezing actually freezes", () => {
       });
     }
   });
+
+  test("unfreeze cannot be used as a hidden start button", async () => {
+    const before = await testDb().contest.findUniqueOrThrow({
+      where: { id: seeded.contestId },
+      select: { state: true, freezeAt: true },
+    });
+    await testDb().contest.update({
+      where: { id: seeded.contestId },
+      data: { state: "DRAFT", freezeAt: null },
+    });
+
+    try {
+      const response = await readEnvelope(await admin.freezeRaw(false));
+      expect(response.status).toBeGreaterThanOrEqual(400);
+      expect(response.status).toBeLessThan(500);
+      const after = await testDb().contest.findUniqueOrThrow({
+        where: { id: seeded.contestId },
+        select: { state: true, freezeAt: true },
+      });
+      expect(after).toEqual({ state: "DRAFT", freezeAt: null });
+    } finally {
+      await testDb().contest.update({
+        where: { id: seeded.contestId },
+        data: { state: before.state, freezeAt: before.freezeAt },
+      });
+    }
+  });
+
+  test("a first new-process override preserves a legacy pre-freeze verdict", async ({
+    playwright,
+  }) => {
+    const problem = [...seeded.problems.values()][0];
+    expect(problem).toBeDefined();
+    if (problem === undefined) return;
+
+    const displayName = `E2E Legacy Revision ${Date.now()}`;
+    const beforeFreeze = new Date(Date.now() - 5_000);
+    const participant = await testDb().participant.create({
+      data: {
+        contestId: seeded.contestId,
+        displayName,
+        divisionId: seeded.divisionIds.get("intermediate") ?? null,
+        joinedAt: beforeFreeze,
+      },
+      select: { id: true },
+    });
+    const submission = await testDb().submission.create({
+      data: {
+        participantId: participant.id,
+        contestProblemId: problem.contestProblemId,
+        language: "PYTHON_312",
+        sourceCode: "print(1)",
+        submittedAt: beforeFreeze,
+        verdict: "AC",
+        score: problem.basePoints,
+        judgedAt: beforeFreeze,
+        effectiveAt: beforeFreeze,
+        // Deliberately no SubmissionScoreRevision. This is the rolling-deploy compatibility row.
+      },
+      select: { id: true },
+    });
+
+    const frozen = await admin.freeze(true);
+    expect(frozen.freezeAt).not.toBeNull();
+    const anonymousContext = await playwright.request.newContext();
+    const anonymous = new ContestApi(anonymousContext, seeded.contestId);
+
+    try {
+      const frozenBefore = await anonymous.standings();
+      const beforeRow = frozenBefore.divisions
+        .flatMap((division) => division.rows)
+        .find((entry) => entry.displayName === displayName);
+      expect(beforeRow?.score).toBe(problem.basePoints);
+
+      const changed = await readEnvelope(
+        await admin.overrideRaw({
+          submissionId: submission.id,
+          verdict: "WA",
+          score: 0,
+          reason: "E2E: verify rolling-deploy revision preservation",
+        }),
+      );
+      expect(changed.status).toBe(200);
+
+      const revisions = await testDb().submissionScoreRevision.findMany({
+        where: { submissionId: submission.id },
+        orderBy: { id: "asc" },
+        select: { verdict: true, score: true, effectiveAt: true },
+      });
+      expect(revisions).toHaveLength(2);
+      expect(revisions[0]).toEqual({
+        verdict: "AC",
+        score: problem.basePoints,
+        effectiveAt: beforeFreeze,
+      });
+      expect(revisions[1]?.effectiveAt.getTime()).toBeGreaterThan(
+        Date.parse(frozen.freezeAt ?? ""),
+      );
+
+      const publicBoard = await anonymous.standings();
+      const row = publicBoard.divisions
+        .flatMap((division) => division.rows)
+        .find((entry) => entry.displayName === displayName);
+      expect(publicBoard.frozen).toBe(true);
+      expect(row?.score).toBe(problem.basePoints);
+    } finally {
+      await testDb().participant.delete({ where: { id: participant.id } });
+      await admin.freeze(false);
+      await anonymousContext.dispose();
+    }
+  });
 });
 
 test.describe("rejudge", () => {
   test("clears the verdict so the judge's answer can land, and records what it replaced", async ({
     playwright,
   }) => {
-    const student = new ContestApi(await playwright.request.newContext(), seeded.contestId);
+    const student = new ContestApi(
+      await playwright.request.newContext(),
+      seeded.contestId,
+    );
     const joined = await student.signIn({
       displayName: `E2E Rejudged ${Date.now()}`,
       divisionId: seeded.divisionIds.get("intermediate") ?? null,
@@ -161,7 +313,10 @@ test.describe("rejudge", () => {
     });
 
     const response = await readEnvelope(
-      await admin.rejudgeRaw(submission.id, "The judge host was misconfigured for this round"),
+      await admin.rejudgeRaw(
+        submission.id,
+        "The judge host was misconfigured for this round",
+      ),
     );
 
     // A queue that is not running is a legitimate outcome on a machine with no Redis, and it must
@@ -186,10 +341,16 @@ test.describe("rejudge", () => {
     expect(after.judgedAt).toBeNull();
 
     const audit = await testDb().auditLog.findFirst({
-      where: { action: "submission.rejudge", entity: `Submission:${submission.id}` },
+      where: {
+        action: "submission.rejudge",
+        entity: `Submission:${submission.id}`,
+      },
       select: { reason: true, before: true },
     });
-    expect(audit, "a rejudge with no audit row is a score change nobody can explain").not.toBeNull();
+    expect(
+      audit,
+      "a rejudge with no audit row is a score change nobody can explain",
+    ).not.toBeNull();
     expect(audit?.reason ?? "").not.toBe("");
     // The verdict it REPLACED, because after the rejudge nothing in the row says what was there —
     // and "it was an IE" is the whole justification for having pressed the button.
@@ -197,21 +358,28 @@ test.describe("rejudge", () => {
   });
 
   test("refuses a rejudge with no reason", async () => {
-    const envelope = await readEnvelope(await admin.rejudgeRaw("no-such-submission", ""));
+    const envelope = await readEnvelope(
+      await admin.rejudgeRaw("no-such-submission", ""),
+    );
     expect(envelope.status).toBeGreaterThanOrEqual(400);
     expect(envelope.status).toBeLessThan(500);
   });
 });
 
 test.describe("an override preserves what the judge said", () => {
-  test("does not overwrite judgedAt, and carries it into the audit row", async ({ playwright }) => {
+  test("does not overwrite judgedAt, and carries it into the audit row", async ({
+    playwright,
+  }) => {
     /*
       `prisma/schema.prisma` says this log is append-only for the judge and that an override is
       recorded rather than silent. The override used to write `judgedAt: now`, which destroyed the
       only record of when the judge actually ran — and unlike the verdict and the score, that value
       was captured nowhere else, so it was simply gone.
     */
-    const student = new ContestApi(await playwright.request.newContext(), seeded.contestId);
+    const student = new ContestApi(
+      await playwright.request.newContext(),
+      seeded.contestId,
+    );
     const joined = await student.signIn({
       displayName: `E2E Overridden ${Date.now()}`,
       divisionId: seeded.divisionIds.get("intermediate") ?? null,
@@ -257,7 +425,10 @@ test.describe("an override preserves what the judge said", () => {
     ).toBe(judgedAt.getTime());
 
     const audit = await testDb().auditLog.findFirst({
-      where: { action: "submission.override", entity: `Submission:${submission.id}` },
+      where: {
+        action: "submission.override",
+        entity: `Submission:${submission.id}`,
+      },
       select: { before: true, reason: true },
     });
     expect(audit).not.toBeNull();
@@ -274,15 +445,28 @@ test.describe("the contest list behind the pickers", () => {
     const { status, data } = await readOk(await admin.adminContestsRaw());
     expect(status).toBe(200);
 
-    const body = data as { contests: { contestId: string; participantCount: number }[] };
-    const mine = body.contests.find((row) => row.contestId === seeded.contestId);
-    expect(mine, "the seeded contest is missing from the picker's list").toBeDefined();
+    const body = data as {
+      contests: { contestId: string; participantCount: number }[];
+    };
+    const mine = body.contests.find(
+      (row) => row.contestId === seeded.contestId,
+    );
+    expect(
+      mine,
+      "the seeded contest is missing from the picker's list",
+    ).toBeDefined();
     expect(mine?.participantCount ?? -1).toBeGreaterThanOrEqual(0);
   });
 
   test("is organizer-only", async ({ playwright }) => {
-    const student = new ContestApi(await playwright.request.newContext(), seeded.contestId);
-    await student.signIn({ displayName: `E2E ListProbe ${Date.now()}`, divisionId: null });
+    const student = new ContestApi(
+      await playwright.request.newContext(),
+      seeded.contestId,
+    );
+    await student.signIn({
+      displayName: `E2E ListProbe ${Date.now()}`,
+      divisionId: null,
+    });
 
     const envelope = await readEnvelope(await student.adminContestsRaw());
     expect(envelope.status).toBeGreaterThanOrEqual(400);

@@ -19,13 +19,12 @@ export default function NewContestPage() {
     <div className="flex flex-col gap-6">
       <header className="flex flex-col gap-2">
         <Crumbs trail={[{ href: "/admin", label: "Contests" }, { label: "New contest" }]} />
-        <h1 className="font-display font-bold" style={{ fontSize: "var(--text-xl)" }}>
+        <h1 className="font-display font-bold text-[length:var(--text-lg)] sm:text-[length:var(--text-xl)]">
           New contest
         </h1>
         <p className="max-w-[70ch] text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
-          Set the window, the divisions, the preset and the freeze before the night, so nothing here
-          is being decided while students are waiting. Everything else (the problems, the roster,
-          the side activities) is a tab of the contest once it exists.
+          Choose the schedule, divisions, scoring preset, and scoreboard freeze. You can add
+          questions, teams, and side activities after creating the contest.
         </p>
       </header>
 

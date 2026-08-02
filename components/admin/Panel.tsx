@@ -50,12 +50,18 @@ export function Panel({
   level = "framed",
   className,
 }: PanelProps) {
-  const box = level === "framed" ? "rounded-panel border border-rule-edge bg-paper p-5" : "";
+  // p-8, not p-5: the reference's cards carry ~32px of padding, and the 20px version is the
+  // single largest reason theirs read as a room and ours as a box drawn tight around the text.
+  const box = level === "framed" ? "rounded-panel border border-rule-edge bg-paper p-8" : "";
 
   return (
     <section className={`min-w-0 ${box} ${className ?? ""}`}>
       <header className="flex flex-wrap items-baseline justify-between gap-3">
-        <h2 style={{ fontFamily: "var(--font-display)", fontSize: "var(--text-lg)" }}>{title}</h2>
+        {/* font-bold: page-level h2s render 28px/700, and the same element at the same size in
+            two weights on one screen reads as a mistake, because it is one. */}
+        <h2 className="font-bold" style={{ fontFamily: "var(--font-display)", fontSize: "var(--text-lg)" }}>
+          {title}
+        </h2>
         {aside}
       </header>
       {description !== undefined && (

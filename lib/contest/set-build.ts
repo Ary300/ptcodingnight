@@ -1,8 +1,9 @@
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 
 import type { Prisma } from "@prisma/client";
 
 import { AUDIT_ACTIONS, writeAudit } from "@/lib/contest/audit";
+import { lockContestMutations, lockProblemMutations } from "@/lib/contest/locks";
 import { problemBank } from "@/lib/contest/problem-bank";
 import {
   DIFFICULTY_LABEL,
@@ -46,10 +47,10 @@ import {
  * ## Preview and apply are the same computation
  *
  * `previewSets` and `applySets` differ in exactly one thing: whether the result is written. They
- * share the pool gathering and the call into `planSets`, so a preview an organizer approved cannot
- * deal differently from the apply that follows it — **provided the caller echoes the seed back**.
- * The seed is returned by the preview and accepted by the apply for precisely that reason; without
- * it, apply mints a fresh one and produces a different, equally valid split from the one on screen.
+ * share the pool gathering and the call into `planSets`. The caller echoes both the seed and the
+ * pool fingerprint back: the seed fixes the shuffle, and the fingerprint refuses the write if the
+ * usable bank changed after the preview. Without both, an apply could save a different, equally
+ * valid split from the one on screen.
  */
 
 /**
@@ -79,6 +80,22 @@ export interface PlannedSetWithSlots {
 
 function newSeed(): string {
   return randomBytes(16).toString("hex");
+}
+
+/**
+ * Version the exact ordered pool that the seeded deal consumes.
+ *
+ * Order is deliberately part of the fingerprint: the shuffle starts from this array, so the
+ * same members in a different order can produce a different set plan under the same seed.
+ */
+export function setPoolVersion(pool: readonly AvailableProblem[]): string {
+  const material = pool.map((problem) => [
+    problem.problemId,
+    problem.slug,
+    problem.title,
+    problem.difficulty,
+  ]);
+  return createHash("sha256").update(JSON.stringify(material)).digest("hex");
 }
 
 export function pointsForEntry(entry: SetCompositionInput[number]): number {
@@ -174,8 +191,6 @@ export function parseStoredComposition(value: unknown): SetCompositionInput | nu
  *
  * Two further exclusions belong to the SET question rather than to the problem:
  *
- *  - `round` must be INDIVIDUAL. A GROUP problem is worked by the whole team, so dealing one into
- *    a column contradicts the thing it is.
  *  - a problem this contest already uses as a GROUP problem is out, because `ContestProblem` is
  *    unique on `(contestId, problemId, divisionId)` and the group rows are deliberately not
  *    cleared by a re-plan. The constraint error would arrive as an unreadable 500 at the end of a
@@ -189,7 +204,7 @@ async function gatherPool(contestId: string): Promise<AvailableProblem[]> {
   const [bank, groupRows] = await Promise.all([
     problemBank(),
     prisma.contestProblem.findMany({
-      where: { contestId, setId: null },
+      where: { contestId, round: "GROUP" },
       select: { problemId: true },
     }),
   ]);
@@ -200,7 +215,6 @@ async function gatherPool(contestId: string): Promise<AvailableProblem[]> {
     .filter(
       (problem) =>
         problem.readyBlockers.length === 0 &&
-        problem.round === "INDIVIDUAL" &&
         problem.difficulty !== null &&
         !spokenFor.has(problem.problemId),
     )
@@ -221,6 +235,7 @@ function toResponse(
   setCount: number,
   seed: string | null,
   poolSize: number,
+  poolVersion: string,
   plan: ReturnType<typeof planSets>,
 ): SetPlanResponse {
   return {
@@ -232,6 +247,7 @@ function toResponse(
     composition,
     seed,
     poolSize,
+    poolVersion,
     plan: plan.ok
       ? {
           ok: true,
@@ -247,8 +263,9 @@ function toResponse(
 /**
  * Deal the sets and return them WITHOUT writing anything.
  *
- * The seed comes back in the response and must be handed to `applySets` to get the split that was
- * on screen. A preview that could not be reproduced would be a mock-up rather than a preview.
+ * The seed and pool fingerprint come back in the response and must be handed to `applySets` to get
+ * the split that was on screen. A preview that could not be reproduced would be a mock-up rather
+ * than a preview.
  */
 export async function previewSets(
   contestId: string,
@@ -263,6 +280,7 @@ export async function previewSets(
   if (contest === null) throw new NotFoundError("Contest");
 
   const pool = await gatherPool(contestId);
+  const poolVersion = setPoolVersion(pool);
   const seed = options.seed ?? newSeed();
   const plan = planSets({ seed, setCount, composition, pool });
 
@@ -274,6 +292,7 @@ export async function previewSets(
     setCount,
     plan.ok ? seed : null,
     pool.length,
+    poolVersion,
     plan,
   );
 }
@@ -309,7 +328,7 @@ export async function applySets(
   setCount: number,
   admin: AdminViewer,
   now: Date,
-  options: { readonly seed?: string } = {},
+  options: { readonly seed: string; readonly poolVersion: string },
 ): Promise<SetPlanResponse> {
   const contest = await prisma.contest.findUnique({
     where: { id: contestId },
@@ -319,6 +338,10 @@ export async function applySets(
       setComposition: true,
       setCount: true,
       setPlanSeed: true,
+      setSelection: true,
+      teams: {
+        select: { name: true, _count: { select: { members: true } } },
+      },
     },
   });
   if (contest === null) throw new NotFoundError("Contest");
@@ -331,25 +354,112 @@ export async function applySets(
     );
   }
 
+  const crowdedTeams =
+    contest.setSelection === "RANDOM_ASSIGNED"
+      ? contest.teams.filter((team) => team._count.members > setCount)
+      : [];
+  if (crowdedTeams.length > 0) {
+    const named = crowdedTeams
+      .map((team) => `${team.name} (${String(team._count.members)})`)
+      .join(", ");
+    throw new DomainError(
+      "VALIDATION",
+      `Build at least one set per member of the largest team. ${named} would otherwise repeat a set.`,
+    );
+  }
+
   const pool = await gatherPool(contestId);
-  const seed = options.seed ?? newSeed();
+  const poolVersion = setPoolVersion(pool);
+  if (options.poolVersion !== poolVersion) {
+    throw new DomainError(
+      "CONFLICT",
+      "The problem bank changed after this preview. Preview the sets again before building them.",
+    );
+  }
+  const seed = options.seed;
   const plan = planSets({ seed, setCount, composition, pool });
 
   // A recipe the bank cannot fill is a normal answer, not an exception: the organizer is still
   // choosing. Nothing is written and the shortfalls carry the arithmetic that says why.
   if (!plan.ok) {
-    return toResponse(contestId, "apply", false, composition, setCount, null, pool.length, plan);
+    return toResponse(
+      contestId,
+      "apply",
+      false,
+      composition,
+      setCount,
+      null,
+      pool.length,
+      poolVersion,
+      plan,
+    );
   }
 
   const labels = plan.sets.map((set) => set.label);
-  const previousComposition = parseStoredComposition(contest.setComposition);
+  const plannedProblemIds = [
+    ...new Set(plan.sets.flatMap((set) => set.problems.map((problem) => problem.problemId))),
+  ].sort();
 
   await prisma.$transaction(async (tx) => {
-    // The old line-up goes first, and ONLY the part of it this plan owns. `setId: null` is a GROUP
-    // problem: the whole team works it, every team gets the same ones, and it is not part of any
-    // column. Deleting by contest instead of by `setId != null` would silently take the group
-    // round out of the contest, and nothing downstream would say so.
-    await tx.contestProblem.deleteMany({ where: { contestId, setId: { not: null } } });
+    // Match the lock order used by line-up replacement and problem editing. Once these locks are
+    // held, every problem the preview selected stays put until the write commits.
+    for (const problemId of plannedProblemIds) await lockProblemMutations(tx, problemId);
+    await lockContestMutations(tx, contestId);
+
+    const latest = await tx.contest.findUnique({
+      where: { id: contestId },
+      select: {
+        state: true,
+        setSelection: true,
+        setComposition: true,
+        setCount: true,
+        setPlanSeed: true,
+        problemSets: { select: { label: true } },
+        teams: { select: { name: true, _count: { select: { members: true } } } },
+      },
+    });
+    if (latest === null) throw new NotFoundError("Contest");
+    if (latest.state !== "DRAFT" && latest.state !== "SCHEDULED") {
+      throw new DomainError(
+        "CONFLICT",
+        "This contest has already started, so its sets cannot be rebuilt.",
+      );
+    }
+    const latestCrowded =
+      latest.setSelection === "RANDOM_ASSIGNED"
+        ? latest.teams.filter((team) => team._count.members > setCount)
+        : [];
+    if (latestCrowded.length > 0) {
+      throw new DomainError(
+        "VALIDATION",
+        `Build at least one set per member of the largest team. ${latestCrowded
+          .map((team) => `${team.name} (${String(team._count.members)})`)
+          .join(", ")} would otherwise repeat a set.`,
+      );
+    }
+
+    // The first comparison closes the ordinary preview/apply gap. This second one closes the
+    // smaller check/write gap: a problem edit or GROUP line-up change that won the advisory lock
+    // immediately before us must make this request preview again, not save a stale split.
+    const lockedPoolVersion = setPoolVersion(await gatherPool(contestId));
+    if (lockedPoolVersion !== poolVersion) {
+      throw new DomainError(
+        "CONFLICT",
+        "The problem bank changed after this preview. Preview the sets again before building them.",
+      );
+    }
+
+    const previousComposition = parseStoredComposition(latest.setComposition);
+
+    const previousLabels = new Set(latest.problemSets.map((set) => set.label));
+    const nextLabels = new Set(labels);
+    const labelsChanged =
+      previousLabels.size !== nextLabels.size ||
+      [...nextLabels].some((label) => !previousLabels.has(label));
+
+    // The old line-up goes first, and only the INDIVIDUAL round this plan owns. Group questions
+    // are contest-scoped and remain untouched even if older data carries a contradictory set id.
+    await tx.contestProblem.deleteMany({ where: { contestId, round: "INDIVIDUAL" } });
 
     const setIdByLabel = new Map<string, string>();
     for (const label of labels) {
@@ -372,6 +482,7 @@ export async function applySets(
           contestId,
           problemId: slot.problemId,
           divisionId: null,
+          round: "INDIVIDUAL" as const,
           setId: setIdByLabel.get(set.label) ?? null,
           slotLabel: slot.slotLabel,
           basePoints: slot.basePoints,
@@ -389,6 +500,7 @@ export async function applySets(
         setComposition: composition as unknown as Prisma.InputJsonValue,
         setCount,
         setPlanSeed: seed,
+        ...(labelsChanged ? { setAssignmentSeed: null } : {}),
       },
     });
 
@@ -398,11 +510,11 @@ export async function applySets(
         action: AUDIT_ACTIONS.setPlanApplied,
         entity: `contest:${contestId}`,
         before:
-          contest.setPlanSeed === null
+          latest.setPlanSeed === null
             ? null
             : {
-                seed: contest.setPlanSeed,
-                setCount: contest.setCount,
+                seed: latest.setPlanSeed,
+                setCount: latest.setCount,
                 recipe: previousComposition === null ? null : describeComposition(previousComposition),
               },
         after: {
@@ -414,7 +526,7 @@ export async function applySets(
           at: now.toISOString(),
         },
         reason:
-          contest.setPlanSeed === null ? null : "the sets were rebuilt from the bank",
+          latest.setPlanSeed === null ? null : "the sets were rebuilt from the bank",
       },
       tx,
     );
@@ -424,7 +536,17 @@ export async function applySets(
   // standings. Same precedent as assign-sets.ts, and for the same one-second memo.
   invalidateScoringInput(contestId);
 
-  return toResponse(contestId, "apply", true, composition, setCount, seed, pool.length, plan);
+  return toResponse(
+    contestId,
+    "apply",
+    true,
+    composition,
+    setCount,
+    seed,
+    pool.length,
+    poolVersion,
+    plan,
+  );
 }
 
 /**
@@ -464,7 +586,7 @@ export async function readSetPlan(contestId: string): Promise<StoredSetPlanRespo
 
   const [pool, groupProblemCount] = await Promise.all([
     gatherPool(contestId),
-    prisma.contestProblem.count({ where: { contestId, setId: null } }),
+    prisma.contestProblem.count({ where: { contestId, round: "GROUP" } }),
   ]);
 
   return {

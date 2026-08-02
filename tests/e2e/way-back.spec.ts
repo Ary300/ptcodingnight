@@ -33,7 +33,7 @@ test.describe("a way back from /sign-in", () => {
     await page.waitForURL((url) => url.pathname === "/");
 
     // Landed on the real home page, not on a redirect that happens to have the right path.
-    await expect(page.getByRole("heading", { level: 1 })).toContainText("One board.");
+    await expect(page.getByRole("heading", { level: 1 })).toContainText("Code with your team.");
   });
 
   test("the way back is the FIRST thing a keyboard reaches", async ({ page }) => {

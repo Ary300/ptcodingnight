@@ -53,7 +53,12 @@ interface RawGolden {
     teamId?: string | null;
     chosenSetId?: string | null;
   }[];
-  sideActivities?: SideActivityRecord[];
+  sideActivities?: {
+    teamId: string;
+    label: string;
+    points: number;
+    enteredAt?: string;
+  }[];
   submissions: {
     submissionId: string;
     participantId: string;
@@ -213,7 +218,14 @@ export function loadGoldenTeamContest(): GoldenTeamInput {
   return {
     ...base,
     teams: raw.teams ?? [],
-    sideActivities: raw.sideActivities ?? [],
+    sideActivities: (raw.sideActivities ?? []).map((activity) => ({
+      teamId: activity.teamId,
+      label: activity.label,
+      points: activity.points,
+      // Older golden fixtures predate temporal side-activity replay. They describe awards that
+      // existed for the whole contest, so the contest start is their honest default.
+      enteredAt: new Date(activity.enteredAt ?? raw.config.startsAt),
+    })),
   };
 }
 

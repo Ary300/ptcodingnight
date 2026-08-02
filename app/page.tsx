@@ -3,49 +3,28 @@ import Link from "next/link";
 
 import { viewerFromCookies } from "@/lib/contest/viewer";
 
-/**
- * The front door — `https://ptcodingnight.com/`.
- *
- * ## What this is copying, and what it is not
- *
- * HackerRank's marketing page is a large centred hero with one word of the headline in the accent
- * colour, a muted subhead, two buttons side by side, and a band of proof underneath. That shape is
- * worth taking: it answers "what is this" in one screen and gives exactly one obvious next action.
- *
- * What is not worth taking is their content model. They sell to companies, so their proof is a
- * logo wall. This page's visitor is a student ten minutes before a contest, or a parent following
- * a link, or an organizer. The proof is therefore what the platform actually guarantees — a
- * sandbox, one scoring rule, a replayable board — because those are the claims someone might
- * reasonably doubt.
- *
- * ## Why the ground is tinted and the cards are paper
- *
- * Everything used to sit flat on `--paper`, which is why it read as a document rather than as a
- * product. Cards on a slightly darker ground is the device that makes HackerRank's app screens
- * feel built; it costs one background colour and it does more for the page than any amount of
- * additional copy.
- */
+/** The public front door for students, families, and organizers. */
 
 const HOW = [
   {
     n: "1",
     title: "Sign in",
-    body: "Google or GitHub. The first sign-in creates your account. There is no code to type and nothing to install.",
+    body: "Use your Park Tudor Google account or GitHub. Your first sign-in creates your account.",
   },
   {
     n: "2",
-    title: "An organizer puts you on a team",
-    body: "Teams are made from the roster on the night. Team size is the divisor in your team's score, so a roster is a scoring input and only organizers touch it.",
+    title: "Find your team",
+    body: "An organizer adds you to a team and assigns your question set.",
   },
   {
     n: "3",
-    title: "Solve your set",
-    body: "Every player gets their own problem set, plus the group problems the whole team works. Run the samples as often as you like; only a submission counts.",
+    title: "Start solving",
+    body: "Work on your assigned problems. Team questions are shared by everyone on the team.",
   },
   {
     n: "4",
-    title: "Watch the board",
-    body: "A verdict comes back in seconds and the projector updates. The board shows the arithmetic, not just the total.",
+    title: "Check the results",
+    body: "Submit from the editor and watch the standings update as results come in.",
   },
 ] as const;
 
@@ -70,21 +49,6 @@ const BOARD_PREVIEW = [
   { rank: 3, team: "Night Owls", sets: [300, 290, 275], side: 10, score: "298.33" },
 ] as const;
 
-const GUARANTEES = [
-  {
-    title: "Every submission runs in its own sandbox",
-    body: "A throwaway container with no network, a read-only filesystem, no privileges, and caps on memory, processes, CPU and disk. Nothing you write can reach anything else.",
-  },
-  {
-    title: "One scoring rule, in one place",
-    body: "Your team's score is every member's points divided by the number of people on the team, plus side activities. Integer arithmetic throughout: no float ever decides a placing.",
-  },
-  {
-    title: "The board can be replayed",
-    body: "Standings recompute from the raw submission log to byte-identical output. A disputed result gets shown rather than argued about.",
-  },
-] as const;
-
 /**
  * The hero's product panel: the team board, as a real table.
  *
@@ -99,28 +63,34 @@ function BoardPreview() {
   const widest = Math.max(...BOARD_PREVIEW.map((row) => row.sets.length));
 
   return (
-    <div className="overflow-hidden rounded-lg border border-ink/15 bg-paper shadow-[0_1px_2px_rgba(26,6,6,0.06),0_8px_24px_-12px_rgba(26,6,6,0.25)]">
+    <div className="overflow-hidden rounded-lg border border-ink/15 bg-paper shadow-[0_1px_2px_color-mix(in_srgb,var(--color-ink)_6%,transparent),0_8px_24px_-12px_color-mix(in_srgb,var(--color-ink)_25%,transparent)]">
       <div className="flex items-center justify-between border-b border-ink/12 bg-ink px-4 py-2.5 text-paper">
         <span className="font-display font-bold" style={{ fontSize: "var(--text-sm)" }}>
           Team standings
         </span>
-        {/* The live dot, and the word beside it. Colour is never the only channel (DESIGN.md §3). */}
-        <span className="flex items-center gap-1.5 text-paper/85" style={{ fontSize: "var(--text-xs)" }}>
-          <span
-            aria-hidden="true"
-            className="inline-block h-1.5 w-1.5 rounded-full"
-            style={{ background: "var(--color-gold)" }}
-          />
+        <span className="text-paper/85" style={{ fontSize: "var(--text-xs)" }}>
           Live
         </span>
       </div>
 
+      {/*
+        A `<p>` above the scroller, not a `<caption>` inside it: prose must not scroll with the
+        table. As a caption it rode along inside `overflow-x-auto` and clipped mid-word at 360
+        (409px of sentence in a 326px viewport). `aria-describedby` keeps the table announcing it.
+      */}
+      <p
+        id="board-preview-caption"
+        className="px-4 pt-3 text-left text-ink/60"
+        style={{ fontSize: "var(--text-xs)" }}
+      >
+        Sample standings. Team score is the team average plus side points.
+      </p>
       <div className="overflow-x-auto">
-        <table className="w-full border-collapse" style={{ fontSize: "var(--text-xs)" }}>
-          <caption className="px-4 pt-3 text-left text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
-            An example board. Score is the team&rsquo;s points divided by its size, plus side
-            activities.
-          </caption>
+        <table
+          className="w-full border-collapse"
+          style={{ fontSize: "var(--text-xs)" }}
+          aria-describedby="board-preview-caption"
+        >
           <thead>
             <tr className="border-b border-ink/12 text-ink/60">
               <th scope="col" className="px-3 py-2 text-left font-semibold">
@@ -128,6 +98,14 @@ function BoardPreview() {
               </th>
               <th scope="col" className="w-full px-3 py-2 text-left font-semibold">
                 Team
+              </th>
+              {/*
+                Score directly after Team, sets and side behind it: this panel's stated purpose is
+                the score, and with the sets first the Score column sat entirely off-screen at 360
+                (scrollWidth 409 vs 326 visible) with nothing to say more existed.
+              */}
+              <th scope="col" className="px-3 py-2 text-right font-semibold whitespace-nowrap">
+                Score
               </th>
               {Array.from({ length: widest }, (_, index) => (
                 <th
@@ -141,9 +119,6 @@ function BoardPreview() {
               <th scope="col" className="px-3 py-2 text-right font-semibold whitespace-nowrap">
                 Side
               </th>
-              <th scope="col" className="px-3 py-2 text-right font-semibold whitespace-nowrap">
-                Score
-              </th>
             </tr>
           </thead>
           <tbody>
@@ -151,6 +126,7 @@ function BoardPreview() {
               <tr key={row.team} className="border-b border-ink/8 last:border-b-0">
                 <td className="numeric px-3 py-2.5 text-ink/70">{row.rank}</td>
                 <td className="px-3 py-2.5 font-semibold whitespace-nowrap">{row.team}</td>
+                <td className="numeric px-3 py-2.5 text-right font-bold">{row.score}</td>
                 {Array.from({ length: widest }, (_, index) => (
                   <td key={index} className="numeric px-3 py-2.5 text-right text-ink/75">
                     {/*
@@ -171,7 +147,6 @@ function BoardPreview() {
                   </td>
                 ))}
                 <td className="numeric px-3 py-2.5 text-right text-ink/75">{row.side}</td>
-                <td className="numeric px-3 py-2.5 text-right font-bold">{row.score}</td>
               </tr>
             ))}
           </tbody>
@@ -203,7 +178,13 @@ export default async function Home() {
     <div className="flex min-h-full flex-col bg-ink/[0.035]">
       {/* --- slim bar, the shape HackerRank uses above its hero ------------- */}
       <header className="border-b border-ink/10 bg-paper">
-        <div className="mx-auto flex w-full max-w-6xl items-center gap-4 px-4 py-3">
+        {/*
+          `flex-wrap` on the bar plus `whitespace-nowrap` on every label: at 360 the header used
+          to collapse into four columns of stacked words ("Coding / Night", "Log / in", a
+          three-line CTA). Phrases never break mid-word now; if the row is too narrow the nav
+          drops below the wordmark as a whole row.
+        */}
+        <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center gap-4 px-4 py-3">
           <span className="flex items-center gap-2.5">
             <Image
               src="/brand/pt-panther.png"
@@ -214,7 +195,10 @@ export default async function Home() {
               priority
               className="h-7 w-auto"
             />
-            <span className="font-display font-bold" style={{ fontSize: "var(--text-sm)" }}>
+            <span
+              className="font-display font-bold whitespace-nowrap"
+              style={{ fontSize: "var(--text-sm)" }}
+            >
               Coding Night
             </span>
           </span>
@@ -230,7 +214,7 @@ export default async function Home() {
           <nav aria-label="Site" className="ml-auto flex items-center gap-1.5 sm:gap-3">
             <Link
               href="/projector"
-              className="rounded px-2 py-1.5 text-ink/75 hover:text-ink sm:px-3"
+              className="rounded px-2 py-1.5 whitespace-nowrap text-ink/75 hover:text-ink sm:px-3"
               style={{ fontSize: "var(--text-xs)" }}
             >
               Live standings
@@ -247,17 +231,19 @@ export default async function Home() {
               <>
                 <Link
                   href="/sign-in"
-                  className="rounded px-2 py-1.5 text-ink/75 hover:text-ink sm:px-3"
+                  className="rounded px-2 py-1.5 whitespace-nowrap text-ink/75 hover:text-ink sm:px-3"
                   style={{ fontSize: "var(--text-xs)" }}
                 >
                   Log in
                 </Link>
                 <Link
                   href="/sign-in"
-                  className="rounded bg-panther px-3 py-1.5 font-semibold text-paper hover:bg-panther-deep"
+                  className="rounded bg-panther px-3 py-1.5 font-semibold whitespace-nowrap text-paper hover:bg-panther-deep"
                   style={{ fontSize: "var(--text-xs)" }}
                 >
-                  Create your account
+                  {/* The shorter label below `sm` keeps the CTA on one line in a 360 header. */}
+                  <span className="sm:hidden">Create account</span>
+                  <span className="hidden sm:inline">Create your account</span>
                 </Link>
               </>
             )}
@@ -313,17 +299,17 @@ export default async function Home() {
                 textWrap: "balance",
               }}
             >
-              Ninety minutes.
+              Code with your team.
               <br />
-              <span className="text-panther">One board.</span>
+              <span className="text-panther">Climb the standings.</span>
             </h1>
 
             <p
               className="mt-5 max-w-xl text-ink/75"
               style={{ fontSize: "var(--text-md)", textWrap: "pretty" }}
             >
-              Coding Night is Park Tudor&rsquo;s programming contest. Teams solve problems against a
-              live judge, and the room watches the standings move.
+              Park Tudor Coding Night is our team programming contest. Solve your assigned
+              questions, work together on team problems, and follow every result on the live board.
             </p>
 
             {/* Two actions, one obviously primary. */}
@@ -346,7 +332,7 @@ export default async function Home() {
 
             {!signedIn && (
               <p className="mt-4 text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
-                Google or GitHub. No code to type, nothing to install.
+                Sign in with Google or GitHub. New accounts are created automatically.
               </p>
             )}
           </div>
@@ -358,7 +344,7 @@ export default async function Home() {
       {/* --- how the night works -------------------------------------------- */}
       <section className="mx-auto w-full max-w-6xl px-4 py-14">
         <h2 className="font-display font-bold" style={{ fontSize: "var(--text-lg)" }}>
-          How the night works
+          How Coding Night works
         </h2>
 
         {/*
@@ -375,7 +361,15 @@ export default async function Home() {
               >
                 {step.n}
               </span>
-              <h3 className="mt-1 font-display font-bold" style={{ fontSize: "var(--text-sm)" }}>
+              {/*
+                `sm:min-h-12` baseline-locks the row: card 2's two-line title used to start its
+                body 24px lower than its neighbours across a row that reads as a table. Only from
+                `sm` up - stacked single-column cards have no shared baseline to hold.
+              */}
+              <h3
+                className="mt-1 font-display font-bold sm:min-h-12"
+                style={{ fontSize: "var(--text-sm)" }}
+              >
                 {step.title}
               </h3>
               <p className="mt-1.5 text-ink/70" style={{ fontSize: "var(--text-xs)" }}>
@@ -384,32 +378,6 @@ export default async function Home() {
             </li>
           ))}
         </ol>
-      </section>
-
-      {/* --- what the platform guarantees ----------------------------------- */}
-      <section className="border-t border-ink/10 bg-paper">
-        <div className="mx-auto w-full max-w-6xl px-4 py-14">
-          <h2 className="font-display font-bold" style={{ fontSize: "var(--text-lg)" }}>
-            What it guarantees
-          </h2>
-          <p className="mt-1 max-w-prose text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
-            This replaced a spreadsheet that once got a team&rsquo;s score wrong by 31.25 points.
-            These are the three things that stop it happening again.
-          </p>
-
-          <div className="mt-6 grid gap-4 md:grid-cols-3">
-            {GUARANTEES.map((item) => (
-              <div key={item.title} className="rounded border-l-2 border-panther bg-ink/[0.03] p-4">
-                <h3 className="font-display font-bold" style={{ fontSize: "var(--text-sm)" }}>
-                  {item.title}
-                </h3>
-                <p className="mt-1.5 text-ink/70" style={{ fontSize: "var(--text-xs)" }}>
-                  {item.body}
-                </p>
-              </div>
-            ))}
-          </div>
-        </div>
       </section>
 
       {/* --- the closing band ------------------------------------------------ */}
@@ -424,10 +392,12 @@ export default async function Home() {
         <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-6 px-4 py-12">
           <div>
             <h2 className="font-display font-bold" style={{ fontSize: "var(--text-lg)" }}>
-              The room is already scoring.
+              Ready for Coding Night?
             </h2>
             <p className="mt-1.5 text-paper/80" style={{ fontSize: "var(--text-sm)" }}>
-              Sign in with your school account. An organizer puts you on a team when you arrive.
+              {signedIn
+                ? "Open the contest to see your team and assigned problems."
+                : "Sign in to see your team, assigned problems, and submissions."}
             </p>
           </div>
           <Link
@@ -446,16 +416,17 @@ export default async function Home() {
           <span className="text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
             Park Tudor Coding Night
           </span>
+          {/* `py-1.5` lifts both targets from 19px to 31px, matching the header links (2.5.8). */}
           <Link
             href="/projector"
-            className="text-ink/70 hover:text-panther"
+            className="py-1.5 text-ink/70 hover:text-panther"
             style={{ fontSize: "var(--text-xs)" }}
           >
             Live standings
           </Link>
           <Link
             href="/admin"
-            className="ml-auto text-ink/70 hover:text-panther"
+            className="ml-auto py-1.5 text-ink/70 hover:text-panther"
             style={{ fontSize: "var(--text-xs)" }}
           >
             Organizers

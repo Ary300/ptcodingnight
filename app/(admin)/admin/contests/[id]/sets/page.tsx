@@ -30,11 +30,17 @@ export default async function ContestSetsPage({
 }) {
   const { id } = await params;
 
-  const rows = await prisma.team.findMany({
-    where: { contestId: id },
-    orderBy: { name: "asc" },
-    select: { id: true, name: true, _count: { select: { members: true } } },
+  const contest = await prisma.contest.findUnique({
+    where: { id },
+    select: {
+      setSelection: true,
+      teams: {
+        orderBy: { name: "asc" },
+        select: { id: true, name: true, _count: { select: { members: true } } },
+      },
+    },
   });
+  const rows = contest?.teams ?? [];
 
   const teams: readonly SetPlannerTeam[] = rows.map((row) => ({
     teamId: row.id,
@@ -49,13 +55,20 @@ export default async function ContestSetsPage({
           Sets
         </h2>
         <p className="mt-1 max-w-[70ch] text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
-          A set is a column on the sheet: one bundle of questions, held by one member of every team.
-          Everybody holding set A works the same questions, and no question is ever in two sets, so
-          teammates cannot simply hand each other an answer.
+          {contest?.setSelection === "ONE_SET_PER_TEAM"
+            ? "A set is one bundle of questions. In this format every teammate works the same set, and set A is the same for every team assigned to A."
+            : contest?.setSelection === "PLAYER_CHOOSES"
+              ? "A set is one bundle of questions. Players choose independently, and everyone who chooses set A receives the same questions."
+              : "A set is a column on the sheet: one bundle of questions, held by one member of every team. Everybody holding set A works the same questions, and teammates receive different sets."}
         </p>
       </header>
 
-      <SetPlanner contestId={id} teams={teams} />
+      <SetPlanner
+        contestId={id}
+        teams={teams}
+        setSelection={contest?.setSelection ?? "RANDOM_ASSIGNED"}
+        distinctSetsRequired={contest?.setSelection === "RANDOM_ASSIGNED"}
+      />
     </div>
   );
 }

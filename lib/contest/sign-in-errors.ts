@@ -66,22 +66,22 @@ export type SignInErrorCode = (typeof SIGN_IN_ERROR_CODES)[number];
  * The message a student reads.
  *
  * Every one of these names something the reader can DO next, because a sign-in error with no next
- * step is a dead end and the room has one organizer for forty students. "Try the other provider"
- * and "ask an organizer" are both real, working alternatives on this page.
+ * step is a dead end and the room has one organizer for forty students. Every message gives a
+ * retry or a clear person to ask for help.
  */
 const MESSAGES: Readonly<Record<SignInErrorCode, (provider: string) => string>> = {
   provider_unconfigured: (p) =>
-    `${p} sign-in is not set up on this server — that is our configuration, not your account. ` +
-    `Try the other button, or ask an organizer to sign you in.`,
+    `${p} sign-in is not set up on this server. That is our configuration, not your account. ` +
+    `Ask an organizer for help.`,
   provider_unknown: () =>
-    "That is not a sign-in provider this server offers. Use one of the buttons above, or ask an " +
+    "That is not a sign-in provider this server offers. Use an available option, or ask an " +
     "organizer to sign you in.",
   cancelled: (p) => `You cancelled the ${p} sign-in before it finished. Press the button to try again.`,
   start_failed: (p) =>
-    `${p} sign-in could not be started — that is our configuration, not your account. An ` +
+    `${p} sign-in could not be started. That is our configuration, not your account. An ` +
     `organizer can sign you in instead.`,
   state: () =>
-    "That sign-in could not be verified — it may have been started in another tab, or left open " +
+    "That sign-in could not be verified. It may have been started in another tab, or left open " +
     "too long. Start again from this page and it will work.",
   exchange: (p) =>
     `${p} would not confirm who you are. Try again, and if it keeps happening use the other ` +
@@ -92,7 +92,7 @@ const MESSAGES: Readonly<Record<SignInErrorCode, (provider: string) => string>> 
     `That email is already linked to a different ${p} account. An organizer has to unlink it ` +
     `before you can sign in this way.`,
   no_contest: () =>
-    "Your account is ready, but there is no contest open right now — so there is nothing to " +
+    "Your account is ready, but there is no contest open right now, so there is nothing to " +
     "enrol you in. An organizer needs to open tonight's contest, then sign in again.",
   enrolment_failed: () =>
     "Your account is ready, but we could not add you to the contest just now. Try signing in " +

@@ -1,6 +1,6 @@
 import { expect, test, type APIRequestContext } from "@playwright/test";
 
-import { ContestApi, readEnvelope } from "./helpers/api";
+import { ContestApi, readEnvelope, readOk } from "./helpers/api";
 import { closeTestDb, seedE2EContest, testDb, type SeededContest } from "./helpers/seed";
 import { requiredEnv } from "./helpers/env";
 
@@ -67,30 +67,34 @@ function uniqueName(prefix: string): string {
   can take. Their claim-and-name machinery (forged claims, taken names, releasing a claim on
   sign-out) went with the join route it guarded.
 
-  **The property did not go anywhere.** Set assignment moved onto the organizer's path, so the
-  question is now "does moving a player between teams re-roll their set" — and the answer has to
-  be no for exactly the old reason. That is the spec immediately below.
+  **The property did not go anywhere.** Set assignment moved onto the organizer's path. A move to
+  a compatible roster keeps the player's set. A move to a team already using that set must choose
+  an unused set instead, because unique teammate sets are the format itself.
 
   The second surviving describe, further down, never depended on join codes at all: it asserts
   that an unassigned set is unreachable through EVERY route, which is the containment the
   idempotency was protecting in the first place.
 */
-test.describe("set assignment is idempotent across organizer moves", () => {
-  test("moving a player between teams does not re-roll their set", async ({ playwright }) => {
+test.describe("set assignment stays stable across compatible organizer moves", () => {
+  test("moving a player between empty teams does not re-roll their set", async ({ playwright }) => {
     const player = await newBrowserApi(playwright);
     const joined = await player.signIn({
       displayName: uniqueName("SetKeeper"),
       divisionId: seeded.divisionIds.get("intermediate") ?? null,
     });
 
-    const first = seeded.teamIds.get("panthers") ?? "";
-    const second = seeded.teamIds.get("cubs") ?? "";
-    expect(first, "fixture teams are missing").not.toBe("");
-    expect(second).not.toBe("");
+    const first = await readOk(
+      await admin.createTeamAsAdminRaw({ name: uniqueName("SetKeeper First") }),
+    );
+    const second = await readOk(
+      await admin.createTeamAsAdminRaw({ name: uniqueName("SetKeeper Second") }),
+    );
+    const firstId = (first.data as { teamId: string }).teamId;
+    const secondId = (second.data as { teamId: string }).teamId;
 
     await admin.moveParticipantRaw({
       participantId: joined.participantId,
-      teamId: first,
+      teamId: firstId,
       reason: "First assignment — this is what draws the set",
     });
     const afterFirst = await testDb().participant.findUnique({
@@ -101,8 +105,8 @@ test.describe("set assignment is idempotent across organizer moves", () => {
 
     await admin.moveParticipantRaw({
       participantId: joined.participantId,
-      teamId: second,
-      reason: "Moved teams — the set must NOT follow",
+      teamId: secondId,
+      reason: "Moved to an empty team, so the existing set remains valid",
     });
     const afterSecond = await testDb().participant.findUnique({
       where: { id: joined.participantId },
@@ -111,8 +115,15 @@ test.describe("set assignment is idempotent across organizer moves", () => {
 
     expect(
       afterSecond?.chosenSetId,
-      "a re-roll on every move is a way to shop for a set, which is what T5 was about",
+      "a compatible move must not become a way to shop for a different set",
     ).toBe(afterFirst?.chosenSetId);
+
+    await readOk(
+      await admin.dissolveTeamRaw(firstId, { reason: "cleaning up the assignment test" }),
+    );
+    await readOk(
+      await admin.dissolveTeamRaw(secondId, { reason: "cleaning up the assignment test" }),
+    );
   });
 });
 

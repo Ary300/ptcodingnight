@@ -25,8 +25,10 @@ test.describe("axe-core: zero critical or serious", () => {
   */
   test("landing", async ({ page }) => {
     await page.goto("/");
-    // The h1 is the hero line, not the site name — the site name lives in the bar above it.
-    await expect(page.getByRole("heading", { level: 1, name: /One board/i })).toBeVisible();
+    // The h1 is the hero line, not the site name. The site name lives in the bar above it.
+    await expect(
+      page.getByRole("heading", { level: 1, name: /Code with your team/i }),
+    ).toBeVisible();
     // The primary call to action says CREATE, not "sign in". There is no separate sign-up page to
     // build — the first Google or GitHub sign-in creates the account — but nothing on the page
     // said so, and a student with no account read "Sign in" as a door that was not for them.

@@ -1,7 +1,6 @@
 import type { NextResponse } from "next/server";
 
 import { SetContestStateRequestSchema, SetContestStateResponseSchema } from "@/lib/schemas/api";
-import { AUDIT_ACTIONS, writeAudit } from "@/lib/contest/audit";
 import { setContestState } from "@/lib/contest/contests";
 import {
   ContestIdParamsSchema,
@@ -41,13 +40,8 @@ export async function POST(
     const admin = requireAdmin(await viewerFromRequest(request, new Date()));
     const input = await readJson(request, SetContestStateRequestSchema);
 
-    const result = await setContestState(id, input.state);
-
-    await writeAudit({
+    const result = await setContestState(id, input.state, {
       actor: `admin:${admin.sessionId}`,
-      action: AUDIT_ACTIONS.contestStateSet,
-      entity: `Contest:${id}`,
-      after: { state: result.state },
       reason: input.reason,
     });
 

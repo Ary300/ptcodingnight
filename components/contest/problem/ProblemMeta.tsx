@@ -150,35 +150,14 @@ export function ProblemTabs({ slug }: { slug: string }) {
  * `lg` and below it stacks under the statement, where a top rule is what keeps it from reading
  * as another paragraph of the problem.
  *
- * ## Why this row is no longer called "Max Score"
- *
- * It was, and it was a lie the screen told against itself. The judge awards the SUM OF PER-TEST
- * POINTS (`aggregateScore`, lib/judge/aggregate.ts), and that raw number is what enters the
- * standings — `basePoints` is consulted only to price a hint (lib/scoring/index.ts). On the demo
- * contest every problem is `basePoints: 100` and the six achievable totals are 140, 140, 150,
- * 160, 130 and 180. So this rail rendered
- *
- *     Max Score   100
- *     Your best   140
- *
- * two rows apart, on a correct solve. A ceiling a student has already passed does not read as a
- * mislabel; it reads as a scoring bug, and the student has no way to tell which it is.
- *
- * `basePoints` is still worth showing — it is the problem's rated weight and it is what a hint
- * costs a percentage of — so the row keeps the number and drops the claim that it is a maximum.
- * The line under the list says where the real figure comes from, because "why did I get 140"
- * otherwise has no answer anywhere in the product.
- *
- * **The honest fix is upstream and is not in this file.** The achievable total is
- * `sum(TestCase.points)`, which `lib/contest/problems.ts` already has in hand and does not put on
- * the wire; `ProblemSummary`/`ProblemDetail` need an `achievablePoints` field before any screen
- * can print the number a student actually wants. Until then, no figure here can be labelled as a
- * maximum without inventing it.
+ * `basePoints` is the contest maximum. The judge uses per-test points to divide partial credit,
+ * then normalizes the persisted score to this value at reconciliation time. That keeps the
+ * advertised maximum, submission history and standings on the same scale.
  */
 export function ProblemMetaRail({ detail }: { detail: ProblemDetail }) {
   const rows: { label: string; value: React.ReactNode }[] = [
     { label: "Difficulty", value: <DifficultyPill difficulty={detail.difficulty} /> },
-    { label: "Rated points", value: <span className="numeric">{detail.basePoints}</span> },
+    { label: "Max points", value: <span className="numeric">{detail.basePoints}</span> },
     {
       label: "Your best",
       value:
@@ -211,14 +190,6 @@ export function ProblemMetaRail({ detail }: { detail: ProblemDetail }) {
           </div>
         ))}
       </dl>
-      {/*
-        The sentence that makes "Rated points 100 / Your best 140" stop looking like a fault.
-        Muted floor is /60 applied once, never a wrapper opacity (DESIGN.md §7).
-      */}
-      <p className="mt-3 text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
-        Points are awarded per test case, so a full solve can be worth more or less than the rated
-        figure. Your score is whatever the tests award.
-      </p>
     </aside>
   );
 }

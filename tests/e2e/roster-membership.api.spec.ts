@@ -252,7 +252,8 @@ test.describe("an organizer adds a known account to a contest nobody has signed 
         where: { contestId: nextContestId, userId: scheduled.userId },
       }),
     ).toBe(1);
-    await testDb().contest.update({ where: { id: nextContestId }, data: { state: "DRAFT" } });
+    // Leave it published. DRAFT contests are organizer-only and must never become an automatic
+    // sign-in target; SCHEDULED is the state that supports a student's pre-start lobby.
 
     // The one state worth refusing: a competitor added to a finished contest has no possible
     // submission and a place in a divisor that has already been published.
@@ -303,7 +304,7 @@ test.describe("an organizer adds a known account to a contest nobody has signed 
 });
 
 test.describe("the student then lands in the contest they were rostered into", () => {
-  test("sign-in follows the roster rather than the newest contest", async () => {
+  test("pre-start sign-in follows the roster rather than another scheduled contest", async () => {
     // A contest the veteran is NOT in, scheduled at the same sort of time. Before the fix this
     // kind of row is what sign-in chose from, because the choice looked only at contest state.
     decoyContestId = await createContest(
@@ -311,8 +312,20 @@ test.describe("the student then lands in the contest they were rostered into", (
       new Date(Date.now() + 25 * 60 * 60_000),
       new Date(Date.now() + 28 * 60 * 60_000),
     );
+    await testDb().contest.update({
+      where: { id: decoyContestId },
+      data: { state: "SCHEDULED" },
+    });
 
-    const enrolment = await ensureEnrolled(veteran.userId, veteran.displayName);
+    const next = await testDb().contest.findUniqueOrThrow({
+      where: { id: nextContestId },
+      select: { startsAt: true },
+    });
+    // At the real wall clock, the seeded E2E event is actively running and correctly wins. Move
+    // the injected clock to just before these two future events to isolate the pre-start rule:
+    // among scheduled contests, the organizer's roster decision wins.
+    const justBeforeNext = new Date(next.startsAt.getTime() - 5 * 60_000);
+    const enrolment = await ensureEnrolled(veteran.userId, veteran.displayName, justBeforeNext);
     expect(enrolment, "a student with a roster place must not be refused").not.toBeNull();
     expect(
       enrolment?.contestId,
@@ -334,6 +347,76 @@ test.describe("the student then lands in the contest they were rostered into", (
     expect(choices.map((choice) => choice.contestId)).not.toContain(previousContestId);
   });
 
+  test("DRAFT and future live-looking contests are never automatic sign-in targets", async () => {
+    const now = new Date();
+    const student = await createUser("BadStateTarget", 2033);
+    const draftId = await createContest(
+      `${MARK} Private Draft`,
+      new Date(now.getTime() - 5 * 60_000),
+      new Date(now.getTime() + 55 * 60_000),
+    );
+    const futureIds = await Promise.all(
+      (["RUNNING", "FROZEN"] as const).map(async (state, index) => {
+        const id = await createContest(
+          `${MARK} Future ${state}`,
+          new Date(now.getTime() + (index + 2) * 60 * 60_000),
+          new Date(now.getTime() + (index + 3) * 60 * 60_000),
+        );
+        await testDb().contest.update({ where: { id }, data: { state } });
+        return id;
+      }),
+    );
+
+    // Even an existing roster row cannot make an organizer-only draft or a future row whose
+    // state disagrees with its clock become the active session contest.
+    await testDb().participant.createMany({
+      data: [draftId, ...futureIds].map((contestId, index) => ({
+        contestId,
+        userId: student.userId,
+        displayName: `${student.displayName} ${String(index + 1)}`,
+      })),
+    });
+
+    const choices = await contestsForUser(student.userId, now);
+    const choiceIds = choices.map((choice) => choice.contestId);
+    for (const excludedId of [draftId, ...futureIds]) {
+      expect(choiceIds).not.toContain(excludedId);
+    }
+  });
+
+  test("a contest happening now beats a rostered future SCHEDULED contest", async () => {
+    const now = new Date();
+    const student = await createUser("ClockPriority", 2034);
+    const currentId = await createContest(
+      `${MARK} Current Window`,
+      new Date(now.getTime() - 10 * 60_000),
+      new Date(now.getTime() + 50 * 60_000),
+    );
+    const upcomingId = await createContest(
+      `${MARK} Upcoming Rostered`,
+      new Date(now.getTime() + 60 * 60_000),
+      new Date(now.getTime() + 2 * 60 * 60_000),
+    );
+    await testDb().contest.update({ where: { id: currentId }, data: { state: "RUNNING" } });
+    await testDb().contest.update({ where: { id: upcomingId }, data: { state: "SCHEDULED" } });
+    await testDb().participant.create({
+      data: {
+        contestId: upcomingId,
+        userId: student.userId,
+        displayName: student.displayName,
+      },
+    });
+
+    const choices = await contestsForUser(student.userId, now);
+    const ids = choices.map((choice) => choice.contestId);
+    expect(ids).toContain(currentId);
+    expect(ids).toContain(upcomingId);
+    expect(ids.indexOf(currentId)).toBeLessThan(ids.indexOf(upcomingId));
+    expect(choices.find((choice) => choice.contestId === upcomingId)?.alreadyParticipant).toBe(
+      true,
+    );
+  });
+
   test("a student genuinely in two open contests gets both, best first", async () => {
     // Rostered into the decoy as well: now the ambiguity is real rather than hypothetical, and the
     // rule has to be able to hand the student a list instead of guessing silently.
@@ -342,12 +425,20 @@ test.describe("the student then lands in the contest they were rostered into", (
     });
     expect(response.status()).toBe(200);
 
-    const choices = await contestsForUser(veteran.userId);
+    const next = await testDb().contest.findUniqueOrThrow({
+      where: { id: nextContestId },
+      select: { startsAt: true },
+    });
+    const choices = await contestsForUser(
+      veteran.userId,
+      new Date(next.startsAt.getTime() - 5 * 60_000),
+    );
     const mine = choices.filter((choice) => choice.alreadyParticipant);
     expect(mine.map((choice) => choice.contestId)).toEqual(
       expect.arrayContaining([nextContestId, decoyContestId]),
     );
-    // Ranked, not merely returned: the head is what `ensureEnrolled` takes.
+    // Ranked, not merely returned: with no contest in its actual window at this injected clock,
+    // an existing roster place heads the scheduled choices.
     expect(choices[0]?.alreadyParticipant).toBe(true);
 
     // Cleaned up so the removal tests below have one unambiguous contest to work in.

@@ -127,7 +127,18 @@ test.describe("an organizer moves a participant, and the mean follows", () => {
     expect(to).toBeDefined();
     if (to === undefined) return;
 
-    const mover = from.players[0];
+    // RANDOM_ASSIGNED teams may not contain the same set twice. Pick the member whose current set
+    // is free in the destination so this spec exercises a roster move rather than the capacity
+    // guard that has its own coverage.
+    const destinationSets = new Set(
+      to.players.flatMap((player) =>
+        player.chosenSetLabel === null ? [] : [player.chosenSetLabel],
+      ),
+    );
+    const mover = from.players.find(
+      (player) =>
+        player.chosenSetLabel !== null && !destinationSets.has(player.chosenSetLabel),
+    );
     expect(mover).toBeDefined();
     if (mover === undefined) return;
 
@@ -142,13 +153,14 @@ test.describe("an organizer moves a participant, and the mean follows", () => {
     );
     expect(noReason.status).toBe(400);
 
-    await readOk(
+    const moved = await readOk(
       await admin.moveParticipantRaw({
         participantId: mover.participantId,
         teamId: to.teamId,
         reason: "joined the wrong team at sign-in",
       }),
     );
+    expect(moved.status, "the compatible roster move was refused").toBeLessThan(300);
 
     const boardAfter = await admin.teamStandings();
     const fromAfter = boardAfter.teams.find((team) => team.teamId === from.teamId);
@@ -194,13 +206,14 @@ test.describe("an organizer moves a participant, and the mean follows", () => {
      */
 
     // Put them back so the rest of the suite sees the fixture it expects.
-    await readOk(
+    const restored = await readOk(
       await admin.moveParticipantRaw({
         participantId: mover.participantId,
         teamId: from.teamId,
         reason: "restoring the fixture after the move spec",
       }),
     );
+    expect(restored.status, "the fixture roster could not be restored").toBeLessThan(300);
   });
 
   test("the move is audit-logged with the actor, the reason, and both sizes", async () => {

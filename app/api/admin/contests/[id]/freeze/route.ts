@@ -33,6 +33,8 @@ export async function POST(
     const admin = requireAdmin(await viewerFromRequest(request, now));
     const { frozen } = await readJson(request, FreezeRequestSchema);
 
-    return jsonOk(await setFrozen(id, frozen, admin, now), NO_STORE);
+    // Authentication uses the request instant. The freeze cutoff does not: setFrozen stamps it
+    // only after acquiring the same contest lock used by score writes.
+    return jsonOk(await setFrozen(id, frozen, admin), NO_STORE);
   });
 }

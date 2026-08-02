@@ -102,6 +102,18 @@ test.describe("the competitor journey in a browser", () => {
     const firstProblem = problemLinks.first();
     const problemLabel = (await firstProblem.getAttribute("aria-label")) ?? "";
     expect(problemLabel.length, "each problem row should carry an accessible name").toBeGreaterThan(0);
+    const overlappingRows = await page.locator("[data-problem-row]").evaluateAll((rows) =>
+      rows.flatMap((row, index) => {
+        const slot = row.querySelector("[data-problem-slot]");
+        const title = row.querySelector("[data-problem-title]");
+        if (slot === null || title === null || slot.firstChild === null) return [index];
+        const range = document.createRange();
+        range.selectNodeContents(slot);
+        const slotRight = Math.max(...[...range.getClientRects()].map((rect) => rect.right));
+        return slotRight > title.getBoundingClientRect().left ? [index] : [];
+      }),
+    );
+    expect(overlappingRows, "slot labels must not overlap problem titles").toEqual([]);
     await firstProblem.click();
 
     // --- problem -------------------------------------------------------------
@@ -176,6 +188,236 @@ test.describe("the competitor journey in a browser", () => {
     );
   });
 
+  test("a failed session check is not mislabeled as a signed-out student", async ({ page }) => {
+    await page.route("**/api/auth/session", async (route) => {
+      await route.fulfill({
+        status: 500,
+        contentType: "application/json",
+        body: JSON.stringify({
+          success: false,
+          data: null,
+          error: { code: "INTERNAL", message: "probe failure" },
+        }),
+      });
+    });
+
+    await page.goto("/contest");
+
+    await expect(
+      page.getByRole("heading", { name: "We could not check your sign-in" }),
+    ).toBeVisible();
+    await expect(page.getByRole("button", { name: "Reload the page" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "You are not signed in" })).toHaveCount(0);
+  });
+
+  test("an open lobby picks up an organizer assignment without a reload", async ({ page }) => {
+    const db = testDb();
+    const contest = await db.contest.findFirstOrThrow({
+      where: { joinCode: JOIN_CODE },
+      select: { id: true },
+    });
+    const target = await db.contestProblem.findFirstOrThrow({
+      where: {
+        contestId: contest.id,
+        round: "INDIVIDUAL",
+        setId: { not: null },
+        problem: { state: "PUBLISHED" },
+      },
+      select: {
+        divisionId: true,
+        setId: true,
+        set: { select: { label: true } },
+        problem: { select: { title: true } },
+      },
+    });
+    expect(target.setId).not.toBeNull();
+    expect(target.set).not.toBeNull();
+
+    const team = await db.team.create({
+      data: {
+        contestId: contest.id,
+        name: `Refresh team ${String(Date.now())}`,
+        joinCode: `RF${String(Date.now()).slice(-8)}`,
+      },
+      select: { id: true },
+    });
+    const session = await signInAsCompetitor(page, contest.id, {
+      displayName: nextDisplayName(),
+      divisionId: null,
+      chosenSetId: null,
+    });
+
+    let problemReads = 0;
+    page.on("request", (request) => {
+      if (new URL(request.url()).pathname === `/api/contests/${contest.id}/problems`) {
+        problemReads += 1;
+      }
+    });
+
+    try {
+      await page.goto("/contest");
+      await expect(
+        page.getByRole("heading", { name: "You are not on a team yet" }),
+      ).toBeVisible();
+      await expect.poll(() => problemReads).toBeGreaterThan(0);
+      const readsBeforeAssignment = problemReads;
+
+      // This is the organizer's completed roster action. The student leaves the tab open.
+      await db.participant.update({
+        where: { id: session.participantId },
+        data: {
+          teamId: team.id,
+          divisionId: target.divisionId,
+          chosenSetId: target.setId,
+        },
+      });
+
+      await expect(
+        page.getByRole("heading", {
+          name: `Your problem set is ${target.set?.label ?? ""}`,
+        }),
+      ).toBeVisible({ timeout: 15_000 });
+      await expect.poll(() => problemReads).toBeGreaterThan(readsBeforeAssignment);
+      await expect(
+        page
+          .getByRole("list", { name: "Problems" })
+          .getByRole("link")
+          .filter({ hasText: target.problem.title }),
+      ).toBeVisible();
+    } finally {
+      await db.participant.deleteMany({ where: { id: session.participantId } });
+      await db.team.deleteMany({ where: { id: team.id } });
+    }
+  });
+
+  test("an open competitor page refreshes team and set scope without a reload", async ({ page }) => {
+    const db = testDb();
+    const contest = await db.contest.findFirstOrThrow({
+      where: { joinCode: JOIN_CODE },
+      select: { id: true },
+    });
+    const candidates = await db.contestProblem.findMany({
+      where: {
+        contestId: contest.id,
+        round: "INDIVIDUAL",
+        setId: { not: null },
+        problem: { state: "PUBLISHED" },
+      },
+      orderBy: { slotLabel: "asc" },
+      select: {
+        divisionId: true,
+        setId: true,
+        set: { select: { label: true } },
+        problem: { select: { title: true } },
+      },
+    });
+    const first = candidates[0];
+    const second = candidates.find((candidate) => candidate.setId !== first?.setId);
+    expect(first, "the fixture needs an individual set").toBeDefined();
+    expect(second, "the fixture needs two different individual sets").toBeDefined();
+
+    const teams = await Promise.all(
+      ["First", "Second"].map((suffix, index) =>
+        db.team.create({
+          data: {
+            contestId: contest.id,
+            name: `Scope refresh ${suffix} ${String(Date.now())}`,
+            joinCode: `RS${String(Date.now()).slice(-6)}${String(index)}`,
+          },
+          select: { id: true, name: true },
+        }),
+      ),
+    );
+    const session = await signInAsCompetitor(page, contest.id, {
+      displayName: nextDisplayName(),
+      divisionId: first?.divisionId ?? null,
+      chosenSetId: first?.setId ?? null,
+    });
+    await db.participant.update({
+      where: { id: session.participantId },
+      data: { teamId: teams[0]?.id ?? null },
+    });
+
+    let problemReads = 0;
+    let problemDetailReads = 0;
+    page.on("request", (request) => {
+      const path = new URL(request.url()).pathname;
+      if (path === `/api/contests/${contest.id}/problems`) {
+        problemReads += 1;
+      } else if (path.startsWith(`/api/contests/${contest.id}/problems/`)) {
+        problemDetailReads += 1;
+      }
+    });
+
+    try {
+      await page.goto("/contest");
+      await expect(
+        page.getByRole("heading", { name: `Your problem set is ${first?.set?.label ?? ""}` }),
+      ).toBeVisible();
+      const firstProblemLink = page
+        .getByRole("list", { name: "Problems" })
+        .getByRole("link")
+        .filter({ hasText: first?.problem.title ?? "missing" });
+      await expect(firstProblemLink).toBeVisible();
+      await expect.poll(() => problemReads).toBeGreaterThan(0);
+      await firstProblemLink.click();
+      await expect(
+        page.getByRole("heading", { name: first?.problem.title ?? "missing", level: 1 }),
+      ).toBeVisible();
+      await expect.poll(() => problemDetailReads).toBeGreaterThan(0);
+
+      // A team-only move is scope too. The statement remains authorized, but it must be fetched
+      // again under the new team instead of staying pinned to the old scope forever.
+      const readsBeforeTeamMove = problemDetailReads;
+      await db.participant.update({
+        where: { id: session.participantId },
+        data: { teamId: teams[1]?.id ?? null },
+      });
+      await expect.poll(() => problemDetailReads, { timeout: 15_000 }).toBeGreaterThan(readsBeforeTeamMove);
+
+      await db.participant.update({
+        where: { id: session.participantId },
+        data: {
+          divisionId: second?.divisionId ?? null,
+          chosenSetId: second?.setId ?? null,
+        },
+      });
+
+      // The old statement is no longer authorized. It must disappear while this route is still
+      // open; requiring navigation first leaves revoked content visible indefinitely.
+      await expect(page.getByRole("link", { name: "Back to the problem list" })).toBeVisible({
+        timeout: 15_000,
+      });
+      await expect(
+        page.getByRole("heading", { name: first?.problem.title ?? "missing", level: 1 }),
+      ).toHaveCount(0);
+
+      await page.getByRole("link", { name: "Back to the problem list" }).click();
+      await expect(
+        page.getByRole("heading", { name: `Your problem set is ${second?.set?.label ?? ""}` }),
+      ).toBeVisible();
+      await expect(
+        page
+          .getByRole("list", { name: "Problems" })
+          .getByRole("link")
+          .filter({ hasText: second?.problem.title ?? "missing" }),
+      ).toBeVisible();
+
+      await page.goto("/team");
+      await expect(page.getByRole("heading", { name: teams[1]?.name ?? "missing" })).toBeVisible();
+      await db.participant.update({
+        where: { id: session.participantId },
+        data: { teamId: teams[0]?.id ?? null },
+      });
+      await expect(page.getByRole("heading", { name: teams[0]?.name ?? "missing" })).toBeVisible({
+        timeout: 15_000,
+      });
+    } finally {
+      await db.participant.deleteMany({ where: { id: session.participantId } });
+      await db.team.deleteMany({ where: { id: { in: teams.map((team) => team.id) } } });
+    }
+  });
+
   test("a screen showing invented data says so", async ({ page }) => {
     await join(page);
 
@@ -212,6 +454,45 @@ test.describe("the competitor journey in a browser", () => {
     ).toBeVisible();
   });
 
+  test("more than one team roster can stay expanded", async ({ page }) => {
+    await page.goto("/projector");
+    const disclosures = page.locator('button[aria-controls^="team-roster-"]');
+    await expect(disclosures.first()).toBeVisible();
+    expect(await disclosures.count(), "the fixture needs two teams to compare").toBeGreaterThan(1);
+
+    const closedLabels = await disclosures.evaluateAll((buttons) =>
+      buttons.map((button) => button.getAttribute("aria-label") ?? ""),
+    );
+    expect(closedLabels.every((label) => /^Show \d+ players? for .+$/.test(label))).toBe(true);
+    expect(new Set(closedLabels).size, "each team disclosure needs a unique name").toBe(
+      closedLabels.length,
+    );
+
+    const first = disclosures.nth(0);
+    const second = disclosures.nth(1);
+    await expect(first.locator("xpath=ancestor::tr")).not.toHaveAttribute("tabindex", "0");
+    await first.click();
+    await expect(first).toHaveAttribute("aria-expanded", "true");
+    const rosterId = await first.getAttribute("aria-controls");
+    expect(rosterId).not.toBeNull();
+    const table = page.getByRole("table", { name: "Team standings" });
+    const columnCount = await table.locator("thead th").count();
+    const playerRow = table.locator(`#${rosterId ?? "missing"} tr`).first();
+    await expect(playerRow).toBeVisible();
+    expect(
+      await playerRow.locator(":scope > th, :scope > td").count(),
+      "a nested player row must use every standings column",
+    ).toBe(columnCount);
+
+    await second.click();
+    await expect(first).toHaveAttribute("aria-expanded", "true");
+    await expect(second).toHaveAttribute("aria-expanded", "true");
+
+    await page.keyboard.press("Escape");
+    await expect(first).toHaveAttribute("aria-expanded", "false");
+    await expect(second).toHaveAttribute("aria-expanded", "false");
+  });
+
   test("the projector still offers the individual board for the ICPC preset", async ({ page }) => {
     // ?mode=individual is not dead code: the ICPC preset ranks players against each other and has
     // no teams to total. If this ever 404s or renders the team board, that preset has no display.
@@ -246,24 +527,34 @@ test.describe("the problem filters actually filter", () => {
     const total = await rows.count();
     expect(total, "the fixture should publish at least one problem").toBeGreaterThan(0);
 
+    // Phones put the filters in a disclosure above the list. Desktop keeps the rail visible at
+    // the right. Both versions remain in the DOM so they can share state across a resize, which
+    // means every query below must act through the one region the student can currently see.
+    const compactFilterSummary = page.locator("details > summary").filter({ hasText: "Filters" });
+    if (await compactFilterSummary.isVisible()) await compactFilterSummary.click();
+    const filters = page.locator('aside[aria-label="Filters"]:visible');
+    await expect(filters).toHaveCount(1);
+
     // Nothing is ticked to begin with. A filter that arrives pre-applied is the reason people
     // think a list is broken.
-    await expect(page.getByRole("checkbox", { name: "Solved", exact: true })).not.toBeChecked();
-    await expect(page.getByText(`${String(total)} problems`)).toBeVisible();
+    await expect(filters.getByRole("checkbox", { name: "Solved", exact: true })).not.toBeChecked();
+    await expect(filters.getByRole("status")).toHaveText(`${String(total)} problems`);
 
-    await page.getByRole("checkbox", { name: "Unsolved" }).check();
+    await filters.getByRole("checkbox", { name: "Unsolved" }).check();
     await expect(rows).toHaveCount(total);
-    await expect(page.getByText(`Showing ${String(total)} of ${String(total)}`)).toBeVisible();
+    await expect(filters.getByRole("status")).toHaveText(
+      `Showing ${String(total)} of ${String(total)}`,
+    );
 
     // Nothing is solved in a fresh join, so this must empty the list AND say why.
-    await page.getByRole("checkbox", { name: "Unsolved" }).uncheck();
-    await page.getByRole("checkbox", { name: "Solved", exact: true }).check();
+    await filters.getByRole("checkbox", { name: "Unsolved" }).uncheck();
+    await filters.getByRole("checkbox", { name: "Solved", exact: true }).check();
     await expect(rows).toHaveCount(0);
     await expect(page.getByText(/No problems match those filters/)).toBeVisible();
-    await expect(page.getByText(`Showing 0 of ${String(total)}`)).toBeVisible();
+    await expect(filters.getByRole("status")).toHaveText(`Showing 0 of ${String(total)}`);
 
     // Unticking restores it. A filter you cannot get out of is worse than no filter.
-    await page.getByRole("checkbox", { name: "Solved", exact: true }).uncheck();
+    await filters.getByRole("checkbox", { name: "Solved", exact: true }).uncheck();
     await expect(rows).toHaveCount(total);
   });
 });

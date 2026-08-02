@@ -46,8 +46,9 @@ import { LANGUAGE_LABEL, LANGUAGE_TEMPLATE, type CodeEditorProps } from "./types
  * The one place this deliberately departs from the reference screenshots. `--gold`, `--rise`
  * and `--fall` all FAIL AA on `--paper` and are AAA on `--ink` (DESIGN.md §2), so a light code
  * surface leaves exactly two usable hues — and the verdict panel below the editor is dark for
- * that same unavoidable reason. A light editor above a dark verdict panel above dark statement
- * code blocks would be the odd one out on its own page.
+ * that same unavoidable reason. This rationale is about SYNTAX COLOUR, so it covers exactly the
+ * two dark surfaces: the statement's code and sample blocks carry no colour and sit pale on the
+ * paper statement, the way HackerRank's do.
  *
  * ## Tab, and why it is not simply trapped
  *
@@ -82,10 +83,17 @@ import { LANGUAGE_LABEL, LANGUAGE_TEMPLATE, type CodeEditorProps } from "./types
 
 const INDENT = "    ";
 
-/** Every metric the two layers must agree on, in one object so they cannot drift apart. */
+/**
+ * Every metric the two layers must agree on, in one object so they cannot drift apart.
+ *
+ * `--text-sm` (16px), not `--text-xs`: the editor is the product's primary work surface, and
+ * 12.8px there put our code two sizes under HackerRank's ~15.3px. The 1.3 line height keeps the
+ * row pitch at ~20.8px, within a pixel of their 20px, so density stays theirs while the glyphs
+ * stop being metadata-sized.
+ */
 const SHARED_TEXT = {
-  fontSize: "var(--text-xs)",
-  lineHeight: "1.6",
+  fontSize: "var(--text-sm)",
+  lineHeight: "1.3",
   tabSize: 4,
 } as const;
 
@@ -405,6 +413,32 @@ export function CodeEditorSurface({
     void root.requestFullscreen().catch(() => undefined);
   }, []);
 
+  /**
+   * The band's height comes from the TEXTAREA, never from the gutter.
+   *
+   * The gutter renders one div per line with nothing constraining it, so on a 46-line file its
+   * intrinsic height (~966px) used to stretch the whole flex band while the textarea stayed at
+   * its floor (352px). The overlay is `inset-0` of a wrapper that stretches with the band, so
+   * everything below the textarea's real bottom was painted code that no click could reach —
+   * a click there focused `<body>` — and a forced scroll left the overlay pinned at the top,
+   * drawing the caret hundreds of pixels from its glyphs.
+   *
+   * Pinning the gutter's height to the textarea's measured height makes the textarea the band's
+   * only driver: the gutter clips and follows `scrollTop` like the overlay always has. A
+   * ResizeObserver rather than a render-time value because the textarea is user-resizable
+   * (`resize-y`) and nothing re-renders when the student drags the handle.
+   */
+  const [gutterHeight, setGutterHeight] = useState<number | null>(null);
+  useLayoutEffect(() => {
+    const element = textareaRef.current;
+    if (element === null) return;
+    const measure = () => setGutterHeight(element.offsetHeight);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
   /** One handler for both followers: the gutter tracks rows, the overlay tracks rows and columns. */
   const syncScroll = useCallback((event: UIEvent<HTMLTextAreaElement>) => {
     const source = event.currentTarget;
@@ -543,7 +577,10 @@ export function CodeEditorSurface({
           ref={gutterRef}
           aria-hidden="true"
           className="numeric shrink-0 overflow-hidden border-r border-paper/10 bg-paper/5 py-3 pr-2 pl-3 text-right select-none"
-          style={{ ...SHARED_TEXT }}
+          // `height` pins the gutter to the textarea's measured height so its per-line divs can
+          // never stretch the band past the box the student actually types in. Null only before
+          // the first layout-effect measurement, which runs before paint.
+          style={{ ...SHARED_TEXT, height: gutterHeight ?? undefined }}
         >
           {Array.from({ length: lineCount }, (_unused, index) => (
             <div

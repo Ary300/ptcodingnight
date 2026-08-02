@@ -4,6 +4,7 @@ import {
   type EnvSource,
   assertAuthEnvIsDeployable,
   cookiesAreSecure,
+  oauthProviderAvailability,
   parseContestEnv,
 } from "@/lib/contest/env";
 
@@ -85,7 +86,10 @@ describe("an empty variable means unset, not present-and-invalid", () => {
   });
 
   it("keeps a real value", () => {
-    expect(parseContestEnv({ GOOGLE_CLIENT_ID: "abc" }).GOOGLE_CLIENT_ID).toBe("abc");
+    expect(
+      parseContestEnv({ GOOGLE_CLIENT_ID: "abc", GOOGLE_CLIENT_SECRET: "secret" })
+        .GOOGLE_CLIENT_ID,
+    ).toBe("abc");
     expect(parseContestEnv({ PUBLIC_ORIGIN: "https://x.test" }).PUBLIC_ORIGIN).toBe(
       "https://x.test",
     );
@@ -204,5 +208,39 @@ describe("PUBLIC_ORIGIN in production", () => {
         PUBLIC_ORIGIN: "http://localhost:3000",
       }),
     ).not.toThrow();
+  });
+});
+
+describe("OAuth provider availability", () => {
+  it("reports both providers unavailable when credentials are absent or blank", () => {
+    expect(oauthProviderAvailability({})).toEqual({ google: false, github: false });
+    expect(
+      oauthProviderAvailability({
+        GOOGLE_CLIENT_ID: "",
+        GOOGLE_CLIENT_SECRET: " ",
+        GITHUB_CLIENT_ID: " ",
+        GITHUB_CLIENT_SECRET: "",
+      }),
+    ).toEqual({ google: false, github: false });
+  });
+
+  it("fails loudly when only half of a provider credential pair is present", () => {
+    expect(() => oauthProviderAvailability({ GOOGLE_CLIENT_ID: "google-id" })).toThrow(
+      /GOOGLE_CLIENT_SECRET/,
+    );
+    expect(() => oauthProviderAvailability({ GITHUB_CLIENT_SECRET: "github-secret" })).toThrow(
+      /GITHUB_CLIENT_ID/,
+    );
+  });
+
+  it("returns only availability booleans for complete credential pairs", () => {
+    expect(
+      oauthProviderAvailability({
+        GOOGLE_CLIENT_ID: "google-id",
+        GOOGLE_CLIENT_SECRET: "google-secret",
+        GITHUB_CLIENT_ID: "github-id",
+        GITHUB_CLIENT_SECRET: "github-secret",
+      }),
+    ).toEqual({ google: true, github: true });
   });
 });

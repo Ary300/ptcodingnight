@@ -1,4 +1,9 @@
+import type { Prisma } from "@prisma/client";
+
 import { prisma } from "@/lib/db";
+import { isPublicBoardFrozen } from "@/lib/contest/gate";
+import { lockContestMutations } from "@/lib/contest/locks";
+import { invalidateScoringInput } from "@/lib/contest/standings";
 import { ValidationError } from "@/lib/errors";
 
 /**
@@ -35,7 +40,11 @@ export const AVATAR_MAX_BYTES = 512 * 1024;
  * The image types the avatar route will store and serve. An allow-list, not a block-list: an SVG
  * avatar is a script-injection vector when served same-origin, so it is simply not on the list.
  */
-export const ALLOWED_AVATAR_MIME: readonly string[] = ["image/png", "image/jpeg", "image/webp"];
+export const ALLOWED_AVATAR_MIME: readonly string[] = [
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+];
 
 export interface AccountProfile {
   readonly userId: string;
@@ -48,7 +57,9 @@ export interface AccountProfile {
 }
 
 /** The profile a student sees on their own Settings page. */
-export async function getAccountProfile(userId: string): Promise<AccountProfile> {
+export async function getAccountProfile(
+  userId: string,
+): Promise<AccountProfile> {
   const user = await prisma.user.findUnique({
     where: { id: userId },
     select: {
@@ -82,12 +93,17 @@ export async function getAccountProfile(userId: string): Promise<AccountProfile>
 function normaliseDisplayName(wanted: string): string {
   // Strip control characters (they have no place in a name and are how a row is spoofed),
   // then collapse internal whitespace so " Aryav   Das " and "Aryav Das" are one name.
-  const cleaned = wanted.replace(/[\u0000-\u001f\u007f]/g, "").replace(/\s+/g, " ").trim();
+  const cleaned = wanted
+    .replace(/[\u0000-\u001f\u007f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
   if (cleaned.length < DISPLAY_NAME_MIN) {
     throw new ValidationError("Your name cannot be empty.");
   }
   if (cleaned.length > DISPLAY_NAME_MAX) {
-    throw new ValidationError(`Keep your name to ${String(DISPLAY_NAME_MAX)} characters or fewer.`);
+    throw new ValidationError(
+      `Keep your name to ${String(DISPLAY_NAME_MAX)} characters or fewer.`,
+    );
   }
   return cleaned;
 }
@@ -100,13 +116,18 @@ function normaliseDisplayName(wanted: string): string {
  * suffix against themselves. This variant ignores the participant doing the renaming.
  */
 async function uniqueNameExcluding(
+  db: Pick<Prisma.TransactionClient, "participant">,
   contestId: string,
   wanted: string,
   ownParticipantId: string,
 ): Promise<string> {
   const base = wanted.slice(0, DISPLAY_NAME_MAX);
-  const taken = await prisma.participant.findMany({
-    where: { contestId, displayName: { startsWith: base }, id: { not: ownParticipantId } },
+  const taken = await db.participant.findMany({
+    where: {
+      contestId,
+      displayName: { startsWith: base },
+      id: { not: ownParticipantId },
+    },
     select: { displayName: true },
   });
   const names = new Set(taken.map((row) => row.displayName));
@@ -127,50 +148,100 @@ export interface RenameResult {
    * shows "Aryav Das (2)".
    */
   readonly adjustedOnABoard: boolean;
+  /** True when a frozen or completed result kept the name used during that contest. */
+  readonly preservedOnLockedBoards: boolean;
 }
 
 /**
  * Rename the account and propagate the new name to the viewer's sessions and participant rows.
  *
  * The account gets exactly the validated name. Each participant row gets a per-contest-unique
- * form of it, which may carry a suffix; that divergence is inherent to a board that forbids
- * duplicate names, and the return value reports it rather than hiding it.
+ * form of it, which may carry a suffix. Frozen and completed boards keep the competition name
+ * they already published because participant names have no temporal revision log. Both kinds of
+ * divergence are reported to the UI rather than hidden.
  */
 export async function renameAccount(
   userId: string,
   wanted: string,
-  now: Date = new Date(),
+  now?: Date,
 ): Promise<RenameResult> {
   const name = normaliseDisplayName(wanted);
 
-  const participants = await prisma.participant.findMany({
-    where: { userId },
-    select: { id: true, contestId: true },
-  });
+  const contestIds = (
+    await prisma.participant.findMany({
+      where: { userId },
+      select: { contestId: true },
+    })
+  )
+    .map((participant) => participant.contestId)
+    .filter((contestId, index, all) => all.indexOf(contestId) === index)
+    .sort();
 
   let adjustedOnABoard = false;
+  let preservedOnLockedBoards = false;
+  const updatedContestIds: string[] = [];
 
   await prisma.$transaction(async (tx) => {
-    await tx.user.update({ where: { id: userId }, data: { displayName: name } });
+    // Use the same ordered contest locks as freeze and roster changes. Without this, a rename and
+    // a freeze could both pass their checks and commit in the opposite order, rewriting the name
+    // on a board whose cutoff was already visible to the room.
+    for (const contestId of contestIds)
+      await lockContestMutations(tx, contestId);
+    // Production callers omit `now`, so the decision is made only after the locks are ours. Tests
+    // may inject a fixed instant to exercise an exact freeze boundary deterministically.
+    const effectiveNow = now ?? new Date();
+
+    const participants = await tx.participant.findMany({
+      where: { userId },
+      select: {
+        id: true,
+        contestId: true,
+        contest: {
+          select: { state: true, startsAt: true, endsAt: true, freezeAt: true },
+        },
+      },
+    });
+
+    await tx.user.update({
+      where: { id: userId },
+      data: { displayName: name },
+    });
 
     // Live sessions only. A revoked or expired session's name never renders, and rewriting it
     // would be churn on rows that exist for the audit trail.
     await tx.session.updateMany({
-      where: { userId, revokedAt: null, expiresAt: { gt: now } },
+      where: { userId, revokedAt: null, expiresAt: { gt: effectiveNow } },
       data: { displayName: name },
     });
 
     for (const participant of participants) {
-      const unique = await uniqueNameExcluding(participant.contestId, name, participant.id);
+      const boardLocked =
+        participant.contest.state === "ENDED" ||
+        participant.contest.state === "ARCHIVED" ||
+        isPublicBoardFrozen(participant.contest, effectiveNow);
+      if (boardLocked) {
+        preservedOnLockedBoards = true;
+        continue;
+      }
+
+      const unique = await uniqueNameExcluding(
+        tx,
+        participant.contestId,
+        name,
+        participant.id,
+      );
       if (unique !== name) adjustedOnABoard = true;
       await tx.participant.update({
         where: { id: participant.id },
         data: { displayName: unique },
       });
+      updatedContestIds.push(participant.contestId);
     }
   });
 
-  return { displayName: name, adjustedOnABoard };
+  for (const contestId of updatedContestIds) invalidateScoringInput(contestId);
+
+  return { displayName: name, adjustedOnABoard, preservedOnLockedBoards };
 }
 
 /**
@@ -196,12 +267,19 @@ export async function setAvatar(
   }
   await prisma.user.update({
     where: { id: userId },
-    data: { avatarData: Buffer.from(bytes), avatarMime: mime, avatarUpdatedAt: now },
+    data: {
+      avatarData: Buffer.from(bytes),
+      avatarMime: mime,
+      avatarUpdatedAt: now,
+    },
   });
 }
 
 /** Remove the avatar, falling the UI back to the initial disc. */
-export async function clearAvatar(userId: string, now: Date = new Date()): Promise<void> {
+export async function clearAvatar(
+  userId: string,
+  now: Date = new Date(),
+): Promise<void> {
   await prisma.user.update({
     where: { id: userId },
     data: { avatarData: null, avatarMime: null, avatarUpdatedAt: now },
@@ -224,6 +302,7 @@ export async function getAvatar(userId: string): Promise<StoredAvatar | null> {
     where: { id: userId },
     select: { avatarData: true, avatarMime: true },
   });
-  if (user === null || user.avatarData === null || user.avatarMime === null) return null;
+  if (user === null || user.avatarData === null || user.avatarMime === null)
+    return null;
   return { data: Buffer.from(user.avatarData), mime: user.avatarMime };
 }

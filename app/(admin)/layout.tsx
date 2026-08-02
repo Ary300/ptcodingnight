@@ -55,7 +55,7 @@ import { isAdmin, viewerFromCookies } from "@/lib/contest/viewer";
  */
 
 export const metadata: Metadata = {
-  title: "Organiser | Park Tudor Coding Night",
+  title: "Organizer | Park Tudor Coding Night",
   description: "Contest builder, problem authoring, live console, teams, and awards.",
 };
 
@@ -84,6 +84,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
               width={275}
               height={235}
               aria-hidden="true"
+              priority
               className="h-8 w-auto"
             />
             <span className="font-display font-bold" style={{ fontSize: "var(--text-sm)" }}>
@@ -100,7 +101,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
               className="rounded-sm border border-paper/40 px-1.5 py-0.5 font-semibold uppercase"
               style={{ fontSize: "var(--text-xs)", letterSpacing: "0.08em" }}
             >
-              Organiser
+              Organizer
             </span>
           </Link>
 

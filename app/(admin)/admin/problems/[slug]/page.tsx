@@ -203,12 +203,12 @@ export default async function ProblemPage({
       )}
 
       <Panel
-        title="What has been checked, and what has not"
-        description="Stated exactly, because the version of this panel that guessed reported green and had proved nothing."
+        title="Readiness checks"
+        description="Review the question data before adding it to a live contest."
       >
         <div className="grid gap-6 sm:grid-cols-2" style={{ fontSize: "var(--text-sm)" }}>
           <div>
-            <h3 className="font-semibold">Checked by this system</h3>
+            <h3 className="font-semibold">Available now</h3>
             <ul className="mt-tight flex flex-col gap-1.5">
               <Fact ok={problem.statementMd.trim() !== ""}>
                 {problem.statementMd.trim() !== ""
@@ -232,18 +232,14 @@ export default async function ProblemPage({
             </ul>
           </div>
           <div>
-            <h3 className="font-semibold">Not checked, by anything here</h3>
+            <h3 className="font-semibold">Still verify</h3>
             <p className="mt-tight text-ink/70">
-              Nothing on this screen has compiled or run a line of code, and no page in this console
-              can. Whether a correct solution passes these cases inside the judge, within the time
-              limit, in every language, is answered by <code>npm run test:content</code> and by
-              nothing else: it is the only check that puts a reference solution through the real
-              judge in a real container.
+              Run the content test before the contest. It sends the reference solution through the
+              same judge, limits, and language runtime used for student submissions.
             </p>
             <p className="mt-tight text-ink/70">
-              The expected outputs are whatever the author typed. If one of them is wrong, every
-              correct submission gets <strong>WA</strong>, and the student cannot tell that from
-              their own bug.
+              Check every expected output carefully. A wrong expected output will reject a correct
+              solution.
             </p>
           </div>
         </div>
@@ -294,7 +290,7 @@ export default async function ProblemPage({
 
       <Panel
         title="Student preview"
-        description="Rendered by the same component the competitor screen uses, so this is the page a student opens rather than an approximation of it."
+        description="This uses the same statement renderer students see during the contest."
       >
         {problem.statementMd.trim() === "" ? (
           <p
@@ -316,7 +312,7 @@ export default async function ProblemPage({
 
       <Panel
         title="Starter code"
-        description="Generated from the stored signature by the same function that fills the student's editor. Read the one for the language you know least well: a stub that parses its input in the wrong order compiles perfectly and fails every case."
+        description="Preview the generated starter file for each allowed language."
       >
         {signatureUnreadable ? (
           <p
@@ -361,7 +357,7 @@ export default async function ProblemPage({
 
       <Panel
         title="Delete this question"
-        description="Removes the rows and the test files together. There is no undo, and nothing in this app can put the test data back."
+        description="This permanently removes the question and its test files."
       >
         {deleteBlocked !== null ? (
           <p role="status" style={{ fontSize: "var(--text-sm)" }}>

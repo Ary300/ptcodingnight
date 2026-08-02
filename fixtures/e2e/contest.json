@@ -44,21 +44,21 @@
           "dir": "panther-sum",
           "stem": "01",
           "isSample": true,
-          "points": 34
+          "points": 47
         },
         {
           "ordinal": 2,
           "dir": "panther-sum",
           "stem": "02",
           "isSample": true,
-          "points": 33
+          "points": 46
         },
         {
           "ordinal": 3,
           "dir": "panther-sum",
           "stem": "03",
           "isSample": false,
-          "points": 33
+          "points": 47
         }
       ],
       "sampleCount": 2,
@@ -92,7 +92,7 @@
           "points": 10
         }
       ],
-      "setKey": null,
+      "setKey": "setA",
       "round": "INDIVIDUAL"
     },
     {

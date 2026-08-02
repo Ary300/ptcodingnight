@@ -45,17 +45,35 @@ export default async function ContestSetupPage({
 
   const steps = stepsFor(setup);
   const remaining = steps.filter((step) => step.state !== "done").length;
+  const preparing = setup.state === "DRAFT" || setup.state === "SCHEDULED";
+  const live = setup.state === "RUNNING" || setup.state === "FROZEN";
+  const checklistTitle = preparing
+    ? "Before this contest can run"
+    : live
+      ? "Live contest check"
+      : "Final contest check";
+  const checklistDescription = preparing
+    ? "Complete these steps before publishing the contest."
+    : live
+      ? "The contest is running. Any item below needs an organizer's attention, but it does not stop the live round."
+      : "This is the final record of the line-up, roster, assignments and contest state.";
 
   return (
     <div className="flex flex-col gap-6">
       <Panel
-        title="Before this contest can run"
+        title={checklistTitle}
         aside={
-          <span className="numeric text-ink/70" style={{ fontSize: "var(--text-xs)" }}>
-            {remaining === 0 ? "nothing left" : `${String(remaining)} to do`}
+          // Open Sans, not `numeric`: "2 to do" is a phrase, and the mono face is reserved for
+          // digit runs that align in a column.
+          <span className="text-ink/70" style={{ fontSize: "var(--text-xs)" }}>
+            {remaining === 0
+              ? "all clear"
+              : preparing
+                ? `${String(remaining)} to do`
+                : `${String(remaining)} ${remaining === 1 ? "issue" : "issues"}`}
           </span>
         }
-        description="Everything a student needs to see a problem and have it scored. The API refuses to publish a contest with an empty line-up; this is the same fact, shown before you press anything."
+        description={checklistDescription}
       >
         <ol className="flex flex-col">
           {steps.map((step) => (
@@ -63,8 +81,13 @@ export default async function ContestSetupPage({
               key={step.title}
               className="flex flex-wrap items-start gap-x-4 gap-y-2 border-b border-rule-hair py-3.5 last:border-b-0"
             >
+              {/*
+                `w-auto` below `sm`: a fixed 96px marker plus a shrink-0 action used to crush the
+                body column to 65px at 360, one word per line. The marker takes only what it needs
+                there and lines up as a column from `sm`.
+              */}
               <span
-                className={`mt-0.5 w-24 shrink-0 font-semibold ${MARKER[step.state].tone}`}
+                className={`mt-0.5 w-auto shrink-0 font-semibold sm:w-24 ${MARKER[step.state].tone}`}
                 style={{ fontSize: "var(--text-xs)" }}
               >
                 <span aria-hidden="true">{MARKER[step.state].glyph} </span>
@@ -72,18 +95,24 @@ export default async function ContestSetupPage({
               </span>
 
               <div className="min-w-0 flex-1">
-                <h3
-                  className={step.state === "todo" ? "font-bold" : "font-semibold"}
-                  style={{ fontSize: "var(--text-sm)" }}
-                >
-                  {step.title}
-                </h3>
+                {/*
+                  The action sits beside the title it acts on, not `ml-auto`-pinned to the card's
+                  far edge: at 1440 that put the button up to a metre of screen from its sentence,
+                  and the three actions right-ragged against each other.
+                */}
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                  <h3
+                    className={step.state === "todo" ? "font-bold" : "font-semibold"}
+                    style={{ fontSize: "var(--text-sm)" }}
+                  >
+                    {step.title}
+                  </h3>
+                  {step.action}
+                </div>
                 <p className="mt-0.5 max-w-[70ch] text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
                   {step.detail}
                 </p>
               </div>
-
-              {step.action !== null && <div className="shrink-0">{step.action}</div>}
             </li>
           ))}
         </ol>
@@ -91,33 +120,37 @@ export default async function ContestSetupPage({
 
       <Panel
         title="Lifecycle"
-        description="A contest is born DRAFT and students cannot see it. Publishing is a separate, deliberate act, and ending one, with a room still submitting, cannot be undone."
+        description="Draft contests are private. Publish when setup is complete, then start and end the contest from here."
       >
-        <ContestStateActions contestId={setup.contestId} state={setup.state} />
-
-        <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-rule-edge pt-4">
+        {/*
+          The two most-used pre-doors actions, FIRST and as buttons. They were 16px underlined
+          body-text links under the panel's closing rule, which put them below the fold on a
+          1440x900 laptop. Styled to match Button's `secondary` variant so they sit at the same
+          42px height as the lifecycle controls below.
+        */}
+        <div className="mb-5 flex flex-wrap items-center gap-3 border-b border-rule-edge pb-5">
           <Link
             href="/contest"
-            className="underline underline-offset-4 hover:text-panther"
-            style={{ fontSize: "var(--text-sm)" }}
+            className="inline-flex items-center rounded border border-rule-edge bg-paper px-4 py-2 font-semibold text-ink hover:bg-ink/5"
+            style={{ fontSize: "var(--text-sm)", lineHeight: "1.5rem" }}
           >
             Open the student view
           </Link>
           <Link
             href={`/projector?contest=${encodeURIComponent(setup.contestId)}`}
-            className="underline underline-offset-4 hover:text-panther"
-            style={{ fontSize: "var(--text-sm)" }}
+            className="inline-flex items-center rounded border border-rule-edge bg-paper px-4 py-2 font-semibold text-ink hover:bg-ink/5"
+            style={{ fontSize: "var(--text-sm)", lineHeight: "1.5rem" }}
           >
             Open the projector for this contest
           </Link>
         </div>
+
+        <ContestStateActions contestId={setup.contestId} state={setup.state} />
       </Panel>
 
       {setup.state === "DRAFT" && setup.problemCount === 0 && (
         <AlertPlate tone="notice" title="Publishing will be refused" live={false}>
-          A published contest with an empty line-up is the failure that looks most like a working
-          one: students sign in, see nothing, and conclude the platform is broken. Add the line-up
-          on the <strong>Problems</strong> tab first.
+          Add at least one ready question on the <strong>Problems</strong> tab before publishing.
         </AlertPlate>
       )}
 
@@ -144,7 +177,9 @@ function Fact({ label, value }: { label: string; value: string }) {
       <dt className="text-ink/70" style={{ fontSize: "var(--text-xs)" }}>
         {label}
       </dt>
-      <dd className="numeric mt-0.5">{value}</dd>
+      {/* Open Sans, not `numeric`: "Aug 1, 8:09 PM EDT" and "No freeze" are phrases, and the
+          mono face is reserved for digit runs that align in a column. */}
+      <dd className="mt-0.5">{value}</dd>
     </div>
   );
 }
@@ -218,8 +253,8 @@ function stepsFor(setup: ContestSetup): readonly Step[] {
       title: "Build the roster",
       detail:
         setup.teamCount === 0
-          ? "No teams yet. A team score is a mean over its roster, so a contest with no teams has no board."
-          : `${String(setup.teamCount)} ${setup.teamCount === 1 ? "team" : "teams"}, ${String(setup.participantCount)} signed in${setup.unassignedCount === 0 ? "" : `, ${String(setup.unassignedCount)} on no team (their points are in nobody's pool)`}.`,
+          ? "No teams yet. Add teams and place every participant on a roster."
+          : `${String(setup.teamCount)} ${setup.teamCount === 1 ? "team" : "teams"}, ${String(setup.participantCount)} ${setup.participantCount === 1 ? "participant" : "participants"}${setup.unassignedCount === 0 ? "" : `, ${String(setup.unassignedCount)} still ${setup.unassignedCount === 1 ? "needs" : "need"} a team`}.`,
       state: setup.teamCount > 0 && setup.unassignedCount === 0 ? "done" : "todo",
       action: <TabLink href={`${base}/teams`} label="Teams" />,
     },
@@ -227,10 +262,14 @@ function stepsFor(setup: ContestSetup): readonly Step[] {
       title: "Assign problem sets",
       detail:
         setup.participantCount === 0
-          ? "Nobody to assign yet. Sets are dealt from a stored seed once the roster exists, so a disputed assignment can be re-derived rather than argued about."
+          ? setup.setSelection === "RANDOM_ASSIGNED"
+            ? "Nobody to assign yet. Build the roster first, then deal the sets."
+            : "Nobody to assign yet. Add the roster first, then choose each player's set on the Teams tab."
           : setup.unassignedSetCount === 0
             ? "Every player has a Round 1 set."
-            : `${String(setup.unassignedSetCount)} of ${String(setup.participantCount)} have no set. A player with no set can open the group problems and nothing else.`,
+            : setup.setSelection === "RANDOM_ASSIGNED"
+              ? `${String(setup.unassignedSetCount)} of ${String(setup.participantCount)} have no set. A player with no set can open the group problems and nothing else.`
+              : `${String(setup.unassignedSetCount)} of ${String(setup.participantCount)} have no set. Choose them on the Teams tab; a player with no set can open group problems only.`,
       // "Not yet" while nobody has signed in: there is nothing to deal sets to, and no button.
       state:
         setup.participantCount === 0
@@ -240,7 +279,11 @@ function stepsFor(setup: ContestSetup): readonly Step[] {
             : "todo",
       action:
         setup.participantCount > 0 && setup.unassignedSetCount > 0 ? (
-          <AssignSetsButton contestId={setup.contestId} />
+          setup.setSelection === "RANDOM_ASSIGNED" ? (
+            <AssignSetsButton contestId={setup.contestId} />
+          ) : (
+            <TabLink href={`${base}/teams`} label="Choose sets" />
+          )
         ) : null,
     },
     {

@@ -86,11 +86,47 @@ export function ProblemBrowser({ problems }: ProblemBrowserProps) {
 
   const filtering = (selected.status ?? []).length > 0 || (selected.difficulty ?? []).length > 0;
 
+  const footer = filtering
+    ? `Showing ${String(visible.length)} of ${String(problems.length)}`
+    : `${String(problems.length)} problems`;
+
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_11rem]">
+      {/*
+        Below `lg` the grid is one column and the rail used to land UNDER every row it filters —
+        measured at 360px it started at y=1027, a full screenful past the list's first row, so
+        the controls were invisible exactly when a student wanted them. A collapsed disclosure
+        ABOVE the list carries the same controls without spending ~300px of a phone's first
+        screen on unticked checkboxes. Both renders share the same state, so a box ticked here
+        is still ticked when the viewport widens; `display: none` keeps whichever copy is
+        inactive out of the accessibility tree, so the "Filters" landmark never duplicates.
+      */}
+      <details className="lg:hidden">
+        <summary
+          className="cursor-pointer rounded border border-ink/15 bg-paper px-4 py-2.5 font-semibold"
+          style={{ fontSize: "var(--text-sm)" }}
+        >
+          Filters
+          {/* The count rides on the summary so "your filter excludes everything" is readable
+              while the checkboxes are folded away. */}
+          <span className="numeric ml-2 font-normal text-ink/65" style={{ fontSize: "var(--text-xs)" }}>
+            {footer}
+          </span>
+        </summary>
+        <div className="mt-2">
+          <FilterRail groups={GROUPS} selected={selected} onChange={onChange} footer={footer} />
+        </div>
+      </details>
+
       <div className="min-w-0">
         {visible.length === 0 && filtering ? (
-          <p role="status" className="text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
+          // Housed in the same bordered paper card the list itself uses when empty. Bare text on
+          // the tinted ground was a second, different empty grammar on the same screen.
+          <p
+            role="status"
+            className="rounded border border-ink/15 bg-paper p-4 py-8 text-center text-ink/70"
+            style={{ fontSize: "var(--text-sm)" }}
+          >
             No problems match those filters. Untick one to widen the list.
           </p>
         ) : (
@@ -103,16 +139,9 @@ export function ProblemBrowser({ problems }: ProblemBrowserProps) {
         the student came for; a filter they have to tab past on every visit is the kind of thing
         that makes keyboard navigation technically complete and practically annoying.
       */}
-      <FilterRail
-        groups={GROUPS}
-        selected={selected}
-        onChange={onChange}
-        footer={
-          filtering
-            ? `Showing ${String(visible.length)} of ${String(problems.length)}`
-            : `${String(problems.length)} problems`
-        }
-      />
+      <div className="hidden lg:block">
+        <FilterRail groups={GROUPS} selected={selected} onChange={onChange} footer={footer} />
+      </div>
     </div>
   );
 }

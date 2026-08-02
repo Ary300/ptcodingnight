@@ -28,8 +28,8 @@ export function isRejection(verdict: Verdict): boolean {
  * `IE` submissions are dropped entirely — they contribute no score, no penalty, and cannot
  * set a "last score increase" time. Once the job is requeued the retry is the record.
  */
-export function isScorable(verdict: Verdict): boolean {
-  return verdict !== "IE";
+export function isScorable(verdict: Verdict | null): verdict is Verdict {
+  return verdict !== null && verdict !== "IE";
 }
 
 /** ICPC treats a problem as solved only on a full `AC` (PRD §6.2). */

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { Prisma } from "@prisma/client";
 
 import { DomainError } from "@/lib/errors";
 import { prisma } from "@/lib/db";
@@ -201,10 +202,26 @@ export async function linkedUserFor(identity: OAuthIdentity): Promise<Authentica
     throw new ProviderLinkConflictError(identity.provider);
   }
 
-  await prisma.user.update({
-    where: { id: byEmail.id },
-    data: { [subjectField]: identity.subject },
-  });
+  try {
+    const attached = await prisma.user.updateMany({
+      // The predicate is part of the write, not only the read above. If two different provider
+      // subjects race to claim the same verified-email account, exactly one can replace NULL.
+      where: {
+        id: byEmail.id,
+        OR: [{ [subjectField]: null }, { [subjectField]: identity.subject }],
+      },
+      data: { [subjectField]: identity.subject },
+    });
+    if (attached.count === 0) throw new ProviderLinkConflictError(identity.provider);
+  } catch (error) {
+    if (!isUniqueConflict(error)) throw error;
+
+    // A simultaneous callback may have linked this stable subject first. Subject identity is
+    // authoritative, so resolve it exactly as the first branch of this function would.
+    const raced = await userByProviderSubject(subjectField, identity.subject);
+    if (raced !== null) return authenticated(raced);
+    throw new ProviderLinkConflictError(identity.provider);
+  }
 
   return {
     userId: byEmail.id,
@@ -248,20 +265,60 @@ async function selfSignUpFromOAuth(
   subjectField: "googleSub" | "githubSub",
   verifiedEmail: string | null,
 ): Promise<AuthenticatedUser> {
-  const created = await prisma.user.create({
-    data: {
-      email: verifiedEmail,
-      displayName: displayNameFor(identity, verifiedEmail),
-      role: "COMPETITOR",
-      // No password. See the CHECK constraint in the schema for why that is fine for a competitor
-      // and refused for an admin.
-      passwordHash: null,
-      [subjectField]: identity.subject,
-    },
-    select: { id: true, displayName: true },
+  await prisma.user.createMany({
+    data: [
+      {
+        email: verifiedEmail,
+        displayName: displayNameFor(identity, verifiedEmail),
+        role: "COMPETITOR",
+        // No password. See the CHECK constraint in the schema for why that is fine for a competitor
+        // and refused for an admin.
+        passwordHash: null,
+        [subjectField]: identity.subject,
+      },
+    ],
+    // A provider retry is expected concurrency, not an exceptional database event. Resolve the
+    // winning unique subject or email immediately below.
+    skipDuplicates: true,
   });
 
-  return { userId: created.id, displayName: created.displayName, role: "COMPETITOR" };
+  const resolved = await userByProviderSubject(subjectField, identity.subject);
+  if (resolved !== null) return authenticated(resolved);
+
+  // A different provider created the verified-email account at the same instant. Run the normal
+  // resolver again so it links this subject through the guarded compare-and-set above.
+  if (verifiedEmail !== null) return linkedUserFor(identity);
+  throw new Error("The provider account could not be created or resolved");
+}
+
+interface ProviderSubjectUser {
+  readonly id: string;
+  readonly displayName: string;
+  readonly role: "COMPETITOR" | "ADMIN";
+  readonly disabledAt: Date | null;
+}
+
+async function userByProviderSubject(
+  subjectField: "googleSub" | "githubSub",
+  subject: string,
+): Promise<ProviderSubjectUser | null> {
+  return prisma.user.findFirst({
+    where: { [subjectField]: subject },
+    select: { id: true, displayName: true, role: true, disabledAt: true },
+  });
+}
+
+function authenticated(user: ProviderSubjectUser): AuthenticatedUser {
+  if (user.disabledAt !== null) throw new AccountDisabledError();
+  return {
+    userId: user.id,
+    displayName: user.displayName,
+    role: user.role === "ADMIN" ? "ADMIN" : "COMPETITOR",
+  };
+}
+
+function isUniqueConflict(error: unknown): error is Prisma.PrismaClientKnownRequestError {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
 }
 
 /**

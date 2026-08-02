@@ -11,6 +11,7 @@ import {
   pinParticipantToProblemSet,
   readSolution,
   seedE2EContest,
+  testDb,
   type SeededContest,
 } from "./helpers/seed";
 
@@ -82,7 +83,10 @@ test.describe("contest journey (no judge required)", () => {
     // Sets are randomly assigned, so joining alone gives roughly a 50% chance of drawing the set
     // that does NOT hold `liveProblem`, and the specs below would then correctly be refused it.
     // This suite is about the journey; set visibility is covered in team-scoring.api.spec.ts.
-    await pinParticipantToProblemSet(competitorId, liveProblem(seeded).contestProblemId);
+    await pinParticipantToProblemSet(
+      competitorId,
+      liveProblem(seeded).contestProblemId,
+    );
   });
 
   /*
@@ -108,6 +112,45 @@ test.describe("contest journey (no judge required)", () => {
     expect(detail.allowedLanguages).toContain("PYTHON_312");
   });
 
+  test("a future RUNNING row still withholds identities and refuses statements", async () => {
+    const live = liveProblem(seeded);
+    const original = await testDb().contest.findUniqueOrThrow({
+      where: { id: seeded.contestId },
+      select: { state: true, startsAt: true },
+    });
+
+    // This inconsistent row is reachable after a manual edit or a partial deployment. State may
+    // say RUNNING, but valuable problem material must still obey the actual start time.
+    await testDb().contest.update({
+      where: { id: seeded.contestId },
+      data: { state: "RUNNING", startsAt: new Date(Date.now() + 60 * 60_000) },
+    });
+
+    try {
+      const listed = await competitor.listProblems();
+      expect(
+        listed.length,
+        "the pre-start lobby should still show the shape of the line-up",
+      ).toBeGreaterThan(0);
+      for (const problem of listed) {
+        expect(problem.slug).toBe("");
+        expect(problem.title).toBe(`Problem ${problem.slotLabel}`);
+        expect(problem.unlocked).toBe(false);
+      }
+
+      const detail = await readEnvelope(
+        await competitor.getProblemRaw(live.slug),
+      );
+      expect(detail.code).toBe("CONTEST_NOT_RUNNING");
+      expect(detail.message ?? "").toMatch(/not started/i);
+    } finally {
+      await testDb().contest.update({
+        where: { id: seeded.contestId },
+        data: original,
+      });
+    }
+  });
+
   test("a language the problem does not allow is refused by the API, not merely absent from the dropdown", async () => {
     // The registry offers ten languages; a problem may allow a subset. The picker only shows
     // the allowed ones, but the picker is a hint, not a control — anyone can POST whatever
@@ -117,8 +160,13 @@ test.describe("contest journey (no judge required)", () => {
     const live = liveProblem(seeded);
     const detail = await competitor.getProblem(live.slug);
 
-    const forbidden = LANGUAGE_IDS.find((id) => !detail.allowedLanguages.includes(id));
-    expect(forbidden, "fixture allows every language, so this test proves nothing").toBeDefined();
+    const forbidden = LANGUAGE_IDS.find(
+      (id) => !detail.allowedLanguages.includes(id),
+    );
+    expect(
+      forbidden,
+      "fixture allows every language, so this test proves nothing",
+    ).toBeDefined();
     if (forbidden === undefined) return;
 
     const body = {
@@ -132,8 +180,13 @@ test.describe("contest journey (no judge required)", () => {
       ["run-samples", await competitor.runSamplesRaw(body)],
     ] as const) {
       const envelope = await readEnvelope(response);
-      expect(envelope.status, `${label} accepted a disallowed language`).toBeGreaterThanOrEqual(400);
-      expect(envelope.status, `${label} should be a client error`).toBeLessThan(500);
+      expect(
+        envelope.status,
+        `${label} accepted a disallowed language`,
+      ).toBeGreaterThanOrEqual(400);
+      expect(envelope.status, `${label} should be a client error`).toBeLessThan(
+        500,
+      );
     }
   });
 
@@ -143,15 +196,18 @@ test.describe("contest journey (no judge required)", () => {
     const listed = await competitor.listProblems();
     expect(listed.map((problem) => problem.slug)).not.toContain(draft.slug);
 
-    const envelope = await readEnvelope(await competitor.getProblemRaw(draft.slug));
+    const envelope = await readEnvelope(
+      await competitor.getProblemRaw(draft.slug),
+    );
     expect(envelope.code).toBe("PROBLEM_IS_DRAFT");
   });
 
   test("an anonymous caller gets no problems and no submissions", async () => {
     // 403 rather than 401: `requireCompetitor` throws ForbiddenError (lib/contest/viewer.ts).
-    expect((await readEnvelope(await anon.getProblemRaw(liveProblem(seeded).slug))).status).toBe(
-      403,
-    );
+    expect(
+      (await readEnvelope(await anon.getProblemRaw(liveProblem(seeded).slug)))
+        .status,
+    ).toBe(403);
     expect(
       (
         await readEnvelope(
@@ -171,8 +227,13 @@ test.describe("contest journey (no judge required)", () => {
     expect(standings.contestId).toBe(seeded.contestId);
     expect(standings.frozen).toBe(false);
 
-    const intermediate = standings.divisions.find((division) => division.name === "Intermediate");
-    expect(intermediate, "the Intermediate division should be on the board").toBeDefined();
+    const intermediate = standings.divisions.find(
+      (division) => division.name === "Intermediate",
+    );
+    expect(
+      intermediate,
+      "the Intermediate division should be on the board",
+    ).toBeDefined();
 
     const names = intermediate?.rows.map((row) => row.displayName) ?? [];
     expect(names).toContain("E2E Ada");
@@ -182,17 +243,24 @@ test.describe("contest journey (no judge required)", () => {
     // Ada solved at +12 min, Grace at +30 with one wrong answer before it. Ada is ahead.
     expect(names.indexOf("E2E Ada")).toBeLessThan(names.indexOf("E2E Grace"));
 
-    const me = intermediate?.rows.find((row) => row.displayName === DISPLAY_NAME);
+    const me = intermediate?.rows.find(
+      (row) => row.displayName === DISPLAY_NAME,
+    );
     expect(me?.score).toBe(0);
   });
 
   test("an organizer signs in with the passcode, and a wrong one is refused", async () => {
-    expect((await readEnvelope(await admin.adminLoginRaw("definitely-wrong"))).status).toBe(401);
+    expect(
+      (await readEnvelope(await admin.adminLoginRaw("definitely-wrong")))
+        .status,
+    ).toBe(401);
     await admin.adminLogin(ADMIN_PASSCODE);
   });
 
   test("a competitor cannot freeze the board or export the results", async () => {
-    expect((await readEnvelope(await competitor.freezeRaw(true))).status).toBe(403);
+    expect((await readEnvelope(await competitor.freezeRaw(true))).status).toBe(
+      403,
+    );
     expect((await readEnvelope(await competitor.exportRaw())).status).toBe(403);
   });
 
@@ -206,7 +274,9 @@ test.describe("contest journey (no judge required)", () => {
 
     const publicFrozen = await anon.standings();
     expect(publicFrozen.frozen).toBe(true);
-    expect(Date.parse(publicFrozen.asOf)).toBe(Date.parse(frozen.freezeAt ?? ""));
+    expect(Date.parse(publicFrozen.asOf)).toBe(
+      Date.parse(frozen.freezeAt ?? ""),
+    );
 
     // 2. The student submits after the freeze. Judging never stops (PRD §6.3), so this is
     //    accepted; only the public board stopped.
@@ -222,9 +292,21 @@ test.describe("contest journey (no judge required)", () => {
       submissionId: created.submissionId,
       verdict: "AC",
       score: live.basePoints,
-      reason: "E2E: standing in for the judge so the freeze can be observed without Docker",
+      reason:
+        "E2E: standing in for the judge so the freeze can be observed without Docker",
     });
     expect(overridden.status(), await overridden.text()).toBe(200);
+
+    const overrideRevision =
+      await testDb().submissionScoreRevision.findFirstOrThrow({
+        where: { submissionId: created.submissionId },
+        orderBy: { id: "desc" },
+        select: { effectiveAt: true },
+      });
+    expect(
+      overrideRevision.effectiveAt.getTime(),
+      "the override timestamp predates the serialized freeze cutoff",
+    ).toBeGreaterThan(Date.parse(frozen.freezeAt ?? ""));
 
     // 4. The public board has not moved. The organizer's has.
     const stillFrozen = await anon.standings();
@@ -232,20 +314,28 @@ test.describe("contest journey (no judge required)", () => {
       .flatMap((division) => division.rows)
       .find((row) => row.displayName === DISPLAY_NAME);
     expect(stillFrozen.frozen).toBe(true);
-    expect(publicRow?.score, "the frozen public board must not show the post-freeze score").toBe(0);
+    expect(
+      publicRow?.score,
+      "the frozen public board must not show the post-freeze score",
+    ).toBe(0);
 
     const adminBoard = await admin.standings();
     const adminRow = adminBoard.divisions
       .flatMap((division) => division.rows)
       .find((row) => row.displayName === DISPLAY_NAME);
-    expect(adminBoard.frozen, "an organizer's board is never frozen").toBe(false);
+    expect(adminBoard.frozen, "an organizer's board is never frozen").toBe(
+      false,
+    );
     expect(adminRow?.score).toBe(live.basePoints);
   });
 
   test("an override without a reason is refused", async () => {
     const mine = await competitor.listMySubmissions();
     const first = mine[0];
-    expect(first, "the competitor should have a submission by now").toBeDefined();
+    expect(
+      first,
+      "the competitor should have a submission by now",
+    ).toBeDefined();
 
     const response = await admin.overrideRaw({
       submissionId: first?.submissionId ?? "",
@@ -261,7 +351,10 @@ test.describe("contest journey (no judge required)", () => {
 
     const result = await admin.freeze(false);
     expect(result.frozen).toBe(false);
-    expect(result.freezeAt, "unfreezing must clear freezeAt or the board refreezes").toBeNull();
+    expect(
+      result.freezeAt,
+      "unfreezing must clear freezeAt or the board refreezes",
+    ).toBeNull();
 
     const revealed = await anon.standings();
     expect(revealed.frozen).toBe(false);
@@ -284,7 +377,9 @@ test.describe("contest journey (no judge required)", () => {
     const csv = await response.text();
     const lines = csv.trimEnd().split("\r\n");
 
-    expect(lines[0]).toBe("division,rank,tied,participantId,displayName,score,penaltyMinutes");
+    expect(lines[0]).toBe(
+      "division,rank,tied,participantId,displayName,score,penaltyMinutes",
+    );
     expect(lines.length).toBeGreaterThan(1);
     expect(csv).toContain("E2E Ada");
     expect(csv).toContain(DISPLAY_NAME);
@@ -301,7 +396,9 @@ test.describe("contest journey (no judge required)", () => {
     expect(body).not.toContain("sourceCode");
     expect(body).not.toContain("expectedOutput");
     for (const forbidden of ["import sys", "2 3", "3000000"]) {
-      expect(body, `standings leaked test data: ${forbidden}`).not.toContain(forbidden);
+      expect(body, `standings leaked test data: ${forbidden}`).not.toContain(
+        forbidden,
+      );
     }
   });
 });

@@ -106,6 +106,23 @@ test.describe("judged submission (requires the worker and Docker)", () => {
     }
   });
 
+  test("partial test credit is scaled to the contest problem value", async () => {
+    test.setTimeout(VERDICT_BUDGET_MS + 30_000);
+    const live = liveProblem(seeded);
+
+    const created = await competitor.submit({
+      contestProblemId: live.contestProblemId,
+      language: "PYTHON_312",
+      sourceCode: readSolution("partial-credit.py"),
+    });
+    const judged = await waitForVerdict(competitor, created.submissionId, VERDICT_BUDGET_MS);
+
+    // The solution passes 93 of 140 raw test points. The contest problem is worth 100, so the
+    // persisted whole-point score is round(93 / 140 * 100), not the raw 93.
+    expect(judged.verdict).toBe("WA");
+    expect(judged.score).toBe(66);
+  });
+
   test("a correct answer is AC and the leaderboard moves", async () => {
     test.setTimeout(VERDICT_BUDGET_MS + 30_000);
     const live = liveProblem(seeded);
@@ -115,7 +132,7 @@ test.describe("judged submission (requires the worker and Docker)", () => {
       before.divisions
         .flatMap((division) => division.rows)
         .find((row) => row.displayName === "E2E Judged Competitor")?.score ?? -1;
-    expect(beforeScore).toBe(0);
+    expect(beforeScore).toBeLessThan(live.basePoints);
 
     const created = await competitor.submit({
       contestProblemId: live.contestProblemId,
@@ -133,6 +150,7 @@ test.describe("judged submission (requires the worker and Docker)", () => {
       .flatMap((division) => division.rows)
       .find((row) => row.displayName === "E2E Judged Competitor");
     expect(afterRow?.score).toBe(live.basePoints);
+    expect(afterRow?.score).toBeGreaterThan(beforeScore);
 
     // And the problem list now says so, from the same scoring path.
     const problems = await competitor.listProblems();

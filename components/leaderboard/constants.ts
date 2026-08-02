@@ -52,10 +52,11 @@ export const VISIBLE_ROWS = 8;
 export const TEAM_VISIBLE_ROWS = 7;
 
 /**
- * Team rows given up while one team's roster strip is open, on the projector.
+ * Team rows given up for each open roster strip on the projector.
  *
  * **Measured, like the cap above, and for the same reason.** Opening a breakdown on a screen that
- * does not scroll has to be PAID FOR in rows: there is no spare height to expand into. Measured on
+ * normally does not scroll has to be PAID FOR in rows: there is no spare height to expand into.
+ * The controller applies this cost once per independently open team. Measured on
  * this commit with nine teams and four sets, board box against table box:
  *
  * | canvas    | 7 rows, closed | slack |

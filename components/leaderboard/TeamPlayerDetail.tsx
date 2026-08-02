@@ -43,19 +43,8 @@ import styles from "./leaderboard.module.css";
  * be around ninety per cent empty. Per problem is dense only per PLAYER, which is exactly where
  * this panel sits.
  *
- * ## Why there is no "140 / 250" denominator
- *
- * The study that specified this panel asked for CF's score-over-base cell. `basePoints` is in the
- * contract and it is real — the hint deduction is a percentage of it — but it is **not what the
- * judge awards**: `lib/judge/aggregate.ts` sums the per-test-case points, so a problem whose
- * `basePoints` says 100 pays 140 across fourteen tests. Measured on the demo contest, every one of
- * the six problems disagrees with its own advertised maximum.
- *
- * Printing `140 / 100` here would put that inconsistency somewhere new and very authoritative-
- * looking, and a student would reasonably read it as a bug in their own score. So the panel prints
- * what was actually earned, and reaches for `basePoints` only where it is load-bearing — the hint
- * deduction, which is the reason a number can look short. The advertised-maximum defect belongs to
- * the problem screens that state it; it is not this board's to paper over.
+ * Scores are already normalized to each contest problem's `basePoints` before they reach this
+ * panel. Test-case weights divide partial credit; they are not a second public scoring scale.
  */
 
 /** Shown in place of the control on a team that is not the viewer's. */

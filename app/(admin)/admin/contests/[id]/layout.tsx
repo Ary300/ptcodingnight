@@ -43,15 +43,21 @@ export default async function ContestLayout({
 
   return (
     <div className="flex flex-col">
-      <Crumbs
-        trail={[
-          { href: "/admin", label: "Contests" },
-          { label: setup?.name ?? "Unknown contest" },
-        ]}
-      />
+      {/* A rule under the crumb band: without it the trail and the identity block read as one
+          run of text, and the reference separates them with a hairline and air on both sides. */}
+      <div className="border-b border-rule-hair pb-3">
+        <Crumbs
+          trail={[
+            { href: "/admin", label: "Contests" },
+            { label: setup?.name ?? "Unknown contest" },
+          ]}
+        />
+      </div>
 
-      <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2">
-        <h1 className="font-display font-bold" style={{ fontSize: "var(--text-xl)" }}>
+      <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2">
+        {/* Stepped down below `sm`: a flat 40px/60px h1 wraps a long contest name to three lines
+            at 360 and pushes the tab strip past the first screenful. */}
+        <h1 className="font-display font-bold text-[length:var(--text-lg)] sm:text-[length:var(--text-xl)]">
           {setup?.name ?? "Unknown contest"}
         </h1>
         {setup !== null && <ContestStatePill state={setup.state} />}
@@ -60,8 +66,8 @@ export default async function ContestLayout({
       {setup === null ? (
         <div className="mt-4">
           <AlertPlate tone="alarm" title="There is no contest with that id">
-            <code>{id}</code> does not name a contest. It may have been deleted, or the link may be
-            from another database. Go back to <strong>Contests</strong> and pick one.
+            We could not find <code>{id}</code>. It may have been deleted. Go
+            back to <strong>Contests</strong> and choose one.
           </AlertPlate>
         </div>
       ) : (

@@ -9,7 +9,7 @@ import { Countdown } from "./Countdown";
 import { UserMenu } from "./UserMenu";
 import type { StandingsResponse } from "@/lib/schemas/api";
 import { contestApi, isStubBackend } from "./data/backend";
-import { clearParticipant, useParticipant } from "./data/participant";
+import { clearParticipant, fetchParticipant, useParticipant } from "./data/participant";
 import { useResource } from "./data/useResource";
 
 /**
@@ -30,6 +30,8 @@ const NAV = [
   { href: "/team", label: "My team" },
   { href: "/submissions", label: "My submissions" },
 ] as const;
+
+const PARTICIPANT_REFRESH_TIMEOUT_MS = 10_000;
 
 function StubBanner() {
   return (
@@ -61,19 +63,67 @@ export function CompetitorChrome({ children }: { children: ReactNode }) {
    * join completes instead of after a reload.
    */
   const joined = participant.status === "joined";
+  const participantId = joined ? participant.participant.participantId : null;
+  const scopeKey = joined ? participant.scopeKey : participant.status;
+
+  // Identity and roster scope can change while the student is on ANY competitor page: an
+  // organizer may move them while they are reading a statement, their team, or submission
+  // history. Keep the one shared chrome current instead of relying on the lobby to be mounted.
+  useEffect(() => {
+    if (participantId === null) return undefined;
+
+    let stopped = false;
+    let timer: number | null = null;
+    let controller: AbortController | null = null;
+
+    const schedule = () => {
+      timer = window.setTimeout(() => void poll(), 5_000);
+    };
+    const poll = async () => {
+      if (stopped) return;
+
+      if (document.visibilityState === "visible") {
+        controller = new AbortController();
+        const currentRequest = controller;
+        const timeout = window.setTimeout(
+          () => currentRequest.abort(),
+          PARTICIPANT_REFRESH_TIMEOUT_MS,
+        );
+        try {
+          await fetchParticipant(currentRequest.signal);
+        } catch {
+          // Keep the last known identity through a transient background failure. The next tick
+          // retries; the page's own reads still surface authorization or network errors.
+        } finally {
+          window.clearTimeout(timeout);
+          if (controller === currentRequest) controller = null;
+        }
+      }
+
+      if (!stopped) schedule();
+    };
+
+    schedule();
+    return () => {
+      stopped = true;
+      if (timer !== null) window.clearTimeout(timer);
+      controller?.abort();
+    };
+  }, [participantId]);
+
   const loadStandings = useCallback(
     (): Promise<StandingsResponse | null> => (joined ? contestApi.getStandings() : Promise.resolve(null)),
     [joined],
   );
-  const standings = useResource(loadStandings);
+  const standings = useResource(loadStandings, scopeKey);
 
   /*
     The viewer's team, for the menu's highlighted slot.
 
-    Fetched ONCE rather than polled. It is chrome, not a live score: a team changes when an
-    organizer moves somebody, which is rare and already forces a reload of the screens that
-    matter. Polling it on every competitor page would add a request per student per interval for
-    a line of text, and the judge queue is the thing that must not be starved on the night.
+    Refetched whenever the shared participant scope changes. CompetitorChrome performs the one
+    session poll for the whole route group; this read supplies the fields outside JoinResponse
+    without starting a second interval. That keeps the menu in lockstep when a student moves from
+    one team to another or becomes unassigned.
   */
   const [team, setTeam] = useState<{ name: string } | null>(null);
   // The account id and the avatar's version, for the menu's picture. Read from the same session
@@ -85,9 +135,13 @@ export function CompetitorChrome({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!joined) return undefined;
     let cancelled = false;
+    const controller = new AbortController();
     void (async () => {
       try {
-        const response = await fetch("/api/auth/session", { cache: "no-store" });
+        const response = await fetch("/api/auth/session", {
+          cache: "no-store",
+          signal: controller.signal,
+        });
         if (!response.ok || cancelled) return;
         const body: unknown = await response.json();
         const data =
@@ -96,7 +150,7 @@ export function CompetitorChrome({ children }: { children: ReactNode }) {
             : null;
         if (data === null) return;
         const name = data.teamName;
-        if (typeof name === "string" && name.length > 0) setTeam({ name });
+        setTeam(typeof name === "string" && name.length > 0 ? { name } : null);
         setAccount({
           userId: typeof data.userId === "string" ? data.userId : null,
           avatarVersion: typeof data.avatarUpdatedAt === "string" ? data.avatarUpdatedAt : null,
@@ -108,8 +162,9 @@ export function CompetitorChrome({ children }: { children: ReactNode }) {
     })();
     return () => {
       cancelled = true;
+      controller.abort();
     };
-  }, [joined]);
+  }, [joined, scopeKey]);
 
   /*
     The set the organizer assigned, for the menu's highlighted slot.
@@ -188,7 +243,13 @@ export function CompetitorChrome({ children }: { children: ReactNode }) {
           and the link stretches to the `li`. Any future change to the mark's size or the brand
           link's padding moves the underline with the bar instead of detaching it again.
         */}
-        <div className="mx-auto flex w-full max-w-6xl flex-wrap items-stretch gap-x-5 px-4">
+        {/*
+          Full-bleed, unlike `main`'s 1152px column below. The reference's dark bar runs its
+          contents from the viewport edges with only side padding, deliberately overhanging the
+          content column — insetting the logo to the column made the bar read as part of the
+          page rather than as chrome over it.
+        */}
+        <div className="flex w-full flex-wrap items-stretch gap-x-5 px-4 sm:px-6">
           <Link href="/contest" className="order-1 flex items-center gap-2.5 py-2.5">
             <Image
               src="/brand/pt-panther.png"
@@ -196,6 +257,7 @@ export function CompetitorChrome({ children }: { children: ReactNode }) {
               width={275}
               height={235}
               aria-hidden="true"
+              priority
               className="h-8 w-auto"
             />
             <span
@@ -230,7 +292,7 @@ export function CompetitorChrome({ children }: { children: ReactNode }) {
           */}
           <nav
             aria-label="Competitor"
-            className="order-3 -mx-4 flex w-full overflow-x-auto px-4 md:order-2 md:mx-0 md:w-auto md:overflow-x-visible md:px-0"
+            className="order-3 -mx-4 flex w-full overflow-x-auto px-4 sm:-mx-6 sm:px-6 md:order-2 md:mx-0 md:w-auto md:overflow-x-visible md:px-0"
           >
             <ul className="flex items-stretch gap-1">
               {NAV.map((item) => {

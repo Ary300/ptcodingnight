@@ -70,9 +70,8 @@ export interface AssignSetsInput {
 /**
  * Assign one problem set per participant.
  *
- * Balanced within each team: members are handed distinct sets until the sets run out, then it
- * wraps. A team larger than the set count necessarily repeats, and it repeats in a defined order
- * rather than randomly.
+ * Balanced within each team: every teammate receives a distinct set. A team larger than the set
+ * count is invalid and is refused instead of quietly repeating somebody else's questions.
  *
  * Returns assignments sorted by `participantId`, so the output is byte-identical run to run and can
  * be diffed against a previous assignment.
@@ -84,18 +83,17 @@ export function assignSets(input: AssignSetsInput): SetAssignment[] {
 
   const assignments: SetAssignment[] = [];
 
-  // Group by team. Participants with no team are handled as their own bucket, keyed by a value no
-  // real team id can collide with.
+  // Group by team. Each participant with no team gets a private bucket: unassigned people are not
+  // teammates and do not need distinct sets from one another.
   // An ordinary string, deliberately not a NUL sentinel.
   //
   // This was "\0no-team" with a literal NUL byte, which made git classify the whole file as BINARY:
   // `git diff` reported only "Bin 0 -> 7714 bytes". A diff-based review would not have seen a single
   // line of the file that decides which problems a competitor may read. Cuids are lowercase
   // alphanumerics, so they cannot collide with this.
-  const NO_TEAM = "__no_team__";
   const byTeam = new Map<string, AssignableParticipant[]>();
   for (const participant of participants) {
-    const key = participant.teamId ?? NO_TEAM;
+    const key = participant.teamId ?? `__no_team__:${participant.participantId}`;
     const list = byTeam.get(key) ?? [];
     list.push(participant);
     byTeam.set(key, list);
@@ -108,6 +106,12 @@ export function assignSets(input: AssignSetsInput): SetAssignment[] {
   for (const teamKey of teamKeys) {
     const members = byTeam.get(teamKey) ?? [];
 
+    if (!teamKey.startsWith("__no_team__:") && members.length > setIds.length) {
+      throw new RangeError(
+        `Team ${teamKey} has ${String(members.length)} members but only ${String(setIds.length)} sets`,
+      );
+    }
+
     // Members in a seeded order, and the sets in a per-team seeded order. Both are needed: without
     // shuffling members, the same person always gets the team's first set; without shuffling sets,
     // every team's first member gets the same set.
@@ -115,10 +119,9 @@ export function assignSets(input: AssignSetsInput): SetAssignment[] {
     const orderedSets = seededShuffle(setIds, `${seed}:${teamKey}:sets`, (s) => s);
 
     orderedMembers.forEach((member, index) => {
-      // Modulo, not random: this is what guarantees distinct sets while any remain. A team of four
-      // with four sets gets four different ones; a team of five wraps to a second copy of the
-      // first set, in a defined place rather than an accidental one.
-      const setId = orderedSets[index % orderedSets.length]!;
+      // Capacity was checked above, so this direct index is both deterministic and unique within
+      // the team. A non-null assertion is safe because members cannot outnumber sets here.
+      const setId = orderedSets[index]!;
       assignments.push({ participantId: member.participantId, setId });
     });
   }
@@ -136,9 +139,8 @@ export function assignSets(input: AssignSetsInput): SetAssignment[] {
  * result for everyone, and students twenty minutes into a problem would find themselves holding a
  * different set. That is a worse outcome than a slightly less even distribution.
  *
- * So this preserves the balance property locally instead: it picks the set **least used within the
- * joiner's own team**, which is what keeps teammates on different problems, and breaks ties from the
- * seed so the choice is still reproducible rather than arbitrary.
+ * So this preserves the format locally instead: it picks only from sets not used by the joiner's
+ * teammates, and breaks ties from the seed so the choice is reproducible rather than arbitrary.
  *
  * `takenInTeam` is the sets that teammates already hold.
  */
@@ -151,19 +153,15 @@ export function assignSetForOne(options: {
   const { seed, setIds, participantId, takenInTeam } = options;
   if (setIds.length === 0) return null;
 
-  const usage = new Map<string, number>();
-  for (const setId of setIds) usage.set(setId, 0);
-  for (const setId of takenInTeam) {
-    if (usage.has(setId)) usage.set(setId, (usage.get(setId) ?? 0) + 1);
-  }
-
-  // Least-used first; ties broken by a hash of the seed and this participant, so two students
-  // joining into the same situation do not both get the same set for no reason.
-  const ordered = [...setIds].sort((a, b) => {
-    const byUsage = (usage.get(a) ?? 0) - (usage.get(b) ?? 0);
-    if (byUsage !== 0) return byUsage;
-    return hash32(`${seed}:${participantId}:${a}`) - hash32(`${seed}:${participantId}:${b}`);
-  });
+  const taken = new Set(takenInTeam);
+  // Only unused sets are candidates. If none remain the caller must refuse the roster change;
+  // returning a repeated set here would violate the format without anything on screen saying so.
+  const ordered = setIds
+    .filter((setId) => !taken.has(setId))
+    .sort(
+      (a, b) =>
+        hash32(`${seed}:${participantId}:${a}`) - hash32(`${seed}:${participantId}:${b}`),
+    );
 
   return ordered[0] ?? null;
 }

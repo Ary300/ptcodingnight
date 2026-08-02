@@ -107,8 +107,7 @@ export function AssignmentNotice({
           You are not on a team yet
         </h2>
         <p className="mt-1" style={{ fontSize: "var(--text-sm)" }}>
-          An organizer will put you on a team, and there is nothing for you to do. Your problem set is
-          assigned along with your team, so until then{" "}
+          An organizer will assign your team and problem set. Until then, {" "}
           {visibleProblemCount === 0
             ? "there is nothing for you to open yet."
             : groupOnly
@@ -116,8 +115,7 @@ export function AssignmentNotice({
               : `you can open and submit to every problem listed below: all ${String(visibleProblemCount)} of them, not just the ${groupPhrase(groupProblemCount)}.`}
         </p>
         <p className="mt-1 text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
-          Points you score before you are added still count. They join your team&apos;s total the
-          moment you are on it.{" "}
+          This page updates automatically. Points you earn now will move with you to your team.{" "}
           <Link href="/team" className="text-panther underline underline-offset-2">
             More about team scoring
           </Link>
@@ -137,6 +135,9 @@ export function AssignmentNotice({
           {groupOnly
             ? "The group problems below are open to everyone in the meantime."
             : "Everything listed below is open to you in the meantime, and you can submit to any of it."}
+        </p>
+        <p className="mt-1 text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
+          This page checks for the assignment automatically.
         </p>
       </Panel>
     );

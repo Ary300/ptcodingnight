@@ -171,7 +171,7 @@ export function AwardsBoard({ standings, contestName }: AwardsBoardProps) {
         title="Export"
         level="framed"
         className="print:hidden"
-        description="An output, never an input. Nothing in this platform reads a spreadsheet back in; that is the manual reconciliation this replaced."
+        description="Download the final standings for sharing or archiving."
       >
         <div className="flex flex-wrap gap-3">
           <Button type="button" onClick={exportCsv}>
@@ -182,8 +182,7 @@ export function AwardsBoard({ standings, contestName }: AwardsBoardProps) {
           </Button>
         </div>
         <p className="mt-group max-w-[70ch] text-ink/70" style={{ fontSize: "var(--text-xs)" }}>
-          Both files are generated in the browser from the standings the scoring engine
-          produced. No network call, so this still works with the school Wi-Fi down.
+          Both files are created from the standings currently shown on this page.
         </p>
       </Panel>
     </div>

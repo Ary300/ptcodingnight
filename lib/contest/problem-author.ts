@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, rm, rmdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
@@ -6,6 +7,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { hostLimits } from "@/lib/contest/host";
 import { resolveTestDataPath } from "@/lib/contest/judge-job";
+import { lockContestMutations, lockProblemMutations } from "@/lib/contest/locks";
 import { DomainError, NotFoundError, ValidationError } from "@/lib/errors";
 import { startersFor } from "@/lib/judge/starters";
 import { LANGUAGE_IDS } from "@/lib/judge/runtimes";
@@ -43,18 +45,14 @@ import { SignatureSchema, type Signature, type SignatureType } from "@/lib/schem
  * sample" is two answers to the same question, and the one that drifts is always the one nobody
  * looks at.
  *
- * ## Why editing is REFUSED while a contest is running or frozen
+ * ## Why editing is REFUSED after the first submission
  *
  * A verdict is a claim about a specific program against specific test data. Change the test data
- * underneath a judged submission and the verdict still reads `AC`, but it no longer means what it
- * meant when the judge wrote it, and nothing anywhere records that the ground moved. During a
- * running or frozen contest that is a live scoreboard quietly describing a contest that no longer
- * exists. So `assertEditable` refuses, by contest state, and says which contest.
- *
- * A problem sitting only in DRAFT or SCHEDULED contests has nothing judged against it that anybody
- * is reading, so it is fine to edit. A problem in an ENDED contest is editable too, and the edit
- * screen warns with the judged-submission count, because that is a record somebody may still
- * appeal against rather than a board on a wall.
+ * underneath a submission and its verdict or pending job no longer describes the question the
+ * student opened. An ended contest is still history somebody may review or appeal. So the first
+ * submission makes the question immutable; corrections become a new question/version. A live
+ * contest locks it even before the first submission, because changing the prompt mid-round is
+ * equally dishonest.
  *
  * ## Why deletion also removes the files
  *
@@ -166,7 +164,7 @@ async function uniqueSlug(base: string): Promise<string> {
  * that cannot produce a compiling stub is rejected here rather than shipped as CE on a student's
  * untouched file.
  */
-function buildSignature(authored: AuthoredSignature): Signature {
+export function buildSignature(authored: AuthoredSignature): Signature {
   const fields: {
     name: string;
     type: SignatureType;
@@ -283,9 +281,9 @@ interface PreparedCaseRow {
 
 interface StagedTestFiles {
   readonly rows: readonly PreparedCaseRow[];
-  /** Move every staged file into its final name. Rename within a directory is atomic. */
+  /** Publish the complete version directory with one atomic rename. */
   readonly commit: () => Promise<void>;
-  /** Remove the staged files when the database write refused. */
+  /** Remove this new version, whether it is still staged or was committed before a DB refusal. */
   readonly discard: () => Promise<void>;
 }
 
@@ -293,49 +291,49 @@ interface StagedTestFiles {
  * Write a question's test data under `TEST_DATA_ROOT`, mirroring the seeded layout exactly, and
  * hand back the rows that point at it.
  *
- * ## Why the files land as `.partial` and are renamed
+ * ## Why every save gets a version directory
  *
  * An EDIT overwrites files that judged submissions may already have been scored against, and the
  * database write that makes those files correct can still fail: a unique-constraint violation, a
  * dropped connection, a validation error thrown by Prisma. Writing in place and then failing
  * leaves rows describing one set of cases and files containing another, and nothing reports it.
  *
- * So the bytes go to `NN.in.partial` first, the transaction runs, and only then does `commit`
- * rename them into place. Rename within a directory is atomic, which is the same reason
- * `worker/batch-driver.ts` feeds inputs through `placeInput` rather than writing them directly.
- * The window in which the two disagree is a rename rather than a network round trip.
+ * The complete case set is written under a private staging directory and published with ONE
+ * directory rename. The database then switches all TestCase rows to that immutable version in a
+ * transaction. A failed database write removes the new version; a crash can leave an unreferenced
+ * directory, but can never leave committed rows pointing at half-renamed files.
  */
 async function stageTestFiles(
   slug: string,
   orderedCases: readonly AuthoredTestCase[],
 ): Promise<StagedTestFiles> {
   const root = hostLimits().testDataRoot;
+  const version = randomUUID();
   const testDirRelative = path.posix.join(slug, "tests");
-  await mkdir(resolveTestDataPath(root, testDirRelative), { recursive: true });
+  const stagingDirRelative = path.posix.join(testDirRelative, `.staging-${version}`);
+  const versionDirRelative = path.posix.join(testDirRelative, `v-${version}`);
+  const stagingDir = resolveTestDataPath(root, stagingDirRelative);
+  const versionDir = resolveTestDataPath(root, versionDirRelative);
+  await mkdir(stagingDir, { recursive: true });
 
-  const staged: { from: string; to: string }[] = [];
   const rows: PreparedCaseRow[] = [];
 
   for (const [index, testCase] of orderedCases.entries()) {
     const stem = String(index + 1).padStart(2, "0");
-    const inputRelative = path.posix.join(testDirRelative, `${stem}.in`);
-    const outputRelative = path.posix.join(testDirRelative, `${stem}.out`);
-    const inputAbsolute = resolveTestDataPath(root, inputRelative);
-    const outputAbsolute = resolveTestDataPath(root, outputRelative);
+    const inputRelative = path.posix.join(versionDirRelative, `${stem}.in`);
+    const outputRelative = path.posix.join(versionDirRelative, `${stem}.out`);
+    const inputAbsolute = path.join(stagingDir, `${stem}.in`);
+    const outputAbsolute = path.join(stagingDir, `${stem}.out`);
 
     // A trailing newline, because a program's stdout ends in one and a comparator that trims is
     // not something to rely on for a file the organizer typed without thinking about it.
-    await writeFile(`${inputAbsolute}.partial`, ensureTrailingNewline(testCase.input), "utf8");
+    await writeFile(inputAbsolute, ensureTrailingNewline(testCase.input), "utf8");
     await writeFile(
-      `${outputAbsolute}.partial`,
+      outputAbsolute,
       ensureTrailingNewline(testCase.expectedOutput),
       "utf8",
     );
 
-    staged.push(
-      { from: `${inputAbsolute}.partial`, to: inputAbsolute },
-      { from: `${outputAbsolute}.partial`, to: outputAbsolute },
-    );
     rows.push({
       ordinal: index + 1,
       inputPath: inputRelative,
@@ -349,10 +347,11 @@ async function stageTestFiles(
   return {
     rows,
     commit: async () => {
-      for (const file of staged) await rename(file.from, file.to);
+      await rename(stagingDir, versionDir);
     },
     discard: async () => {
-      for (const file of staged) await rm(file.from, { force: true });
+      await rm(stagingDir, { force: true, recursive: true });
+      await rm(versionDir, { force: true, recursive: true });
     },
   };
 }
@@ -369,6 +368,7 @@ export async function createAuthoredProblem(input: CreateProblemInput): Promise<
 
   let created: { id: string; slug: string; title: string };
   try {
+    await staged.commit();
     created = await prisma.problem.create({
       data: {
         slug,
@@ -396,7 +396,6 @@ export async function createAuthoredProblem(input: CreateProblemInput): Promise<
     throw error;
   }
 
-  await staged.commit();
   return { problemId: created.id, slug: created.slug, title: created.title };
 }
 
@@ -420,7 +419,6 @@ export interface ProblemUsage {
   /** The subset that is RUNNING or FROZEN, which is what locks the question. */
   readonly lockedBy: readonly ProblemContestUse[];
   readonly submissionCount: number;
-  readonly judgedSubmissionCount: number;
 }
 
 /**
@@ -430,7 +428,7 @@ export interface ProblemUsage {
  * come out the same way twice, for the same reason the team standings breakdown does.
  */
 export async function problemUsage(problemId: string): Promise<ProblemUsage> {
-  const [links, submissionCount, judgedSubmissionCount] = await Promise.all([
+  const [links, submissionCount] = await Promise.all([
     prisma.contestProblem.findMany({
       where: { problemId },
       select: {
@@ -440,7 +438,6 @@ export async function problemUsage(problemId: string): Promise<ProblemUsage> {
       orderBy: [{ contest: { name: "asc" } }, { slotLabel: "asc" }, { id: "asc" }],
     }),
     prisma.submission.count({ where: { contestProblem: { problemId } } }),
-    prisma.submission.count({ where: { contestProblem: { problemId }, verdict: { not: null } } }),
   ]);
 
   const contests: ProblemContestUse[] = links.map((link) => ({
@@ -454,7 +451,46 @@ export async function problemUsage(problemId: string): Promise<ProblemUsage> {
     contests,
     lockedBy: contests.filter((use) => LOCKED_CONTEST_STATES.has(use.contestState)),
     submissionCount,
-    judgedSubmissionCount,
+  };
+}
+
+/**
+ * Re-read usage while holding this problem's advisory lock, and lock every linked contest before
+ * trusting its state. `setContestProblems` takes the same problem lock, while lifecycle changes
+ * take the contest lock. That closes both sides of the edit/start and edit/line-up races.
+ */
+async function lockedProblemUsage(
+  tx: Prisma.TransactionClient,
+  problemId: string,
+): Promise<ProblemUsage> {
+  const linkedContestIds = await tx.contestProblem.findMany({
+    where: { problemId },
+    select: { contestId: true },
+  });
+  const contestIds = [...new Set(linkedContestIds.map((link) => link.contestId))].sort();
+  for (const contestId of contestIds) await lockContestMutations(tx, contestId);
+
+  const [links, submissionCount] = await Promise.all([
+    tx.contestProblem.findMany({
+      where: { problemId },
+      select: {
+        slotLabel: true,
+        contest: { select: { id: true, name: true, state: true } },
+      },
+      orderBy: [{ contest: { name: "asc" } }, { slotLabel: "asc" }, { id: "asc" }],
+    }),
+    tx.submission.count({ where: { contestProblem: { problemId } } }),
+  ]);
+  const contests: ProblemContestUse[] = links.map((link) => ({
+    contestId: link.contest.id,
+    contestName: link.contest.name,
+    contestState: link.contest.state,
+    slotLabel: link.slotLabel,
+  }));
+  return {
+    contests,
+    lockedBy: contests.filter((use) => LOCKED_CONTEST_STATES.has(use.contestState)),
+    submissionCount,
   };
 }
 
@@ -466,20 +502,28 @@ function namedContests(uses: readonly ProblemContestUse[]): string {
 }
 
 /**
- * Refuse to edit a question a contest is depending on this minute.
+ * Refuse to edit a question a live contest or any submission depends on.
  *
  * Thrown as CONFLICT rather than FORBIDDEN: the organizer has every right to this question, and
- * will have it again the moment the contest ends. FORBIDDEN would read as "your account cannot do
- * this", which is a different problem with a different fix.
+ * FORBIDDEN would read as "your account cannot do this", which is a different problem with a
+ * different fix. A historical question stays locked; the organizer can create a corrected copy.
  */
 export function assertEditable(title: string, usage: ProblemUsage): void {
-  if (usage.lockedBy.length === 0) return;
-  throw new DomainError(
-    "CONFLICT",
-    `"${title}" is in a contest that is live right now (${namedContests(usage.lockedBy)}). ` +
-      "Changing the statement or the test data would rewrite what already-judged verdicts meant, " +
-      "so this question is locked until that contest ends.",
-  );
+  if (usage.lockedBy.length > 0) {
+    throw new DomainError(
+      "CONFLICT",
+      `"${title}" is in a contest that is live right now (${namedContests(usage.lockedBy)}). ` +
+        "Changing it would move the question underneath students, so it is locked.",
+    );
+  }
+  if (usage.submissionCount > 0) {
+    throw new DomainError(
+      "CONFLICT",
+      `"${title}" has ${String(usage.submissionCount)} submission` +
+        `${usage.submissionCount === 1 ? "" : "s"} against it. Editing it would rewrite the ` +
+        "question those records refer to. Create a new question for the corrected version.",
+    );
+  }
 }
 
 /** The same refusal for deletion, plus the one that only applies to deletion. */
@@ -749,8 +793,6 @@ export async function updateAuthoredProblem(
     select: {
       id: true,
       title: true,
-      state: true,
-      testCases: { select: { inputPath: true, expectedOutputPath: true } },
     },
   });
   if (existing === null) throw new NotFoundError("Problem");
@@ -768,10 +810,30 @@ export async function updateAuthoredProblem(
 
   const staged = await stageTestFiles(slug, core.orderedCases);
 
+  let previousPaths: string[] = [];
   try {
+    await staged.commit();
     await prisma.$transaction(async (tx) => {
+      await lockProblemMutations(tx, existing.id);
+      const current = await tx.problem.findUnique({
+        where: { id: existing.id },
+        select: {
+          title: true,
+          state: true,
+          testCases: { select: { inputPath: true, expectedOutputPath: true } },
+        },
+      });
+      if (current === null) throw new NotFoundError("Problem");
+
+      assertEditable(current.title, await lockedProblemUsage(tx, existing.id));
+      previousPaths = current.testCases.flatMap((testCase) => [
+        testCase.inputPath,
+        testCase.expectedOutputPath,
+      ]);
+
       // Cascades to TestResult, which is correct: a test result describes a case that no longer
-      // exists, and keeping it would leave a submission scored against cases it cannot name.
+      // exists. `assertEditable` has proved there are no submissions, so no historical result can
+      // be lost here.
       await tx.testCase.deleteMany({ where: { problemId: existing.id } });
       await tx.problem.update({
         where: { id: existing.id },
@@ -787,7 +849,7 @@ export async function updateAuthoredProblem(
           // A DRAFT is a problem missing an original statement or its own test data, and
           // `validateAuthoredCore` has just required both. RETIRED is a decision somebody made
           // about this question and is not an editor's to reverse.
-          ...(existing.state === "DRAFT" ? { state: "PUBLISHED" as const } : {}),
+          ...(current.state === "DRAFT" ? { state: "PUBLISHED" as const } : {}),
           // A JSON column is cleared with `Prisma.DbNull`; a bare `null` means "JSON null", which
           // is a value the column holds rather than the absence of one, and `startersFor` would
           // then be handed a signature that parses as nothing.
@@ -803,15 +865,11 @@ export async function updateAuthoredProblem(
     throw error;
   }
 
-  await staged.commit();
-
   // Files the old case set pointed at that the new one does not. Shortening a question from eight
   // cases to three leaves 04..08 on disk, and the next organizer to open the directory finds test
   // data that belongs to nothing.
   const keep = new Set(staged.rows.flatMap((row) => [row.inputPath, row.expectedOutputPath]));
-  const orphans = existing.testCases
-    .flatMap((testCase) => [testCase.inputPath, testCase.expectedOutputPath])
-    .filter((stored) => !keep.has(stored));
+  const orphans = previousPaths.filter((stored) => !keep.has(stored));
   await removeStoredFiles(orphans);
 
   return { problemId: existing.id, slug, title: core.title };
@@ -845,7 +903,6 @@ export async function deleteAuthoredProblem(
     select: {
       id: true,
       title: true,
-      testCases: { select: { inputPath: true, expectedOutputPath: true } },
     },
   });
   if (existing === null) throw new NotFoundError("Problem");
@@ -859,29 +916,51 @@ export async function deleteAuthoredProblem(
     );
   }
 
-  const stored = existing.testCases.flatMap((testCase) => [
-    testCase.inputPath,
-    testCase.expectedOutputPath,
-  ]);
+  const deleted = await prisma.$transaction(async (tx) => {
+    await lockProblemMutations(tx, existing.id);
+    const current = await tx.problem.findUnique({
+      where: { id: existing.id },
+      select: {
+        title: true,
+        testCases: { select: { inputPath: true, expectedOutputPath: true } },
+      },
+    });
+    if (current === null) throw new NotFoundError("Problem");
 
-  await prisma.$transaction(async (tx) => {
+    const currentUsage = await lockedProblemUsage(tx, existing.id);
+    assertDeletable(current.title, currentUsage);
+    if (options.confirmTitle.trim() !== current.title.trim()) {
+      throw new ValidationError(
+        `To delete this question, type its name exactly: "${current.title}".`,
+      );
+    }
+
     // `ContestProblem.problem` is `onDelete: Restrict`, so these have to go first and explicitly.
     // Restrict is the right default: it is what stops a problem vanishing out of a live line-up.
     // Here the line-ups are all DRAFT or SCHEDULED, because `assertDeletable` has said so.
     await tx.contestProblem.deleteMany({ where: { problemId: existing.id } });
     await tx.problem.delete({ where: { id: existing.id } });
+
+    return {
+      title: current.title,
+      removedFromContests: currentUsage.contests.length,
+      stored: current.testCases.flatMap((testCase) => [
+        testCase.inputPath,
+        testCase.expectedOutputPath,
+      ]),
+    };
   });
 
   // Files last, and a failure here does not fail the request. The rows are the source of truth and
   // they are already gone: answering with an error would tell the organizer the deletion did not
   // happen when it did, and they would press it again and get "not found".
-  await removeStoredFiles(stored);
+  await removeStoredFiles(deleted.stored);
   await removeEmptyTestDirectories(slug);
 
   return {
     slug,
-    title: existing.title,
-    removedFromContests: usage.contests.length,
+    title: deleted.title,
+    removedFromContests: deleted.removedFromContests,
   };
 }
 
@@ -908,6 +987,19 @@ async function removeStoredFiles(storedPaths: readonly string[]): Promise<void> 
           message: error instanceof Error ? error.message : String(error),
         }),
       );
+    }
+  }
+
+  // Versioned authoring saves put all files in one immutable directory. Reclaim that directory
+  // after its files are gone; `rmdir` refuses any directory that still contains unrelated data.
+  const parents = new Set(
+    storedPaths.filter((stored) => !path.isAbsolute(stored)).map((stored) => path.posix.dirname(stored)),
+  );
+  for (const parent of parents) {
+    try {
+      await rmdir(resolveTestDataPath(root, parent));
+    } catch {
+      // Still in use, already gone, or a seeded shared tests directory. All are safe to keep.
     }
   }
 }

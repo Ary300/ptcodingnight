@@ -80,6 +80,8 @@ export interface SideActivityRecord {
   readonly label: string;
   /** Whole points. May be negative — an organizer correcting an over-award. */
   readonly points: number;
+  /** The award only exists on an as-of board at or after this instant. */
+  readonly enteredAt: Date;
 }
 
 export interface ScoringDivision {
@@ -126,7 +128,8 @@ export interface SubmissionRecord {
   readonly participantId: string;
   readonly contestProblemId: string;
   readonly submittedAt: Date;
-  readonly verdict: Verdict;
+  /** Null is a rejudge tombstone: from this revision until the next judge answer, there is no score. */
+  readonly verdict: Verdict | null;
   /** Points the judge awarded this submission in isolation. */
   readonly score: number;
   /**
@@ -146,6 +149,8 @@ export interface SubmissionRecord {
    * submission had no verdict, so it contributed nothing.
    */
   readonly effectiveAt: Date | null;
+  /** Monotonic per persisted revision. Omitted fixture rows are treated as revision zero. */
+  readonly revisionOrder?: number;
 }
 
 export interface HintGrantRecord {

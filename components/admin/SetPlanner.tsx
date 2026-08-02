@@ -46,11 +46,11 @@ import {
  *
  * ## The seed is carried, not hidden
  *
- * A preview mints a seed and the apply is given it back. Same recipe, same bank and same seed is
- * the same deal, byte for byte; drop the seed and the apply mints a fresh one and writes a
- * different, equally valid split from the one that was on screen. That is the single way this
- * screen could lie to an organizer, so the seed is shown, echoed, and stored with the contest:
- * a disputed set has to be re-derivable in front of the student disputing it (PRD 6.2).
+ * A preview mints a seed and fingerprints its usable bank; the apply returns both. The seed fixes
+ * the deal, and the fingerprint makes Build stop if the bank changed after the grid was drawn.
+ * Otherwise this screen could write a different, equally valid split from the one the organizer
+ * just read. The seed remains visible and is stored with the contest so a disputed set can be
+ * re-derived in front of the student disputing it (PRD 6.2).
  *
  * On arrival the preview is seeded from the STORED seed, so "deal again" is the only thing that
  * can change the split. An organizer who opens this tab, changes nothing and presses Build gets
@@ -81,7 +81,11 @@ const DIFFICULTY_LABEL: Readonly<Record<Difficulty, string>> = {
 const DIFFICULTIES: readonly Difficulty[] = ["E", "M", "H"];
 
 /** The recipe previous years ran: one of each. Every count is editable and may be zero. */
-const DEFAULT_COUNTS: Readonly<Record<Difficulty, string>> = { E: "1", M: "1", H: "1" };
+const DEFAULT_COUNTS: Readonly<Record<Difficulty, string>> = {
+  E: "1",
+  M: "1",
+  H: "1",
+};
 
 /**
  * How many sets to offer when the roster cannot answer.
@@ -118,6 +122,10 @@ export interface SetPlannerTeam {
 export interface SetPlannerProps {
   readonly contestId: string;
   readonly teams: readonly SetPlannerTeam[];
+  readonly setSelection:
+    "RANDOM_ASSIGNED" | "PLAYER_CHOOSES" | "ONE_SET_PER_TEAM";
+  /** True only for RANDOM_ASSIGNED, where every teammate must hold a different set. */
+  readonly distinctSetsRequired: boolean;
 }
 
 function errorFrom(body: unknown): string {
@@ -143,7 +151,8 @@ function setCountError(text: string): string | null {
   const value = parseWhole(text);
   if (value === null) return "Type a whole number of sets.";
   if (value < 1) return "Build at least one set.";
-  if (value > MAX_SETS) return `${String(MAX_SETS)} sets is A to Z, which is as far as this goes.`;
+  if (value > MAX_SETS)
+    return `${String(MAX_SETS)} sets is A to Z, which is as far as this goes.`;
   return null;
 }
 
@@ -151,18 +160,26 @@ function setCountError(text: string): string | null {
  * Whether two recipes ask for the same thing. `points` is deliberately not compared: this screen
  * never sends one, so the only difference two recipes can have here is a difficulty or a count.
  */
-function sameComposition(a: SetCompositionInput, b: SetCompositionInput): boolean {
+function sameComposition(
+  a: SetCompositionInput,
+  b: SetCompositionInput,
+): boolean {
   if (a.length !== b.length) return false;
   return a.every((line, index) => {
     const other = b[index];
-    return other !== undefined && other.difficulty === line.difficulty && other.count === line.count;
+    return (
+      other !== undefined &&
+      other.difficulty === line.difficulty &&
+      other.count === line.count
+    );
   });
 }
 
 function perLineError(text: string): string | null {
   const value = parseWhole(text);
   if (value === null) return "Type a whole number, or 0 for none.";
-  if (value > MAX_PER_LINE) return `${String(MAX_PER_LINE)} is the most one line may ask for.`;
+  if (value > MAX_PER_LINE)
+    return `${String(MAX_PER_LINE)} is the most one line may ask for.`;
   return null;
 }
 
@@ -197,12 +214,21 @@ function rowHeadings(sets: readonly GridSet[]): readonly string[] {
     const key = problem.difficulty ?? "?";
     const n = (seen.get(key) ?? 0) + 1;
     seen.set(key, n);
-    const label = problem.difficulty === null ? "Unrated" : DIFFICULTY_LABEL[problem.difficulty];
+    const label =
+      problem.difficulty === null
+        ? "Unrated"
+        : DIFFICULTY_LABEL[problem.difficulty];
     return `${label} ${String(n)}`;
   });
 }
 
-function SetGrid({ sets, caption }: { readonly sets: readonly GridSet[]; readonly caption: string }) {
+function SetGrid({
+  sets,
+  caption,
+}: {
+  readonly sets: readonly GridSet[];
+  readonly caption: string;
+}) {
   const headings = rowHeadings(sets);
 
   if (sets.length === 0 || headings.length === 0) {
@@ -248,7 +274,8 @@ function SetGrid({ sets, caption }: { readonly sets: readonly GridSet[]; readonl
                           className="numeric mt-tight block text-ink/60"
                           style={{ fontSize: "var(--text-xs)" }}
                         >
-                          {problem.slotLabel} · {String(problem.basePoints)} points
+                          {problem.slotLabel} · {String(problem.basePoints)}{" "}
+                          points
                         </span>
                       </>
                     )}
@@ -265,12 +292,21 @@ function SetGrid({ sets, caption }: { readonly sets: readonly GridSet[]; readonl
 
 // ---------------------------------------------------------------------------
 
-export function SetPlanner({ contestId, teams }: SetPlannerProps) {
+export function SetPlanner({
+  contestId,
+  teams,
+  setSelection,
+  distinctSetsRequired,
+}: SetPlannerProps) {
   const largestTeam = teams.reduce<SetPlannerTeam | null>(
-    (largest, team) => (largest === null || team.size > largest.size ? team : largest),
+    (largest, team) =>
+      largest === null || team.size > largest.size ? team : largest,
     null,
   );
-  const rosterDefault = largestTeam !== null && largestTeam.size > 0 ? largestTeam.size : null;
+  const rosterDefault =
+    distinctSetsRequired && largestTeam !== null && largestTeam.size > 0
+      ? largestTeam.size
+      : null;
 
   const [stored, setStored] = useState<StoredSetPlanResponse | null>(null);
   const [storedError, setStoredError] = useState<string | null>(null);
@@ -280,7 +316,9 @@ export function SetPlanner({ contestId, teams }: SetPlannerProps) {
   const [setCountText, setSetCountText] = useState(
     String(rosterDefault ?? FALLBACK_SET_COUNT),
   );
-  const [counts, setCounts] = useState<Record<Difficulty, string>>({ ...DEFAULT_COUNTS });
+  const [counts, setCounts] = useState<Record<Difficulty, string>>({
+    ...DEFAULT_COUNTS,
+  });
   /**
    * The set count this contest was last BUILT with, once the stored plan has been adopted.
    *
@@ -338,16 +376,20 @@ export function SetPlanner({ contestId, teams }: SetPlannerProps) {
   };
   const setsError = setCountError(setCountText);
   const formValid =
-    setsError === null && DIFFICULTIES.every((difficulty) => countErrors[difficulty] === null);
+    setsError === null &&
+    DIFFICULTIES.every((difficulty) => countErrors[difficulty] === null);
 
   const setCount = parseWhole(setCountText) ?? 0;
   const perSet = composition.reduce((total, line) => total + line.count, 0);
 
-  /** Teams with more members than there are columns. Somebody on each of them repeats a set. */
-  const crowdedTeams = teams.filter((team) => setsError === null && team.size > setCount);
+  /** Teams with more members than there are columns. The split cannot preserve distinct sets. */
+  const crowdedTeams = distinctSetsRequired
+    ? teams.filter((team) => setsError === null && team.size > setCount)
+    : [];
 
   const contestState = stored?.contestState ?? null;
-  const rebuildable = contestState === null || REBUILDABLE.includes(contestState);
+  const rebuildable =
+    contestState === null || REBUILDABLE.includes(contestState);
 
   /* Read what is already built. Also the only source of `contestState` and `groupProblemCount`. */
   useEffect(() => {
@@ -384,8 +426,13 @@ export function SetPlanner({ contestId, teams }: SetPlannerProps) {
           setAdoptedCount(data.setCount);
         }
         if (data.composition !== null) {
-          const adopted: Record<Difficulty, string> = { E: "0", M: "0", H: "0" };
-          for (const line of data.composition) adopted[line.difficulty] = String(line.count);
+          const adopted: Record<Difficulty, string> = {
+            E: "0",
+            M: "0",
+            H: "0",
+          };
+          for (const line of data.composition)
+            adopted[line.difficulty] = String(line.count);
           setCounts(adopted);
         }
         seedRef.current = data.seed;
@@ -458,7 +505,8 @@ export function SetPlanner({ contestId, teams }: SetPlannerProps) {
 
   const storedSets = stored?.sets ?? [];
   const showStored = !dirty && storedSets.length > 0;
-  const plannedSets = preview !== null && preview.plan.ok ? preview.plan.sets : [];
+  const plannedSets =
+    preview !== null && preview.plan.ok ? preview.plan.sets : [];
 
   /**
    * Whether the split on screen is a split of what is in the boxes RIGHT NOW. The preview is
@@ -473,7 +521,11 @@ export function SetPlanner({ contestId, teams }: SetPlannerProps) {
     formValid &&
     preview.setCount === setCount &&
     sameComposition(preview.composition, composition);
-  const buildable = previewMatches && preview.plan.ok && rebuildable;
+  const buildable =
+    previewMatches &&
+    preview.plan.ok &&
+    rebuildable &&
+    crowdedTeams.length === 0;
 
   /*
     Why the box says what it says. Three genuinely different facts: the contest has been built
@@ -485,14 +537,23 @@ export function SetPlanner({ contestId, teams }: SetPlannerProps) {
   const why =
     "Every member of a team holds a different set, so one set per member of your largest team is what stops anybody repeating one.";
   const teamName = largestTeam?.name ?? "";
-  const setCountHint =
-    adoptedCount !== null
+  const setCountPurpose =
+    setSelection === "ONE_SET_PER_TEAM"
+      ? "Each team receives one complete set. Choose how many different team sets should be available."
+      : setSelection === "PLAYER_CHOOSES"
+        ? "Players choose from the sets you build. Choose how many options they should have."
+        : why;
+  const setCountHint = distinctSetsRequired
+    ? adoptedCount !== null
       ? rosterDefault === null
         ? `This contest was last built with ${String(adoptedCount)} sets, and nobody is on a team yet. ${why}`
         : `This contest was last built with ${String(adoptedCount)} sets, and your largest team (${teamName}) has ${String(rosterDefault)}. ${why}`
       : rosterDefault === null
         ? `There is nobody on a team yet, so this starts at ${String(FALLBACK_SET_COUNT)}. ${why}`
-        : `Starts at ${String(rosterDefault)}, the size of your largest team (${teamName}). ${why}`;
+        : `Starts at ${String(rosterDefault)}, the size of your largest team (${teamName}). ${why}`
+    : adoptedCount === null
+      ? `Starts at ${String(FALLBACK_SET_COUNT)}. ${setCountPurpose}`
+      : `This contest was last built with ${String(adoptedCount)} sets. ${setCountPurpose}`;
 
   const edited = (): void => {
     setDirty(true);
@@ -503,6 +564,9 @@ export function SetPlanner({ contestId, teams }: SetPlannerProps) {
 
   const dealAgain = (): void => {
     seedRef.current = null;
+    // Invalidate the old deal before the debounced request begins. Otherwise Build stays enabled
+    // for the old seed during the exact moment the organizer has asked to replace it.
+    setPreview(null);
     edited();
     setReroll((n) => n + 1);
   };
@@ -524,11 +588,21 @@ export function SetPlanner({ contestId, teams }: SetPlannerProps) {
           // The seed of the deal ON SCREEN, never a fresh one. This is the whole reason the
           // preview hands its seed back.
           ...(preview.seed === null ? {} : { seed: preview.seed }),
+          // Refuse rather than silently save a different split if the usable bank changed after
+          // this grid was drawn.
+          poolVersion: preview.poolVersion,
         }),
       });
       const body: unknown = await response.json();
       if (!response.ok) {
         setApplyError(errorFrom(body));
+        if (response.status === 409) {
+          // A stale pool fingerprint cannot become valid by pressing Build again. Leave the seed
+          // in place, clear the stale grid, and immediately deal a current preview from it.
+          setConfirming(false);
+          setPreview(null);
+          setReroll((n) => n + 1);
+        }
         return;
       }
       const data = (body as { data: SetPlanResponse }).data;
@@ -552,34 +626,51 @@ export function SetPlanner({ contestId, teams }: SetPlannerProps) {
   };
 
   /** The seed behind the grid actually on screen, which is the only one worth naming. */
-  const shownSeed = showStored ? (stored?.seed ?? null) : (preview?.seed ?? null);
+  const shownSeed = showStored
+    ? (stored?.seed ?? null)
+    : (preview?.seed ?? null);
 
   return (
     <div className="flex flex-col gap-8">
       {storedError !== null && (
-        <AlertPlate tone="alarm" title="The current split could not be read" live={false}>
+        <AlertPlate
+          tone="alarm"
+          title="The current split could not be read"
+          live={false}
+        >
           {/* The server's own sentence gets its own paragraph. Running it into ours produced
               "Something went wrong on our end You can still plan…", because a message from an
               error envelope carries no trailing full stop and is not ours to punctuate. */}
           <p>{storedError}</p>
           <p className="mt-tight">
-            You can still plan and build sets below, and the server refuses anything it would not
-            allow, but this screen cannot show you what is there now.
+            You can still plan below, but reload the current split before
+            building or changing anything.
           </p>
         </AlertPlate>
       )}
 
       {!rebuildable && (
-        <AlertPlate tone="notice" title="This contest has started, so its sets are fixed" live={false}>
-          Rebuilding the split now would move students off questions they have already started
-          working on, and their submissions would point at slots that no longer exist. The plan
-          below can be read and previewed, and Build stays refused until the contest ends.
+        <AlertPlate
+          tone="notice"
+          title="This contest has started, so its sets are fixed"
+          live={false}
+        >
+          Rebuilding the split now would move students off questions they have
+          already started working on, and their submissions would point at slots
+          that no longer exist. The plan below can be read and previewed, and
+          Build stays refused until the contest ends.
         </AlertPlate>
       )}
 
       <Panel
         title="How many sets"
-        description="One column per member of your largest team, so that nobody on a team is handed a set a teammate already has."
+        description={
+          distinctSetsRequired
+            ? "Create at least one set for every member of the largest team."
+            : setSelection === "ONE_SET_PER_TEAM"
+              ? "Choose how many different team bundles to create."
+              : "Choose how many set options players can choose from."
+        }
       >
         <div className="flex flex-col gap-group">
           <TextInput
@@ -596,11 +687,17 @@ export function SetPlanner({ contestId, teams }: SetPlannerProps) {
           />
 
           {crowdedTeams.length > 0 && (
-            <p className="max-w-[70ch] font-semibold text-panther" style={{ fontSize: "var(--text-xs)" }}>
-              Warning: {crowdedTeams.map((team) => `${team.name} (${String(team.size)})`).join(", ")}{" "}
-              {crowdedTeams.length === 1 ? "has" : "have"} more members than there are sets, so
-              somebody on {crowdedTeams.length === 1 ? "that team" : "those teams"} will be handed a
-              set a teammate is already working.
+            <p
+              role="alert"
+              className="max-w-[70ch] font-semibold text-panther"
+              style={{ fontSize: "var(--text-xs)" }}
+            >
+              Add more sets before building.{" "}
+              {crowdedTeams
+                .map((team) => `${team.name} (${String(team.size)})`)
+                .join(", ")}{" "}
+              {crowdedTeams.length === 1 ? "has" : "have"} more members than
+              there are sets, and every teammate must receive a different set.
             </p>
           )}
         </div>
@@ -608,7 +705,7 @@ export function SetPlanner({ contestId, teams }: SetPlannerProps) {
 
       <Panel
         title="What is in a set"
-        description="One Easy, one Medium and one Hard is what previous years ran. Any count may be zero. What a question is worth follows its difficulty and is shown on every card below; change an individual slot on the Problems tab."
+        description="Choose how many questions of each difficulty appear in every set."
       >
         <div className="flex flex-col gap-group">
           {DIFFICULTIES.map((difficulty) => (
@@ -631,17 +728,15 @@ export function SetPlanner({ contestId, teams }: SetPlannerProps) {
             {formValid ? (
               <>
                 <strong>
-                  {String(perSet)} {perSet === 1 ? "question" : "questions"} per set,{" "}
-                  {String(setCount)} {setCount === 1 ? "set" : "sets"},{" "}
+                  {String(perSet)} {perSet === 1 ? "question" : "questions"} per
+                  set, {String(setCount)} {setCount === 1 ? "set" : "sets"},{" "}
                   {String(perSet * setCount)} distinct{" "}
                   {perSet * setCount === 1 ? "question" : "questions"} needed.
                 </strong>{" "}
-                No question appears in two sets, which is why the total multiplies.
+                No question appears in two sets, which is why the total
+                multiplies.
                 {stored !== null && (
-                  <>
-                    {" "}
-                    The bank has {String(stored.poolSize)} to draw on.
-                  </>
+                  <> The bank has {String(stored.poolSize)} to draw on.</>
                 )}
               </>
             ) : (
@@ -657,7 +752,8 @@ export function SetPlanner({ contestId, teams }: SetPlannerProps) {
         <AlertPlate tone="alarm" title="These sets cannot be built yet">
           <p>{preview.plan.message}</p>
           <p className="mt-tight">
-            Publish more questions in the bank, or ask for fewer of that difficulty in each set.
+            Publish more questions in the bank, or ask for fewer of that
+            difficulty in each set.
           </p>
         </AlertPlate>
       )}
@@ -672,12 +768,15 @@ export function SetPlanner({ contestId, teams }: SetPlannerProps) {
         title={showStored ? "The sets as they stand" : "The proposed split"}
         description={
           showStored
-            ? "This is what is in the database now, and what the students will see. Change a number above, or deal again, to plan a different one."
-            : "Nothing here is saved until you press Build. Every column is one set, exactly as on the sheet."
+            ? "These are the sets students will receive. Change a number above, or deal again, to plan a different split."
+            : "Nothing here is saved until you press Build. Each column is one set."
         }
         aside={
           previewing || (formValid && !previewMatches) ? (
-            <span className="text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
+            <span
+              className="text-ink/60"
+              style={{ fontSize: "var(--text-xs)" }}
+            >
               Working it out…
             </span>
           ) : undefined
@@ -700,25 +799,39 @@ export function SetPlanner({ contestId, teams }: SetPlannerProps) {
           )}
 
           <div className="flex flex-wrap items-center gap-3">
-            <Button type="button" variant="secondary" onClick={dealAgain} disabled={!formValid}>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={dealAgain}
+              disabled={!formValid}
+            >
               Deal again
             </Button>
-            <p className="max-w-[60ch] text-ink/70" style={{ fontSize: "var(--text-xs)" }}>
-              Dealing again shuffles the bank with a new seed. The seed is stored with the contest,
-              so any split can be re-derived later and shown to a student who disputes theirs.
+            <p
+              className="max-w-[60ch] text-ink/70"
+              style={{ fontSize: "var(--text-xs)" }}
+            >
+              Dealing again creates a new, repeatable split. Keep the current
+              deal if you have already shared these assignments with students.
               {shownSeed !== null && (
                 <>
                   {" "}
-                  This one came from seed <code className="numeric">{shownSeed}</code>.
+                  Deal code: <code className="numeric">{shownSeed}</code>.
                 </>
               )}
             </p>
           </div>
 
-          <p className="max-w-[70ch] text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
-            Group questions are not part of any set: the whole team works them together and every
-            team gets the same ones, so they are left alone by everything on this screen
-            {stored === null ? "" : ` (there ${stored.groupProblemCount === 1 ? "is" : "are"} ${String(stored.groupProblemCount)} of them)`}
+          <p
+            className="max-w-[70ch] text-ink/70"
+            style={{ fontSize: "var(--text-sm)" }}
+          >
+            Group questions are not part of any set: the whole team works them
+            together and every team gets the same ones, so they are left alone
+            by everything on this screen
+            {stored === null
+              ? ""
+              : ` (there ${stored.groupProblemCount === 1 ? "is" : "are"} ${String(stored.groupProblemCount)} of them)`}
             . A question is designated Group or Individual on the{" "}
             <Link
               href={`/admin/contests/${contestId}/problems`}
@@ -734,22 +847,34 @@ export function SetPlanner({ contestId, teams }: SetPlannerProps) {
       <Panel title="Build">
         <div className="flex flex-col gap-group">
           {applyError !== null && (
-            <p role="alert" className="max-w-[70ch] font-semibold text-panther" style={{ fontSize: "var(--text-sm)" }}>
+            <p
+              role="alert"
+              className="max-w-[70ch] font-semibold text-panther"
+              style={{ fontSize: "var(--text-sm)" }}
+            >
               {applyError}
             </p>
           )}
           {applied !== null && (
-            <p role="status" className="max-w-[70ch] font-semibold" style={{ fontSize: "var(--text-sm)" }}>
+            <p
+              role="status"
+              className="max-w-[70ch] font-semibold"
+              style={{ fontSize: "var(--text-sm)" }}
+            >
               {applied}
             </p>
           )}
 
           {confirming ? (
             <div className="flex flex-col gap-tight">
-              <p className="max-w-[70ch]" style={{ fontSize: "var(--text-sm)" }}>
-                <strong>This replaces the split that is there now.</strong> The columns keep their
-                names, so a student already holding set B still holds set B, but every question
-                inside every column changes. Group questions are not touched. It is recorded in the
+              <p
+                className="max-w-[70ch]"
+                style={{ fontSize: "var(--text-sm)" }}
+              >
+                <strong>This replaces the split that is there now.</strong> The
+                columns keep their names, so a student already holding set B
+                still holds set B, but every question inside every column
+                changes. Group questions are not touched. It is recorded in the
                 audit log with your name on it.
               </p>
               <div className="flex flex-wrap gap-3">
@@ -761,7 +886,11 @@ export function SetPlanner({ contestId, teams }: SetPlannerProps) {
                 >
                   {applying ? "Building…" : "Replace the split"}
                 </Button>
-                <Button type="button" variant="ghost" onClick={() => setConfirming(false)}>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => setConfirming(false)}
+                >
                   Cancel
                 </Button>
               </div>
@@ -782,7 +911,10 @@ export function SetPlanner({ contestId, teams }: SetPlannerProps) {
               >
                 {applying ? "Building…" : "Build these sets"}
               </Button>
-              <p className="max-w-[60ch] text-ink/70" style={{ fontSize: "var(--text-xs)" }}>
+              <p
+                className="max-w-[60ch] text-ink/70"
+                style={{ fontSize: "var(--text-xs)" }}
+              >
                 {!rebuildable
                   ? "The contest has started, so the split is fixed until it ends."
                   : buildable

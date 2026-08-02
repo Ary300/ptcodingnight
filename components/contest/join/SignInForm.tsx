@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui";
+import type { OAuthProviderAvailability } from "@/lib/contest/env";
 import { GitHubMark, GoogleMark } from "./ProviderIcons";
 
 /**
@@ -49,9 +50,14 @@ interface SignInFormProps {
    * sees the raw `?error=` code, which is what keeps arbitrary query-string text off the page.
    */
   readonly initialError?: string | null;
+  /** Complete server-side credential pairs, reduced to booleans before crossing into the client. */
+  readonly providerAvailability: OAuthProviderAvailability;
 }
 
-export function SignInForm({ initialError = null }: SignInFormProps) {
+export function SignInForm({
+  initialError = null,
+  providerAvailability,
+}: SignInFormProps) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [passcode, setPasscode] = useState("");
@@ -63,6 +69,9 @@ export function SignInForm({ initialError = null }: SignInFormProps) {
 
   const [passwordBusy, setPasswordBusy] = useState(false);
   const [passcodeBusy, setPasscodeBusy] = useState(false);
+
+  const studentSignInAvailable =
+    providerAvailability.google || providerAvailability.github;
 
   const bannerRef = useRef<HTMLDivElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
@@ -207,7 +216,7 @@ export function SignInForm({ initialError = null }: SignInFormProps) {
             message under the threshold, which is the wrong trade for the one sentence on this page
             somebody has to be able to read.
           */
-          className="mb-4 rounded border border-panther/40 bg-panther/[0.06] px-3 py-2.5 text-panther"
+          className="mb-4 rounded-chip border border-panther/40 bg-panther/[0.06] px-3 py-2.5 text-panther"
           style={{ fontSize: "var(--text-sm)" }}
         >
           <p>{pageError}</p>
@@ -234,39 +243,73 @@ export function SignInForm({ initialError = null }: SignInFormProps) {
         and a client-side navigation cannot follow a redirect to another origin. `<Link>` would
         satisfy the linter and break sign-in.
       */}
-      <div className="flex flex-col gap-2">
-        {/* eslint-disable-next-line @next/next/no-html-link-for-pages -- OAuth start: must be a document navigation */}
-        <a
-          href="/api/auth/google"
-          className="flex items-center justify-center gap-2.5 rounded border border-ink/25 px-3 py-2.5 font-semibold hover:border-ink/45 hover:bg-ink/[0.03]"
-          style={{ fontSize: "var(--text-sm)" }}
-        >
-          <GoogleMark />
-          Continue with Google
-        </a>
-        {/* eslint-disable-next-line @next/next/no-html-link-for-pages -- OAuth start: must be a document navigation */}
-        <a
-          href="/api/auth/github"
-          className="flex items-center justify-center gap-2.5 rounded border border-ink/25 px-3 py-2.5 font-semibold hover:border-ink/45 hover:bg-ink/[0.03]"
-          style={{ fontSize: "var(--text-sm)" }}
-        >
-          <GitHubMark />
-          Continue with GitHub
-        </a>
-      </div>
+      {studentSignInAvailable ? (
+        <>
+          <div className="flex flex-col gap-2">
+            {providerAvailability.google && (
+              // eslint-disable-next-line @next/next/no-html-link-for-pages -- OAuth start: must be a document navigation
+              <a
+                href="/api/auth/google"
+                /*
+                  `border-rule-firm` at rest, not `ink/25`: the border is the only thing that makes
+                  these controls read as controls (the fill is paper on paper), and WCAG 1.4.11
+                  wants 3:1 for that boundary. ink/25 measures 1.78:1; rule-firm (ink/45) is 3.13:1.
+                  axe has no 1.4.11 check, so the a11y gate passing was never evidence here.
+                  `py-2` rather than `py-2.5` so the links stand 42px like the inputs below: one
+                  control height per column, not three.
+                */
+                className="flex items-center justify-center gap-2.5 rounded-chip border border-rule-firm px-3 py-2 font-semibold hover:border-ink/45 hover:bg-ink/[0.03]"
+                style={{ fontSize: "var(--text-sm)" }}
+              >
+                <GoogleMark />
+                Continue with Google
+              </a>
+            )}
+            {providerAvailability.github && (
+              // eslint-disable-next-line @next/next/no-html-link-for-pages -- OAuth start: must be a document navigation
+              <a
+                href="/api/auth/github"
+                className="flex items-center justify-center gap-2.5 rounded-chip border border-rule-firm px-3 py-2 font-semibold hover:border-ink/45 hover:bg-ink/[0.03]"
+                style={{ fontSize: "var(--text-sm)" }}
+              >
+                <GitHubMark />
+                Continue with GitHub
+              </a>
+            )}
+          </div>
 
-      <p className="mt-3 text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
-        Students: use your school account. Signing in creates yours the first time, and an
-        organizer puts you on a team.
-      </p>
+          <p className="mt-3 text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
+            Students do not need a code. Use an available account above. Signing in creates your
+            account the first time, and an organizer puts you on a team.
+          </p>
+        </>
+      ) : (
+        <div
+          className="rounded-chip border border-rule-firm bg-ink/[0.03] px-3 py-3"
+          data-testid="student-signin-unavailable"
+        >
+          <p className="font-semibold" style={{ fontSize: "var(--text-sm)" }}>
+            Student sign-in is not set up on this server.
+          </p>
+          <p className="mt-1 text-ink/70" style={{ fontSize: "var(--text-xs)" }}>
+            Students do not need a code. Google and GitHub sign-in are unavailable. Ask an
+            organizer for help.
+          </p>
+        </div>
+      )}
 
-      <div className="my-5 flex items-center gap-3" aria-hidden="true">
-        <span className="h-px flex-1 bg-ink/15" />
+      {/*
+        `aria-hidden` sits on the two rule spans, NOT the wrapper: "or, for organizers" is the one
+        statement that the email form below is for a different audience, and hiding the wrapper
+        sent a screen reader straight from the OAuth links to "Email" with no such warning.
+      */}
+      <div className="my-5 flex items-center gap-3">
+        <span className="h-px flex-1 bg-ink/15" aria-hidden="true" />
         {/* 60, not 55. Ink at 55% over paper is 4.34:1, under AA's 4.5:1 at this size. */}
         <span className="text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
-          or, for organizers
+          {studentSignInAvailable ? "or, for organizers" : "organizer sign-in"}
         </span>
-        <span className="h-px flex-1 bg-ink/15" />
+        <span className="h-px flex-1 bg-ink/15" aria-hidden="true" />
       </div>
 
       <form ref={formRef} className="flex flex-col gap-3" onSubmit={(event) => void submit(event)}>
@@ -286,7 +329,7 @@ export function SignInForm({ initialError = null }: SignInFormProps) {
             */
             aria-invalid={passwordError !== null}
             aria-describedby={passwordError !== null ? "password-form-error" : undefined}
-            className="rounded border border-ink/25 bg-paper px-3 py-2"
+            className="rounded-flat border border-rule-firm bg-paper px-3 py-2"
             style={{ fontSize: "var(--text-sm)" }}
           />
         </label>
@@ -302,7 +345,7 @@ export function SignInForm({ initialError = null }: SignInFormProps) {
             onChange={(event) => setPassword(event.target.value)}
             aria-invalid={passwordError !== null}
             aria-describedby={passwordError !== null ? "password-form-error" : undefined}
-            className="rounded border border-ink/25 bg-paper px-3 py-2"
+            className="rounded-flat border border-rule-firm bg-paper px-3 py-2"
             style={{ fontSize: "var(--text-sm)" }}
           />
         </label>
@@ -322,11 +365,6 @@ export function SignInForm({ initialError = null }: SignInFormProps) {
           {passwordBusy ? "Signing in…" : "Sign in"}
         </Button>
       </form>
-
-      <p className="mt-6 text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
-        Students do not need a code. Signing in creates your account, and an organizer puts you on
-        a team.
-      </p>
 
       {/*
         Collapsed by default. A passcode field sitting open on the front door invites every
@@ -356,7 +394,7 @@ export function SignInForm({ initialError = null }: SignInFormProps) {
               onChange={(event) => setPasscode(event.target.value)}
               aria-invalid={passcodeError !== null}
               aria-describedby={passcodeError !== null ? "passcode-form-error" : undefined}
-              className="rounded border border-ink/25 bg-paper px-3 py-2"
+              className="rounded-flat border border-rule-firm bg-paper px-3 py-2"
               style={{ fontSize: "var(--text-sm)" }}
             />
           </label>
@@ -377,8 +415,7 @@ export function SignInForm({ initialError = null }: SignInFormProps) {
           </Button>
 
           <p className="text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
-            The fallback that works when a provider does not. Rate limited, and every organizer
-            action it opens is recorded with a reason.
+            Use this code if your usual organizer sign-in is unavailable.
           </p>
         </form>
       </details>

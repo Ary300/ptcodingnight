@@ -1,8 +1,14 @@
 import { expect, test } from "@playwright/test";
 
+import { TeamViewSchema } from "@/lib/schemas/api";
 import { ContestApi, readEnvelope, readOk } from "./helpers/api";
 import { requiredEnv } from "./helpers/env";
-import { closeTestDb, seedE2EContest, testDb, type SeededContest } from "./helpers/seed";
+import {
+  closeTestDb,
+  seedE2EContest,
+  testDb,
+  type SeededContest,
+} from "./helpers/seed";
 
 /**
  * G7 — team scoring through the HTTP routes, against a real Postgres.
@@ -32,6 +38,21 @@ let anon: ContestApi;
 let admin: ContestApi;
 
 const ADMIN_PASSCODE = requiredEnv("ADMIN_PASSCODE");
+let probeTeamSequence = 0;
+
+async function createProbeTeam(label: string): Promise<string> {
+  probeTeamSequence += 1;
+  const created = await readOk(
+    await admin.createTeamAsAdminRaw({
+      name: `E2E ${label} ${String(probeTeamSequence)}`,
+    }),
+  );
+  expect(
+    created.status,
+    "the organizer could not create an isolated probe team",
+  ).toBeLessThan(300);
+  return TeamViewSchema.parse(created.data).teamId;
+}
 
 test.beforeAll(async ({ playwright }) => {
   seeded = await seedE2EContest();
@@ -92,11 +113,16 @@ test.describe("the team board", () => {
     // would change that team's divisor as well as its pool.
     const board = await anon.teamStandings();
 
-    const total = board.teams.reduce((sum, team) => sum + team.scoreHundredths, 0);
+    const total = board.teams.reduce(
+      (sum, team) => sum + team.scoreHundredths,
+      0,
+    );
     expect(total).toBe(15_000 + 10_000);
 
     for (const team of board.teams) {
-      expect(team.players.map((player) => player.displayName)).not.toContain("E2E Nomad");
+      expect(team.players.map((player) => player.displayName)).not.toContain(
+        "E2E Nomad",
+      );
     }
   });
 
@@ -115,7 +141,10 @@ test.describe("the team board", () => {
     const names = panthers?.players.map((p) => p.displayName) ?? [];
     expect(names).toContain("E2E Ada");
     expect(names).toContain("E2E Grace");
-    expect(panthers?.players.map((p) => p.chosenSetLabel).sort()).toEqual(["A", "B"]);
+    expect(panthers?.players.map((p) => p.chosenSetLabel).sort()).toEqual([
+      "A",
+      "B",
+    ]);
   });
 
   test("never reproduces the spreadsheet's dropped-group-points answer", async () => {
@@ -162,23 +191,30 @@ test.describe("problem sets are enforced by the API", () => {
     // no set, sees only the group problem, and every assertion in this describe passes for the
     // wrong reason: "hides both set problems" and "hides the one that isn't yours" look
     // identical from the outside if the player was never given a set to begin with.
-    const teamId = seeded.teamIds.get("panthers") ?? "";
-    expect(teamId, "fixture has no panthers team").not.toBe("");
+    const teamId = await createProbeTeam("set visibility");
     const placed = await admin.moveParticipantRaw({
       participantId: probe.participantId,
       teamId,
       reason: "Set enforcement can only be measured on a player who has a set",
     });
-    expect(placed.status(), "the organizer could not place the probe").toBeLessThan(300);
+    expect(
+      placed.status(),
+      "the organizer could not place the probe",
+    ).toBeLessThan(300);
 
     const withSet = await testDb().participant.findUnique({
       where: { id: probe.participantId },
       select: { chosenSetId: true },
     });
-    expect(withSet?.chosenSetId, "the move did not assign a set").not.toBeNull();
+    expect(
+      withSet?.chosenSetId,
+      "the move did not assign a set",
+    ).not.toBeNull();
   });
 
-  test("tells a joining player which set they were assigned", async ({ playwright }) => {
+  test("tells a joining player which set they were assigned", async ({
+    playwright,
+  }) => {
     const context = await playwright.request.newContext();
     const api = new ContestApi(context, seeded.contestId);
 
@@ -200,16 +236,19 @@ test.describe("problem sets are enforced by the API", () => {
       where: { id: joined.participantId },
       select: { chosenSetId: true, teamId: true },
     });
-    expect(beforeTeam?.teamId, "signing in must not put anybody on a team").toBeNull();
+    expect(
+      beforeTeam?.teamId,
+      "signing in must not put anybody on a team",
+    ).toBeNull();
     expect(
       beforeTeam?.chosenSetId,
       "a set arrives with the team, because the organizer's move is what assigns it",
     ).toBeNull();
 
-    const teamId = seeded.teamIds.get("cubs");
+    const teamId = await createProbeTeam("assignment notice");
     const moved = await admin.moveParticipantRaw({
       participantId: joined.participantId,
-      teamId: teamId ?? "",
+      teamId,
       reason: "Assigning a set is what this spec is about",
     });
     expect(moved.status()).toBeLessThan(300);
@@ -244,8 +283,13 @@ test.describe("problem sets are enforced by the API", () => {
     const problems = await ada.listProblems();
     const visible = new Set(problems.map((problem) => problem.slug));
 
-    const hidden = ["e2e-panther-sum", "e2e-other-set"].find((slug) => !visible.has(slug));
-    expect(hidden, "the fixture gave this player both set problems").toBeDefined();
+    const hidden = ["e2e-panther-sum", "e2e-other-set"].find(
+      (slug) => !visible.has(slug),
+    );
+    expect(
+      hidden,
+      "the fixture gave this player both set problems",
+    ).toBeDefined();
     if (hidden === undefined) return;
 
     // Absent from the list is not enough. This route returns a full statement and is callable
@@ -259,7 +303,9 @@ test.describe("problem sets are enforced by the API", () => {
     // Reading another set is a fairness problem; SCORING on it is a correctness one.
     const problems = await ada.listProblems();
     const visible = new Set(problems.map((problem) => problem.slug));
-    const hidden = ["e2e-panther-sum", "e2e-other-set"].find((slug) => !visible.has(slug));
+    const hidden = ["e2e-panther-sum", "e2e-other-set"].find(
+      (slug) => !visible.has(slug),
+    );
     if (hidden === undefined) return;
 
     const hiddenProblem = seeded.problems.get(hidden);
@@ -267,20 +313,28 @@ test.describe("problem sets are enforced by the API", () => {
     if (hiddenProblem === undefined) return;
 
     for (const [label, response] of [
-      ["submit", await ada.submitRaw({
-        contestProblemId: hiddenProblem.contestProblemId,
-        language: "PYTHON_312",
-        sourceCode: "print(1)",
-      })],
-      ["run-samples", await ada.runSamplesRaw({
-        contestProblemId: hiddenProblem.contestProblemId,
-        language: "PYTHON_312",
-        sourceCode: "print(1)",
-      })],
+      [
+        "submit",
+        await ada.submitRaw({
+          contestProblemId: hiddenProblem.contestProblemId,
+          language: "PYTHON_312",
+          sourceCode: "print(1)",
+        }),
+      ],
+      [
+        "run-samples",
+        await ada.runSamplesRaw({
+          contestProblemId: hiddenProblem.contestProblemId,
+          language: "PYTHON_312",
+          sourceCode: "print(1)",
+        }),
+      ],
     ] as const) {
       const envelope = await readEnvelope(response);
-      expect(envelope.status, `${label} accepted a submission to an unassigned set`)
-        .toBeGreaterThanOrEqual(400);
+      expect(
+        envelope.status,
+        `${label} accepted a submission to an unassigned set`,
+      ).toBeGreaterThanOrEqual(400);
     }
   });
 });
@@ -292,7 +346,11 @@ test.describe("set assignment is explainable", () => {
     const envelope = await readOk(await admin.reDeriveAssignmentRaw());
     expect(envelope.status).toBe(200);
 
-    const body = envelope.data as { seed: string; matchesStored: boolean; derived: unknown[] };
+    const body = envelope.data as {
+      seed: string;
+      matchesStored: boolean;
+      derived: unknown[];
+    };
     expect(body.seed.length).toBeGreaterThan(0);
     expect(Array.isArray(body.derived)).toBe(true);
   });
@@ -322,7 +380,10 @@ test.describe("side activities", () => {
     expect(cubsBefore?.sideActivityPoints).toBe(0);
 
     const created = await readEnvelope(
-      await admin.addSideActivityRaw(teamId, { label: "Connections", points: 40 }),
+      await admin.addSideActivityRaw(teamId, {
+        label: "Connections",
+        points: 40,
+      }),
     );
     expect(created.status).toBe(200);
 
@@ -352,7 +413,10 @@ test.describe("side activities", () => {
     if (teamId === undefined) return;
 
     const envelope = await readEnvelope(
-      await admin.addSideActivityRaw(teamId, { label: "Typo", points: 100_000 }),
+      await admin.addSideActivityRaw(teamId, {
+        label: "Typo",
+        points: 100_000,
+      }),
     );
     expect(envelope.status).toBeGreaterThanOrEqual(400);
     expect(envelope.status).toBeLessThan(500);
@@ -374,5 +438,62 @@ test.describe("side activities", () => {
     for (const activity of body.activities) {
       expect(activity.enteredBy.length).toBeGreaterThan(0);
     }
+  });
+
+  test("keeps an award entered during freeze off the public board until unfreeze", async () => {
+    const teamId = seeded.teamIds.get("cubs");
+    expect(teamId).toBeDefined();
+    if (teamId === undefined) return;
+
+    const before = await anon.teamStandings();
+    const beforeTeam = before.teams.find((team) => team.teamId === teamId);
+    expect(beforeTeam).toBeDefined();
+
+    const frozen = await admin.freeze(true);
+    expect(frozen.freezeAt).not.toBeNull();
+
+    try {
+      const created = await readOk(
+        await admin.addSideActivityRaw(teamId, {
+          label: "Frozen-board timing probe",
+          points: 37,
+        }),
+      );
+      expect(created.status).toBe(200);
+
+      const body = created.data as { enteredAt: string };
+      expect(
+        Date.parse(body.enteredAt),
+        "the side award timestamp predates the serialized freeze cutoff",
+      ).toBeGreaterThan(Date.parse(frozen.freezeAt ?? ""));
+
+      const publicFrozen = await anon.teamStandings();
+      const publicTeam = publicFrozen.teams.find(
+        (team) => team.teamId === teamId,
+      );
+      expect(publicFrozen.frozen).toBe(true);
+      expect(publicTeam?.sideActivityPoints).toBe(
+        beforeTeam?.sideActivityPoints,
+      );
+      expect(publicTeam?.scoreHundredths).toBe(beforeTeam?.scoreHundredths);
+
+      const organizerLive = await admin.teamStandings();
+      const organizerTeam = organizerLive.teams.find(
+        (team) => team.teamId === teamId,
+      );
+      expect(organizerLive.frozen).toBe(false);
+      expect(organizerTeam?.sideActivityPoints).toBe(
+        (beforeTeam?.sideActivityPoints ?? 0) + 37,
+      );
+    } finally {
+      await admin.freeze(false);
+    }
+
+    const revealed = await anon.teamStandings();
+    const revealedTeam = revealed.teams.find((team) => team.teamId === teamId);
+    expect(revealed.frozen).toBe(false);
+    expect(revealedTeam?.sideActivityPoints).toBe(
+      (beforeTeam?.sideActivityPoints ?? 0) + 37,
+    );
   });
 });

@@ -4,9 +4,8 @@ import { ProblemBuilder } from "@/components/admin/ProblemBuilder";
 /**
  * `/admin/problems/new` — create a coding question.
  *
- * The Park Tudor version of HackerRank's "Create Coding Question", with its two unneeded steps
- * removed: no question type (all coding) and no language selection (all six, always). What is left
- * is a statement and test cases, plus optional function-stub starter code.
+ * The builder stays focused on the choices organizers make here: the statement, optional starter
+ * code, and the cases used by the judge. Supported languages are enabled automatically.
  */
 export const dynamic = "force-dynamic";
 
@@ -20,9 +19,14 @@ export default function NewProblemPage() {
           { label: "New question" },
         ]}
       />
-      <h1 className="font-display font-bold" style={{ fontSize: "var(--text-xl)" }}>
-        Create a coding question
-      </h1>
+      <header>
+        <h1 className="font-display font-bold leading-tight" style={{ fontSize: "var(--text-xl)" }}>
+          Create a coding question
+        </h1>
+        <p className="mt-tight max-w-[70ch] text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
+          Write the statement, choose the starter code, and add the cases the judge will run.
+        </p>
+      </header>
       <ProblemBuilder />
     </div>
   );

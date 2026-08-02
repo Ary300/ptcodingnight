@@ -102,6 +102,38 @@ function byLiveness(a: AdminContestSummary, b: AdminContestSummary): number {
   return a.name.localeCompare(b.name);
 }
 
+/**
+ * The lifecycle groups, as section heads. Sorting alone was not enough: on a list of 26 rows,
+ * 15 of them DRAFT experiments, the one RUNNING contest was first but nothing SAID why the
+ * order changed mid-list, and two same-evening contests in different states read as duplicates.
+ */
+const GROUP_LABEL: Record<AdminContestSummary["state"], string> = {
+  RUNNING: "Running",
+  FROZEN: "Frozen (live, board stopped)",
+  SCHEDULED: "Scheduled",
+  DRAFT: "Drafts",
+  ENDED: "Ended",
+  ARCHIVED: "Archived",
+};
+
+/**
+ * Start AND end, with times. The list used to print a time-less start date while `endsAt`
+ * arrived in the payload and was never rendered — so a RUNNING row gave no "ends" cue, and two
+ * contests on the same evening were indistinguishable.
+ */
+function whenLabel(startsAt: string, endsAt: string): { starts: string; ends: string } {
+  const start = new Date(startsAt);
+  const end = new Date(endsAt);
+  const time = { hour: "numeric", minute: "2-digit" } as const;
+  const sameDay = start.toDateString() === end.toDateString();
+  return {
+    starts: start.toLocaleString(undefined, { month: "short", day: "numeric", ...time }),
+    ends: sameDay
+      ? `ends ${end.toLocaleTimeString(undefined, time)}`
+      : `ends ${end.toLocaleString(undefined, { month: "short", day: "numeric", ...time })}`,
+  };
+}
+
 export function ContestPicker({ tab = "", purpose, variant = "picker" }: ContestPickerProps) {
   // Wrapped in an inline arrow because `useResource` requires a stable callback and the lint
   // rule requires the argument to `useCallback` be an inline function expression. Both are
@@ -153,6 +185,9 @@ export function ContestPicker({ tab = "", purpose, variant = "picker" }: Contest
 
   const heading = variant === "list" ? "All contests" : "Which contest?";
   const contests = [...load.data.contests].sort(byLiveness);
+  const groups = (Object.keys(STATE_ORDER) as AdminContestSummary["state"][])
+    .map((state) => ({ state, rows: contests.filter((contest) => contest.state === state) }))
+    .filter((group) => group.rows.length > 0);
 
   return (
     <section
@@ -184,45 +219,77 @@ export function ContestPicker({ tab = "", purpose, variant = "picker" }: Contest
         )}
       </div>
 
-      <ul>
-        {contests.map((contest) => (
-          <li key={contest.contestId} className="border-b border-rule-hair last:border-b-0">
-            <Link
-              href={`/admin/contests/${encodeURIComponent(contest.contestId)}${tab}`}
-              className="flex flex-wrap items-center gap-x-4 gap-y-1.5 px-5 py-3.5 hover:bg-ink/[0.035]"
-            >
-              <span className="font-display font-bold" style={{ fontSize: "var(--text-sm)" }}>
-                {contest.name}
-              </span>
-              <ContestStatePill state={contest.state} />
+      {groups.map((group) => (
+        <div key={group.state}>
+          <h3
+            className="border-b border-rule-hair bg-ink/[0.03] px-5 py-1.5 font-semibold tracking-wide uppercase text-ink/60"
+            style={{ fontSize: "var(--text-xs)" }}
+          >
+            {GROUP_LABEL[group.state]}
+            <span className="numeric ml-2 font-normal">{group.rows.length}</span>
+          </h3>
+          <ul>
+            {group.rows.map((contest) => {
+              const when = whenLabel(contest.startsAt, contest.endsAt);
+              return (
+                <li key={contest.contestId} className="border-b border-rule-hair last:border-b-0">
+                  {/*
+                    `relative` + an absolutely pinned chevron: at 360 the metadata wraps, and a
+                    chevron left in the flow landed mid-row after the date. Hover is 6% ink, not
+                    3.5%, because 3.5% is byte-identical to the page ground the panel sits on and
+                    a hovered row read as a hole.
+                  */}
+                  <Link
+                    href={`/admin/contests/${encodeURIComponent(contest.contestId)}${tab}`}
+                    className="relative flex flex-wrap items-center gap-x-4 gap-y-1.5 py-3.5 pl-5 pr-10 hover:bg-ink/[0.06]"
+                  >
+                    {/*
+                      A fixed 7rem pill column from `sm`, so the pills stand in one vertical line
+                      instead of trailing each row's name (their left edges used to spread 147px
+                      across the list).
+                    */}
+                    <span className="grid min-w-0 flex-1 basis-72 grid-cols-1 items-center gap-x-4 gap-y-1 sm:grid-cols-[minmax(0,1fr)_7rem]">
+                      <span className="font-display font-bold" style={{ fontSize: "var(--text-sm)" }}>
+                        {contest.name}
+                      </span>
+                      <span className="justify-self-start">
+                        <ContestStatePill state={contest.state} />
+                      </span>
+                    </span>
 
-              {/*
-                The counts, right-aligned and tabular. This is what an organizer reads to tell two
-                contests apart at a glance — "the one with 47 people in it" — and `numeric` keeps
-                the digits in a column so the list can be scanned rather than read.
-              */}
-              <span
-                className="numeric ml-auto text-ink/70"
-                style={{ fontSize: "var(--text-xs)" }}
-              >
-                {contest.participantCount} in · {contest.teamCount}{" "}
-                {contest.teamCount === 1 ? "team" : "teams"}
-              </span>
-              <span className="numeric text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
-                {new Date(contest.startsAt).toLocaleDateString(undefined, {
-                  year: "numeric",
-                  month: "short",
-                  day: "numeric",
-                })}
-              </span>
-              {/* The whole row is a link; the chevron says so before the hover tint does. */}
-              <span aria-hidden="true" className="text-ink/40">
-                ›
-              </span>
-            </Link>
-          </li>
-        ))}
-      </ul>
+                    {/*
+                      The counts, right-aligned and tabular. This is what an organizer reads to
+                      tell two contests apart at a glance — "the one with 47 people in it" — and
+                      the fixed-width date column beside them keeps their right edges in a column.
+                    */}
+                    <span
+                      className="numeric ml-auto text-ink/70"
+                      style={{ fontSize: "var(--text-xs)" }}
+                    >
+                      {contest.participantCount} in · {contest.teamCount}{" "}
+                      {contest.teamCount === 1 ? "team" : "teams"}
+                    </span>
+                    <span
+                      className="numeric w-[7.5rem] text-right text-ink/60"
+                      style={{ fontSize: "var(--text-xs)" }}
+                    >
+                      <span className="block">{when.starts}</span>
+                      <span className="block">{when.ends}</span>
+                    </span>
+                    {/* The whole row is a link; the chevron says so before the hover tint does. */}
+                    <span
+                      aria-hidden="true"
+                      className="absolute top-1/2 right-4 -translate-y-1/2 text-ink/40"
+                    >
+                      ›
+                    </span>
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      ))}
     </section>
   );
 }
