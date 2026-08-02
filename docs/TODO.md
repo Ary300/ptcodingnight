@@ -17,6 +17,7 @@ and a couple are reachable but wrong on this hardware.
 | T1 | Hints — specified and priced, deliberately unimplemented pending organizer-written content | deferred by decision |
 | T2 | Java time limits — **RESOLVED** by measuring the real host: 38,473 ms → 229 ms, budget 45,000 → 4,000 | resolved |
 | T3 | Verdict latency straddles the G8 threshold — 7.4 s to 22.8 s on the same commit | **high**, hardware |
+| T14 | **G7 FAILS**: the custom listbox broke the language-picker spec, and the fine-detail screenshot findings were audited but never implemented | **high**, open |
 | T4 | ~~A submission can fill the judge host's disk~~ **fixed** | resolved |
 | T5 | ~~Re-joining re-rolls the problem set, leaking other sets~~ **fixed**; one residual stated | low |
 | T6 | Monaco is specified but not installed | medium |
@@ -494,3 +495,59 @@ scoring engine and the problem routes already read `round`; the remaining reader
 - **`npm run lint` linting agent worktrees** — resolved when the worktrees were removed.
   `fixtures/**` stays excluded on purpose: the CE fixtures do not parse and the TLE fixtures are
   infinite loops, so every finding there is a fixture working correctly.
+
+
+---
+
+## T14 — The listbox rebuild broke G7, and the screenshot audit was never implemented
+
+**Two open gaps, recorded together because both come from the same cause: the agents that would
+have closed them ran out of session budget before they ran.**
+
+### T14a — `tests/e2e/student-gaps.spec.ts` fails. G7 is FAIL.
+
+`components/ui/Select.tsx` became a real `role="listbox"` on fine-pointer devices, which was the
+right call (see the commit: HackerRank's dropdowns are not native `<select>`s and ours were, so the
+OPEN list was the operating system's own menu and no amount of trigger styling could ever match).
+
+What was not checked is that a spec reads the picker's options as `<option>` elements:
+
+```
+the language picker offers what the problem allows
+  › every option comes from the problem's own allowedLanguages, labelled from the registry
+  expect(received).toEqual(expected)   // offered vs allowed
+```
+
+The options are now `role="option"` items in a portal that exist only while the list is open, so the
+original assertion cannot pass. **This is the spec correctly detecting a real change, not a flaky
+test, and it must not be weakened to go green.**
+
+The spec has been moved to `getByRole("combobox")`, which matches a native select and the custom
+trigger alike, and to opening the list and reading `role="option"`. That still fails: under
+Playwright the click does not open the panel. Two candidates, and they need a browser to tell apart:
+
+  1. the trigger needs a real user gesture or a settled hydration that the spec does not wait for;
+  2. the panel opens but is portalled somewhere the assertion does not see.
+
+Verified working by hand on `/admin/contests/new`: `pointer:fine = true`, the trigger renders as
+`BUTTON[role=combobox]`, and clicking it produced `{listboxes: 1, options: 2}`. So the control is
+not simply broken. The competitor problem page is the case that has not been reproduced.
+
+**Until this is understood, treat the language picker as unverified end to end.** It is the control
+a student touches on every submission.
+
+### T14b — The per-screenshot fine-detail findings were audited, never implemented
+
+Roughly thirty agents each took one reference screenshot from
+`Hackerrank:CF images for Frontend/`, opened the corresponding screen of ours at 1440 and 360, and
+measured the differences with `getComputedStyle`. **They were read-only by construction** ("YOU ARE
+READ-ONLY ... Produce findings, not edits"), because six other agents were editing those same files
+at the time.
+
+Their findings were never turned into a change pass. Some overlap with what the build agents fixed
+independently, and the shared primitives (Button, Select, TabStrip, Field) were separately measured
+and corrected, so the gap is smaller than thirty screens. But **no one has worked the list**, and
+the honest position is that "the fine UI details are done" is not a claim this repository can make.
+
+The findings are recoverable from the workflow transcripts under
+`.claude/projects/.../subagents/workflows/wf_f6023788-266/agent-*.jsonl`.

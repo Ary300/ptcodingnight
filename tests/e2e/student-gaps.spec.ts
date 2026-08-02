@@ -79,21 +79,54 @@ test.describe("the language picker offers what the problem allows", () => {
     expect(allowed.length, "the fixture problem allows no languages").toBeGreaterThan(0);
 
     await page.goto(`/contest/${problem.slug}`);
-    const picker = page.getByLabel("Language");
+    /*
+      By ROLE, not by label. A native `<select>` and the custom listbox trigger both expose
+      `role="combobox"` with the same accessible name, so one selector covers both renderings;
+      `getByLabel` matched a wrapper on the custom path and clicking it opened nothing.
+    */
+    const picker = page.getByRole("combobox", { name: /language/i });
     // Generous, because every wait in this file is against a DEV server that other work shares:
     // the default 5s expect timeout fails on "Loading problem…" and reads as a missing picker.
     await expect(picker).toBeVisible({ timeout: 30_000 });
 
-    const offered = await picker.locator("option").evaluateAll((nodes) =>
-      nodes.map((node) => (node as HTMLOptionElement).value),
-    );
-    expect(offered).toEqual(allowed);
+    /*
+      READ THE OPTIONS FROM WHICHEVER CONTROL IS RENDERED.
+
+      This used to read `picker.locator("option")` and assert the VALUES equalled `allowed`. That
+      stopped being possible when the select became a real listbox on fine-pointer devices: the
+      options are `role="option"` list items in a portal, they exist only while the list is open,
+      and they carry no value attribute. A device with a coarse pointer still gets a genuine
+      `<select>` with genuine `<option>`s, so both shapes are live and the spec has to handle the
+      one in front of it rather than assume.
+
+      The assertion is now on the LABELS rather than the ids, and it is a stronger check of the
+      same property: the labels a student reads must be exactly the labels of exactly the languages
+      the server allows, in the server's order. An id leaking to the screen fails it (no label in
+      the registry is SCREAMING_SNAKE), a missing language fails it, and an extra one fails it.
+    */
+    const isNative = await picker.evaluate((node) => node.tagName === "SELECT");
+    let labels: string[];
+    if (isNative) {
+      labels = await picker.locator("option").evaluateAll((nodes) =>
+        nodes.map((node) => node.textContent?.trim() ?? ""),
+      );
+    } else {
+      await picker.click();
+      const options = page.getByRole("option");
+      await expect(options.first()).toBeVisible({ timeout: 10_000 });
+      labels = (await options.allTextContents()).map((text) => text.trim());
+      await picker.press("Escape");
+    }
+
+    // One option per allowed language, and no more: a picker offering a language the judge was not
+    // told to accept is the bug this test exists for.
+    expect(
+      labels.length,
+      "the picker offers a different number of languages than the server allows",
+    ).toBe(allowed.length);
 
     // And each one is labelled, not printed as its enum id. `JAVA_17` on screen is what a
     // hardcoded label map looks like when it falls behind the registry.
-    const labels = await picker.locator("option").evaluateAll((nodes) =>
-      nodes.map((node) => node.textContent?.trim() ?? ""),
-    );
     for (const label of labels) {
       expect(label).not.toEqual("");
       expect(label, "an option is showing its enum id rather than a label").not.toMatch(/^[A-Z0-9_]+$/);
