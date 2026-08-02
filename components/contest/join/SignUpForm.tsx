@@ -14,8 +14,11 @@ import { GitHubMark, GoogleMark } from "./ProviderIcons";
  *
  * Because "Create your account" and "Log in" landed on the SAME page, and the organizer called it:
  * a student who clicked Create your account was shown a login form with no name field and no way
- * to tell the two apart. The reference (HackerRank's join page) puts the form first: Full Name,
- * Email, Your password, then the providers under an "or". This follows that shape.
+ * to tell the two apart.
+ *
+ * PROVIDERS FIRST, above the form, matching the login page by the organizer's explicit
+ * instruction: the two pages had the buttons at opposite ends and a student moving between them
+ * had to re-find them. One click with a school Google account is also the fastest way in.
  *
  * OAuth is still the fastest way in, and the provider buttons here go through the identical
  * routes as the login page's: the first OAuth sign-in creates the account either way, so there is
@@ -72,6 +75,48 @@ export function SignUpForm({ providerAvailability }: SignUpFormProps) {
 
   return (
     <div>
+      {anyProvider && (
+        <>
+          {/*
+            The identical anchors the login page uses, for the identical reason: these are document
+            navigations to routes that 302 to another origin, which a client-side <Link> cannot
+            follow. The first OAuth sign-in creates the account, so these ARE sign-up buttons here.
+          */}
+          <div className="flex flex-col gap-2">
+            {providerAvailability.google && (
+              // eslint-disable-next-line @next/next/no-html-link-for-pages -- OAuth start: must be a document navigation
+              <a
+                href="/api/auth/google"
+                className="flex items-center justify-center gap-2.5 rounded-chip border border-rule-firm px-3 py-2 font-semibold hover:border-ink hover:bg-ink/[0.03]"
+                style={{ fontSize: "var(--text-sm)" }}
+              >
+                <GoogleMark />
+                Continue with Google
+              </a>
+            )}
+            {providerAvailability.github && (
+              // eslint-disable-next-line @next/next/no-html-link-for-pages -- OAuth start: must be a document navigation
+              <a
+                href="/api/auth/github"
+                className="flex items-center justify-center gap-2.5 rounded-chip border border-rule-firm px-3 py-2 font-semibold hover:border-ink hover:bg-ink/[0.03]"
+                style={{ fontSize: "var(--text-sm)" }}
+              >
+                <GitHubMark />
+                Continue with GitHub
+              </a>
+            )}
+          </div>
+
+          <div className="my-5 flex items-center gap-3" aria-hidden="true">
+            <span className="h-px flex-1 bg-ink/15" />
+            <span className="text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
+              or
+            </span>
+            <span className="h-px flex-1 bg-ink/15" />
+          </div>
+        </>
+      )}
+
       <form className="flex flex-col gap-3" onSubmit={(event) => void submit(event)}>
         <label className="flex flex-col gap-1" style={{ fontSize: "var(--text-sm)" }}>
           Full name
@@ -136,48 +181,6 @@ export function SignUpForm({ providerAvailability }: SignUpFormProps) {
           {busy ? "Creating your account…" : "Sign up"}
         </button>
       </form>
-
-      {anyProvider && (
-        <>
-          <div className="my-5 flex items-center gap-3" aria-hidden="true">
-            <span className="h-px flex-1 bg-ink/15" />
-            <span className="text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
-              or
-            </span>
-            <span className="h-px flex-1 bg-ink/15" />
-          </div>
-
-          {/*
-            The identical anchors the login page uses, for the identical reason: these are document
-            navigations to routes that 302 to another origin, which a client-side <Link> cannot
-            follow. The first OAuth sign-in creates the account, so these ARE sign-up buttons here.
-          */}
-          <div className="flex flex-col gap-2">
-            {providerAvailability.google && (
-              // eslint-disable-next-line @next/next/no-html-link-for-pages -- OAuth start: must be a document navigation
-              <a
-                href="/api/auth/google"
-                className="flex items-center justify-center gap-2.5 rounded-chip border border-rule-firm px-3 py-2 font-semibold hover:border-ink hover:bg-ink/[0.03]"
-                style={{ fontSize: "var(--text-sm)" }}
-              >
-                <GoogleMark />
-                Continue with Google
-              </a>
-            )}
-            {providerAvailability.github && (
-              // eslint-disable-next-line @next/next/no-html-link-for-pages -- OAuth start: must be a document navigation
-              <a
-                href="/api/auth/github"
-                className="flex items-center justify-center gap-2.5 rounded-chip border border-rule-firm px-3 py-2 font-semibold hover:border-ink hover:bg-ink/[0.03]"
-                style={{ fontSize: "var(--text-sm)" }}
-              >
-                <GitHubMark />
-                Continue with GitHub
-              </a>
-            )}
-          </div>
-        </>
-      )}
 
       <p className="mt-6 text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
         Already have an account?{" "}
