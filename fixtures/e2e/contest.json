@@ -235,7 +235,7 @@
         }
       ],
       "teamKey": "cubs",
-      "setKey": "setA"
+      "setKey": "setAdvA"
     },
     {
       "displayName": "E2E Nomad",
@@ -265,11 +265,18 @@
   "problemSets": [
     {
       "key": "setA",
-      "label": "A"
+      "label": "A",
+      "divisionKey": "intermediate"
     },
     {
       "key": "setB",
-      "label": "B"
+      "label": "B",
+      "divisionKey": "intermediate"
+    },
+    {
+      "key": "setAdvA",
+      "label": "A",
+      "divisionKey": "advanced"
     }
   ],
   "sideActivities": [

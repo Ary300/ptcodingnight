@@ -137,13 +137,17 @@ test.describe("the team board", () => {
     expect(panthers?.sideActivityPoints).toBeDefined();
     expect(panthers?.teamSize).toBeDefined();
 
-    // Each member's own line, with the set they were assigned.
+    // Each member's own line, with the set they were assigned. The labels arrive QUALIFIED with
+    // the division name, because the fixture's sets belong to divisions now (the product's rule:
+    // a set is dealt strictly within its division) and the standings payload qualifies exactly
+    // when a set has a division - two divisions can each have an "A", and a bare "A" on the
+    // board would not say which one.
     const names = panthers?.players.map((p) => p.displayName) ?? [];
     expect(names).toContain("E2E Ada");
     expect(names).toContain("E2E Grace");
     expect(panthers?.players.map((p) => p.chosenSetLabel).sort()).toEqual([
-      "A",
-      "B",
+      "Intermediate A",
+      "Intermediate B",
     ]);
   });
 

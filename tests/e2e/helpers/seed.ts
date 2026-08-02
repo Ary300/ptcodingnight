@@ -248,7 +248,6 @@ export async function seedE2EContest(options: SeedOptions = {}): Promise<SeededC
           joinCode: `E2E${team.key.slice(0, 3).toUpperCase().padEnd(3, "X")}`,
         })),
       },
-      problemSets: { create: fixture.problemSets.map((set) => ({ label: set.label })) },
       // A seed, so the fixture's participants count as already-assigned and the late-joiner path is
       // reachable from a spec. The value is fixed rather than random: an E2E fixture that assigns
       // differently run to run cannot assert on who has which set.
@@ -258,7 +257,6 @@ export async function seedE2EContest(options: SeedOptions = {}): Promise<SeededC
       id: true,
       divisions: { select: { id: true, name: true } },
       teams: { select: { id: true, name: true } },
-      problemSets: { select: { id: true, label: true } },
     },
   });
 
@@ -269,20 +267,34 @@ export async function seedE2EContest(options: SeedOptions = {}): Promise<SeededC
     teamIds.set(team.key, row.id);
   }
 
-  const problemSetIds = new Map<string, string>();
-  const problemSetLabels = new Map<string, string>();
-  for (const set of fixture.problemSets) {
-    const row = contest.problemSets.find((candidate) => candidate.label === set.label);
-    if (row === undefined) throw new Error(`problem set ${set.label} was not created`);
-    problemSetIds.set(set.key, row.id);
-    problemSetLabels.set(row.id, row.label);
-  }
-
   const divisionIds = new Map<string, string>();
   for (const division of fixture.divisions) {
     const row = contest.divisions.find((candidate) => candidate.name === division.name);
     if (row === undefined) throw new Error(`division ${division.name} was not created`);
     divisionIds.set(division.key, row.id);
+  }
+
+  /*
+    Sets are created AFTER the divisions because each one belongs to a division, and created one
+    by one because two sets may legitimately share a label across divisions (Intermediate A and
+    Advanced A) - the old lookup-by-label would silently hand both fixture keys the same row.
+    A set with no divisionKey stays division-null, which is only dealable in a contest whose
+    players are also division-null; this fixture has none, and the schema comment says why.
+  */
+  const problemSetIds = new Map<string, string>();
+  const problemSetLabels = new Map<string, string>();
+  for (const set of fixture.problemSets) {
+    const divisionId =
+      set.divisionKey === undefined ? null : (divisionIds.get(set.divisionKey) ?? null);
+    if (set.divisionKey !== undefined && divisionId === null) {
+      throw new Error(`problem set ${set.label} names an unknown division ${set.divisionKey}`);
+    }
+    const row = await db.problemSet.create({
+      data: { contestId: contest.id, label: set.label, divisionId },
+      select: { id: true, label: true },
+    });
+    problemSetIds.set(set.key, row.id);
+    problemSetLabels.set(row.id, row.label);
   }
 
   const problems = new Map<string, SeededProblem>();

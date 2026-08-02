@@ -82,9 +82,23 @@ export const ContestFixtureSchema = z.object({
   teams: z
     .array(z.object({ key: z.string().min(1), name: z.string().min(1) }))
     .default([]),
-  /** Round 1 parallel sets, labelled "A".."D". */
+  /**
+   * Round 1 parallel sets, labelled "A".."D", each belonging to a division.
+   *
+   * `divisionKey` is required whenever the CONTEST has divisions, because that is the product's
+   * rule: `ensureSetAssigned` and the bulk dealer both match sets to players strictly by
+   * division, so a division-null set in a divisioned contest is a set nobody can ever be dealt.
+   * This fixture shipped exactly that shape and the symptom surfaced two files away: an
+   * organizer's move "succeeded" and the moved player had no set.
+   */
   problemSets: z
-    .array(z.object({ key: z.string().min(1), label: z.string().min(1) }))
+    .array(
+      z.object({
+        key: z.string().min(1),
+        label: z.string().min(1),
+        divisionKey: z.string().min(1).optional(),
+      }),
+    )
     .default([]),
   problems: z.array(ProblemFixtureSchema).min(1),
   rivals: z.array(RivalSchema),
