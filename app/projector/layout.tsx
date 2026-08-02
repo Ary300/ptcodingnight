@@ -32,12 +32,19 @@ export default function ProjectorLayout({ children }: { children: React.ReactNod
   return (
     <>
       {children}
+      {/*
+        Top-left, visible, with an arrow: the bottom-left 13px version shipped first and the
+        organizer reported "no back button" AGAIN, which settles the discoverability argument.
+        A quiet bordered chip is still nothing at wall distance (compare: the LIVE pill that used
+        to live here was a pulsing red dot; this is muted ink in a hairline), but at a desk it is
+        unmistakably a control, in the corner every "back" control on the web lives in.
+      */}
       <Link
         href="/"
-        className="fixed bottom-3 left-3 z-10 rounded px-2 py-1 text-ink/60 underline-offset-2 hover:text-panther hover:underline"
-        style={{ fontSize: "var(--text-xs)" }}
+        className="fixed top-3 left-3 z-10 flex items-center gap-1.5 rounded-chip border border-ink/20 bg-paper/90 px-3 py-1.5 text-ink/70 hover:border-ink/40 hover:text-ink"
+        style={{ fontSize: "var(--text-sm)" }}
       >
-        Coding Night home
+        <span aria-hidden="true">&larr;</span> Home
       </Link>
     </>
   );

@@ -111,26 +111,28 @@ describe("drawnTeamRows", () => {
 describe("memberBlockBudget", () => {
   /**
    * The wall geometry these tests are written against: TEAM_VISIBLE_ROWS = 7 team rows, and a
-   * member row is a third of a team row. The failure guarded is the one this file exists for,
-   * one level down: three full-size blocks measure 894px of table on a 794px canvas, and the
+   * member row is HALF a team row (re-measured when the breakdown became child cards; it was a
+   * third when the rows were bare text). The failure guarded is the one this file exists for,
+   * one level down: blocks handed out against a stale ratio overflow the canvas, and the
    * overflow does not announce itself — the board scrolls on a screen nobody can scroll.
    */
   const WALL = 7;
 
   it("gives a lone open team the full measured block", () => {
-    // 1 open on a 9-team field: cap 5 drawn, (7-5)*3 = 6 spare member rows for one team.
+    // 1 open on a 9-team field: cap 5 drawn, (7-5)*2 = 4 spare member rows for one team.
     expect(memberBlockBudget(WALL, 5, 1)).toBe(MEMBER_ROWS_FULL_BLOCK);
   });
 
   it("still affords full blocks at two open, which is where the two-row cost balances", () => {
-    // 2 open: cap 3 drawn, (7-3)*3 = 12 spare, 6 each.
+    // 2 open: cap 3 drawn, (7-3)*2 = 8 spare, 4 each.
     expect(memberBlockBudget(WALL, 3, 2)).toBe(MEMBER_ROWS_FULL_BLOCK);
   });
 
   it("shrinks every block at three open instead of letting the wall scroll", () => {
-    // 3 open: only the open teams are drawn, (7-3)*3 = 12 spare, 4 each. Full blocks would be
-    // 18 member rows = 6 team rows of breakdown under 3 team rows of teams: 9 rows on a 7-row wall.
-    expect(memberBlockBudget(WALL, 3, 3)).toBe(4);
+    // 3 open: only the open teams are drawn, (7-3)*2 = 8 spare, floor(8/3) = 2 each, which is the
+    // remainder-plus-pool floor. Full blocks would be 12 member rows = 6 team rows of breakdown
+    // under 3 team rows of teams: 9 rows on a 7-row wall.
+    expect(memberBlockBudget(WALL, 3, 3)).toBe(MEMBER_ROWS_MIN_BLOCK);
   });
 
   it("never shrinks a block below the remainder-plus-pool floor", () => {

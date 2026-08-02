@@ -68,21 +68,22 @@ export const TEAM_VISIBLE_ROWS = 7;
  * board that let it would clip its last row silently against a footnote still claiming to show
  * seven. Two rows buys 186px at 1920 and 130px at 1280.
  *
- * **What that budget holds, re-measured after the breakdown became a nested grid.** It was a
- * wrapped strip of chips; it is now one table row per member, which is the shape the organizer
- * asked for and costs far more height per player:
+ * **What that budget holds, re-measured after the breakdown became child cards.** It was a
+ * wrapped strip of chips, then one hairline table row per member; it is now one CARD row per
+ * member - every value in its own bordered box, the shape the organizer specified - and the
+ * boxes cost real height per player:
  *
- * | canvas    | member row | 6-row block | budget  |
- * |-----------|------------|-------------|---------|
- * | 1920×1080 | 31.5px     | 188.8px     | 228.7px |
- * | 1280×720  | 19.9px     | 125.7px     | 131.5px |
+ * | canvas    | member row | 4-row block | budget |
+ * |-----------|------------|-------------|--------|
+ * | 1920×1080 | 41.1px     | 164.7px     | 186px  |
+ * | 1280×720  | 27.6px     | 110.7px     | 130px  |
  *
- * **Nine members do not fit inside two rows and cannot be made to.** Nine member rows plus the
- * pool row is 201px at 1280×720 against 131.5px available, so `MEMBER_BLOCK_ROWS` caps the block
- * and the remainder collapses into one "N more players" row that still carries their exact points
- * per set, so every column reconciles. Raising this constant to 4 would buy 264px and hold all
- * nine, at the cost of drawing three teams on the wall instead of five. That is a trade about what
- * the room should see, so it belongs to the organizer rather than to this file.
+ * **A large team does not fit inside two rows and cannot be made to.** Thirteen card rows plus
+ * the pool row is about 576px at 1080 against 186px available, so `MEMBER_BLOCK_ROWS` caps the
+ * block and the remainder collapses into one "N more players" row that still carries their exact
+ * points per set, so every column reconciles. Raising the cost to 4 rows would roughly double the
+ * block, at the cost of drawing three teams on the wall instead of five. That is a trade about
+ * what the room should see, so it belongs to the organizer rather than to this file.
  *
  * **This cost balances for at most two open breakdowns on a seven-row wall.** Beyond that the
  * two-row price and the six-row block cannot both hold — three open teams at full size measure

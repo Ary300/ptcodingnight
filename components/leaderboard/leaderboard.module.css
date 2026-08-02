@@ -30,12 +30,14 @@
   --row-h: calc(var(--fs-lg) * 1.55);
 
   /*
-    Member-cell padding on the WALL. The default (see `.memberCell`) is the spreadsheet-generous
-    value the competitor board wants; the projector cannot afford it, because every open block is
-    paid for out of a measured row budget (`MEMBER_BLOCK_ROWS`, measured at 19.9px per row on
-    1280x720 with 5.8px of slack) and a taller member row would clip the last team silently.
-    So the stage pins the values the measurement was taken at.
+    Member-card metrics on the WALL. The defaults (see `.memberCell` / `.cellBox`) are the
+    interactive board's generous values; the projector cannot afford them, because every open
+    block is paid for out of a measured row budget (`MEMBER_BLOCK_ROWS`) and a taller member row
+    clips the last team silently. The stage pins the tighter values the budget was measured at:
+    27.6px per card row at 1280x720 against a 65px team row (see `projector-rows.ts`, which is
+    where the "a member row is HALF a team row" arithmetic now lives).
   */
+  --member-gap-y: 0.12em;
   --member-pad-y: 0.05em;
   --member-pad-x: 0.5em;
   --champ-h: calc(var(--fs-2xl) * 1.55);
@@ -636,7 +638,7 @@
 /*
  * WHITE GROUND, no tint. The tint made the block read as shaded strips; the organizer asked for
  * the spreadsheet instead — "there should be just smaller boxes below" — and a boxed grid carries
- * its own grouping: the rows are a third the height of a team row, the name cell is indented, and
+ * its own grouping: the rows are half the height of a team row, the name cell is indented, and
  * the team's caret above them has turned. All of those survive the greyscale the board spends part
  * of the night in behind the freeze (DESIGN.md §3), which the tint never did. Dropping it also
  * moves the pool label from 4.67:1 (panther over the 4% tint) back to panther's full 5.08:1 on
@@ -647,35 +649,56 @@
 }
 
 /*
- * EVERY CELL A DEFINED BOX, in the table's own grid-line colour (`--rule-edge`, the same token the
- * team rows' borders use), so the miniature and the sheet above it draw one grid rather than two.
+ * CHILD CARDS, third design, by written specification this time. The first breakdown was chips
+ * (rejected: floating labels), the second was hairline rows of the parent grid (rejected in the
+ * same words this file now quotes: "ultra-thin rows with values scattered across the grid...
+ * do not make it look like a raw spreadsheet"). What was asked for instead: each player a
+ * smaller nested row that looks like a MINI VERSION of the team row - real bordered boxes per
+ * value, visible separation between the boxes, the whole row inset under the team.
  *
- * How the four sides land without doubling and without changing the measured height — the table is
- * `border-collapse`, and this deliberately mixes the two mechanisms:
- * - LEFT and RIGHT are real 1px borders, collapsed with the neighbour's into single shared rules.
- * - TOP and BOTTOM follow the halved-borders discipline instead: each row draws ONLY its bottom
- *   edge, as a 1px inset box-shadow, and its top edge is the row above's bottom (the team row's
- *   real collapsed border for the first member row). One edge per boundary, so rules are never
- *   doubled — and an inset shadow lives INSIDE the row box, so the projector's measured block
- *   height (`MEMBER_BLOCK_ROWS`, 5.8px of slack at 1280x720) does not move by even the 1px per row
- *   that real collapsed top/bottom borders would add.
- *
- * Padding in `em` rather than in `--gap`, so the row height tracks the type size through
- * `--proj-scale` on its own. The default is the competitor board's spreadsheet-generous value;
- * `.stage` overrides both custom properties back to the tight values the projector budget was
- * measured at (20.1px per row at 1280x720, 28.9px at 1920x1080, against a team row's 66px/94px).
+ * Mechanism: the CELL goes transparent and borderless and becomes only a positioning slot; the
+ * BOX is an inner element (`.cellBox`) with its own border on the table's rule colour. The gaps
+ * between neighbouring boxes fall out of the cell padding, which is what makes them read as
+ * separated cards rather than a collapsed grid - a thing no arrangement of shared table borders
+ * can do. Category alignment across the players of one team still holds, because the boxes
+ * live in the same table columns.
  */
 .memberCell {
-  border-top: 0;
-  border-right: 1px solid var(--color-rule-edge);
-  border-bottom: 0;
-  border-left: 1px solid var(--color-rule-edge);
-  box-shadow: inset 0 -1px var(--color-rule-edge);
+  border: 0;
+  background: transparent;
+  box-shadow: none;
   font-size: var(--fs-sm, var(--text-xs));
   font-weight: 400;
   line-height: 1.05;
-  padding: var(--member-pad-y, 0.4em) var(--member-pad-x, 0.65em);
+  padding: var(--member-gap-y, 0.22em) var(--member-gap-x, 0.18em);
   vertical-align: middle;
+}
+
+/*
+ * The box itself: the team row's visual language in miniature. Square corners and the shared
+ * rule colour keep it the same vintage sheet; the paper fill lifts it off the row so the gap
+ * around it reads. `min-height` keeps an empty category box (a set that is not this player's)
+ * the same size as a filled one, so the card grid stays rectangular.
+ */
+.cellBox {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 1.7em;
+  border: 1px solid var(--color-rule-edge);
+  background: var(--color-paper);
+  padding: var(--member-pad-y, 0.18em) var(--member-pad-x, 0.5em);
+}
+
+.cellBoxName {
+  justify-content: flex-start;
+  gap: 0.45em;
+  overflow: hidden;
+}
+
+/* The wall's shorter card, part of the pinned projector metrics documented on `.stage`. */
+.stage .cellBox {
+  min-height: 1.45em;
 }
 
 /*
@@ -685,11 +708,18 @@
  * a second table.
  */
 .memberNameCell {
-  background: var(--color-paper);
+  background: transparent;
   max-width: 0;
-  padding-left: calc(var(--pad, 1rem) * 3.5);
+  padding-left: calc(var(--pad, 1rem) * 2.25);
   text-align: left;
   width: 100%;
+}
+
+/* The right-hand inset: the child row ends before the parent row does, matching the indent on
+   the left, so the whole card row reads as narrower than the team row rather than as another
+   full-width band. */
+.memberRow td:last-child {
+  padding-right: calc(var(--pad, 1rem) * 1.25);
 }
 
 /*

@@ -832,58 +832,70 @@ export function TeamStandingsBoard({
                                 scope="row"
                                 className={`${styles.memberCell} ${styles.memberNameCell}`}
                               >
-                                {mayOpen ? (
-                                  <button
-                                    type="button"
-                                    aria-expanded={playerOpen}
-                                    aria-controls={`${playerKey}-problems`}
-                                    aria-label={`${player.displayName}: problem by problem`}
-                                    onClick={() => togglePlayer(playerKey)}
-                                    className={styles.playerDisclosure}
-                                  >
-                                    <svg
-                                      aria-hidden="true"
-                                      focusable="false"
-                                      width={9}
-                                      height={6}
-                                      viewBox="0 0 10 6"
-                                      fill="none"
-                                      stroke="currentColor"
-                                      strokeWidth={1.5}
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
-                                      className={playerOpen ? "" : "-rotate-90"}
+                                <span
+                                  className={`${styles.cellBox} ${styles.cellBoxName}`}
+                                >
+                                  {mayOpen ? (
+                                    <button
+                                      type="button"
+                                      aria-expanded={playerOpen}
+                                      aria-controls={`${playerKey}-problems`}
+                                      aria-label={`${player.displayName}: problem by problem`}
+                                      onClick={() => togglePlayer(playerKey)}
+                                      className={styles.playerDisclosure}
                                     >
-                                      <path d="M1 1L5 5L9 1" />
-                                    </svg>
-                                    <span>{player.displayName}</span>
-                                  </button>
-                                ) : (
-                                  <span className={styles.memberName}>
-                                    {player.displayName}
-                                  </span>
-                                )}
-                                {player.chosenSetLabel === null && (
-                                  <span className={styles.memberTag}>No set</span>
-                                )}
+                                      <svg
+                                        aria-hidden="true"
+                                        focusable="false"
+                                        width={9}
+                                        height={6}
+                                        viewBox="0 0 10 6"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        strokeWidth={1.5}
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        className={playerOpen ? "" : "-rotate-90"}
+                                      >
+                                        <path d="M1 1L5 5L9 1" />
+                                      </svg>
+                                      <span>{player.displayName}</span>
+                                    </button>
+                                  ) : (
+                                    <span className={styles.memberName}>
+                                      {player.displayName}
+                                    </span>
+                                  )}
+                                  {player.chosenSetLabel === null && (
+                                    <span className={styles.memberTag}>No set</span>
+                                  )}
+                                </span>
                               </th>
                               <td
                                 className={`numeric ${styles.memberCell} ${styles.memberTotal}`}
                               >
-                                {player.score}
+                                <span className={styles.cellBox}>
+                                  {player.score}
+                                </span>
                               </td>
                               {columns.map((label) => (
                                 <td
                                   key={label}
                                   className={`numeric ${styles.memberCell} ${styles.memberNumber}`}
                                 >
-                                  {player.chosenSetLabel === label
-                                    ? player.score
-                                    : ""}
+                                  <span className={styles.cellBox}>
+                                    {player.chosenSetLabel === label
+                                      ? player.score
+                                      : ""}
+                                  </span>
                                 </td>
                               ))}
-                              <td className={styles.memberCell} />
-                              <td className={styles.memberCell} />
+                              <td className={styles.memberCell}>
+                                <span className={styles.cellBox} />
+                              </td>
+                              <td className={styles.memberCell}>
+                                <span className={styles.cellBox} />
+                              </td>
                             </tr>
 
                             {mayOpen && playerOpen && (
@@ -925,22 +937,34 @@ export function TeamStandingsBoard({
                           scope="row"
                           className={`${styles.memberCell} ${styles.memberNameCell}`}
                         >
-                          <span className={styles.poolLabel}>Player pool</span>
+                          <span
+                            className={`${styles.cellBox} ${styles.cellBoxName}`}
+                          >
+                            <span className={styles.poolLabel}>Player pool</span>
+                          </span>
                         </th>
                         <td
                           className={`numeric ${styles.memberCell} ${styles.memberTotal}`}
                         >
-                          {team.playerPoolPoints}
+                          <span className={styles.cellBox}>
+                            {team.playerPoolPoints}
+                          </span>
                         </td>
                         {columns.map((label) => (
-                          <td key={label} className={styles.memberCell} />
+                          <td key={label} className={styles.memberCell}>
+                            <span className={styles.cellBox} />
+                          </td>
                         ))}
                         <td
                           className={`numeric ${styles.memberCell} ${styles.memberNumber}`}
                         >
-                          {groupInsidePool ? team.groupPoints : ""}
+                          <span className={styles.cellBox}>
+                            {groupInsidePool ? team.groupPoints : ""}
+                          </span>
                         </td>
-                        <td className={styles.memberCell} />
+                        <td className={styles.memberCell}>
+                          <span className={styles.cellBox} />
+                        </td>
                       </tr>
                     </>
                   )}

@@ -114,21 +114,21 @@ export interface TeamRosterStripProps {
  * does not announce itself: it takes the bottom team off the wall under a footnote still claiming
  * to show it. That is exactly the failure this project has shipped before.
  *
- * Measured on this commit, nine teams and four sets, board box against table box, with the top team
- * open:
+ * Re-measured on this commit after the breakdown became CHILD CARDS - each value in a bordered
+ * box, which costs real height per row - with the stage's pinned card metrics:
  *
- * | canvas    | team row | member row | height the block may have |
- * |-----------|----------|------------|---------------------------|
- * | 1920x1080 | 94px     | 28.9px     | 228.7px  (7.9 rows)       |
- * | 1280x720  | 66px     | 20.1px     | 131.5px  (6.5 rows)       |
+ * | canvas    | team row | member row | two team rows of budget |
+ * |-----------|----------|------------|-------------------------|
+ * | 1920x1080 | 93px     | 41.1px     | 186px  (4.5 rows)       |
+ * | 1280x720  | 65px     | 27.6px     | 130px  (4.7 rows)       |
  *
- * So six, from the smaller canvas: 120.6px against a 131.5px budget, with 10.9px in hand. Seven
- * would be 140.7px and would clip. The budget itself is what `TEAM_EXPANDED_ROW_COST` buys, and
- * that constant lives in `constants.ts` with the screen that spends it.
+ * So four, from the larger canvas, which is now the binding one: 164.7px against a 186px budget.
+ * Five would be 205.8px and would clip. The budget itself is what `TEAM_EXPANDED_ROW_COST` buys,
+ * and that constant lives in `constants.ts` with the screen that spends it.
  *
- * **Nine members do not fit at 1280x720 and cannot be made to.** Nine plus the pool row is 201px
- * against 131.5px available; it would need the open team to cost four rows of board instead of two,
- * which would leave three teams on the wall out of nine. So the block caps, and the cap is a stated
+ * **A large team does not fit and cannot be made to.** Thirteen card rows plus the pool row is
+ * about 576px at 1080 against 186px available; it would need the open team to cost six rows of
+ * board, which would leave one other team on the wall. So the block caps, and the cap is a stated
  * visible rule rather than an overflow: a team with more members than fit gets one summarising row
  * that prints the exact number of players it stands for and their exact points, per set, so every
  * column still reconciles with the team row above.
@@ -195,13 +195,12 @@ export function TeamRosterStrip({
           className={`numeric ${styles.memberCell} ${styles.memberNumber}`}
         >
           {/*
-            EMPTY, not the en dash the team row uses for an empty set cell. On a team row the dash
-            means "nobody on this team is in this set", which is a fact about the team. On a member
-            row the same glyph would read as a claim about the player, and the true claim is simply
-            that this is not their column. Nine dashes across a member row is also nine things to
-            read on a wall that has one point to make.
+            An EMPTY BOX for a column that is not this player's, never an en dash and never a bare
+            gap: the dash would read as a claim about the player, and a missing box breaks the
+            card grid the spec asks for ("real boxes/cells, not just numbers floating on lines").
+            The box outline says "category exists, nothing of yours in it", which is the truth.
           */}
-          {value === null ? "" : value}
+          <span className={styles.cellBox}>{value === null ? "" : value}</span>
         </td>
       );
     });
@@ -221,29 +220,34 @@ export function TeamRosterStrip({
             scope="row"
             className={`${styles.memberCell} ${styles.memberNameCell}`}
           >
-            <span className={styles.memberBox}>{player.displayName}</span>
-            {player.chosenSetLabel === null && (
-              // Assignment can legitimately not have happened yet, and such a player still counts
-              // in the divisor and can still hold points. Said out loud, because their number
-              // otherwise sits in the `=` column under no set column at all and looks misplaced.
-              <span className={styles.memberTag}>no set</span>
-            )}
+            <span className={`${styles.cellBox} ${styles.cellBoxName}`}>
+              <span className={styles.memberBox}>{player.displayName}</span>
+              {player.chosenSetLabel === null && (
+                // Assignment can legitimately not have happened yet, and such a player still
+                // counts in the divisor and can still hold points. Said out loud, because their
+                // number otherwise sits in the `=` column under no set column and looks misplaced.
+                <span className={styles.memberTag}>no set</span>
+              )}
+            </span>
           </th>
 
           <td
             className={`numeric ${styles.memberCell} ${styles.memberTotal}`}
           >
-            {player.score}
-            <span className={styles.visuallyHidden}> points</span>
+            <span className={styles.cellBox}>
+              {player.score}
+              <span className={styles.visuallyHidden}> points</span>
+            </span>
           </td>
 
           {setCells((label) =>
             player.chosenSetLabel === label ? player.score : null,
           )}
 
-          {/* Group and side are team facts. Blank on every member row, stated on the pool row. */}
-          <td className={styles.memberCell} />
-          <td className={styles.memberCell} />
+          {/* Group and side are team facts: empty boxes on every member row, stated on the pool
+              row. The boxes stay so the card grid keeps its full shape. */}
+          <td className={styles.memberCell}><span className={styles.cellBox} /></td>
+          <td className={styles.memberCell}><span className={styles.cellBox} /></td>
         </tr>
       ))}
 
@@ -254,16 +258,20 @@ export function TeamRosterStrip({
             scope="row"
             className={`${styles.memberCell} ${styles.memberNameCell}`}
           >
-            <span className={`${styles.memberBox} ${styles.memberBoxRest}`}>
-              <span className="numeric">{rest.length}</span> more player
-              {rest.length === 1 ? "" : "s"}
+            <span className={`${styles.cellBox} ${styles.cellBoxName}`}>
+              <span className={`${styles.memberBox} ${styles.memberBoxRest}`}>
+                <span className="numeric">{rest.length}</span> more player
+                {rest.length === 1 ? "" : "s"}
+              </span>
             </span>
           </th>
           <td className={`numeric ${styles.memberCell} ${styles.memberTotal}`}>
-            {restPoints}
-            <span className={styles.visuallyHidden}>
-              {" "}
-              points between them
+            <span className={styles.cellBox}>
+              {restPoints}
+              <span className={styles.visuallyHidden}>
+                {" "}
+                points between them
+              </span>
             </span>
           </td>
           {/* Their points still land in their own columns, so a capped block still reconciles. */}
@@ -272,8 +280,8 @@ export function TeamRosterStrip({
             if (inSet.length === 0) return null;
             return inSet.reduce((sum, player) => sum + player.score, 0);
           })}
-          <td className={styles.memberCell} />
-          <td className={styles.memberCell} />
+          <td className={styles.memberCell}><span className={styles.cellBox} /></td>
+          <td className={styles.memberCell}><span className={styles.cellBox} /></td>
         </tr>
       )}
 
@@ -283,20 +291,24 @@ export function TeamRosterStrip({
           scope="row"
           className={`${styles.memberCell} ${styles.memberNameCell}`}
         >
-          <span className={styles.poolLabel}>Player pool</span>
+          <span className={`${styles.cellBox} ${styles.cellBoxName}`}>
+            <span className={styles.poolLabel}>Player pool</span>
+          </span>
         </th>
         <td className={`numeric ${styles.memberCell} ${styles.memberTotal}`}>
-          {team.playerPoolPoints}
-          <span className={styles.visuallyHidden}>
-            {" "}
-            points, divided by team size on the row above
+          <span className={styles.cellBox}>
+            {team.playerPoolPoints}
+            <span className={styles.visuallyHidden}>
+              {" "}
+              points, divided by team size on the row above
+            </span>
           </span>
         </td>
         {setCells(() => null)}
         <td className={`numeric ${styles.memberCell} ${styles.memberNumber}`}>
-          {groupInsidePool ? team.groupPoints : ""}
+          <span className={styles.cellBox}>{groupInsidePool ? team.groupPoints : ""}</span>
         </td>
-        <td className={styles.memberCell} />
+        <td className={styles.memberCell}><span className={styles.cellBox} /></td>
       </tr>
     </>
   );
