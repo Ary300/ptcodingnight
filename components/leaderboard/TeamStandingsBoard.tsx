@@ -574,7 +574,23 @@ export function TeamStandingsBoard({
           wall keeps square corners — a section radius says "card", and a wall is not a card. */}
       <div
         id={panelId}
-        className={`w-full overflow-x-auto border ${grid} ${projector ? "" : "rounded-panel bg-paper"}`}
+        /*
+          Keyed by the DIVISION TAB, which is the one thing that legitimately replaces this whole
+          table at once, so the new board rises in over `--motion-swap` instead of appearing in
+          the frame of the click. Measured before this: switching Intermediate to Advanced on the
+          wall took the table from 7 row-groups to 3 — different teams, and possibly different set
+          columns — and the only animation running anywhere in the document was the tab button's
+          own colour transition.
+
+          This is exactly the gap `useRankSlide` leaves open on purpose. The FLIP hook declines to
+          travel rows across a tab change, because a team that is rank 4 overall and rank 1 in its
+          division has not overtaken anybody — so the one moment it stays still is the moment with
+          the largest change on screen. The entrance fills it and the two cannot collide: they run
+          on different elements, in disjoint situations. A poll keeps the key, so a real overtake
+          still slides and nothing rises.
+        */
+        key={activeTabId ?? "all-teams"}
+        className={`motion-swap-in w-full overflow-x-auto border ${grid} ${projector ? "" : "rounded-panel bg-paper"}`}
       >
         <table
           ref={rankSlideTable}

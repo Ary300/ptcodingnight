@@ -20,5 +20,23 @@
     "kind": "whitespace"
   },
   "sampleCount": 2,
-  "originAttribution": "Task inspired by a problem of the same name used at a past Coding Night. Statement and test data written fresh for this platform."
+  "originAttribution": "Task inspired by a problem of the same name used at a past Coding Night. Statement and test data written fresh for this platform.",
+  "signature": {
+    "name": "gemStones",
+    "returns": {
+      "type": "int"
+    },
+    "params": [
+      {
+        "name": "n",
+        "type": "int",
+        "passed": false
+      },
+      {
+        "name": "rocks",
+        "type": "string[]",
+        "length": "n"
+      }
+    ]
+  }
 }

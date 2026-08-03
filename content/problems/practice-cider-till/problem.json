@@ -21,5 +21,24 @@
   },
   "sampleCount": 2,
   "originAttribution": "Written for the Park Tudor practice arena. Original task.",
+  "signature": {
+    "name": "ciderTill",
+    "returns": {
+      "type": "int[]",
+      "join": " "
+    },
+    "params": [
+      {
+        "name": "n",
+        "type": "int",
+        "passed": false
+      },
+      {
+        "name": "p",
+        "type": "int[]",
+        "length": "n"
+      }
+    ]
+  },
   "practiceOnly": true
 }

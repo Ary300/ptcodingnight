@@ -36,12 +36,26 @@ export function StandingsBoard({
   labelledBy,
 }: StandingsBoardProps) {
   return (
+    /*
+      `motion-swap-in` on the panel, and the caller keys this board by its division (see
+      ProjectorScreen) so the class runs again every time the tab changes.
+
+      Measured before this: clicking Advanced took the wall from 8 competitor rows to 1 in the
+      frame of the click, and the only animation in the whole document was the tab button's own
+      colour transition. The rows themselves cannot carry the entrance — they are absolutely
+      positioned and already animated by the reveal sequence, and a second transform on the same
+      elements would fight it. The panel is the thing that got replaced, so the panel rises.
+
+      Transform-only, which on this board is not a preference: `--muted` is a mix on the paper
+      ground and every accent here is measured against it, so an opacity leg would drop the whole
+      board under its floor for the length of the animation.
+    */
     <div
       id={panelId}
       role="tabpanel"
       aria-labelledby={labelledBy}
       tabIndex={-1}
-      className={styles.board}
+      className={`motion-swap-in ${styles.board}`}
     >
       <div role="table" aria-label="Standings" aria-rowcount={totalRows} className={styles.board}>
         <div role="row" className={styles.columns}>

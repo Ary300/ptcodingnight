@@ -117,6 +117,13 @@ export function ProjectorScreen({ contestId }: ProjectorScreenProps) {
 
           {division ? (
             <StandingsBoard
+              /*
+                Remounted per division, which is what makes the board's `motion-swap-in` run on
+                every tab change rather than only on arrival. Free: this component holds no state,
+                and the rows are keyed by participant, so a tab change already replaced every one
+                of them. A poll keeps the key, so the reveal sequence is never restarted by one.
+              */
+              key={division.divisionId}
               rows={rows}
               frozenOrder={frozenOrder}
               totalRows={division.rows.length}

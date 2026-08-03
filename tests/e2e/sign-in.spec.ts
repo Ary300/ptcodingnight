@@ -280,6 +280,129 @@ test.describe("the page a student meets", () => {
     await expect(page.locator(passcodeField)).toBeHidden();
   });
 
+  test("the passcode field is never REPLACED after it becomes typeable", async ({ page }) => {
+    /*
+      The disclosure's form carried `key={passcodeOpens}`, bumped from the details' `onToggle`,
+      purely to restart the `motion-panel-in` entrance. That remount landed one React commit
+      AFTER the browser had already painted the open panel, so there was a window — invisible on
+      an idle machine, seconds wide on a loaded one — in which the passcode input a person could
+      see and type into was about to be thrown away. Anything typed in it went to a detached node
+      that React's listeners no longer reach, `passcode` stayed "", and the submit button stayed
+      disabled with no way in but to retype.
+
+      G7 caught it exactly once, as a 105 s wait on a disabled button in `organizer-setup-flow`,
+      and passed on the retry — which is how a race reports itself and why the guard here is
+      STRUCTURAL. Asserting "type fast and it still works" would pass on a quiet machine and
+      prove nothing. Asserting the node's IDENTITY is stable cannot: a reintroduced remount fails
+      it every run, on any host.
+    */
+    await page.goto("/sign-in");
+
+    const survived = await page.evaluate(async () => {
+      const details = document.querySelector("details");
+      const summary = details?.querySelector("summary");
+      if (details === null || summary == null) throw new Error("no passcode disclosure on the page");
+
+      /*
+        Tagged in the SAME task as the click, which is the whole point. The remount lands on
+        React's commit, one tick later at the earliest; a probe that tags from the test side has
+        already lost the race on a fast host and marks the replacement instead of the original —
+        it passed against the bug when written that way. Tagging synchronously marks precisely
+        the node a person can see and type into the instant the panel opens.
+      */
+      summary.click();
+      const opened = details.querySelector('input[name="signin-passcode"]');
+      if (opened === null) throw new Error("opening the disclosure produced no passcode input");
+      opened.setAttribute("data-identity-probe", "1");
+
+      // Longer than --motion-panel (300ms), and long enough for any commit to have happened.
+      await new Promise((resolve) => setTimeout(resolve, 600));
+
+      const now = details.querySelector('input[name="signin-passcode"]');
+      return { stillThere: now === opened, tagged: now?.getAttribute("data-identity-probe") };
+    });
+
+    expect(
+      survived.stillThere,
+      "the passcode input a person sees on open was replaced; anything typed into it was lost",
+    ).toBe(true);
+    expect(survived.tagged).toBe("1");
+
+    // And the value a person types is the value the button reacts to.
+    await page.locator(passcodeField).fill("something");
+    await expect(
+      page.getByRole("button", { name: /Open the organizer console/ }),
+    ).toBeEnabled();
+  });
+
+  test("reopening the disclosure replays the entrance without remounting it", async ({ page }) => {
+    /*
+      The remount above was there to restart the animation, so removing it is only correct if the
+      CSS restart is real. This measures it rather than trusting the spec: opening flips
+      animation-name from `none` to `motion-panel-in` (globals.css withholds it while closed),
+      which starts a NEW animation every time.
+
+      Driven and sampled inside one `evaluate` on purpose. The entrance is 300 ms and a
+      click-then-read round trip through the driver outlives it, so sampling from the test side
+      reads `finished` on a restart that did happen — a false failure that would teach the next
+      person to delete this test rather than believe it.
+    */
+    await page.goto("/sign-in");
+
+    const seen = await page.evaluate(async () => {
+      const details = document.querySelector("details");
+      const summary = details?.querySelector("summary");
+      if (details === null || summary == null) throw new Error("no passcode disclosure on the page");
+
+      const twoFrames = (): Promise<void> =>
+        new Promise((resolve) => {
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              resolve();
+            });
+          });
+        });
+      const sample = (): { node: Element | null; anims: string[] } => {
+        const form = details.querySelector("form");
+        return {
+          node: form,
+          anims:
+            form?.getAnimations().map((a) => `${(a as CSSAnimation).animationName}:${a.playState}`) ??
+            [],
+        };
+      };
+
+      summary.click(); // first open
+      await twoFrames();
+      const first = sample();
+
+      await new Promise((resolve) => setTimeout(resolve, 450)); // let it finish
+      summary.click(); // close
+      await twoFrames();
+      const closed = sample();
+
+      summary.click(); // reopen
+      await twoFrames();
+      const reopened = sample();
+
+      return {
+        first: first.anims,
+        closed: closed.anims,
+        reopened: reopened.anims,
+        sameNode: first.node === reopened.node,
+      };
+    });
+
+    expect(seen.first, "the first open did not play the entrance").toContain(
+      "motion-panel-in:running",
+    );
+    expect(seen.closed, "a closed disclosure kept animating out of sight").toEqual([]);
+    expect(seen.reopened, "reopening showed the dead last frame instead of replaying").toContain(
+      "motion-panel-in:running",
+    );
+    expect(seen.sameNode, "the form was remounted to get the replay — that is the bug").toBe(true);
+  });
+
   test("does not scroll sideways at any width a student will use", async ({ page }) => {
     for (const width of [360, 768, 1280]) {
       await page.setViewportSize({ width, height: 780 });

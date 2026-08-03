@@ -21,5 +21,23 @@
   },
   "sampleCount": 2,
   "originAttribution": "Written for the Park Tudor practice arena. Original task.",
+  "signature": {
+    "name": "lockerLineup",
+    "returns": {
+      "type": "int"
+    },
+    "params": [
+      {
+        "name": "n",
+        "type": "int",
+        "passed": false
+      },
+      {
+        "name": "a",
+        "type": "int[]",
+        "length": "n"
+      }
+    ]
+  },
   "practiceOnly": true
 }

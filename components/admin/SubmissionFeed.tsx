@@ -180,7 +180,22 @@ export function SubmissionFeed({
           other half: without it a flex child sizes to its content and the scroller never engages
           at all, which is the bug that made `/team` drag the document sideways.
         */
-        <div className="relative w-full min-w-0 overflow-x-auto">
+        <div
+          /*
+            Keyed by WHOSE feed is on screen, so drilling into a participant rises the new table
+            in over `--motion-swap` instead of replacing it in the frame of the click. Measured
+            before this: clicking a name took the feed from 8 rows to 2 and the only thing that
+            animated anywhere on the console was the "Showing E2E Grace only" banner above it —
+            the banner explained a change the eye never saw happen.
+
+            The key is the FILTER, never the submissions. This feed polls while a contest runs,
+            and keying it on its contents would replay the entrance on every poll: motion that
+            reports the clock rather than the organizer's action, on the one screen that is
+            supposed to sit still until something happens.
+          */
+          key={participantFilter ?? "everyone"}
+          className="motion-swap-in relative w-full min-w-0 overflow-x-auto"
+        >
           {/*
             A floor on the table's width, so a phone scrolls the box instead of compressing the
             columns. Without it `w-full` squeezed six columns into 360px and "B2 Beautiful Days at

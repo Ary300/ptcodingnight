@@ -69,8 +69,6 @@ export function SignInForm({
 
   const [passwordBusy, setPasswordBusy] = useState(false);
   const [passcodeBusy, setPasscodeBusy] = useState(false);
-  /** Counts opens of the passcode disclosure; keying the form on it re-runs the entrance. */
-  const [passcodeOpens, setPasscodeOpens] = useState(0);
 
   const studentSignInAvailable =
     providerAvailability.google || providerAvailability.github;
@@ -410,13 +408,7 @@ export function SignInForm({
         `open` is forced while there is a passcode error, so a refusal cannot be reported into a
         collapsed section — which is what would happen to anyone who submitted and then closed it.
       */}
-      <details
-        className="mt-6 border-t border-rule-hair pt-4"
-        open={passcodeError !== null}
-        onToggle={(event) => {
-          if (event.currentTarget.open) setPasscodeOpens((n) => n + 1);
-        }}
-      >
+      <details className="mt-6 border-t border-rule-hair pt-4" open={passcodeError !== null}>
         <summary
           className="cursor-pointer text-ink/70 hover:text-ink"
           style={{ fontSize: "var(--text-xs)" }}
@@ -429,15 +421,30 @@ export function SignInForm({
           and an expansion that completes in the same frame as the click reads as a glitch.
           Transform only, per the entrance rule; the controls are live from the first frame.
 
-          The `key` remounts the form on each open, which is what actually restarts the
-          entrance. Measured without it: a closed details' children keep their boxes
-          (content-visibility, not display:none), so the keyframe ran to its end while hidden
-          and reopening showed the dead last frame. globals.css withholds the animation while
-          closed, which covers the hidden first mount; the key covers every open after it. The
-          typed passcode survives the remount because its state lives in this component.
+          THE RESTART IS CSS, AND THE FORM MUST NOT BE REMOUNTED TO GET IT.
+
+          This carried `key={passcodeOpens}`, incremented from the details' `onToggle`, to
+          restart the entrance on each open. It did restart it, and it also threw the live
+          passcode field away one React commit AFTER the browser had already painted the open
+          panel. Everything typed into the old node in that window went to a detached element,
+          where React's listeners no longer reach: `passcode` stayed "", the submit button stayed
+          disabled, and the only way in was to retype. The window is invisible on an idle machine
+          and seconds wide on a loaded one, which is exactly how G7 found it — one mobile run of
+          `organizer-setup-flow.spec.ts` sat on a disabled button for 105 s while every other run
+          that day passed.
+
+          `details:not([open]) > .motion-panel-in { animation: none }` in globals.css already
+          does the whole job. Opening flips animation-name from `none` to `motion-panel-in`,
+          which the CSS Animations spec starts as a NEW animation every time, so the entrance is
+          fresh on the first open and on every reopen. Both landed in the same commit (6a6899f),
+          so the key was never measured on its own; it was belt over braces, and the belt was the
+          part that could lose a keystroke.
+
+          Verified in the browser rather than reasoned about: on reopen the form reports one
+          running `motion-panel-in` with currentTime at the start of its 300 ms, on the same DOM
+          node that was there before the close.
         */}
         <form
-          key={passcodeOpens}
           className="motion-panel-in mt-3 flex flex-col gap-3"
           onSubmit={(event) => void submitPasscode(event)}
         >

@@ -1054,7 +1054,27 @@ export function ContestLineup({
           {bank.status === "ready" && available.length > 0 && (
             // `relative` for the same reason as the line-up's scroller above: the sr-only "Add to
             // contest" header otherwise positions against the page and widens it at 360.
-            <div className="relative min-w-0 overflow-x-auto">
+            <div
+              /*
+                Keyed by the READINESS CHIP, and by nothing else.
+
+                Flipping Ready to Everything replaces the whole drawn table — measured at 60 new
+                rows arriving in the frame of the click, with nothing on the screen moving. The
+                key makes that one rise in over `--motion-swap`.
+
+                Deliberately NOT keyed on the search text or on the rows themselves. Search here
+                is a text box filtered on every keystroke, and an entrance restarted every ~100ms
+                never finishes: the table would sit permanently part-way through a 3px rise,
+                which is motion fighting the typing rather than explaining it. Narrowing as you
+                type is already legible, because the characters you typed are the explanation.
+                Same call, and the same wording, as the deal grid in SetPlanner.
+
+                On the WRAPPER, never on the `<tr>`s — the same table-row caveat SetPlanner's
+                grid records.
+              */
+              key={bankFilter}
+              className="motion-swap-in relative min-w-0 overflow-x-auto"
+            >
               {/* The hover tint rides on the CELLS so it can never lose a specificity fight with
                   the body's zebra, which is painted on the rows. 4% ink is the header's own
                   ground; every text alpha in these cells is measured against more than that
@@ -1223,8 +1243,25 @@ function ProblemPreviewDialog({
   onClose: () => void;
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
-  const [preview, setPreview] = useState<AdminProblemPreview | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  /*
+    One state, TAGGED with the slug it describes, rather than two that an effect has to clear.
+
+    The result of a fetch is only meaningful for the question it was asked about, so it is stored
+    with that question's slug and read back only when the two still agree. Closing the dialog, or
+    opening a different question, therefore shows nothing without anything having to write
+    `null` — which is what removes the reset effect, and with it the cascading render eslint
+    rightly objects to. It also closes the gap that reset effect left open: for the one commit
+    between opening question B and its effect running, the dialog rendered question A's
+    statement under question B's title.
+  */
+  const [loaded, setLoaded] = useState<{
+    readonly slug: string;
+    readonly preview: AdminProblemPreview | null;
+    readonly error: string | null;
+  } | null>(null);
+  const current = loaded !== null && loaded.slug === slug ? loaded : null;
+  const preview = current?.preview ?? null;
+  const error = current?.error ?? null;
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -1234,20 +1271,14 @@ function ProblemPreviewDialog({
   }, [slug]);
 
   useEffect(() => {
-    if (slug === null) {
-      setPreview(null);
-      setError(null);
-      return;
-    }
+    if (slug === null) return;
     let cancelled = false;
-    setPreview(null);
-    setError(null);
     fetch(API_ROUTES.adminProblemPreview(slug), { cache: "no-store" })
       .then(async (response) => {
         const payload: unknown = await response.json();
         if (cancelled) return;
         if (!response.ok) {
-          setError("That question could not be loaded.");
+          setLoaded({ slug, preview: null, error: "That question could not be loaded." });
           return;
         }
         const data =
@@ -1255,11 +1286,14 @@ function ProblemPreviewDialog({
             ? (payload as { data: unknown }).data
             : null;
         const parsed = AdminProblemPreviewSchema.safeParse(data);
-        if (parsed.success) setPreview(parsed.data);
-        else setError("The server returned an unexpected response.");
+        setLoaded(
+          parsed.success
+            ? { slug, preview: parsed.data, error: null }
+            : { slug, preview: null, error: "The server returned an unexpected response." },
+        );
       })
       .catch(() => {
-        if (!cancelled) setError("Could not reach the server.");
+        if (!cancelled) setLoaded({ slug, preview: null, error: "Could not reach the server." });
       });
     return () => {
       cancelled = true;

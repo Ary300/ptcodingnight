@@ -443,6 +443,44 @@ export function CodeEditorSurface({
     return () => observer.disconnect();
   }, []);
 
+  /* ---- the language swap ---- */
+
+  /**
+   * Choosing a different language re-seeds the whole editor in one frame.
+   *
+   * The workspace hands down that language's stored draft, or that language's starter when the
+   * student has never typed in it — so every glyph in the band, and usually the line count with
+   * them, is replaced between two paints of a control that is nowhere near the code. Measured on
+   * the practice arena before this: switching Python to Go replaced 89 characters with a Go
+   * starter, and the only animation running anywhere in the document during that swap was the
+   * dropdown's own chevron rotating back. The band read as a glitch rather than as a swap.
+   *
+   * `--motion-swap` is the token for content replacing content, and the band is what got
+   * replaced, so the band rises.
+   *
+   * ## Why a class that toggles, and not `key={language}`
+   *
+   * A keyed wrapper is how the rest of this codebase restarts an entrance, and here it would be
+   * wrong: the wrapper contains the TEXTAREA, and remounting a textarea throws away its focus,
+   * its selection, its scroll position, and the height the student dragged the resize handle to.
+   * Nothing about marking a swap is worth any of those. So the element stays mounted and only the
+   * class comes and goes — added in the same commit that carries the new source (a render-phase
+   * adjustment, not an effect, so there is no painted frame of the new code sitting still first),
+   * removed again when the animation reports itself finished.
+   *
+   * The animation is transform-only and rides on the wrapper, so it delays nothing: the textarea
+   * accepts keystrokes throughout, and a transformed element is hit-tested where it is drawn.
+   *
+   * A second switch inside 200ms rides the run already in flight rather than restarting it, which
+   * is the right answer anyway — the eye is already following one arrival.
+   */
+  const [shownLanguage, setShownLanguage] = useState(language);
+  const [swappingLanguage, setSwappingLanguage] = useState(false);
+  if (shownLanguage !== language) {
+    setShownLanguage(language);
+    setSwappingLanguage(true);
+  }
+
   /** One handler for both followers: the gutter tracks rows, the overlay tracks rows and columns. */
   const syncScroll = useCallback((event: UIEvent<HTMLTextAreaElement>) => {
     const source = event.currentTarget;
@@ -584,7 +622,17 @@ export function CodeEditorSurface({
         with `min-h-0` so it can also SHRINK below its content and scroll instead of pushing the
         status strip off the bottom of the monitor.
       */}
-      <div className={isFullscreen ? "flex min-h-0 flex-1 bg-ink" : "flex bg-ink"}>
+      <div
+        // `motion-swap-in` only while a language swap is in flight; see `swappingLanguage`.
+        // `animationend` bubbles, so the guard keeps the toolbar's confirm strip — or anything
+        // else that grows an entrance inside this band later — from clearing the flag early.
+        className={`${swappingLanguage ? "motion-swap-in " : ""}${
+          isFullscreen ? "flex min-h-0 flex-1 bg-ink" : "flex bg-ink"
+        }`}
+        onAnimationEnd={(event) => {
+          if (event.target === event.currentTarget) setSwappingLanguage(false);
+        }}
+      >
         <div
           ref={gutterRef}
           aria-hidden="true"

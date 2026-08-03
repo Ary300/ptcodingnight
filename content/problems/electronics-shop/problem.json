@@ -20,5 +20,37 @@
     "kind": "whitespace"
   },
   "sampleCount": 2,
-  "originAttribution": "Task inspired by a problem of the same name used at a past Coding Night. Statement and test data written fresh for this platform."
+  "originAttribution": "Task inspired by a problem of the same name used at a past Coding Night. Statement and test data written fresh for this platform.",
+  "signature": {
+    "name": "getMoneySpent",
+    "returns": {
+      "type": "int"
+    },
+    "params": [
+      {
+        "name": "b",
+        "type": "int"
+      },
+      {
+        "name": "n",
+        "type": "int",
+        "passed": false
+      },
+      {
+        "name": "m",
+        "type": "int",
+        "passed": false
+      },
+      {
+        "name": "keyboards",
+        "type": "int[]",
+        "length": "n"
+      },
+      {
+        "name": "drives",
+        "type": "int[]",
+        "length": "m"
+      }
+    ]
+  }
 }

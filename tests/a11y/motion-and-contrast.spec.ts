@@ -177,3 +177,88 @@ test.describe("the projector is a paper surface, like everything else", () => {
     expect(body.color).toBe("rgb(26, 6, 6)");
   });
 });
+
+/**
+ * Content that swaps UNDER a control (motion round four).
+ *
+ * The organizer's report was "some stuff still feels instant like switching between languages in
+ * the dropdown". Rounds one to three marked entrances, presses, panels and popups; what was left
+ * was the case where a control nowhere near the content replaces all of it between two paints.
+ *
+ * Both assertions here are structural, and both are needed, because they can fail independently:
+ * an entrance that never runs leaves the swap unreadable, and an entrance bought by remounting
+ * the editor costs the student their focus, their caret and the height they dragged the box to.
+ */
+test.describe("a language swap is marked, and costs the student nothing", () => {
+  test("the editor band rises, and the textarea is the same element afterwards", async ({
+    page,
+  }) => {
+    await openProblem(page);
+
+    const band = page.locator("div.bg-ink").filter({ has: page.locator("textarea") }).first();
+    const textarea = page.getByRole("textbox", { name: /^Solution for / });
+
+    // Stamp the live textarea and put the caret in it. A remount loses both, which is the whole
+    // point: the animation must not be paid for with the student's place in their own code.
+    await textarea.evaluate((element: HTMLTextAreaElement) => {
+      (element as HTMLTextAreaElement & { __probe?: string }).__probe = "same-element";
+      element.focus();
+      element.setSelectionRange(0, 0);
+    });
+    const before = await textarea.inputValue();
+
+    // Record the entrance as it STARTS. Polling `getComputedStyle`, or `getAnimations()` on a
+    // timer, both lose: the class is removed the moment the animation reports itself finished, so
+    // the evidence is gone 200ms later and a driver round-trip is easily longer than that.
+    await band.evaluate((element: HTMLElement) => {
+      const seen: string[] = [];
+      (window as unknown as { __swapSeen: string[] }).__swapSeen = seen;
+      element.addEventListener("animationstart", (event: AnimationEvent) => {
+        // This element's own entrance, not one bubbling up from something inside it.
+        if (event.target === element) seen.push(event.animationName);
+      });
+    });
+
+    // The real control, driven the way a student drives it.
+    await page.getByRole("combobox", { name: "Language" }).click();
+    const options = page.getByRole("option");
+    await expect(options.first()).toBeVisible();
+    const count = await options.count();
+    // Any option other than the one already chosen. Every problem in the bank allows ten.
+    for (let index = 0; index < count; index += 1) {
+      const option = options.nth(index);
+      if ((await option.getAttribute("aria-selected")) !== "true") {
+        await option.click();
+        break;
+      }
+    }
+
+    await expect
+      .poll(async () => await textarea.inputValue(), {
+        message: "choosing another language should re-seed the editor",
+      })
+      .not.toBe(before);
+
+    /*
+      Polled, not read once. `animationstart` is dispatched when the style change is realised,
+      which is a frame or so after the commit that re-seeded the editor — so the new source is
+      readable BEFORE the entrance has announced itself, and a single read here failed while the
+      class was sitting on the element in plain sight.
+    */
+    await expect
+      .poll(
+        async () =>
+          await page.evaluate(() => (window as unknown as { __swapSeen: string[] }).__swapSeen),
+        { message: "the editor band should carry the swap entrance across a language change" },
+      )
+      .toContain("motion-swap-in");
+
+    const survived = await textarea.evaluate(
+      (element: HTMLTextAreaElement & { __probe?: string }) => element.__probe ?? null,
+    );
+    expect(
+      survived,
+      "the textarea must not be remounted to animate: that costs focus, caret and the dragged height",
+    ).toBe("same-element");
+  });
+});
