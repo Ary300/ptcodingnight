@@ -1048,6 +1048,12 @@ export const TeamStandingsResponseSchema = z.object({
   asOf: z.string(),
   endsAt: z.string(),
   /**
+   * True for the permanent practice arena. The wall reads it to NOT render a countdown: the
+   * arena's window ends in 2100, and the projector printed "643527:44:47" as time remaining,
+   * which reads as a broken clock rather than as a contest with no deadline.
+   */
+  isPractice: z.boolean().default(false),
+  /**
    * The contest's divisions, in the organizer's order. Teams span divisions, so the TEAM board
    * never splits by them - these exist so the wall can offer each division's INDIVIDUAL board
    * one tab away, which is the honest per-division view (an Intermediate winner and an Advanced

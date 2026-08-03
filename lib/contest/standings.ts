@@ -36,6 +36,8 @@ export interface LoadedContest extends ContestGateInput {
   readonly id: string;
   readonly name: string;
   readonly presetId: ScoringPresetId;
+  /** True for the permanent practice arena; the wall renders no countdown for it. */
+  readonly isPractice: boolean;
 }
 
 /** A participant row with the instant it first became part of this contest. */
@@ -132,6 +134,7 @@ async function queryScoringInput(contestId: string): Promise<ScoringInput> {
       endsAt: true,
       freezeAt: true,
       state: true,
+      isPractice: true,
       scoringPresetId: true,
       groupPointsInsideMean: true,
       sideActivitiesFlat: true,
@@ -255,6 +258,7 @@ async function queryScoringInput(contestId: string): Promise<ScoringInput> {
       endsAt: contest.endsAt,
       freezeAt: contest.freezeAt,
       state: contest.state,
+      isPractice: contest.isPractice,
       presetId: config.presetId,
     },
     config,
@@ -597,6 +601,7 @@ export async function getTeamStandings(
     frozen: !admin && isPublicBoardFrozen(input.contest, now),
     asOf: (upTo ?? now).toISOString(),
     endsAt: input.contest.endsAt.toISOString(),
+    isPractice: input.contest.isPractice,
     // Sorted by the organizer's own order, already the shape the scoring input carries. The
     // TEAM board never splits by division (teams span them); the wall uses this list to offer
     // each division's INDIVIDUAL board one tab away.

@@ -289,7 +289,17 @@ export function TeamProjectorScreen({
           </div>
 
           <div className={styles.teamHeadRight}>
-            {standings !== null && <Countdown endsAt={standings.endsAt} />}
+            {/*
+              No countdown in the practice arena. Its window ends in 2100, so the clock read
+              "643527:44:47" on the wall, which is a broken-looking timer rather than a contest
+              with no deadline. The word says what the screen is instead.
+            */}
+            {standings !== null &&
+              (standings.isPractice ? (
+                <span className={styles.teamSubtitle}>Practice</span>
+              ) : (
+                <Countdown endsAt={standings.endsAt} />
+              ))}
           </div>
         </header>
 
