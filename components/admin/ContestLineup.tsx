@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useId, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
 
 import {
   Button,
@@ -23,13 +23,17 @@ import {
   slotLabelDivisionConflicts,
 } from "@/lib/contest/lineup-validation";
 import {
+  API_ROUTES,
   AdminProblemBankSchema,
+  AdminProblemPreviewSchema,
+  type AdminProblemPreview,
   type AdminProblemRow,
 } from "@/lib/schemas/api";
 
 import { TextInput } from "@/components/admin/Field";
 import { AlertPlate, Panel } from "@/components/admin/Panel";
 import { ProblemStatePill } from "@/components/admin/StatusPill";
+import { Markdown } from "@/components/contest/markdown/Markdown";
 
 /**
  * Choose a contest's problems, give each one a slot, and save the line-up.
@@ -321,6 +325,8 @@ export function ContestLineup({
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** The slug being read in the preview dialog, or null. Never navigates; nothing is lost. */
+  const [previewSlug, setPreviewSlug] = useState<string | null>(null);
 
   const lineupErrorId = useId();
 
@@ -1056,14 +1062,31 @@ export function ContestLineup({
                         />
                       </TD>
                       <TD align="end">
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          size="sm"
-                          onClick={() => add(problem)}
-                        >
-                          Add
-                        </Button>
+                        <div className="flex flex-wrap items-center justify-end gap-2">
+                          {/*
+                            Reading the question before choosing it. A DIALOG rather than a link
+                            to the bank: this screen holds an unsaved line-up, and navigating
+                            away to read a statement would either lose it or demand a second tab,
+                            which is exactly the tab-juggling the organizer asked to be rid of.
+                            Closing the dialog IS the way back, and the line-up is still here.
+                          */}
+                          <Button
+                            type="button"
+                            variant="quiet"
+                            size="sm"
+                            onClick={() => setPreviewSlug(problem.slug)}
+                          >
+                            Preview
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => add(problem)}
+                          >
+                            Add
+                          </Button>
+                        </div>
                       </TD>
                     </TR>
                   ))}
@@ -1083,6 +1106,194 @@ export function ContestLineup({
           </p>
         )}
       </Panel>
+      <ProblemPreviewDialog
+        slug={previewSlug}
+        onClose={() => setPreviewSlug(null)}
+      />
     </div>
+  );
+}
+
+/**
+ * Read one question's statement without leaving the line-up.
+ *
+ * Fetches on open and forgets on close: an organizer comparing four problems reads four
+ * statements, and caching them would hold megabytes of markdown for a screen whose real job is
+ * the table behind it. Escape and the close button both return to exactly the line-up that was
+ * on screen, unsaved slots included, which is what makes this a dialog rather than a link.
+ */
+function ProblemPreviewDialog({
+  slug,
+  onClose,
+}: {
+  slug: string | null;
+  onClose: () => void;
+}) {
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const [preview, setPreview] = useState<AdminProblemPreview | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (dialog === null) return;
+    if (slug !== null && !dialog.open) dialog.showModal();
+    if (slug === null && dialog.open) dialog.close();
+  }, [slug]);
+
+  useEffect(() => {
+    if (slug === null) {
+      setPreview(null);
+      setError(null);
+      return;
+    }
+    let cancelled = false;
+    setPreview(null);
+    setError(null);
+    fetch(API_ROUTES.adminProblemPreview(slug), { cache: "no-store" })
+      .then(async (response) => {
+        const payload: unknown = await response.json();
+        if (cancelled) return;
+        if (!response.ok) {
+          setError("That question could not be loaded.");
+          return;
+        }
+        const data =
+          typeof payload === "object" && payload !== null && "data" in payload
+            ? (payload as { data: unknown }).data
+            : null;
+        const parsed = AdminProblemPreviewSchema.safeParse(data);
+        if (parsed.success) setPreview(parsed.data);
+        else setError("The server returned an unexpected response.");
+      })
+      .catch(() => {
+        if (!cancelled) setError("Could not reach the server.");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [slug]);
+
+  return (
+    <dialog
+      ref={dialogRef}
+      onCancel={onClose}
+      onClose={onClose}
+      className="motion-panel-in max-h-[calc(100vh-2rem)] w-[min(56rem,calc(100vw-2rem))] max-w-none overflow-hidden rounded-panel border border-rule-edge bg-paper p-0 text-ink shadow-2xl backdrop:bg-ink/65"
+      aria-labelledby="lineup-preview-title"
+    >
+      <header className="flex items-center justify-between gap-4 border-b border-rule-edge bg-ink px-5 py-4 text-paper">
+        <div className="min-w-0">
+          <p
+            className="text-paper/70 uppercase"
+            style={{ fontSize: "var(--text-xs)", letterSpacing: "0.1em" }}
+          >
+            Problem bank
+          </p>
+          <h2
+            id="lineup-preview-title"
+            className="truncate font-display font-bold"
+            style={{ fontSize: "var(--text-md)" }}
+          >
+            {preview?.title ?? "Loading the question…"}
+          </h2>
+        </div>
+        {/* The way back, said in words: closing returns to the line-up exactly as it was. */}
+        <Button type="button" variant="secondary" size="sm" onClick={onClose} autoFocus>
+          Back to the line-up
+        </Button>
+      </header>
+
+      <div className="max-h-[calc(100vh-8rem)] overflow-y-auto p-5 sm:p-8">
+        {error !== null && (
+          <p role="alert" className="font-semibold text-panther" style={{ fontSize: "var(--text-sm)" }}>
+            {error}
+          </p>
+        )}
+        {error === null && preview === null && (
+          <p role="status" className="text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
+            Loading the statement…
+          </p>
+        )}
+        {preview !== null && (
+          <div className="motion-swap-in flex flex-col gap-group">
+            <p className="text-ink/70" style={{ fontSize: "var(--text-xs)" }}>
+              {[
+                preview.round === "GROUP" ? "Team question" : "Individual question",
+                preview.difficulty === "E"
+                  ? "Easy"
+                  : preview.difficulty === "M"
+                    ? "Medium"
+                    : preview.difficulty === "H"
+                      ? "Hard"
+                      : "No difficulty set",
+                `${String(preview.testCaseCount)} test case${preview.testCaseCount === 1 ? "" : "s"}`,
+                `${String(preview.timeLimitMs)} ms`,
+                `${String(preview.memoryLimitMb)} MB`,
+              ].join(" · ")}
+            </p>
+
+            <Markdown source={preview.statementMd} className="max-w-none" />
+
+            {preview.inputSpec.trim() !== "" && (
+              <section>
+                <h3 className="font-display font-bold" style={{ fontSize: "var(--text-sm)" }}>
+                  Input
+                </h3>
+                <Markdown source={preview.inputSpec} className="mt-1 max-w-none" />
+              </section>
+            )}
+            {preview.outputSpec.trim() !== "" && (
+              <section>
+                <h3 className="font-display font-bold" style={{ fontSize: "var(--text-sm)" }}>
+                  Output
+                </h3>
+                <Markdown source={preview.outputSpec} className="mt-1 max-w-none" />
+              </section>
+            )}
+            {preview.constraints.trim() !== "" && (
+              <section>
+                <h3 className="font-display font-bold" style={{ fontSize: "var(--text-sm)" }}>
+                  Constraints
+                </h3>
+                <Markdown source={preview.constraints} className="mt-1 max-w-none" />
+              </section>
+            )}
+
+            {preview.samples.length > 0 && (
+              <section>
+                <h3 className="font-display font-bold" style={{ fontSize: "var(--text-sm)" }}>
+                  Samples
+                </h3>
+                <div className="mt-2 flex flex-col gap-group">
+                  {preview.samples.map((sample, index) => (
+                    <div
+                      key={index}
+                      className="grid gap-group rounded-panel border border-rule-edge p-4 sm:grid-cols-2"
+                    >
+                      <div>
+                        <p className="text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
+                          Input
+                        </p>
+                        <pre className="mt-1 overflow-x-auto whitespace-pre-wrap font-mono" style={{ fontSize: "var(--text-xs)" }}>
+                          {sample.input}
+                        </pre>
+                      </div>
+                      <div>
+                        <p className="text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
+                          Expected output
+                        </p>
+                        <pre className="mt-1 overflow-x-auto whitespace-pre-wrap font-mono" style={{ fontSize: "var(--text-xs)" }}>
+                          {sample.expectedOutput}
+                        </pre>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+          </div>
+        )}
+      </div>
+    </dialog>
   );
 }

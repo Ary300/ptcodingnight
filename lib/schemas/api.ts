@@ -92,6 +92,9 @@ export const API_ROUTES = {
   adminSession: "/api/admin/session",
   /** The problem bank: `GET` lists it, `POST` creates a coding question. */
   adminProblems: "/api/admin/problems",
+  /** Read a question's statement and samples without leaving the screen that asked. */
+  adminProblemPreview: (slug: string) =>
+    `/api/admin/problems/${encodeURIComponent(slug)}/preview`,
   /** Judge the stored reference against every case; stamps referenceValidatedAt on success. */
   adminValidateProblem: (slug: string) =>
     `/api/admin/problems/${encodeURIComponent(slug)}/validate`,
@@ -522,6 +525,26 @@ export type AdminProblemRow = z.infer<typeof AdminProblemRowSchema>;
 export const AdminProblemBankSchema = z.object({
   problems: z.array(AdminProblemRowSchema),
 });
+
+/**
+ * One question as an organizer reads it while choosing: the statement and its samples, with
+ * the facts that decide whether it belongs in this round. Samples only, capped at four.
+ */
+export const AdminProblemPreviewSchema = z.object({
+  slug: z.string(),
+  title: z.string(),
+  statementMd: z.string(),
+  inputSpec: z.string(),
+  outputSpec: z.string(),
+  constraints: z.string(),
+  difficulty: z.enum(["E", "M", "H"]).nullable(),
+  round: z.enum(["INDIVIDUAL", "GROUP"]),
+  timeLimitMs: z.number().int().positive(),
+  memoryLimitMb: z.number().int().positive(),
+  testCaseCount: z.number().int().nonnegative(),
+  samples: z.array(z.object({ input: z.string(), expectedOutput: z.string() })),
+});
+export type AdminProblemPreview = z.infer<typeof AdminProblemPreviewSchema>;
 export type AdminProblemBank = z.infer<typeof AdminProblemBankSchema>;
 
 /**

@@ -1350,3 +1350,100 @@ export async function generateExpectedOutputs(
     await rm(previewDirAbsolute, { recursive: true, force: true });
   }
 }
+
+// ---------------------------------------------------------------------------
+// Previewing: reading a question without leaving the screen that asked
+// ---------------------------------------------------------------------------
+
+export interface ProblemPreviewSample {
+  readonly input: string;
+  readonly expectedOutput: string;
+}
+
+export interface ProblemPreview {
+  readonly slug: string;
+  readonly title: string;
+  readonly statementMd: string;
+  readonly inputSpec: string;
+  readonly outputSpec: string;
+  readonly constraints: string;
+  readonly difficulty: "E" | "M" | "H" | null;
+  readonly round: "INDIVIDUAL" | "GROUP";
+  readonly timeLimitMs: number;
+  readonly memoryLimitMb: number;
+  readonly testCaseCount: number;
+  readonly samples: readonly ProblemPreviewSample[];
+}
+
+/**
+ * One question, as an organizer needs to READ it while building a line-up.
+ *
+ * The line-up screen listed titles and nothing else, so choosing between "Bill Division" and
+ * "Ice Cream Parlor" meant opening the bank in another tab, or adding a problem to find out
+ * what it was. This is the read that fixes that, and it is deliberately NOT
+ * `loadAuthoredProblem`: that one reads every test case off disk to fill an editor, and a
+ * preview of a 20-case problem does not need 40 files. Samples only, which are the cases a
+ * student may see anyway.
+ *
+ * A sample whose file is missing degrades to empty text rather than throwing. A preview that
+ * 500s because one file moved would send the organizer back to the tab-juggling this replaces;
+ * the same missing file still fails loudly in `checkTestDataPresent` and in G13, which are the
+ * checks that exist to catch it.
+ */
+export async function problemPreview(slug: string): Promise<ProblemPreview> {
+  const problem = await prisma.problem.findUnique({
+    where: { slug },
+    select: {
+      slug: true,
+      title: true,
+      statementMd: true,
+      inputSpec: true,
+      outputSpec: true,
+      constraints: true,
+      difficulty: true,
+      round: true,
+      timeLimitMs: true,
+      memoryLimitMb: true,
+      _count: { select: { testCases: true } },
+      testCases: {
+        where: { isSample: true },
+        select: { ordinal: true, inputPath: true, expectedOutputPath: true },
+        orderBy: { ordinal: "asc" },
+        take: 4,
+      },
+    },
+  });
+  if (problem === null) throw new NotFoundError("Problem");
+
+  const root = hostLimits().testDataRoot;
+  const readOrEmpty = async (storedPath: string): Promise<string> => {
+    try {
+      const contents = await readFile(resolveTestDataPath(root, storedPath), "utf8");
+      return contents.endsWith("\n") ? contents.slice(0, -1) : contents;
+    } catch {
+      return "";
+    }
+  };
+
+  const samples = await Promise.all(
+    problem.testCases.map(async (testCase) => ({
+      input: await readOrEmpty(testCase.inputPath),
+      expectedOutput: await readOrEmpty(testCase.expectedOutputPath),
+    })),
+  );
+
+  return {
+    slug: problem.slug,
+    title: problem.title,
+    statementMd: problem.statementMd,
+    inputSpec: problem.inputSpec,
+    outputSpec: problem.outputSpec,
+    constraints: problem.constraints,
+    difficulty: problem.difficulty,
+    round: problem.round,
+    timeLimitMs: problem.timeLimitMs,
+    memoryLimitMb: problem.memoryLimitMb,
+    testCaseCount: problem._count.testCases,
+    samples,
+  };
+}
