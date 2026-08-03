@@ -594,8 +594,21 @@ export function ContestLineup({
             )}
           </span>
         }
-        description="Individual questions belong to one set. Group questions are shared by every team. Saving updates the full line-up."
+        description={
+          <>
+            {/*
+              The organizer asked what "slot" meant and what the letter after the
+              individual/group control was. Both are answered here, in the order the columns
+              appear, rather than being left to be inferred from a table.
+            */}
+            Every teammate works a different SET, so four teammates need sets A, B, C and D with
+            the same shape. A group question has no set: every team works it together. The CODE
+            is what a student sees beside the question, like A1.
+            <span className="mt-1 block">Saving updates the full line-up.</span>
+          </>
+        }
       >
+        {slots.length > 0 && <SetShape slots={slots} />}
         {slots.length === 0 ? (
           <PanelNote>Nothing chosen yet. Pick from the bank below.</PanelNote>
         ) : (
@@ -613,7 +626,14 @@ export function ContestLineup({
               <THead>
                 <TR>
                   <TH className="w-full">Problem</TH>
-                  <TH>Slot</TH>
+                  {/* "Slot" alone said nothing: the organizer asked what it meant. It is the
+                      CODE printed beside the question, the way a paper round says A1, A2. */}
+                  <TH>
+                    Code
+                    <span className="block font-normal normal-case text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
+                      shown to students
+                    </span>
+                  </TH>
                   <TH>Points</TH>
                   {/* Rendered only when there is a choice to make. A contest without divisions
                       would get a dropdown holding one option, which is furniture, not a control. */}
@@ -622,6 +642,15 @@ export function ContestLineup({
                       alone read as a box to fill in, which is how leaving it empty came to mean
                       something nobody had been told. */}
                   <TH>Individual or group</TH>
+                  {/* Its OWN column. The set letter used to sit unlabelled beside the
+                      individual/group control, under that control's heading, so it read as a
+                      mystery box - the organizer asked what the letter after the dropdown was. */}
+                  <TH>
+                    Set
+                    <span className="block font-normal normal-case text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
+                      one per teammate
+                    </span>
+                  </TH>
                   <TH>
                     <span className="sr-only">Remove</span>
                   </TH>
@@ -731,7 +760,7 @@ export function ContestLineup({
                         </TD>
                       )}
                       <TD>
-                        <span className={`flex items-center gap-2 ${entrance}`}>
+                        <span className={`inline-block align-middle ${entrance}`}>
                           <Select
                             size="sm"
                             shellClassName="w-32"
@@ -762,36 +791,48 @@ export function ContestLineup({
                             <option value="individual">Individual</option>
                             <option value="group">Group</option>
                           </Select>
-
-                          {/*
-                            The set label belongs to Individual and is shown only with it. It is
-                            deliberately NOT pre-filled when the organizer switches back from
-                            Group: the previous label was cleared on the way out, and putting a
-                            guess back is how a row acquires a set nobody chose. Blank here is a
-                            question the screen asks out loud, below, instead of an answer it
-                            invents.
-                          */}
-                          {slot.kind === "individual" && (
-                            <span className="inline-block w-20 shrink-0 align-middle">
-                              <input
-                                aria-label={`Set label for ${rowName(slot)}`}
-                                aria-invalid={setMissing || undefined}
-                                aria-describedby={
-                                  setMissing ? lineupErrorId : undefined
-                                }
-                                value={slot.setLabel}
-                                placeholder="A"
-                                onChange={(e) =>
-                                  patch(slot.rowId, {
-                                    setLabel: e.target.value,
-                                  })
-                                }
-                                className={`${ROW_CONTROL} ${rowControlBorder(setMissing)}`}
-                                style={{ fontSize: CONTROL_FONT_SIZE.sm }}
-                              />
-                            </span>
-                          )}
                         </span>
+                      </TD>
+                      <TD>
+                        {/*
+                          The set label belongs to Individual and is shown only with it. It is
+                          deliberately NOT pre-filled when the organizer switches back from
+                          Group: the previous label was cleared on the way out, and putting a
+                          guess back is how a row acquires a set nobody chose. Blank here is a
+                          question the screen asks out loud, below, instead of an answer it
+                          invents.
+
+                          A GROUP row says so in words rather than leaving an empty box, because
+                          an empty box on a row that cannot have a set reads as a box somebody
+                          forgot to fill.
+                        */}
+                        {slot.kind === "individual" ? (
+                          <span className={`inline-block w-20 align-middle ${entrance}`}>
+                            <input
+                              aria-label={`Set letter for ${rowName(slot)}`}
+                              aria-invalid={setMissing || undefined}
+                              aria-describedby={
+                                setMissing ? lineupErrorId : undefined
+                              }
+                              value={slot.setLabel}
+                              placeholder="A"
+                              onChange={(e) =>
+                                patch(slot.rowId, {
+                                  setLabel: e.target.value,
+                                })
+                              }
+                              className={`${ROW_CONTROL} ${rowControlBorder(setMissing)}`}
+                              style={{ fontSize: CONTROL_FONT_SIZE.sm }}
+                            />
+                          </span>
+                        ) : (
+                          <span
+                            className={`block text-ink/60 ${entrance}`}
+                            style={{ fontSize: "var(--text-xs)" }}
+                          >
+                            every team
+                          </span>
+                        )}
                       </TD>
                       <TD align="end">
                         {/* Text, not a box: an in-row action never competes with the page's one
@@ -1111,6 +1152,58 @@ export function ContestLineup({
         onClose={() => setPreviewSlug(null)}
       />
     </div>
+  );
+}
+
+/**
+ * What shape this round actually has: how many questions sit in each set, and how many are
+ * shared by every team.
+ *
+ * The line-up is edited a row at a time, and the property that matters is a property of the
+ * WHOLE table: every teammate works a different set, so the sets have to exist and hold the
+ * same number of questions. Six questions all lettered A is a legal-looking line-up in which
+ * one player has everything to do and their three teammates have nothing, and nothing on the
+ * screen said so until this line did. It counts what is on screen, unsaved rows included,
+ * because that is what the organizer is about to save.
+ */
+function SetShape({ slots }: { slots: readonly Slot[] }) {
+  const counts = new Map<string, number>();
+  let group = 0;
+  let unlettered = 0;
+  for (const slot of slots) {
+    if (slot.kind === "group") {
+      group += 1;
+      continue;
+    }
+    const label = slot.setLabel.trim().toUpperCase();
+    if (label === "") unlettered += 1;
+    else counts.set(label, (counts.get(label) ?? 0) + 1);
+  }
+
+  const sets = [...counts.entries()].sort(([a], [b]) => a.localeCompare(b));
+  const sizes = sets.map(([, count]) => count);
+  const uneven = sizes.length > 1 && Math.min(...sizes) !== Math.max(...sizes);
+  const oneSetOnly = sets.length === 1;
+
+  return (
+    <p className="mb-group text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
+      {sets.length === 0 && unlettered === 0
+        ? "No individual questions yet."
+        : sets
+            .map(([label, count]) => `Set ${label}: ${String(count)}`)
+            .concat(unlettered > 0 ? [`no set yet: ${String(unlettered)}`] : [])
+            .join(" · ")}
+      {group > 0 && ` · shared by every team: ${String(group)}`}
+      {(uneven || oneSetOnly) && (
+        // Said, not enforced: a deliberately uneven round is the organizer's call to make, and
+        // a screen that refused it would be wrong more often than the organizer is.
+        <span className="mt-1 block font-semibold text-panther">
+          {oneSetOnly
+            ? "Only one set exists, so every teammate would work the same questions. Add sets B, C and D for a team of four."
+            : "The sets hold different numbers of questions, so teammates have unequal work."}
+        </span>
+      )}
+    </p>
   );
 }
 
