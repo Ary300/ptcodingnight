@@ -320,8 +320,20 @@ export function ProblemBuilder({ edit }: ProblemBuilderProps = {}) {
     cases.length > 0 &&
     sampleCount > 0 &&
     cases.every((c) => c.expectedOutput.trim() !== "");
+  /** Nothing left to fix on this step: either a named function, or deliberately no starter. */
   const starterComplete =
     signatureLocked || !wantStarter || fnName.trim() !== "";
+  /*
+    Did the organizer actually SET UP starter code, as opposed to passing through the step?
+
+    `starterComplete` is vacuously true on a blank form, because starter code is optional and an
+    untouched step has nothing wrong with it. That made the rail claim a step was done the moment
+    somebody pressed Next and Back: the organizer reported a check mark on "Starter code" while
+    standing on step 1, having configured nothing. A check has to mean WORK EXISTS HERE, so the
+    rail and the review both ask this instead: a stored harness this form cannot edit, or a
+    function the organizer named.
+  */
+  const starterConfigured = signatureLocked || (wantStarter && fnName.trim() !== "");
   const stepIndex = STEPS.findIndex((entry) => entry.key === step);
 
   /**
@@ -492,7 +504,7 @@ export function ProblemBuilder({ edit }: ProblemBuilderProps = {}) {
                 !active &&
                 visited.has(entry.key) &&
                 ((entry.key === "details" && detailsComplete) ||
-                  (entry.key === "starter" && starterComplete) ||
+                  (entry.key === "starter" && starterConfigured) ||
                   (entry.key === "tests" && testsComplete));
 
               return (
@@ -549,7 +561,7 @@ export function ProblemBuilder({ edit }: ProblemBuilderProps = {}) {
         <div className="mt-group hidden lg:block">
           <QualityReview
             detailsComplete={detailsComplete}
-            starterComplete={starterComplete}
+            starterComplete={starterConfigured}
             expectedOutputsComplete={cases.every(
               (testCase) => testCase.expectedOutput.trim() !== "",
             )}
