@@ -69,6 +69,8 @@ export function divideRoundHalfAway(numerator: number, denominator: number): num
 export interface TeamRecord {
   readonly teamId: string;
   readonly name: string;
+  /** The division this team competes in, or null for a team open to anyone. */
+  readonly divisionId: string | null;
 }
 
 /**
@@ -214,6 +216,8 @@ export interface PlayerStanding {
 export interface TeamStanding {
   readonly teamId: string;
   readonly name: string;
+  /** Carried through from the roster so the board can group teams by division. */
+  readonly divisionId: string | null;
   /** The divisor that produced this score. Stored so a past result stays explainable. */
   readonly teamSize: number;
   /** **Hundredths of a point.** The authoritative value. */

@@ -909,54 +909,62 @@
 }
 
 /*
-  The board switch on the TEAM wall: "Teams" plus one entry per division, linking to that
-  division's INDIVIDUAL board. Centred under the header band, sized off the same projector
-  scale as everything else. The active entry is inert text: the board you are on is a fact,
-  not a control.
+  The TEAM board's division strip: one tab per division (no merged view), centred directly
+  under the "Live standings" subtitle. Real buttons in a tablist, not links - each tab
+  re-ranks the same table rather than navigating anywhere.
+
+  Sized off the projector's `--fs-*` ladder where a `.stage` defines it, with the app scale
+  as the fallback, because the same strip sits over the interactive board on /team and
+  /admin/awards - and a var undefined on this surface would silently inherit (the contest
+  clock once rendered at 16px on a 1920 wall for exactly this reason).
+
+  It wraps rather than widening: on the projector the strip lives in the header's centre
+  track (`1fr auto 1fr`), and five divisions with long names must fold to a second line
+  instead of shoving the clock off the canvas. `max-width: 100%` is what keeps the wrap
+  point at the track's edge rather than at the strip's own single-line width.
 */
-.boardSwitch {
+.divisionStrip {
   display: flex;
+  max-width: 100%;
+  flex-wrap: wrap;
   justify-content: center;
   gap: calc(var(--gap, 0.5rem) * 1.5);
-  margin-bottom: var(--gap, 0.5rem);
+  margin-top: calc(var(--gap, 0.5rem) * 0.5);
 }
 
-.boardSwitchItem {
-  color: var(--muted, var(--color-ink));
+.divisionStripTab {
+  /* A single very long division name wraps inside its own tab instead of forcing the strip
+     (and the header track it sits in) wider than the canvas. */
+  max-width: 100%;
+  border: 0;
+  /* Reserved while inactive so activating a tab never shifts the strip's height. */
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(
+    --muted,
+    color-mix(in srgb, var(--color-ink) 72%, var(--color-paper))
+  );
+  cursor: pointer;
   font-size: var(--fs-sm, var(--text-sm));
-  letter-spacing: 0.04em;
+  letter-spacing: 0.08em;
   padding: 0.1em 0.4em;
-  text-decoration: none;
   text-transform: uppercase;
+  transition: color 240ms ease;
 }
 
-a.boardSwitchItem:hover {
+.divisionStripTab:hover {
   color: var(--color-ink);
-  text-decoration: underline;
-  text-underline-offset: 0.2em;
 }
 
-.boardSwitchActive {
-  border-bottom: 2px solid var(--color-panther);
+/*
+  Active: bold ink over a 2px panther underline. Panther is chrome here, never the text -
+  full-strength ink and full-strength panther both clear their floors on paper, and neither
+  ever takes an alpha (DESIGN.md §7).
+*/
+.divisionStripTabActive {
+  border-bottom-color: var(--color-panther);
   color: var(--color-ink);
   font-weight: 700;
-}
-
-/* The individual board's way back to the team wall, sitting under the division tabs. */
-.teamsLink {
-  color: var(--muted, var(--color-ink));
-  display: inline-block;
-  font-size: var(--fs-sm, var(--text-sm));
-  letter-spacing: 0.04em;
-  margin-top: var(--gap, 0.5rem);
-  text-decoration: none;
-  text-transform: uppercase;
-}
-
-.teamsLink:hover {
-  color: var(--color-ink);
-  text-decoration: underline;
-  text-underline-offset: 0.2em;
 }
 
 .tabs {

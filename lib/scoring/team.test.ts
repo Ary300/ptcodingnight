@@ -150,8 +150,8 @@ describe("group problems use one team event timeline", () => {
   const start = new Date("2026-04-10T18:00:00.000Z");
   const at = (minutes: number) => new Date(start.getTime() + minutes * 60_000);
   const teams: TeamRecord[] = [
-    { teamId: "alpha", name: "Alpha" },
-    { teamId: "beta", name: "Beta" },
+    { teamId: "alpha", name: "Alpha", divisionId: null },
+    { teamId: "beta", name: "Beta", divisionId: null },
   ];
   const participants: ParticipantRecord[] = [
     { participantId: "a1", displayName: "A One", divisionId: null, teamId: "alpha", chosenSetId: "A" },
@@ -399,7 +399,7 @@ describe("a team with no members", () => {
     const input = loadGoldenTeamContest();
     const standings = computeTeamStandings(
       input.config,
-      [...input.teams, { teamId: "empty", name: "Nobody" }],
+      [...input.teams, { teamId: "empty", name: "Nobody", divisionId: null }],
       input.participants,
       input.submissions,
       input.hintGrants,

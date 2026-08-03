@@ -41,7 +41,15 @@ export async function loadContestPhase(): Promise<ContestPhase | null> {
 
   let contest = await prisma.contest.findUnique({
     where: { id: viewer.contestId },
-    select: { id: true, name: true, state: true, startsAt: true, endsAt: true, freezeAt: true },
+    select: {
+      id: true,
+      name: true,
+      state: true,
+      isPractice: true,
+      startsAt: true,
+      endsAt: true,
+      freezeAt: true,
+    },
   });
   if (contest === null) return null;
 
@@ -55,7 +63,15 @@ export async function loadContestPhase(): Promise<ContestPhase | null> {
   if (await reconcileContestClock(contest, now) !== "unchanged") {
     contest = await prisma.contest.findUnique({
       where: { id: viewer.contestId },
-      select: { id: true, name: true, state: true, startsAt: true, endsAt: true, freezeAt: true },
+      select: {
+        id: true,
+        name: true,
+        state: true,
+        isPractice: true,
+        startsAt: true,
+        endsAt: true,
+        freezeAt: true,
+      },
     });
     if (contest === null) return null;
   }
@@ -85,6 +101,7 @@ export async function loadContestPhase(): Promise<ContestPhase | null> {
   return {
     contestId: contest.id,
     name: contest.name,
+    isPractice: contest.isPractice,
     phase: phaseOf(contest, now),
     startsAt: contest.startsAt.toISOString(),
     endsAt: contest.endsAt.toISOString(),

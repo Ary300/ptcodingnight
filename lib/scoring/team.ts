@@ -292,6 +292,7 @@ export function computeTeamStandings(
       return {
         teamId: entry.team.teamId,
         name: entry.team.name,
+        divisionId: entry.team.divisionId,
         teamSize: entry.teamSize,
         scoreHundredths: entry.scoreHundredths,
         // Display only. Never compared, never summed — scoreHundredths is authoritative.
@@ -313,4 +314,40 @@ export function computeTeamStandings(
       // Genuine tie: order by id so the emitted array is byte-identical run to run.
       return a.teamId < b.teamId ? -1 : a.teamId > b.teamId ? 1 : 0;
     });
+}
+
+/**
+ * Re-rank an already-ranked team list WITHIN one division, dense with ties preserved.
+ *
+ * The engine ranks every team on one board (that is the night's headline number); a division
+ * tab shows only that division's teams, and showing the global ranks there would read as gaps
+ * ("1, 4, 5"). Within a division the order is the ordered sublist of the global order, so the
+ * derivation is pure: walk the filtered list in its given order, start at 1, and two adjacent
+ * teams share a rank exactly when they compare equal on the authoritative key
+ * (`scoreHundredths`) - the same key the global ranking used, so the two views can never
+ * disagree about who beat whom.
+ *
+ * Lives here rather than in a component because it IS scoring output (a division winner is a
+ * scored fact), and scoring lives in exactly one place.
+ */
+export function rankTeamsWithinDivision(
+  ranked: readonly TeamStanding[],
+  divisionId: string | null,
+): TeamStanding[] {
+  const subset = ranked.filter((team) => team.divisionId === divisionId);
+  let lastScore: number | null = null;
+  let lastRank = 0;
+  const reRanked = subset.map((team, index) => {
+    const rank = team.scoreHundredths === lastScore ? lastRank : index + 1;
+    lastScore = team.scoreHundredths;
+    lastRank = rank;
+    return { team, rank };
+  });
+  return reRanked.map(({ team, rank }, index) => ({
+    ...team,
+    rank,
+    isTied:
+      (index > 0 && reRanked[index - 1]?.rank === rank) ||
+      (index + 1 < reRanked.length && reRanked[index + 1]?.rank === rank),
+  }));
 }

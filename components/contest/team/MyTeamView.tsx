@@ -228,7 +228,9 @@ export function MyTeamView() {
           <div className="relative min-w-0 overflow-x-clip">
             <TeamStandingsBoard
               teams={standings.teams}
+              divisions={standings.divisions}
               setLabels={standings.setLabels}
+              sets={standings.sets}
               groupPointsInsideMean={standings.groupPointsInsideMean}
               sideActivitiesFlat={standings.sideActivitiesFlat}
               highlightTeamId={session?.teamId ?? null}

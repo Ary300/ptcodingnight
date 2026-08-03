@@ -6,9 +6,11 @@ import { formatEventTime } from "@/lib/contest/event-time";
 import { TEAM_EXPANDED_ROW_COST, TEAM_VISIBLE_ROWS } from "./constants";
 import { Countdown } from "./Countdown";
 import { CrestWatermark } from "./CrestWatermark";
+import { resolveTabId, teamTabsFor, teamsForTab } from "./team-tabs";
 import { FrozenPlate } from "./FrozenPlate";
 import styles from "./leaderboard.module.css";
 import { drawnTeamRows, memberBlockBudget } from "./projector-rows";
+import { TeamDivisionTabs } from "./TeamDivisionTabs";
 import { TeamStandingsBoard } from "./TeamStandingsBoard";
 import { useTeamStandings } from "./useTeamStandings";
 
@@ -59,6 +61,12 @@ export interface TeamProjectorScreenProps {
    * contest that is running, which is the only thing a screen on a wall can mean.
    */
   contestId: string | null;
+  /**
+   * From `?division=`, so a kiosk URL can be bookmarked per division. Null or absent opens on
+   * the FIRST division's tab; an id that names no division in this contest falls back to that
+   * default rather than to an empty wall. A contest with no divisions has no tabs at all.
+   */
+  initialDivisionId?: string | null;
   /** Rows beyond this are not drawn; the footnote still counts them. */
   maxRows?: number;
 }
@@ -69,11 +77,24 @@ function timeOfDay(iso: string): string {
   return formatEventTime(new Date(parsed));
 }
 
+/** The tab strip's `aria-controls` target: the region the standings render into. */
+const TEAM_PANEL_ID = "team-standings-panel";
+
 export function TeamProjectorScreen({
   contestId,
+  initialDivisionId = null,
   maxRows = TEAM_VISIBLE_ROWS,
 }: TeamProjectorScreenProps) {
   const { standings, source, error } = useTeamStandings(contestId);
+
+  /**
+   * The tab the organizer ASKED for, which is not always the tab shown: the request is held
+   * verbatim and resolved against whatever divisions the current payload carries, so a
+   * `?division=` for a contest that has none, or an id deleted mid-night, degrades to the
+   * first division's tab instead of pinning an empty wall.
+   */
+  const [requestedTabId, setRequestedTabId] =
+    useState<string | null>(initialDivisionId);
 
   /**
    * The open teams, held HERE rather than in the board.
@@ -111,12 +132,27 @@ export function TeamProjectorScreen({
   // There is no longer a "no contest pinned" case. That branch used to tell the room to go and
   // edit the URL; a bare `/projector` now asks the API for the running contest, like the
   // individual board always has.
+  /*
+    ONLY division tabs, no merged view: each division fields its own teams against its own
+    question sets, so an all-divisions ranking would compare teams that never faced the same
+    questions. Teams without a division get their own final Unassigned tab, present only while
+    such teams exist. A contest with no divisions has no strip and the original single board.
+  */
+  const tabs =
+    standings === null ? [] : teamTabsFor(standings.divisions, standings.teams);
+  const activeTabId = resolveTabId(tabs, requestedTabId);
+  /* Filtered and re-ranked BEFORE the row budget below: the wall pays for what it draws. */
+  const teams =
+    standings === null ? [] : teamsForTab(standings.teams, activeTabId);
+
   const message =
     standings === null
       ? source === "error"
         ? (error ?? "Cannot reach the scoreboard.")
         : "Loading standings…"
-      : null;
+      : activeTabId !== null && teams.length === 0
+        ? "No teams in this division yet."
+        : null;
 
   const frozen = standings?.frozen === true;
 
@@ -128,7 +164,6 @@ export function TeamProjectorScreen({
     a remembered index would then put the wrong roster under the wrong row. IDs that vanished from
     the payload are ignored rather than reassigned to their old positions.
   */
-  const teams = standings === null ? [] : standings.teams;
   const openIndices = teams.flatMap((team, index) =>
     openTeamIds.has(team.teamId) ? [index] : [],
   );
@@ -236,6 +271,21 @@ export function TeamProjectorScreen({
             >
               {subtitle}
             </p>
+            {/*
+              INSIDE the header's centre track, never a new `.teamStage` child. The stage's grid
+              template is `auto auto minmax(0, 1fr) auto`, so an extra child between the header
+              and the plate band takes the plate band's `auto` row and shoves the table into the
+              `1fr` row's leftovers - the organizer screenshotted exactly that: the whole grid at
+              the bottom of the wall under a giant gap.
+            */}
+            {tabs.length > 0 && (
+              <TeamDivisionTabs
+                tabs={tabs}
+                activeTabId={activeTabId}
+                onSelect={setRequestedTabId}
+                panelId={TEAM_PANEL_ID}
+              />
+            )}
           </div>
 
           <div className={styles.teamHeadRight}>
@@ -243,37 +293,13 @@ export function TeamProjectorScreen({
           </div>
         </header>
 
-        {/*
-          Divisions rank INDIVIDUALLY (an Intermediate winner and an Advanced winner are
-          individual facts), while teams span divisions - so the team board never splits, and
-          each division's own board is one tab away instead. Document navigations, not state:
-          the projector is a kiosk, and a URL an organizer can bookmark per screen beats a
-          toggle that resets on reload.
-        */}
-        {standings !== null && standings.divisions.length > 0 && (
-          <nav aria-label="Boards" className={styles.boardSwitch}>
-            <span className={`${styles.boardSwitchItem} ${styles.boardSwitchActive}`} aria-current="page">
-              Teams
-            </span>
-            {standings.divisions.map((division) => (
-              <a
-                key={division.divisionId}
-                className={styles.boardSwitchItem}
-                href={`/projector?contest=${encodeURIComponent(standings.contestId)}&mode=individual&division=${encodeURIComponent(division.divisionId)}`}
-              >
-                {division.name}
-              </a>
-            ))}
-          </nav>
-        )}
-
         <div className={styles.teamPlateBand}>
           {frozen && standings !== null && (
             <FrozenPlate lifting={false} liftMs={0} asOfLabel={timeOfDay(standings.asOf)} />
           )}
         </div>
 
-        <div className={styles.teamBoard}>
+        <div id={TEAM_PANEL_ID} className={styles.teamBoard}>
           {message !== null ? (
             /*
               Exactly ONE `role="status"` is on screen at a time. The empty state and the
@@ -286,8 +312,17 @@ export function TeamProjectorScreen({
             </p>
           ) : (
             <TeamStandingsBoard
+              /*
+                Remounted per tab. The board's FLIP hook slides a team from its previous row to
+                its new one, and a tab switch gives every surviving team a new row for a reason
+                that is not an overtake; a fresh mount has no previous positions and animates
+                nothing. Poll updates keep the key, so real overtakes still slide.
+              */
+              key={activeTabId ?? "all-teams"}
               teams={visible}
               setLabels={standings?.setLabels ?? []}
+              sets={standings?.sets ?? []}
+              projectorTabId={activeTabId}
               groupPointsInsideMean={standings?.groupPointsInsideMean ?? true}
               sideActivitiesFlat={standings?.sideActivitiesFlat ?? true}
               variant="projector"
@@ -306,7 +341,7 @@ export function TeamProjectorScreen({
         </div>
 
         <div className={styles.teamFootnote}>
-          {standings !== null && standings.teams.length > topCount && (
+          {standings !== null && teams.length > topCount && (
             /*
               The DRAWN count, which is not always the top of the table: an open team below the cut
               is pulled up and drawn out of sequence, and the ranks then jump (1 2 3 4, then 7). The
@@ -315,8 +350,9 @@ export function TeamProjectorScreen({
               noticed.
             */
             <span>
+              {/* Counts THIS VIEW: on a division tab, "of N" is that division's field. */}
               Showing top <span className="numeric">{topCount}</span> of{" "}
-              <span className="numeric">{standings.teams.length}</span> teams
+              <span className="numeric">{teams.length}</span> teams
               {jumped && pulledOpenRanks.length > 0 && (
                 <>
                   , plus {pulledOpenRanks.length === 1 ? "rank" : "ranks"}{" "}

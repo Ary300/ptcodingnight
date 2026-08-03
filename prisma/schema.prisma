@@ -390,9 +390,17 @@ model Team {
   /// matters when a roster is disputed: a student-made team has a student who chose the name.
   createdByParticipantId String?
 
+  /// The division this team competes in, or null for a team open to anyone (the only kind that
+  /// existed before divisions had their own teams). The standings tabs group teams by it, and a
+  /// move onto a divisioned team adopts the team's division for the player unless the same
+  /// request says otherwise. `SetNull`, so deleting a division opens its teams up rather than
+  /// deleting rosters.
+  divisionId String?
+
   createdAt DateTime @default(now())
 
   contest        Contest            @relation(fields: [contestId], references: [id], onDelete: Cascade)
+  division Division? @relation(fields: [divisionId], references: [id], onDelete: SetNull)
   members        Participant[]
   sideActivities TeamSideActivity[]
   standings      Standing[]
@@ -478,6 +486,7 @@ model Division {
   participants    Participant[]
   standings       Standing[]
   problemSets     ProblemSet[]
+  teams           Team[]
 
   @@unique([contestId, name])
   @@index([contestId])

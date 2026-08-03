@@ -1084,13 +1084,22 @@ export function SetPlanner({
                 recorded in the audit log with your name on it.
               </p>
               <div className="flex flex-wrap gap-3">
+                {/* Width held by the widest label so the confirm cannot resize mid-press;
+                    the keyed span rises the new word in (the Run/Submit pattern). */}
                 <Button
                   type="button"
                   variant="danger"
+                  className="relative whitespace-nowrap"
                   disabled={applying}
                   onClick={() => void apply()}
                 >
-                  {applying ? "Building…" : "Replace the split"}
+                  <span aria-hidden="true" className="invisible">Replace the split</span>
+                  <span
+                    key={applying ? "busy" : "idle"}
+                    className="motion-swap-in absolute inset-0 flex items-center justify-center"
+                  >
+                    {applying ? "Building…" : "Replace the split"}
+                  </span>
                 </Button>
                 <Button
                   type="button"
@@ -1103,9 +1112,11 @@ export function SetPlanner({
             </div>
           ) : (
             <div className="flex flex-wrap items-center gap-3">
+              {/* Same width-holding as the confirm button above it. */}
               <Button
                 type="button"
                 variant="primary"
+                className="relative whitespace-nowrap"
                 disabled={applying || !buildable}
                 onClick={() => {
                   if (storedSets.length > 0) {
@@ -1115,7 +1126,13 @@ export function SetPlanner({
                   void apply();
                 }}
               >
-                {applying ? "Building…" : "Build these sets"}
+                <span aria-hidden="true" className="invisible">Build these sets</span>
+                <span
+                  key={applying ? "busy" : "idle"}
+                  className="motion-swap-in absolute inset-0 flex items-center justify-center"
+                >
+                  {applying ? "Building…" : "Build these sets"}
+                </span>
               </Button>
               <p
                 className="max-w-[60ch] text-ink/70"

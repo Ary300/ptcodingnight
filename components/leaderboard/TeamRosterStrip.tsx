@@ -4,6 +4,7 @@ import type { TeamStandingRow } from "@/lib/schemas/api";
 
 import styles from "./leaderboard.module.css";
 import { MEMBER_ROWS_FULL_BLOCK } from "./projector-rows";
+import type { SetColumn } from "./team-tabs";
 
 /**
  * Who added what, for ONE team, on the wall: THE SAME SHEET IN MINIATURE.
@@ -83,14 +84,15 @@ import { MEMBER_ROWS_FULL_BLOCK } from "./projector-rows";
 export interface TeamRosterStripProps {
   team: TeamStandingRow;
   /**
-   * The board's set columns, in board order.
+   * The board's set columns, in board order - header and match label together, so a member's
+   * points land under the same heading as the team's.
    *
    * Passed in rather than re-derived from `team.players`, and that is load-bearing: derived here it
    * would be the sets THIS team happens to be in, which is a shorter list than the board's on any
    * team that is not in every set, and every member cell would land one column left of where it
    * belongs.
    */
-  columns: readonly string[];
+  columns: readonly SetColumn[];
   /** Authoritative scoring setting; do not infer it from a zero-point group round. */
   groupPointsInsideMean: boolean;
   /** The viewer's own team, so the rail stays lit down the whole block rather than stopping. */
@@ -185,13 +187,13 @@ export function TeamRosterStrip({
 
   /** That player's points under that set, blank elsewhere. A blank is not a dash: see below. */
   const setCells = (
-    forSet: (label: string) => number | null,
+    forSet: (matchLabel: string) => number | null,
   ): React.ReactNode[] =>
-    columns.map((label) => {
-      const value = forSet(label);
+    columns.map((column) => {
+      const value = forSet(column.match);
       return (
         <td
-          key={label}
+          key={column.match}
           className={`numeric ${styles.memberCell} ${styles.memberNumber}`}
         >
           {/*

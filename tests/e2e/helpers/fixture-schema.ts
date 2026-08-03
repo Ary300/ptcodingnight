@@ -78,9 +78,21 @@ export const ContestFixtureSchema = z.object({
   /**
    * Teams. **The unit that gets ranked**, and the divisor in every team score, so a fixture with
    * the wrong roster produces the wrong expected numbers rather than a cosmetic difference.
+   *
+   * `divisionKey` mirrors `Team.divisionId`: each division fields its own teams, and the
+   * standings tabs group teams by it. A team without one is "Unassigned" — legal, but it lives
+   * on the Unassigned tab, not under any division. This fixture shipped every team divisionless
+   * and the symptom surfaced on the projector: the default division tab said "No teams in this
+   * division yet" while both teams sat behind the Unassigned tab.
    */
   teams: z
-    .array(z.object({ key: z.string().min(1), name: z.string().min(1) }))
+    .array(
+      z.object({
+        key: z.string().min(1),
+        name: z.string().min(1),
+        divisionKey: z.string().min(1).optional(),
+      }),
+    )
     .default([]),
   /**
    * Round 1 parallel sets, labelled "A".."D", each belonging to a division.

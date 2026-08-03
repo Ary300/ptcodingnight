@@ -123,8 +123,14 @@ test.describe("an organizer moves a participant, and the mean follows", () => {
     expect(from, "fixture has no team with two players and a score").toBeDefined();
     if (from === undefined) return;
 
-    const to = boardBefore.teams.find((team) => team.teamId !== from.teamId);
-    expect(to).toBeDefined();
+    // Same DIVISION, because divisions field their own teams: a cross-division destination would
+    // adopt the mover into the new division, and the mid-contest set guard refuses that with a
+    // 409 ("would change this student's problem set after the contest started") — its own
+    // behavior, covered below, not the roster arithmetic this spec is about.
+    const to = boardBefore.teams.find(
+      (team) => team.teamId !== from.teamId && team.divisionId === from.divisionId,
+    );
+    expect(to, "fixture has no second team in the scoring team's division").toBeDefined();
     if (to === undefined) return;
 
     // RANDOM_ASSIGNED teams may not contain the same set twice. Pick the member whose current set
@@ -366,9 +372,14 @@ test.describe("one move assigns the team and the division together", () => {
     });
     expect(row.teamId).toBe(team.teamId);
     expect(row.divisionId).toBe(advanced);
-    // The set is dealt AFTER the division lands, so it is an ADVANCED set - the fixture has
-    // exactly one, which pins the order of operations: division first, then the deal.
-    expect(row.chosenSetId).toBe(seeded.problemSetIds.get("setAdvA"));
+    // The set is dealt AFTER the division lands, so it is an ADVANCED set. Which advanced set is
+    // the seeded deal's business; the pinned property is the order of operations - division
+    // first, then the deal - and an intermediate set here is the only way to get it wrong.
+    const advancedSets = [
+      seeded.problemSetIds.get("setAdvA"),
+      seeded.problemSetIds.get("setAdvB"),
+    ];
+    expect(advancedSets).toContain(row.chosenSetId);
   });
 
   test("a move with no divisionId leaves the division alone", async ({ playwright }) => {
@@ -440,5 +451,143 @@ test.describe("one move assigns the team and the division together", () => {
       where: { id: seeded.contestId },
       data: { state: "RUNNING" },
     });
+  });
+});
+
+test.describe("teams belong to divisions", () => {
+  test("creating a team with a division stores it, and the roster names it", async () => {
+    const advanced = seeded.divisionIds.get("advanced");
+    expect(advanced, "fixture has no advanced division").toBeDefined();
+    if (advanced === undefined) return;
+
+    const name = uniqueName("Divisioned");
+    const created = await okTeam(
+      await admin.createTeamAsAdminRaw({ name, divisionId: advanced }),
+    );
+
+    const roster = await okRoster(await admin.rosterRaw());
+    const row = roster.teams.find((team) => team.teamId === created.teamId);
+    expect(row, "the created team is missing from the roster").toBeDefined();
+    // Both the id (what a form preselects) and the name (what the card shows) come back.
+    expect(row?.divisionId).toBe(advanced);
+    expect(row?.divisionName).toBe("Advanced");
+  });
+
+  test("a division from another contest is refused at creation", async () => {
+    const bogus = await readEnvelope(
+      await admin.createTeamAsAdminRaw({
+        name: uniqueName("WrongDivision"),
+        divisionId: "not-a-division-of-this-contest",
+      }),
+    );
+    expect(bogus.status).toBeGreaterThanOrEqual(400);
+    expect(bogus.status).toBeLessThan(500);
+  });
+
+  test("moving onto a divisioned team with no explicit divisionId adopts the team's division and deals its set", async ({
+    playwright,
+  }) => {
+    await openFormation(seeded.contestId);
+    const student = await newCompetitor(playwright, uniqueName("Adopted"));
+
+    const advanced = seeded.divisionIds.get("advanced");
+    expect(advanced, "fixture has no advanced division").toBeDefined();
+    if (advanced === undefined) return;
+
+    /*
+      SCHEDULED for the duration, exactly as in the one-form division-change spec above: the
+      adoption re-deals the set, and a set change on a RUNNING contest is deliberately refused.
+      Adoption before the contest starts is the normal path this models.
+    */
+    await testDb().contest.update({
+      where: { id: seeded.contestId },
+      data: { state: "SCHEDULED" },
+    });
+    try {
+      const team = await okTeam(
+        await admin.createTeamAsAdminRaw({
+          name: uniqueName("AdoptTeam"),
+          divisionId: advanced,
+        }),
+      );
+
+      // Deliberately NO divisionId on the move: the team already says which division this is.
+      const moved = await readOk(
+        await admin.moveParticipantRaw({
+          participantId: student.participantId,
+          teamId: team.teamId,
+        }),
+      );
+      expect(moved.status).toBeLessThan(300);
+
+      const row = await testDb().participant.findUniqueOrThrow({
+        where: { id: student.participantId },
+        select: { divisionId: true, teamId: true, chosenSetId: true },
+      });
+      expect(row.teamId).toBe(team.teamId);
+      // The player followed the team out of Intermediate.
+      expect(row.divisionId).toBe(advanced);
+      // And the set was dealt AFTER the adoption landed, so it is an ADVANCED set. Which one is
+      // the seeded deal's business; the pinned property is the order of operations, just as on
+      // the explicit path - an intermediate set here is the only way to get it wrong.
+      expect([
+        seeded.problemSetIds.get("setAdvA"),
+        seeded.problemSetIds.get("setAdvB"),
+      ]).toContain(row.chosenSetId);
+
+      // The adoption writes the same audit row as an explicit division change, with a reason
+      // that says the division followed the team rather than being chosen per player.
+      const audit = await testDb().auditLog.findFirst({
+        where: {
+          action: "participant.division_set",
+          entity: `Participant:${student.participantId}`,
+        },
+        orderBy: { at: "desc" },
+        select: { reason: true, after: true },
+      });
+      expect(audit).not.toBeNull();
+      expect(audit?.reason ?? "").toContain("follows the team");
+    } finally {
+      await testDb().contest.update({
+        where: { id: seeded.contestId },
+        data: { state: "RUNNING" },
+      });
+    }
+  });
+
+  test("an explicit divisionId on the move still wins over the team's", async ({
+    playwright,
+  }) => {
+    await openFormation(seeded.contestId);
+    const student = await newCompetitor(playwright, uniqueName("ExplicitWins"));
+
+    const advanced = seeded.divisionIds.get("advanced");
+    const intermediate = seeded.divisionIds.get("intermediate");
+    expect(advanced).toBeDefined();
+    expect(intermediate).toBeDefined();
+    if (advanced === undefined || intermediate === undefined) return;
+
+    const team = await okTeam(
+      await admin.createTeamAsAdminRaw({
+        name: uniqueName("ExplicitTeam"),
+        divisionId: advanced,
+      }),
+    );
+
+    // The student is already Intermediate; saying so explicitly must beat the team's Advanced.
+    await readOk(
+      await admin.moveParticipantRaw({
+        participantId: student.participantId,
+        teamId: team.teamId,
+        divisionId: intermediate,
+      }),
+    );
+
+    const row = await testDb().participant.findUniqueOrThrow({
+      where: { id: student.participantId },
+      select: { divisionId: true, teamId: true },
+    });
+    expect(row.teamId).toBe(team.teamId);
+    expect(row.divisionId).toBe(intermediate);
   });
 });

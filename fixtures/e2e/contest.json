@@ -255,11 +255,18 @@
   "teams": [
     {
       "key": "panthers",
-      "name": "E2E Panthers"
+      "name": "E2E Panthers",
+      "divisionKey": "intermediate"
+    },
+    {
+      "key": "otters",
+      "name": "E2E Otters",
+      "divisionKey": "intermediate"
     },
     {
       "key": "cubs",
-      "name": "E2E Cubs"
+      "name": "E2E Cubs",
+      "divisionKey": "advanced"
     }
   ],
   "problemSets": [
@@ -276,6 +283,11 @@
     {
       "key": "setAdvA",
       "label": "A",
+      "divisionKey": "advanced"
+    },
+    {
+      "key": "setAdvB",
+      "label": "B",
       "divisionKey": "advanced"
     }
   ],

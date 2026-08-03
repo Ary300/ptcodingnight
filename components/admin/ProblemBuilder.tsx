@@ -481,7 +481,15 @@ export function ProblemBuilder({ edit }: ProblemBuilderProps = {}) {
           <ol className="flex gap-2 overflow-x-auto lg:flex-col lg:overflow-visible">
             {STEPS.map((entry, index) => {
               const active = step === entry.key;
+              /*
+                A check means BEHIND YOU AND SATISFIED. The step being worked on always shows
+                its number: the organizer looked at "Step 2 of 3", then at a rail whose second
+                entry wore a check mark instead of a 2, and reasonably asked what was done about
+                a step they had not finished reading. Visited-and-satisfied was the first fix;
+                excluding the ACTIVE step is the second half of the same truth.
+              */
               const done =
+                !active &&
                 visited.has(entry.key) &&
                 ((entry.key === "details" && detailsComplete) ||
                   (entry.key === "starter" && starterComplete) ||
@@ -493,7 +501,12 @@ export function ProblemBuilder({ edit }: ProblemBuilderProps = {}) {
                     type="button"
                     onClick={() => goToStep(entry.key)}
                     aria-current={active ? "step" : undefined}
-                    className={`flex w-full items-center gap-3 border-l-2 px-3 py-3 text-left transition-colors ${
+                    /* `duration-[var(--motion-swap)]`: the bare `transition-colors` ran at
+                       Tailwind's default 150ms, off the scale. A whole rail row is a large
+                       surface whose only hover channel is colour, so it takes the swap
+                       duration rather than the press one - a big ground repainting in 100ms
+                       reads as a flicker rather than a response. */
+                    className={`flex w-full items-center gap-3 border-l-2 px-3 py-3 text-left transition-colors duration-[var(--motion-swap)] ${
                       active
                         ? "border-panther bg-paper"
                         : "border-transparent hover:bg-paper"
@@ -581,10 +594,15 @@ export function ProblemBuilder({ edit }: ProblemBuilderProps = {}) {
           several times per question) and once more on the "Create and add another" reset, whose
           receipt lands at the top the same scroll already goes to. Without the key the class
           would animate exactly once, on mount.
+
+          `motion-panel-in`, not `motion-swap-in`: this is a whole surface replacing a whole
+          surface, and at the swap duration the organizer read the step change as "instant or
+          too fast". Bigger things move slower is the scale's own rule; the panel step is the
+          duration built for exactly this size of arrival.
         */}
         <div
           key={`${step}-${String(resetCount)}`}
-          className="motion-swap-in flex flex-col gap-group p-5 sm:p-8"
+          className="motion-panel-in flex flex-col gap-group p-5 sm:p-8"
         >
           {step === "details" && (
             <DetailsStep
@@ -730,8 +748,12 @@ export function ProblemBuilder({ edit }: ProblemBuilderProps = {}) {
                     Create and add another
                   </Button>
                 )}
+                {/* Width held by the resting label (the wider of the pair in both modes), so
+                    the save cannot resize the control mid-press; the keyed span rises the new
+                    word in rather than flickering it. */}
                 <Button
                   type="button"
+                  className="relative whitespace-nowrap"
                   disabled={
                     submitting ||
                     !detailsComplete ||
@@ -740,13 +762,21 @@ export function ProblemBuilder({ edit }: ProblemBuilderProps = {}) {
                   }
                   onClick={() => void save(false)}
                 >
-                  {edit === undefined
-                    ? submitting
-                      ? "Creating..."
-                      : "Create question"
-                    : submitting
-                      ? "Saving..."
-                      : "Save changes"}
+                  <span aria-hidden="true" className="invisible">
+                    {edit === undefined ? "Create question" : "Save changes"}
+                  </span>
+                  <span
+                    key={submitting ? "busy" : "idle"}
+                    className="motion-swap-in absolute inset-0 flex items-center justify-center"
+                  >
+                    {edit === undefined
+                      ? submitting
+                        ? "Creating..."
+                        : "Create question"
+                      : submitting
+                        ? "Saving..."
+                        : "Save changes"}
+                  </span>
                 </Button>
               </>
             )}
@@ -870,6 +900,9 @@ function DetailsStep({
   epsilon: string;
   setEpsilon: (value: string) => void;
 }) {
+  /** Counts opens of the judge-settings disclosure; keying the body on it re-runs its entrance. */
+  const [advancedOpens, setAdvancedOpens] = useState(0);
+
   return (
     <>
       <BuilderSection
@@ -938,14 +971,30 @@ function DetailsStep({
           question: 2 seconds and 256 MB judge the whole current bank. Open it for the question
           that legitimately needs more, not to tune numbers that were never the problem.
         */}
-        <details className="rounded-panel border border-rule-hair">
+        <details
+          className="rounded-panel border border-rule-hair"
+          onToggle={(event) => {
+            if (event.currentTarget.open) setAdvancedOpens((n) => n + 1);
+          }}
+        >
           <summary
             className="cursor-pointer px-4 py-3 font-semibold"
             style={{ fontSize: "var(--text-sm)" }}
           >
             Advanced judge settings
           </summary>
-          <div className="flex flex-col gap-group border-t border-rule-hair p-4">
+          {/*
+            The disclosure used to land its whole settings panel in the same frame as the click.
+            `motion-panel-in` gives the arrival the panel rise; the `key` is what makes it run on
+            EVERY open rather than only the first, because a closed details' children keep their
+            boxes (content-visibility), so the keyframe otherwise plays to its end while hidden —
+            globals.css withholds it while closed, and the remount restarts it per open. The
+            limits survive the remount because their state lives in the builder.
+          */}
+          <div
+            key={advancedOpens}
+            className="motion-panel-in flex flex-col gap-group border-t border-rule-hair p-4"
+          >
             <div className="grid gap-group sm:grid-cols-2">
               <TextInput
                 label="Time limit (ms)"
@@ -989,7 +1038,10 @@ function DetailsStep({
                     type="button"
                     onClick={() => setComparatorKind(option.value)}
                     aria-pressed={comparatorKind === option.value}
-                    className={`rounded border px-4 py-1.5 font-semibold ${
+                    /* The press token on the repaint: the pressed state used to land in the
+                       same frame as the click, which the eye cannot follow. Same grammar as
+                       ui/Button, colours only. */
+                    className={`rounded border px-4 py-1.5 font-semibold transition-[color,background-color,border-color] duration-[var(--motion-press)] ${
                       comparatorKind === option.value
                         ? "border-panther bg-panther text-paper"
                         : "border-rule-edge text-ink/75 hover:border-rule-firm"
@@ -1100,10 +1152,12 @@ function StarterStep({
       )}
 
       {/* Checking the box lands a whole sub-form in one frame: a genuine surface arrival, so it
-          rises in. Unchecking just removes it. The wrapper div exists to give the fragment's
-          contents one entrance instead of three. */}
+          rises in at the panel duration - its own comment already called it a surface, and the
+          swap step it wore anyway is what read as "too fast" from the room. Unchecking just
+          removes it. The wrapper div exists to give the fragment's contents one entrance
+          instead of three. */}
       {!signatureLocked && wantStarter && (
-        <div className="motion-swap-in flex flex-col gap-group">
+        <div className="motion-panel-in flex flex-col gap-group">
           <div className="grid gap-group sm:grid-cols-2">
             <TextInput
               label="Function name"
@@ -1622,21 +1676,44 @@ function TestsStep({
         />
 
         <div className="flex flex-wrap items-center gap-2">
+          {/*
+            Both buttons are sized by their WIDEST label (the Run/Submit pattern from
+            ProblemWorkspace): the swap to the busy wording resized the control under the
+            organizer's cursor mid-press. Measured at --text-sm semibold: "Generate expected
+            outputs" 212px against 186px busy, but "Judging every case…" is 156px against
+            "Validate question" at 135px - so the second button's width holder is its BUSY
+            label, and eyeballing the resting one would have shipped the jump anyway. The keyed
+            span makes each label swap a rise instead of a flicker.
+          */}
           <Button
             type="button"
             variant="secondary"
+            className="relative whitespace-nowrap"
             disabled={generateBusy || validateBusy || referenceCode.trim() === "" || cases.length === 0}
             onClick={() => void generateOutputs()}
           >
-            {generateBusy ? "Running the reference…" : "Generate expected outputs"}
+            <span aria-hidden="true" className="invisible">Generate expected outputs</span>
+            <span
+              key={generateBusy ? "busy" : "idle"}
+              className="motion-swap-in absolute inset-0 flex items-center justify-center"
+            >
+              {generateBusy ? "Running the reference…" : "Generate expected outputs"}
+            </span>
           </Button>
           {editSlug !== null && (
             <Button
               type="button"
+              className="relative whitespace-nowrap"
               disabled={generateBusy || validateBusy}
               onClick={() => void validateQuestion()}
             >
-              {validateBusy ? "Judging every case…" : "Validate question"}
+              <span aria-hidden="true" className="invisible">Judging every case…</span>
+              <span
+                key={validateBusy ? "busy" : "idle"}
+                className="motion-swap-in absolute inset-0 flex items-center justify-center"
+              >
+                {validateBusy ? "Judging every case…" : "Validate question"}
+              </span>
             </Button>
           )}
           {editSlug === null && (
@@ -2037,7 +2114,8 @@ function StarterPreview({ starter }: { starter: PreviewStarter }) {
                   type="button"
                   onClick={() => setLanguage(id)}
                   aria-pressed={language === id}
-                  className={`rounded border px-3 py-1.5 font-semibold ${
+                  /* Press-token repaint, as on the comparator and difficulty chips. */
+                  className={`rounded border px-3 py-1.5 font-semibold transition-[color,background-color,border-color] duration-[var(--motion-press)] ${
                     language === id
                       ? "border-panther bg-panther text-paper"
                       : "border-rule-edge text-ink/75 hover:border-rule-firm"
@@ -2155,7 +2233,8 @@ function DifficultyPicker({
             type="button"
             onClick={() => onChange(option.value)}
             aria-pressed={value === option.value}
-            className={`rounded border px-4 py-1.5 font-semibold ${
+            /* Press-token repaint, as on the comparator chips. */
+            className={`rounded border px-4 py-1.5 font-semibold transition-[color,background-color,border-color] duration-[var(--motion-press)] ${
               value === option.value
                 ? "border-panther bg-panther text-paper"
                 : "border-rule-edge text-ink/75 hover:border-rule-firm"

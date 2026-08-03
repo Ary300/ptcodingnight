@@ -30,6 +30,13 @@ export interface ContestPhase {
   readonly contestId: string;
   /** The contest's own name — "Park Tudor Coding Night". Not reachable from any competitor API. */
   readonly name: string;
+  /**
+   * True for the permanent practice arena — the contest sign-in falls back to when nothing real
+   * is open. The lobby labels it in plain words so nobody mistakes the sample questions for the
+   * night's contest, and it suppresses every "time remaining" framing: the arena's window ends
+   * in 2100, and a seventy-year countdown reads as a bug.
+   */
+  readonly isPractice: boolean;
   readonly phase: ContestPhaseName;
   /** ISO instants. The countdown ticks against these. */
   readonly startsAt: string;

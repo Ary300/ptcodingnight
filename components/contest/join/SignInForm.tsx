@@ -69,6 +69,8 @@ export function SignInForm({
 
   const [passwordBusy, setPasswordBusy] = useState(false);
   const [passcodeBusy, setPasscodeBusy] = useState(false);
+  /** Counts opens of the passcode disclosure; keying the form on it re-runs the entrance. */
+  const [passcodeOpens, setPasscodeOpens] = useState(0);
 
   const studentSignInAvailable =
     providerAvailability.google || providerAvailability.github;
@@ -408,7 +410,13 @@ export function SignInForm({
         `open` is forced while there is a passcode error, so a refusal cannot be reported into a
         collapsed section — which is what would happen to anyone who submitted and then closed it.
       */}
-      <details className="mt-6 border-t border-rule-hair pt-4" open={passcodeError !== null}>
+      <details
+        className="mt-6 border-t border-rule-hair pt-4"
+        open={passcodeError !== null}
+        onToggle={(event) => {
+          if (event.currentTarget.open) setPasscodeOpens((n) => n + 1);
+        }}
+      >
         <summary
           className="cursor-pointer text-ink/70 hover:text-ink"
           style={{ fontSize: "var(--text-xs)" }}
@@ -416,7 +424,23 @@ export function SignInForm({
           Organizer passcode
         </summary>
 
-        <form className="mt-3 flex flex-col gap-3" onSubmit={(event) => void submitPasscode(event)}>
+        {/*
+          `motion-panel-in` because opening the disclosure lands a whole form in one frame,
+          and an expansion that completes in the same frame as the click reads as a glitch.
+          Transform only, per the entrance rule; the controls are live from the first frame.
+
+          The `key` remounts the form on each open, which is what actually restarts the
+          entrance. Measured without it: a closed details' children keep their boxes
+          (content-visibility, not display:none), so the keyframe ran to its end while hidden
+          and reopening showed the dead last frame. globals.css withholds the animation while
+          closed, which covers the hidden first mount; the key covers every open after it. The
+          typed passcode survives the remount because its state lives in this component.
+        */}
+        <form
+          key={passcodeOpens}
+          className="motion-panel-in mt-3 flex flex-col gap-3"
+          onSubmit={(event) => void submitPasscode(event)}
+        >
           <label className="flex flex-col gap-1" style={{ fontSize: "var(--text-sm)" }}>
             Passcode
             <input

@@ -281,12 +281,25 @@ export async function adminCreateTeam(
   contestId: string,
   actor: string,
   name: string,
+  /** The division this team competes in; null (the default) makes a team open to anyone. */
+  divisionId: string | null = null,
 ): Promise<TeamView> {
   const trimmed = name.trim();
   const result = await prisma.$transaction(async (tx) => {
     await lockContestMutations(tx, contestId);
     const contest = await contestForTeams(contestId, tx);
     assertCanMutateStandingsInputs(contest, new Date());
+
+    // The contest's own division list is already in hand, so membership is checked against it
+    // rather than by a second query: the id comes from the request body, and nothing about the
+    // URL constrains it to this contest.
+    let division: { id: string; name: string } | null = null;
+    if (divisionId !== null) {
+      division = contest.divisions.find((candidate) => candidate.id === divisionId) ?? null;
+      if (division === null) {
+        throw new ValidationError("That division belongs to a different contest");
+      }
+    }
 
     const existing = await tx.team.findFirst({
       where: { contestId, name: trimmed },
@@ -298,7 +311,7 @@ export async function adminCreateTeam(
 
     const joinCode = await unusedTeamCode(tx, contestId);
     const created = await tx.team.create({
-      data: { contestId, name: trimmed, joinCode, createdByParticipantId: null },
+      data: { contestId, name: trimmed, joinCode, createdByParticipantId: null, divisionId },
       select: { id: true },
     });
     await writeAudit(
@@ -306,7 +319,13 @@ export async function adminCreateTeam(
         actor,
         action: AUDIT_ACTIONS.teamCreated,
         entity: `Team:${created.id}`,
-        after: { contestId, name: trimmed, createdBy: "organizer" },
+        after: {
+          contestId,
+          name: trimmed,
+          createdBy: "organizer",
+          divisionId,
+          divisionName: division?.name ?? null,
+        },
       },
       tx,
     );
@@ -421,21 +440,39 @@ export async function adminMoveParticipant(
     });
     if (participant === null) throw new NotFoundError("Participant");
 
-    const divisionChanges =
-      divisionId !== undefined && divisionId !== participant.divisionId;
-
-    let target: { id: string; name: string } | null = null;
+    let target: { id: string; name: string; divisionId: string | null } | null = null;
     if (teamId !== null) {
       const found = await tx.team.findUnique({
         where: { id: teamId },
-        select: { id: true, name: true, contestId: true },
+        select: { id: true, name: true, contestId: true, divisionId: true },
       });
       if (found === null) throw new NotFoundError("Team");
       if (found.contestId !== participant.contestId) {
         throw new ValidationError("That team belongs to a different contest");
       }
-      target = { id: found.id, name: found.name };
+      target = { id: found.id, name: found.name, divisionId: found.divisionId };
     }
+
+    /*
+      ADOPTION: a move onto a divisioned team with no division stated follows the team.
+
+      Divisions field their own teams, so "put them on the Advanced A team" already says which
+      division the player is meant to be in - asking the organizer to say it twice invites the
+      two answers to disagree. An EXPLICIT `divisionId` in the request still wins, and a move
+      onto an OPEN team (division null) never strips a division the player already has. The
+      adopted id feeds the same `divisionChanges` machinery as an explicit one, so the audit
+      row, the validation and the deal-after-division ordering are all shared rather than
+      duplicated.
+    */
+    const adoptedDivisionId =
+      divisionId === undefined && target !== null && target.divisionId !== null
+        ? target.divisionId
+        : undefined;
+    const effectiveDivisionId = divisionId !== undefined ? divisionId : adoptedDivisionId;
+
+    const divisionChanges =
+      effectiveDivisionId !== undefined && effectiveDivisionId !== participant.divisionId;
+    const followedTeam = divisionChanges && divisionId === undefined;
 
     // Same team AND same division is a no-op worth refusing; same team with a NEW division is
     // the one-form flow working as intended (the organizer re-submitted the row to change the
@@ -449,9 +486,9 @@ export async function adminMoveParticipant(
 
     if (divisionChanges) {
       let targetDivision: { id: string; name: string } | null = null;
-      if (divisionId != null) {
+      if (effectiveDivisionId != null) {
         const found = await tx.division.findUnique({
-          where: { id: divisionId },
+          where: { id: effectiveDivisionId },
           select: { id: true, name: true, contestId: true },
         });
         if (found === null) throw new NotFoundError("Division");
@@ -462,11 +499,13 @@ export async function adminMoveParticipant(
       }
       await tx.participant.update({
         where: { id: participantId },
-        data: { divisionId: divisionId ?? null },
+        data: { divisionId: effectiveDivisionId ?? null },
       });
       // Its own audit row, the same one the standalone division action writes: a reader asking
       // "why is this student suddenly Advanced" should find the answer under the same action
-      // name however the change was made.
+      // name however the change was made. When the division was adopted from the team rather
+      // than stated, the reason says so, because "who decided this" is the question the row is
+      // for and here the answer is the team's setup rather than a per-player choice.
       await writeAudit(
         {
           actor,
@@ -477,11 +516,15 @@ export async function adminMoveParticipant(
             divisionName: participant.division?.name ?? null,
           },
           after: {
-            divisionId: divisionId ?? null,
+            divisionId: effectiveDivisionId ?? null,
             divisionName: targetDivision?.name ?? null,
             displayName: participant.displayName,
           },
-          reason,
+          reason: followedTeam
+            ? [reason, "division follows the team"]
+                .filter((part) => part !== "")
+                .join("; ")
+            : reason,
         },
         tx,
       );
@@ -1160,6 +1203,9 @@ export async function adminRoster(contestId: string): Promise<{
   readonly teams: readonly (Omit<TeamView, "members"> & {
     readonly memberCount: number;
     readonly members: readonly RosterMember[];
+    /** The division this team fields for, or null for a team open to anyone. */
+    readonly divisionId: string | null;
+    readonly divisionName: string | null;
   })[];
   readonly unassigned: readonly RosterMember[];
 }> {
@@ -1208,6 +1254,8 @@ export async function adminRoster(contestId: string): Promise<{
         id: true,
         name: true,
         joinCode: true,
+        divisionId: true,
+        division: { select: { name: true } },
         members: { select: memberSelect, orderBy: { id: "asc" } },
       },
       orderBy: [{ name: "asc" }, { id: "asc" }],
@@ -1238,6 +1286,8 @@ export async function adminRoster(contestId: string): Promise<{
       maxTeamSize: contest.maxTeamSize,
       memberCount: team.members.length,
       members: team.members.map(toMember),
+      divisionId: team.divisionId,
+      divisionName: team.division?.name ?? null,
     })),
     unassigned: unassigned.map(toMember),
   };

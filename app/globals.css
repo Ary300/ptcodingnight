@@ -265,6 +265,17 @@ dialog.motion-panel-in[open]::backdrop {
   animation: motion-backdrop-in var(--motion-panel) var(--motion-ease) both;
 }
 
+/* A `<details>` disclosure has the dialog's problem in the other direction: the UA keeps a
+   closed details' children RENDERED (content-visibility, not display:none), so a keyframe on
+   the content runs to completion while hidden and the click that opens it shows only the dead
+   last frame — measured on the sign-in passcode form, one 6px frame then nothing. Withholding
+   the animation while closed makes every open start it fresh, exactly as the [open] rule above
+   does for dialogs. */
+details:not([open]) > .motion-panel-in,
+details:not([open]) > .motion-swap-in {
+  animation: none;
+}
+
 /* Staggered list entrance: each row lands 35ms after the one above, capped at
    ten rows so a long list does not turn into a slideshow. One class on the
    PARENT; the children need `motion-swap-in`. */

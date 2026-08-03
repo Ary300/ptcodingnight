@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useLayoutEffect, useRef, useState } from "react";
+import { Fragment, useId, useLayoutEffect, useRef, useState } from "react";
 import { formatEventTime } from "@/lib/contest/event-time";
 
 import type {
@@ -9,6 +9,17 @@ import type {
   TeamStandingRow,
 } from "@/lib/schemas/api";
 
+import {
+  columnsForTab,
+  resolveTabId,
+  teamTabsFor,
+  teamsForTab,
+  UNASSIGNED_TAB,
+  type DivisionOption,
+  type SetColumn,
+  type SetFact,
+} from "./team-tabs";
+import { TeamDivisionTabs } from "./TeamDivisionTabs";
 import { TeamRosterStrip } from "./TeamRosterStrip";
 import styles from "./leaderboard.module.css";
 
@@ -98,6 +109,29 @@ export interface TeamStandingsBoardProps {
   teams: readonly TeamStandingRow[];
   /** Contest-configured columns, including currently unassigned sets. */
   setLabels: readonly string[];
+  /**
+   * INTERACTIVE surfaces only: the contest's divisions, from the payload's `divisions` array.
+   * Non-empty puts the division tab strip above the table - one tab per division, no merged
+   * view, because each division fields its own teams against its own sets - and the board
+   * filters and re-ranks itself (via `lib/scoring`'s `rankTeamsWithinDivision`; ranks are never
+   * derived here). The PROJECTOR never passes this - the wall's strip lives in
+   * `TeamProjectorScreen`, which must filter BEFORE its row budget is spent, so a second strip
+   * here would be a duplicate control fighting the one that owns the rows.
+   */
+  divisions?: readonly DivisionOption[];
+  /**
+   * The payload's structured `sets` array. On a division tab the columns are only that
+   * division's sets, headed by the bare label and matched by the qualified one; without this
+   * the board falls back to the flat `setLabels` on every view, which is the undivided
+   * contest's correct rendering and a divisioned contest's sprawl.
+   */
+  sets?: readonly SetFact[];
+  /**
+   * Projector only: the tab `TeamProjectorScreen`'s own strip has active, so the columns match
+   * the pre-filtered `teams` the screen hands over. Interactive surfaces leave it unset and the
+   * board resolves its own tab.
+   */
+  projectorTabId?: string | null;
   groupPointsInsideMean: boolean;
   sideActivitiesFlat: boolean;
   /** Projector mode: larger type, public roster rows, and externally budgeted expansion. */
@@ -235,14 +269,12 @@ interface SetCell {
 }
 
 /**
- * The set labels to use as columns, across every team on the board.
- *
- * Sorted, and derived from the data rather than assumed to be A–D: a contest can be configured
- * with a different number of sets, and a column that exists because a constant said so would be
- * empty on every row without anyone noticing it was wrong.
+ * One team's cell under one column. Players land in a column when their `chosenSetLabel` equals
+ * the column's MATCH label - the payload's `qualifiedLabel`, which is what the rows speak - and
+ * never its printed header, which on a division tab is only the bare letter.
  */
-function cellFor(team: TeamStandingRow, label: string): SetCell | null {
-  const players = team.players.filter((p) => p.chosenSetLabel === label);
+function cellFor(team: TeamStandingRow, column: SetColumn): SetCell | null {
+  const players = team.players.filter((p) => p.chosenSetLabel === column.match);
   if (players.length === 0) return null;
 
   return {
@@ -283,13 +315,25 @@ function anyPenalty(teams: readonly TeamStandingRow[]): boolean {
  * team slides as a unit rather than its members chasing it. First render animates nothing:
  * there is no previous position to travel from. Reduced motion flattens the transition to 0.01ms
  * globally (globals.css), so this degrades to today's instant redraw exactly where it should.
+ *
+ * `epoch` names the VIEW the positions belong to - the active division tab. When it changes,
+ * the commit records the new positions and animates nothing: a team that is rank 4 on the full
+ * board and rank 1 in its division has not overtaken anybody, and sliding it three rows would
+ * announce an overtake that never happened.
  */
-function useRankSlide(tableRef: React.RefObject<HTMLTableElement | null>) {
+function useRankSlide(
+  tableRef: React.RefObject<HTMLTableElement | null>,
+  epoch: string,
+) {
   const previousTops = useRef<Map<string, number>>(new Map());
+  const previousEpoch = useRef<string>(epoch);
 
   useLayoutEffect(() => {
     const table = tableRef.current;
     if (table === null) return;
+
+    const sameView = previousEpoch.current === epoch;
+    previousEpoch.current = epoch;
 
     const groups = table.querySelectorAll<HTMLTableSectionElement>("[data-flip-team]");
     const nextTops = new Map<string, number>();
@@ -300,6 +344,7 @@ function useRankSlide(tableRef: React.RefObject<HTMLTableElement | null>) {
       const top = group.getBoundingClientRect().top;
       nextTops.set(key, top);
 
+      if (!sameView) continue;
       const previous = previousTops.current.get(key);
       if (previous === undefined) continue;
       const delta = previous - top;
@@ -324,6 +369,9 @@ function useRankSlide(tableRef: React.RefObject<HTMLTableElement | null>) {
 export function TeamStandingsBoard({
   teams,
   setLabels,
+  divisions = [],
+  sets = [],
+  projectorTabId = null,
   groupPointsInsideMean,
   sideActivitiesFlat,
   variant = "interactive",
@@ -333,12 +381,35 @@ export function TeamStandingsBoard({
   memberBlockRows,
 }: TeamStandingsBoardProps) {
   const rankSlideTable = useRef<HTMLTableElement | null>(null);
-  useRankSlide(rankSlideTable);
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
   const [expandedPlayers, setExpandedPlayers] = useState<ReadonlySet<string>>(
     new Set(),
   );
+  const [requestedTabId, setRequestedTabId] = useState<string | null>(null);
+  const panelId = useId();
   const projector = variant === "projector";
+  /* Belt and braces: the wall's strip is TeamProjectorScreen's, whatever this was handed. */
+  const tabs = projector ? [] : teamTabsFor(divisions, teams);
+  /*
+    The tab the board opens on before anyone clicks: the viewer's own division when the caller
+    highlighted their team, so a student on /team is not greeted by a tab their team is not on.
+    A requested tab, once clicked, always wins.
+  */
+  const highlighted =
+    highlightTeamId === null
+      ? undefined
+      : teams.find((team) => team.teamId === highlightTeamId);
+  const homeTabId =
+    highlighted === undefined
+      ? null
+      : (highlighted.divisionId ?? UNASSIGNED_TAB);
+  /* Divisions can change between polls; an id that stopped existing falls back to the first. */
+  const activeTabId = projector
+    ? projectorTabId
+    : resolveTabId(tabs, requestedTabId ?? homeTabId);
+  /* The projector hands over teams it already filtered and budgeted; never filter them again. */
+  const visibleTeams = projector ? teams : teamsForTab(teams, activeTabId);
+  useRankSlide(rankSlideTable, activeTabId ?? "all-teams");
   /** A projector board is expandable only when somebody upstream is budgeting for it. */
   const toggleWall = projector ? onToggleTeam : undefined;
 
@@ -431,19 +502,39 @@ export function TeamStandingsBoard({
         total: "var(--text-lg)",
       };
 
-  const columns = setLabels;
-  const showTimes = anyPenalty(teams);
+  /*
+    A division tab is headed by ITS OWN sets, as bare letters; the undivided contest keeps the
+    flat `setLabels` byte for byte. The header and the label the rows are matched by come from
+    the same `SetColumn`, so they cannot drift.
+  */
+  const columns = columnsForTab(activeTabId, sets, setLabels);
+  const showTimes = anyPenalty(visibleTeams);
 
-  if (teams.length === 0) {
+  const divisionStrip =
+    tabs.length > 0 ? (
+      <TeamDivisionTabs
+        tabs={tabs}
+        activeTabId={activeTabId}
+        onSelect={setRequestedTabId}
+        panelId={panelId}
+      />
+    ) : null;
+
+  if (visibleTeams.length === 0) {
+    /* The strip stays: an empty division with no way to another tab would be a trap. */
     return (
-      <p
-        role="status"
-        className={dim}
-        style={{ fontSize: projector ? size.name : "var(--text-sm)" }}
-      >
-        No teams yet. An organizer creates teams and assigns players before the
-        round starts.
-      </p>
+      <>
+        {divisionStrip}
+        <p
+          role="status"
+          className={dim}
+          style={{ fontSize: projector ? size.name : "var(--text-sm)" }}
+        >
+          {activeTabId !== null && teams.length > 0
+            ? "No teams in this division yet."
+            : "No teams yet. An organizer creates teams and assigns players before the round starts."}
+        </p>
+      </>
     );
   }
 
@@ -476,10 +567,13 @@ export function TeamStandingsBoard({
           : "72rem",
       }}
     >
+      {divisionStrip}
+
       {/* `rounded-panel` on the interactive board only: DataTable already frames the app's other
           table that way, and two table treatments in one product is one too many. The projector
           wall keeps square corners — a section radius says "card", and a wall is not a card. */}
       <div
+        id={panelId}
         className={`w-full overflow-x-auto border ${grid} ${projector ? "" : "rounded-panel bg-paper"}`}
       >
         <table
@@ -529,11 +623,11 @@ export function TeamStandingsBoard({
                 =
               </th>
 
-              {columns.map((label) => (
+              {columns.map((column) => (
                 <th
-                  key={label}
+                  key={column.match}
                   scope="col"
-                  aria-label={`Set ${label}`}
+                  aria-label={`Set ${column.header}`}
                   /* `font-body`, not `numeric`: tabular figures are for quantities, and a set
                      letter over the word "set" is a label. The mono stays on the digits below. */
                   className={`font-body border ${grid} ${cellPad} text-center font-bold`}
@@ -542,12 +636,14 @@ export function TeamStandingsBoard({
                   {/* CF's column head is the problem letter over what it is worth. The letter is
                     ours too; the line under it says what the column IS, because a set has no
                     single point value and inventing one would put a lie in a very
-                    authoritative-looking place. */}
+                    authoritative-looking place. On a division tab this is the BARE letter: the
+                    tab already says whose sets these are, and "Intermediate A" over every column
+                    was exactly the sprawl the organizer rejected. */}
                   <span
                     className={`block ${accent}`}
                     style={{ fontSize: size.cell }}
                   >
-                    {label}
+                    {column.header}
                   </span>
                   <span
                     className={`block font-normal ${muted}`}
@@ -575,7 +671,7 @@ export function TeamStandingsBoard({
             </tr>
           </thead>
 
-          {teams.map((team, index) => {
+          {visibleTeams.map((team, index) => {
             const isOpen = projector
               ? openTeamIds.has(team.teamId)
               : expanded.has(team.teamId);
@@ -712,11 +808,11 @@ export function TeamStandingsBoard({
                       {formatScore(team.score)}
                     </td>
 
-                    {columns.map((label) => {
-                      const cell = cellFor(team, label);
+                    {columns.map((column) => {
+                      const cell = cellFor(team, column);
                       return (
                         <td
-                          key={label}
+                          key={column.match}
                           className={`numeric border ${grid} ${cellPad} text-center align-top`}
                         >
                           {cell === null ? (
@@ -878,13 +974,13 @@ export function TeamStandingsBoard({
                                   {player.score}
                                 </span>
                               </td>
-                              {columns.map((label) => (
+                              {columns.map((column) => (
                                 <td
-                                  key={label}
+                                  key={column.match}
                                   className={`numeric ${styles.memberCell} ${styles.memberNumber}`}
                                 >
                                   <span className={styles.cellBox}>
-                                    {player.chosenSetLabel === label
+                                    {player.chosenSetLabel === column.match
                                       ? player.score
                                       : ""}
                                   </span>
@@ -950,8 +1046,8 @@ export function TeamStandingsBoard({
                             {team.playerPoolPoints}
                           </span>
                         </td>
-                        {columns.map((label) => (
-                          <td key={label} className={styles.memberCell}>
+                        {columns.map((column) => (
+                          <td key={column.match} className={styles.memberCell}>
                             <span className={styles.cellBox} />
                           </td>
                         ))}

@@ -35,8 +35,8 @@ describe("the same set label is the same questions across teams", () => {
     const start = new Date("2026-04-10T18:00:00.000Z");
     const at = (minutes: number) => new Date(start.getTime() + minutes * 60_000);
     const teams: TeamRecord[] = [
-      { teamId: "alpha", name: "Alpha" },
-      { teamId: "beta", name: "Beta" },
+      { teamId: "alpha", name: "Alpha", divisionId: null },
+      { teamId: "beta", name: "Beta", divisionId: null },
     ];
     // John and Mark, one per team, both holding set A: the organizer's own example.
     const participants: ParticipantRecord[] = [

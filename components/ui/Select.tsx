@@ -162,9 +162,12 @@ export const CONTROL_SURFACE =
   // into a select FADED the ring up from ink to `--panther` over 150ms — the one indicator a
   // keyboard-only user has, arriving late and washed out. The border is the only colour here
   // that has any business animating.
+  // `duration-[var(--motion-press)]`: without it the transition ran at Tailwind's default
+  // 150ms, a duration that is on nobody's scale. The border darkening is a control
+  // acknowledging attention, which is exactly what the press token is for.
   // `rounded-flat`, not the bare 4px `rounded`: DESIGN.md §5a puts inputs in the flat class —
   // a rectangle that is read or typed into has square corners; only CONTROLS get the 3px chip.
-  "w-full rounded-flat border bg-paper text-ink transition-[border-color] " +
+  "w-full rounded-flat border bg-paper text-ink transition-[border-color] duration-[var(--motion-press)] " +
   "disabled:cursor-not-allowed disabled:border-rule-hair disabled:bg-ink/5 disabled:text-ink/40";
 
 /** Padding by size. The select adds its own right padding to clear the chevron. */
@@ -317,7 +320,10 @@ function Chevron({ size, open }: { size: SelectSize; open: boolean }) {
       className={[
         "pointer-events-none absolute",
         CHEVRON_POSITION[size],
-        "text-ink transition-transform motion-reduce:transition-none peer-disabled:text-ink/40",
+        // The flip rides the press token, as `UserMenu`'s chevron already does. The bare
+        // `transition-transform` it used to be ran at the 150ms Tailwind default, which is a
+        // fourth duration this product does not have.
+        "text-ink transition-transform duration-[var(--motion-press)] motion-reduce:transition-none peer-disabled:text-ink/40",
         open ? "rotate-180" : "",
       ].join(" ")}
     >
@@ -881,7 +887,16 @@ function ListboxControl({
               so making the outermost portalled node the widget itself is the honest fix rather
               than the suppression.
             */
-            className="fixed z-50 overflow-y-auto overscroll-contain rounded-panel border border-rule-edge bg-paper py-1.5 shadow-lg"
+            /*
+              `motion-swap-in`: the list used to appear in the same frame as the click, the one
+              kind of change the eye cannot follow. A menu is content arriving, not a whole
+              surface, so it takes the swap duration — the same call `OrganizerMenu` documents
+              for its own popup. Transform-only by construction of the utility, so no row's
+              alpha'd text dips below its contrast floor mid-entrance, and the rise re-runs per
+              open because the panel unmounts on close. Repositioning on scroll moves `top`,
+              not the class, so a reposition never replays the entrance.
+            */
+            className="motion-swap-in fixed z-50 overflow-y-auto overscroll-contain rounded-panel border border-rule-edge bg-paper py-1.5 shadow-lg"
           >
             {options.map((option, index) => {
               const selected = option.value === value;

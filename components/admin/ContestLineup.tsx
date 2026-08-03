@@ -864,12 +864,21 @@ export function ContestLineup({
           panel is taller than the viewport.
         */}
         <div className="sticky bottom-0 -mx-8 -mb-8 mt-4 flex flex-wrap items-center gap-3 rounded-b-panel border-t border-rule-edge bg-paper px-8 py-4">
+          {/* Width held by the widest label so the save cannot resize mid-press; the keyed
+              span rises the new word in (the Run/Submit pattern). */}
           <Button
             type="button"
+            className="relative whitespace-nowrap"
             onClick={() => void save()}
             disabled={busy || lineupBlocked}
           >
-            {busy ? "Saving…" : "Save this line-up"}
+            <span aria-hidden="true" className="invisible">Save this line-up</span>
+            <span
+              key={busy ? "busy" : "idle"}
+              className="motion-swap-in absolute inset-0 flex items-center justify-center"
+            >
+              {busy ? "Saving…" : "Save this line-up"}
+            </span>
           </Button>
           {/*
             Bug (b): Add and Remove write nothing until Save, and nothing on screen said so. The

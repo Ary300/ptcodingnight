@@ -303,7 +303,10 @@ export function ContestBuilder({ initial = EMPTY_DRAFT }: ContestBuilderProps) {
           {draft.divisions.map((division, index) => (
             <li
               key={division.key}
-              className="rounded-panel border border-rule-edge bg-paper p-4"
+              /* "Add division" used to land the new card in the same frame as the click.
+                 The rise makes the arrival followable; keys are stable, so existing cards
+                 animate only on mount, and removing one moves nothing else. */
+              className="motion-swap-in rounded-panel border border-rule-edge bg-paper p-4"
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
@@ -398,8 +401,17 @@ export function ContestBuilder({ initial = EMPTY_DRAFT }: ContestBuilderProps) {
             activities as tabs.
           </p>
 
-          <Button type="submit" disabled={busy}>
-            {busy ? "Creating…" : "Create contest"}
+          {/* Width held by the widest label ("Create contest", 113px against 79px busy) so the
+              submit cannot resize under the cursor mid-press; the keyed span rises the new word
+              in. The Run/Submit pattern from ProblemWorkspace. */}
+          <Button type="submit" className="relative whitespace-nowrap" disabled={busy}>
+            <span aria-hidden="true" className="invisible">Create contest</span>
+            <span
+              key={busy ? "busy" : "idle"}
+              className="motion-swap-in absolute inset-0 flex items-center justify-center"
+            >
+              {busy ? "Creating…" : "Create contest"}
+            </span>
           </Button>
         </div>
       </div>

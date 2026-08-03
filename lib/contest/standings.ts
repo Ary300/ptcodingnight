@@ -54,6 +54,12 @@ export interface ScoringInput {
   readonly divisionNames: ReadonlyMap<string, string>;
   /** Set id to label ("A".."D"). Presentation only — the scoring engine never sees a set's name. */
   readonly problemSetLabels: readonly (readonly [string, string])[];
+  /** The same columns as structured facts: bare label, qualified label, owning division. */
+  readonly problemSetFacts: readonly {
+    readonly label: string;
+    readonly qualifiedLabel: string;
+    readonly divisionId: string | null;
+  }[];
   /**
    * `contestProblemId` to what a reader needs to recognise the problem.
    *
@@ -153,7 +159,7 @@ async function queryScoringInput(contestId: string): Promise<ScoringInput> {
           joinedAt: true,
         },
       },
-      teams: { select: { id: true, name: true } },
+      teams: { select: { id: true, name: true, divisionId: true } },
       problemSets: {
         select: { id: true, label: true, divisionId: true },
         orderBy: [{ label: "asc" }, { id: "asc" }],
@@ -260,7 +266,11 @@ async function queryScoringInput(contestId: string): Promise<ScoringInput> {
       chosenSetId: p.chosenSetId,
       joinedAt: p.joinedAt,
     })),
-    teams: contest.teams.map((t) => ({ teamId: t.id, name: t.name })),
+    teams: contest.teams.map((t) => ({
+      teamId: t.id,
+      name: t.name,
+      divisionId: t.divisionId,
+    })),
     sideActivities,
     submissions: [
       ...scoreRevisions.map((revision) => ({
@@ -310,6 +320,27 @@ async function queryScoringInput(contestId: string): Promise<ScoringInput> {
       division-first so a division's sets stand together on the wall. A contest with no divisions
       is byte-identical to before, which is what the golden replay pins.
     */
+    problemSetFacts: [...contest.problemSets]
+      .sort((a, b) => {
+        const divisionOf = (setDivisionId: string | null): string =>
+          setDivisionId === null
+            ? ""
+            : (contest.divisions.find((d) => d.id === setDivisionId)?.name ?? "");
+        const byDivision = divisionOf(a.divisionId).localeCompare(divisionOf(b.divisionId));
+        if (byDivision !== 0) return byDivision;
+        return a.label.localeCompare(b.label);
+      })
+      .map((set) => {
+        const divisionName =
+          set.divisionId === null
+            ? null
+            : (contest.divisions.find((d) => d.id === set.divisionId)?.name ?? null);
+        return {
+          label: set.label,
+          qualifiedLabel: divisionName === null ? set.label : `${divisionName} ${set.label}`,
+          divisionId: set.divisionId,
+        };
+      }),
     problemSetLabels: [...contest.problemSets]
       .sort((a, b) => {
         const divisionOf = (setDivisionId: string | null): string =>
@@ -573,6 +604,7 @@ export async function getTeamStandings(
       .sort((a, b) => a.sortOrder - b.sortOrder)
       .map((division) => ({ divisionId: division.divisionId, name: division.name })),
     setLabels: input.problemSetLabels.map(([, label]) => label),
+    sets: input.problemSetFacts,
     groupPointsInsideMean: input.config.groupPointsInsideMean,
     sideActivitiesFlat: input.config.sideActivitiesFlat,
     teams: teams.map((team) => {
@@ -585,6 +617,7 @@ export async function getTeamStandings(
       return {
         teamId: team.teamId,
         name: team.name,
+        divisionId: team.divisionId,
         rank: team.rank,
         isTied: team.isTied,
         score: team.score,

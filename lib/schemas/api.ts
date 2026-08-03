@@ -579,6 +579,13 @@ export const AdminRosterSchema = z.object({
     TeamViewSchema.extend({
       memberCount: z.number().int().nonnegative(),
       members: z.array(RosterMemberSchema),
+      /**
+       * The division this team belongs to, or null for a team open to anyone. The id is what a
+       * form can preselect; the name rides along so the card never has to join the id against
+       * the contest's division list to say a word a human reads.
+       */
+      divisionId: z.string().nullable(),
+      divisionName: z.string().nullable(),
     }),
   ),
   unassigned: z.array(RosterMemberSchema),
@@ -634,6 +641,12 @@ export const AdminReasonSchema = z.object({
 
 export const AdminCreateTeamRequestSchema = z.object({
   name: z.string().trim().min(1, "Name the team").max(40),
+  /**
+   * The division this team competes in. Divisions field their own teams, so an organizer
+   * building a division's roster names it at creation. Omitted or null makes an open team,
+   * the only kind that existed before divisions had teams of their own.
+   */
+  divisionId: z.string().min(1).nullable().optional(),
 });
 
 export const AdminRenameTeamRequestSchema = AdminReasonSchema.extend({
@@ -1003,6 +1016,8 @@ export type TeamPlayerRow = z.infer<typeof TeamPlayerRowSchema>;
 export const TeamStandingRowSchema = z.object({
   teamId: z.string(),
   name: z.string(),
+  /** The division this team competes in, or null for a team open to anyone. */
+  divisionId: z.string().nullable(),
   rank: z.number().int().positive(),
   /** True when level with another team on every ranking key. Displayed as a tie, never broken. */
   isTied: z.boolean(),
@@ -1041,6 +1056,19 @@ export const TeamStandingsResponseSchema = z.object({
   divisions: z.array(z.object({ divisionId: z.string(), name: z.string() })),
   /** Configured columns, including a set that currently has no assigned player. */
   setLabels: z.array(z.string()),
+  /**
+   * The same columns as structured facts: the bare label ("A"), the qualified label the rows
+   * speak ("Intermediate A", identical to `chosenSetLabel` on players), and the owning division.
+   * A division tab filters by `divisionId` and shows `label`; the merged list keeps using
+   * `qualifiedLabel`. Both derive from one map on the server, so they cannot disagree.
+   */
+  sets: z.array(
+    z.object({
+      label: z.string(),
+      qualifiedLabel: z.string(),
+      divisionId: z.string().nullable(),
+    }),
+  ),
   groupPointsInsideMean: z.boolean(),
   sideActivitiesFlat: z.boolean(),
   /** Ranked best first. One entry per team; players nest inside. */

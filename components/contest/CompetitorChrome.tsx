@@ -132,32 +132,57 @@ export function CompetitorChrome({ children }: { children: ReactNode }) {
     userId: null,
     avatarVersion: null,
   });
+  /*
+    Whether the session's contest is the permanent practice arena, from the same session response
+    as the team name. Three-valued on purpose: the arena's window ends in 2100, so rendering the
+    countdown before the answer arrives would flash a six-digit-hour timer on every arena page
+    load. "unknown" hides the clock for the length of one request; a failed read falls back to
+    "real", because hiding a live contest's clock over a transient chrome fetch is the worse lie.
+  */
+  const [contestKind, setContestKind] = useState<"unknown" | "practice" | "real">("unknown");
   useEffect(() => {
     if (!joined) return undefined;
     let cancelled = false;
     const controller = new AbortController();
+    // Every way this read can end without an answer leaves the clock decision at "real" rather
+    // than at "unknown", so a broken chrome fetch degrades to the old behaviour (clock shown)
+    // instead of hiding a live contest's countdown.
+    const settleUnknownAsReal = () => {
+      if (!cancelled) {
+        setContestKind((current) => (current === "unknown" ? "real" : current));
+      }
+    };
     void (async () => {
       try {
         const response = await fetch("/api/auth/session", {
           cache: "no-store",
           signal: controller.signal,
         });
-        if (!response.ok || cancelled) return;
+        if (!response.ok || cancelled) {
+          settleUnknownAsReal();
+          return;
+        }
         const body: unknown = await response.json();
         const data =
           typeof body === "object" && body !== null && "data" in body
             ? (body as { data: Record<string, unknown> }).data
             : null;
-        if (data === null) return;
+        if (data === null) {
+          settleUnknownAsReal();
+          return;
+        }
         const name = data.teamName;
         setTeam(typeof name === "string" && name.length > 0 ? { name } : null);
         setAccount({
           userId: typeof data.userId === "string" ? data.userId : null,
           avatarVersion: typeof data.avatarUpdatedAt === "string" ? data.avatarUpdatedAt : null,
         });
+        setContestKind(data.contestIsPractice === true ? "practice" : "real");
       } catch {
         // The menu simply shows no team. A failed chrome fetch must never surface as an error on
-        // a page whose content loaded fine.
+        // a page whose content loaded fine. The clock is the one thing that must not stay hidden
+        // behind the failure: assume a real contest unless the server has said otherwise.
+        settleUnknownAsReal();
       }
     })();
     return () => {
@@ -272,6 +297,24 @@ export function CompetitorChrome({ children }: { children: ReactNode }) {
           </Link>
 
           {/*
+            The practice arena's label, on every competitor screen the chrome frames.
+
+            The arena is the same lobby, the same judge and the same standings as the night
+            itself, so the chrome is the one surface that can say "this is not the contest"
+            wherever the student goes. Full-strength paper text: DESIGN.md's alpha floors are
+            measured against --ink as TEXT on paper and do not transfer to paper-on-ink, and a
+            label whose whole job is to not be missed does not get dimmed.
+          */}
+          {joined && contestKind === "practice" && (
+            <span
+              className="order-1 self-center rounded-chip border border-rule-edge-inverse bg-paper/10 px-2 py-0.5 font-bold whitespace-nowrap uppercase"
+              style={{ fontSize: "var(--text-xs)", letterSpacing: "0.08em" }}
+            >
+              Practice
+            </span>
+          )}
+
+          {/*
             The hairline HackerRank puts between its mark and its tabs. It is what stops the
             wordmark and the first tab reading as one run of text; without it "Coding Night
             Problems" is a single phrase at a glance. Hidden once the nav drops to its own row,
@@ -356,7 +399,14 @@ export function CompetitorChrome({ children }: { children: ReactNode }) {
             moved the number.
           */}
           <div className="order-2 ml-auto flex min-w-0 flex-wrap items-center justify-end gap-x-3 gap-y-2 py-2 md:order-3">
-            {standings.status === "ready" && standings.data !== null && (
+            {/*
+              No countdown in the practice arena: its window ends in 2100, and a seventy-year
+              "time remaining" reads as a bug. The PRACTICE chip beside the wordmark carries the
+              state instead. `contestKind === "real"` rather than `!== "practice"`, so the one
+              request that settles which contest this is can finish before a six-digit-hour timer
+              gets a frame to flash in.
+            */}
+            {contestKind === "real" && standings.status === "ready" && standings.data !== null && (
               <Countdown endsAt={standings.data.endsAt} />
             )}
 

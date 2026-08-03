@@ -53,6 +53,7 @@ export async function GET(request: Request): Promise<NextResponse> {
           displayName: null,
           participantId: null,
           contestId: null,
+          contestIsPractice: null,
           teamId: null,
           teamName: null,
           divisionId: null,
@@ -73,6 +74,7 @@ export async function GET(request: Request): Promise<NextResponse> {
           displayName: viewer.displayName,
           participantId: null,
           contestId: null,
+          contestIsPractice: null,
           teamId: null,
           teamName: null,
           divisionId: null,
@@ -105,6 +107,14 @@ export async function GET(request: Request): Promise<NextResponse> {
         chosenSetId: true,
         team: { select: { name: true } },
         chosenSet: { select: { label: true } },
+        /*
+          Whether this session's contest is the permanent practice arena. On this response for the
+          same reason the set label is: THIS ROUTE IS HOW THE CLIENT LEARNS WHO IT IS, and "you are
+          in the arena, none of this is scored" is a fact about the viewer's identity that the
+          chrome must label on every competitor screen — the alternative is a student mistaking
+          the sample questions for the night's contest.
+        */
+        contest: { select: { isPractice: true } },
       },
     });
 
@@ -116,6 +126,7 @@ export async function GET(request: Request): Promise<NextResponse> {
         displayName: viewer.displayName,
         participantId: viewer.participantId,
         contestId: viewer.contestId,
+        contestIsPractice: participant?.contest.isPractice ?? false,
         teamId: participant?.teamId ?? null,
         teamName: participant?.team?.name ?? null,
         divisionId: participant?.divisionId ?? null,

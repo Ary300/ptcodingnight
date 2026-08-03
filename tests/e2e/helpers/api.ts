@@ -304,7 +304,11 @@ export class ContestApi {
     return this.req().get(`/api/admin/contests/${this.contestId}/roster`);
   }
 
-  createTeamAsAdminRaw(body: { name: string }): Promise<APIResponse> {
+  createTeamAsAdminRaw(body: {
+    name: string;
+    /** The division this team fields for; omitted or null makes an open team. */
+    divisionId?: string | null;
+  }): Promise<APIResponse> {
     return this.req().post(`/api/admin/contests/${this.contestId}/teams`, { data: body });
   }
 

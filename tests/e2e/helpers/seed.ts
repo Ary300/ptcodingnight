@@ -240,14 +240,8 @@ export async function seedE2EContest(options: SeedOptions = {}): Promise<SeededC
           sortOrder: division.sortOrder,
         })),
       },
-      // A join code per fixture team, derived from the key so it is stable across reseeds and a
-      // spec can hardcode it. Six characters, matching what the generator produces.
-      teams: {
-        create: fixture.teams.map((team) => ({
-          name: team.name,
-          joinCode: `E2E${team.key.slice(0, 3).toUpperCase().padEnd(3, "X")}`,
-        })),
-      },
+      // Teams are NOT nested here: each one belongs to a division, and a nested create cannot
+      // reference a sibling division's generated id. They are created below, division and all.
       // A seed, so the fixture's participants count as already-assigned and the late-joiner path is
       // reachable from a spec. The value is fixed rather than random: an E2E fixture that assigns
       // differently run to run cannot assert on who has which set.
@@ -256,22 +250,43 @@ export async function seedE2EContest(options: SeedOptions = {}): Promise<SeededC
     select: {
       id: true,
       divisions: { select: { id: true, name: true } },
-      teams: { select: { id: true, name: true } },
     },
   });
-
-  const teamIds = new Map<string, string>();
-  for (const team of fixture.teams) {
-    const row = contest.teams.find((candidate) => candidate.name === team.name);
-    if (row === undefined) throw new Error(`team ${team.name} was not created`);
-    teamIds.set(team.key, row.id);
-  }
 
   const divisionIds = new Map<string, string>();
   for (const division of fixture.divisions) {
     const row = contest.divisions.find((candidate) => candidate.name === division.name);
     if (row === undefined) throw new Error(`division ${division.name} was not created`);
     divisionIds.set(division.key, row.id);
+  }
+
+  /*
+    Teams are created AFTER the divisions, already wearing their division — the state
+    `adminCreateTeam` produces over HTTP (`POST /api/admin/contests/:id/teams` carries a
+    divisionId). Insert-then-update would open a window where every team is division-null, and
+    another worker's projector polling mid-reseed would photograph exactly that: an Unassigned
+    tab holding every team while the division tabs stand empty.
+
+    A join code per fixture team, derived from the key so it is stable across reseeds and a
+    spec can hardcode it. Six characters, matching what the generator produces.
+  */
+  const teamIds = new Map<string, string>();
+  for (const team of fixture.teams) {
+    const divisionId =
+      team.divisionKey === undefined ? null : (divisionIds.get(team.divisionKey) ?? null);
+    if (team.divisionKey !== undefined && divisionId === null) {
+      throw new Error(`team ${team.name} names an unknown division ${team.divisionKey}`);
+    }
+    const row = await db.team.create({
+      data: {
+        contestId: contest.id,
+        name: team.name,
+        joinCode: `E2E${team.key.slice(0, 3).toUpperCase().padEnd(3, "X")}`,
+        divisionId,
+      },
+      select: { id: true },
+    });
+    teamIds.set(team.key, row.id);
   }
 
   /*

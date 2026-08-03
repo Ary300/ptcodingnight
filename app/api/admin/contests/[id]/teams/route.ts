@@ -36,7 +36,7 @@ export async function POST(
     const admin = requireAdmin(await viewerFromRequest(request, now));
 
     const input = await readJson(request, AdminCreateTeamRequestSchema);
-    const team = await adminCreateTeam(id, actorLabel(admin), input.name);
+    const team = await adminCreateTeam(id, actorLabel(admin), input.name, input.divisionId ?? null);
 
     return jsonOk(TeamViewSchema.parse(team), NO_STORE);
   });

@@ -4,7 +4,7 @@ import { useCallback } from "react";
 
 import Link from "next/link";
 
-import { Button, Crumbs } from "@/components/ui";
+import { Button, Crumbs, Rail } from "@/components/ui";
 
 import { contestApi } from "../data/backend";
 import { useParticipant } from "../data/participant";
@@ -122,6 +122,13 @@ export function LobbyView({ phase = null, viewerKind }: LobbyViewProps) {
 
   const beforeStart = phase !== null && phase.phase === "before";
   const afterEnd = phase !== null && phase.phase === "after";
+  /*
+    The permanent practice arena, which sign-in falls back to when no real contest is open. It
+    must be impossible to mistake its sample questions for the night's contest, so the lobby says
+    so in a panel above the list, and every "time remaining" or "scored" framing is replaced:
+    the arena's window ends in 2100, and a seventy-year countdown reads as a bug.
+  */
+  const practiceArena = phase !== null && phase.isPractice;
 
   /*
     The server withholds the titles until the start (`listProblems` in lib/contest/problems.ts:
@@ -168,7 +175,11 @@ export function LobbyView({ phase = null, viewerKind }: LobbyViewProps) {
           samples is always free" on those screens is the kind of small lie a student discovers by
           pressing the button.
         */}
-        {phase === null || phase.submissionsOpen ? (
+        {practiceArena ? (
+          <p className="mt-1 text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
+            Running samples and submitting are both free here. Nothing in the arena is scored.
+          </p>
+        ) : phase === null || phase.submissionsOpen ? (
           <p className="mt-1 text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
             Running samples is always free. Only submissions are scored.
           </p>
@@ -178,6 +189,12 @@ export function LobbyView({ phase = null, viewerKind }: LobbyViewProps) {
               ? "The judge is not accepting anything yet. Everything below opens at the start."
               : "The judge is closed. Nothing you do now is scored."}
           </p>
+        )}
+
+        {practiceArena && (
+          <div className="mt-4">
+            <PracticeArenaNotice />
+          </div>
         )}
 
         {beforeStart && phase !== null && (
@@ -204,8 +221,16 @@ export function LobbyView({ phase = null, viewerKind }: LobbyViewProps) {
           it was the loudest wrong thing on the screen, promising "they are all yours to score on"
           under a heading that could not say the night was over. `PreStartPanel` and
           `ContestEndedPanel` carry the team and the set in those two phases instead.
+
+          Not in the practice arena either. The arena has no teams and no assigned sets, so "an
+          organizer will assign your team and problem set" would be a promise about a night that
+          has not been scheduled, directly under a panel that just said none of this counts.
         */}
-        {joined !== null && problems.status === "ready" && !beforeStart && !afterEnd && (
+        {joined !== null &&
+          problems.status === "ready" &&
+          !beforeStart &&
+          !afterEnd &&
+          !practiceArena && (
           <div className="mt-4">
             <AssignmentNotice
               needsTeam={joined.needsTeam}
@@ -301,6 +326,44 @@ export function LobbyView({ phase = null, viewerKind }: LobbyViewProps) {
         )}
       </div>
     </div>
+  );
+}
+
+
+/**
+ * The label that keeps the practice arena from impersonating the contest.
+ *
+ * Sign-in falls back to the arena whenever no real contest is open, so this lobby is what a
+ * student sees on any ordinary evening — and without a label it is indistinguishable from the
+ * night itself: same list, same judge, same standings. The panel states the three facts that
+ * separate them (samples, unscored, automatic hand-off on the night) in the same bordered-paper
+ * grammar as `AssignmentNotice`, because it answers the same kind of question: what is this
+ * screen, and what should I do about it. A plain labelled section, not a live region and not an
+ * alert — being in the arena is the ordinary course of the year, not a fault, and the fact does
+ * not change while the student reads it.
+ */
+function PracticeArenaNotice() {
+  return (
+    <section
+      aria-label="Practice arena"
+      className="flex items-stretch overflow-hidden rounded-panel border border-rule-edge bg-paper"
+    >
+      <Rail state="brand" />
+      <div className="min-w-0 flex-1 px-4 py-3">
+        <h2 className="font-display font-bold" style={{ fontSize: "var(--text-sm)" }}>
+          This is the practice arena, not the contest
+        </h2>
+        <p className="mt-1" style={{ fontSize: "var(--text-sm)" }}>
+          The problems below are sample questions for trying the site: the editor, running
+          samples, and submitting to the judge. Nothing you do here is scored, and none of it
+          counts on contest night.
+        </p>
+        <p className="mt-1 text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
+          The arena is open for practice whenever no contest is running. On contest night,
+          signing in lands you in the real contest automatically.
+        </p>
+      </div>
+    </section>
   );
 }
 

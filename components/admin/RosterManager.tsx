@@ -116,6 +116,11 @@ export function RosterManager({ contestId }: RosterManagerProps) {
   const [busy, setBusy] = useState(false);
 
   const [newTeamName, setNewTeamName] = useState("");
+  // null means "the organizer has not touched the division picker yet", and the effective value
+  // then falls back to the contest's FIRST division: an organizer building a division's teams
+  // should not have to pick the same division for every one. "" is the explicit (open team)
+  // choice, distinct from never having touched the control.
+  const [newTeamDivision, setNewTeamDivision] = useState<string | null>(null);
   const [moving, setMoving] = useState<{
     participantId: string;
     displayName: string;
@@ -317,6 +322,12 @@ export function RosterManager({ contestId }: RosterManagerProps) {
         ].join(", ");
 
   /**
+   * What the create-team form will send: untouched means the first division, because divisions
+   * field their own teams and the common case is building them division by division.
+   */
+  const createTeamDivision = newTeamDivision ?? roster.divisions[0]?.divisionId ?? "";
+
+  /**
    * One person on the roster, with the two things an organizer does to them.
    *
    * Shared between the unassigned list and each team's member list so the two cannot drift — the
@@ -501,14 +512,23 @@ export function RosterManager({ contestId }: RosterManagerProps) {
           />
 
           <div className="flex flex-wrap gap-2">
+            {/* Width held by the widest label so the control cannot resize mid-press; the
+                keyed span rises the new word in (the Run/Submit pattern). */}
             <Button
               type="submit"
               variant="danger"
+              className="relative whitespace-nowrap"
               disabled={
                 busy || (person.submissionCount > 0 && !removeConfirmed)
               }
             >
-              {busy ? "Removing…" : "Remove from contest"}
+              <span aria-hidden="true" className="invisible">Remove from contest</span>
+              <span
+                key={busy ? "busy" : "idle"}
+                className="motion-swap-in absolute inset-0 flex items-center justify-center"
+              >
+                {busy ? "Removing…" : "Remove from contest"}
+              </span>
             </Button>
             <Button
               type="button"
@@ -525,7 +545,10 @@ export function RosterManager({ contestId }: RosterManagerProps) {
   );
 
   return (
-    <div className="flex min-w-0 flex-col gap-section">
+    /* "Loading the roster…" is replaced by this whole surface in one client-side swap; the
+       rise makes that swap followable (the same call LobbyView documents for its own
+       loading-to-lobby swap). Transform only, per the entrance rule. */
+    <div className="motion-swap-in flex min-w-0 flex-col gap-section">
       <Panel
         title="Add a student"
         level="framed"
@@ -749,7 +772,23 @@ export function RosterManager({ contestId }: RosterManagerProps) {
               label="Team"
               required
               value={moveTarget}
-              onChange={(event) => setMoveTarget(event.target.value)}
+              onChange={(event) => {
+                const value = event.target.value;
+                setMoveTarget(value);
+                /*
+                  Picking a divisioned team pre-fills the division below, because divisions
+                  field their own teams and the server would adopt the team's division anyway
+                  if the field were omitted. Pre-filling shows the organizer what will happen
+                  instead of doing it behind the form; they can still override before Move.
+                  An open team leaves the dropdown alone rather than clearing a division.
+                */
+                const picked = roster.teams.find(
+                  (team: RosterTeam) => team.teamId === value,
+                );
+                if (picked !== undefined && picked.divisionId !== null) {
+                  setMoveDivision(picked.divisionId);
+                }
+              }}
             >
               {/*
                 A sentinel that is not a valid destination, so "I did not choose" and "remove
@@ -796,8 +835,16 @@ export function RosterManager({ contestId }: RosterManagerProps) {
             </p>
 
             <div className="flex flex-wrap gap-2">
-              <Button type="submit" disabled={busy}>
-                {busy ? "Moving…" : "Move"}
+              {/* The width holder is the BUSY label: "Moving…" measures 70px against
+                  "Move" at 43px, so holding the resting word would still jump. */}
+              <Button type="submit" className="relative whitespace-nowrap" disabled={busy}>
+                <span aria-hidden="true" className="invisible">Moving…</span>
+                <span
+                  key={busy ? "busy" : "idle"}
+                  className="motion-swap-in absolute inset-0 flex items-center justify-center"
+                >
+                  {busy ? "Moving…" : "Move"}
+                </span>
               </Button>
               <Button
                 type="button"
@@ -850,8 +897,16 @@ export function RosterManager({ contestId }: RosterManagerProps) {
             </p>
 
             <div className="flex flex-wrap gap-2">
-              <Button type="submit" disabled={busy}>
-                {busy ? "Saving…" : "Save set"}
+              {/* Same width-holding as the Move button; "Save set" and "Saving…" happen to
+                  measure identically, and the pattern keeps that a fact instead of luck. */}
+              <Button type="submit" className="relative whitespace-nowrap" disabled={busy}>
+                <span aria-hidden="true" className="invisible">Save set</span>
+                <span
+                  key={busy ? "busy" : "idle"}
+                  className="motion-swap-in absolute inset-0 flex items-center justify-center"
+                >
+                  {busy ? "Saving…" : "Save set"}
+                </span>
               </Button>
               <Button
                 type="button"
@@ -884,6 +939,13 @@ export function RosterManager({ contestId }: RosterManagerProps) {
             event.preventDefault();
             void send(API_ROUTES.adminTeams(contestId), "POST", {
               name: newTeamName,
+              // Sent only when this contest has divisions at all; "" is the (open team) option.
+              ...(roster.divisions.length > 0
+                ? {
+                    divisionId:
+                      createTeamDivision === "" ? null : createTeamDivision,
+                  }
+                : {}),
             });
           }}
         >
@@ -894,6 +956,23 @@ export function RosterManager({ contestId }: RosterManagerProps) {
               onChange={(event) => setNewTeamName(event.target.value)}
             />
           </div>
+          {roster.divisions.length > 0 && (
+            <div className="w-48">
+              <Select
+                label="Division"
+                value={createTeamDivision}
+                onChange={(event) => setNewTeamDivision(event.target.value)}
+              >
+                {roster.divisions.map((division) => (
+                  <option key={division.divisionId} value={division.divisionId}>
+                    {division.name}
+                  </option>
+                ))}
+                {/* Brackets rather than dashes: no em dash may appear in text a user reads. */}
+                <option value="">(open team)</option>
+              </Select>
+            </div>
+          )}
           {/*
             Primary, not secondary (B11): creating a team is the one creating action on this
             panel, and the reference fills its creating action ("Create a Contest" is solid).
@@ -927,12 +1006,26 @@ export function RosterManager({ contestId }: RosterManagerProps) {
                     that looked actionable and was not, on the screen where a wrong action changes
                     two team scores. The size is what matters here: it IS the divisor.
                   */}
-                  <span
-                    className="numeric text-ink/60"
-                    style={{ fontSize: "var(--text-xs)" }}
-                  >
-                    {team.memberCount}/{team.maxTeamSize} · divisor{" "}
-                    {team.memberCount}
+                  <span className="flex flex-wrap items-baseline gap-x-3">
+                    {/*
+                      Which division this team fields for. Only when the contest has divisions:
+                      with none every team is open, and a chip saying so on every card is noise.
+                    */}
+                    {roster.divisions.length > 0 && (
+                      <span
+                        className="text-ink/60"
+                        style={{ fontSize: "var(--text-xs)" }}
+                      >
+                        {team.divisionName ?? "open team"}
+                      </span>
+                    )}
+                    <span
+                      className="numeric text-ink/60"
+                      style={{ fontSize: "var(--text-xs)" }}
+                    >
+                      {team.memberCount}/{team.maxTeamSize} · divisor{" "}
+                      {team.memberCount}
+                    </span>
                   </span>
                 </div>
 
