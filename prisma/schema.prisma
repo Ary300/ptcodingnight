@@ -255,6 +255,11 @@ model Session {
 
 model Contest {
   id              String       @id @default(cuid())
+  /// The permanent practice arena. Exactly one should exist; sign-in falls back to it when no
+  /// real contest is open, the clock reconciler never starts or ends it, and the projector's
+  /// default contest pick skips it. It is a real contest in every other way, which is the point:
+  /// the lobby, the judge and the standings all just work.
+  isPractice Boolean @default(false)
   name            String
   startsAt        DateTime
   endsAt          DateTime
@@ -497,6 +502,10 @@ model Problem {
   outputSpec  String       @default("")
   constraints String       @default("")
   difficulty  Difficulty?
+  /// A try-the-site question that lives in the practice arena. The contest line-up refuses it
+  /// (API-level, like DRAFT): practice questions are public 365 days a year, and a public
+  /// question in a scored round is a question somebody has already solved.
+  practiceOnly Boolean @default(false)
   state       ProblemState @default(DRAFT)
 
   type       ProblemType
@@ -523,6 +532,20 @@ model Problem {
   /// Used by the authoring flow to generate expected outputs. Must pass its own tests
   /// before the problem may leave DRAFT (PRD §9.2).
   referenceSolution String?
+  /// Which runtime `referenceSolution` is written for. Null exactly when the reference is null.
+  referenceLanguage Language?
+  /// When the stored reference last passed EVERY test case through the real judge. Publishing
+  /// requires this stamp; any edit to the reference, the test cases, the limits or the
+  /// comparator clears it, because a validation of different inputs proves nothing about
+  /// these. The seed importer stamps G13-verified content on import for the same reason G13
+  /// exists: those references already passed the real judge.
+  referenceValidatedAt DateTime?
+  /// How the judge compares output for THIS problem: a `Comparator` from lib/schemas/judge
+  /// (`{kind: "whitespace"}` and friends). Null means the default, whitespace, which forgives
+  /// trailing spaces and line-ending differences; "exact" is opt-in for the rare problem where
+  /// whitespace IS the answer (Staircase-shaped tasks still pass under whitespace because it
+  /// preserves leading spaces).
+  comparator Json?
   /// The function-signature declaration this problem's starter code is generated from, or NULL.
   ///
   /// Validated by `SignatureSchema` (lib/schemas/seed.ts) on the way in and on the way out —

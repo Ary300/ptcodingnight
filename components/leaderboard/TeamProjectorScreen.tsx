@@ -243,6 +243,30 @@ export function TeamProjectorScreen({
           </div>
         </header>
 
+        {/*
+          Divisions rank INDIVIDUALLY (an Intermediate winner and an Advanced winner are
+          individual facts), while teams span divisions - so the team board never splits, and
+          each division's own board is one tab away instead. Document navigations, not state:
+          the projector is a kiosk, and a URL an organizer can bookmark per screen beats a
+          toggle that resets on reload.
+        */}
+        {standings !== null && standings.divisions.length > 0 && (
+          <nav aria-label="Boards" className={styles.boardSwitch}>
+            <span className={`${styles.boardSwitchItem} ${styles.boardSwitchActive}`} aria-current="page">
+              Teams
+            </span>
+            {standings.divisions.map((division) => (
+              <a
+                key={division.divisionId}
+                className={styles.boardSwitchItem}
+                href={`/projector?contest=${encodeURIComponent(standings.contestId)}&mode=individual&division=${encodeURIComponent(division.divisionId)}`}
+              >
+                {division.name}
+              </a>
+            ))}
+          </nav>
+        )}
+
         <div className={styles.teamPlateBand}>
           {frozen && standings !== null && (
             <FrozenPlate lifting={false} liftMs={0} asOfLabel={timeOfDay(standings.asOf)} />

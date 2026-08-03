@@ -288,10 +288,25 @@ export async function setContestProblems(
 
     const foundProblems = await tx.problem.findMany({
       where: { id: { in: problemIds } },
-      select: { id: true },
+      select: { id: true, title: true, practiceOnly: true },
     });
     if (foundProblems.length !== problemIds.length) {
       throw new ValidationError("One of those problems no longer exists in the problem bank");
+    }
+    /*
+      Practice questions are public 365 days a year - anyone signed in can read them and their
+      samples in the arena - so a line-up containing one is a scored round containing a question
+      somebody has already solved. Refused HERE, in the API, for the same reason DRAFT problems
+      are: the UI filter is the check that gets bypassed.
+    */
+    const practiceProblems = foundProblems.filter((problem) => problem.practiceOnly);
+    if (practiceProblems.length > 0) {
+      throw new ValidationError(
+        `${practiceProblems.map((problem) => `“${problem.title}”`).join(", ")} ` +
+          `${practiceProblems.length === 1 ? "is a practice question" : "are practice questions"}, ` +
+          "public to everyone all year, so a scored contest cannot include " +
+          `${practiceProblems.length === 1 ? "it" : "them"}.`,
+      );
     }
 
     const divisionIds = [
@@ -675,9 +690,10 @@ export async function reconcileContestClockById(
 ): Promise<"unchanged" | "started" | "ended"> {
   const contest = await prisma.contest.findUnique({
     where: { id: contestId },
-    select: { id: true, state: true, startsAt: true, endsAt: true },
+    select: { id: true, state: true, startsAt: true, endsAt: true, isPractice: true },
   });
-  if (contest === null) return "unchanged";
+  // The practice arena is permanent by definition: no clock may start or end it.
+  if (contest === null || contest.isPractice) return "unchanged";
   return reconcileContestClock(contest, now);
 }
 

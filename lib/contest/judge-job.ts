@@ -98,6 +98,8 @@ export interface BuildJudgeJobInput {
   readonly comparator?: Comparator;
   /** "Run samples" judges the sample cases only and persists nothing (PRD §9.1). */
   readonly samplesOnly?: boolean;
+  /** Admin authoring paths only; see the field's doc on `JudgeJobSchema`. */
+  readonly captureOutput?: boolean;
 }
 
 export function buildJudgeJob(input: BuildJudgeJobInput): JudgeJob {
@@ -147,5 +149,6 @@ export function buildJudgeJob(input: BuildJudgeJobInput): JudgeJob {
     comparator: input.comparator ?? { kind: "whitespace" },
     testCases,
     attempt: 1,
+    captureOutput: input.captureOutput ?? false,
   });
 }

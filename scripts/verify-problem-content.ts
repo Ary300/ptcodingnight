@@ -202,6 +202,7 @@ function jobFor(meta: ProblemMeta): JudgeJob {
     comparator: { kind: "whitespace" },
     testCases,
     attempt: 1,
+    captureOutput: false,
   };
 }
 
@@ -388,6 +389,7 @@ async function probeProblem(
           },
         ],
         attempt: 1,
+        captureOutput: false,
       },
       IMAGES,
     );

@@ -400,6 +400,12 @@ export const ProblemManifestSchema = z.strictObject({
    * either way — the student still submits one whole file.
    */
   signature: SignatureSchema.optional(),
+  /**
+   * A try-the-site question that lives only in the practice arena. The seed importer writes it
+   * to `Problem.practiceOnly`, and the contest line-up API refuses such problems - practice
+   * questions are public all year, so a scored round may not contain one.
+   */
+  practiceOnly: z.boolean().optional(),
 });
 export type ProblemManifest = z.infer<typeof ProblemManifestSchema>;
 

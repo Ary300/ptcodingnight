@@ -30,6 +30,8 @@ function timeOfDay(iso: string): string {
 export interface ProjectorScreenProps {
   /** From `?contest=` — null lets the API pick the running contest. */
   contestId: string | null;
+  /** From `?division=` — pins the opening division tab; null starts on the first. */
+  initialDivisionId?: string | null;
 }
 
 /**
@@ -45,12 +47,14 @@ export interface ProjectorScreenProps {
  * wraps differently and nothing scrolls, because school projectors are one resolution or
  * the other and neither one scrolls.
  */
-export function ProjectorScreen({ contestId }: ProjectorScreenProps) {
+export function ProjectorScreen({ contestId, initialDivisionId = null }: ProjectorScreenProps) {
   const { standings, frozenSnapshot, source } = useStandings(contestId);
   const reducedMotion = useReducedMotion();
   const timings = reducedMotion ? REDUCED_MOTION_REVEAL : FULL_MOTION_REVEAL;
 
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  // `?division=` pins the opening tab, so the team board's per-division links land on the
+  // division they name rather than always the first. The tabs still work after arrival.
+  const [selectedId, setSelectedId] = useState<string | null>(initialDivisionId);
 
   const division =
     standings.divisions.find((entry) => entry.divisionId === selectedId) ??
@@ -167,6 +171,15 @@ export function ProjectorScreen({ contestId }: ProjectorScreenProps) {
             onSelect={setSelectedId}
             panelId={PANEL_ID}
           />
+
+          {/* The way back to the night's main board. A document navigation, like the team
+              board's tabs here: kiosk URLs beat toggles that reset on reload. */}
+          <a
+            className={styles.teamsLink}
+            href={`/projector${standings.contestId ? `?contest=${encodeURIComponent(standings.contestId)}` : ""}`}
+          >
+            Team standings
+          </a>
 
           <p
             className={`${styles.state} ${frozenLook ? styles.stateFrozen : styles.stateLive}`}

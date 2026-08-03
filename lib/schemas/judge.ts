@@ -93,6 +93,15 @@ export const JudgeJobSchema = z.object({
    * error is escalated to an admin alert instead of a third run.
    */
   attempt: z.number().int().min(1).default(1),
+  /**
+   * Include each test's actual stdout in the result, capped at the same derived per-test
+   * output cap the judge already enforces. ADMIN AUTHORING PATHS ONLY: the validate action
+   * reads it to say what the reference actually printed, and Generate expected output turns
+   * it into the .out files. No student-facing path ever sets it, and no public serializer
+   * reads it - a student who could see full stdout for hidden cases would not need to diff
+   * their way to the test data, they would just read it.
+   */
+  captureOutput: z.boolean().default(false),
 });
 export type JudgeJob = z.infer<typeof JudgeJobSchema>;
 
@@ -107,6 +116,8 @@ export const JudgeTestResultSchema = z.object({
    * Students reconstruct hidden test data by diffing if you let them (PRD §7.2).
    */
   diffSnippet: z.string().max(200).nullable(),
+  /** The test's full stdout, present only when the job set `captureOutput`. Admin-only. */
+  capturedStdout: z.string().optional(),
 });
 export type JudgeTestResult = z.infer<typeof JudgeTestResultSchema>;
 

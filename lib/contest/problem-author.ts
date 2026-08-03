@@ -3,13 +3,22 @@ import { mkdir, readFile, rename, rm, rmdir, stat, writeFile } from "node:fs/pro
 import path from "node:path";
 
 import { Prisma } from "@prisma/client";
+import { z } from "zod";
 
 import { prisma } from "@/lib/db";
 import { hostLimits } from "@/lib/contest/host";
-import { resolveTestDataPath } from "@/lib/contest/judge-job";
+import {
+  buildJudgeJob,
+  resolveTestDataPath,
+  type TestCaseInput,
+} from "@/lib/contest/judge-job";
+import { runJobAndWait } from "@/lib/contest/queue";
+import { runtimeFor, type LanguageId } from "@/lib/judge/runtimes";
+import { ComparatorSchema } from "@/lib/schemas/judge";
 import { lockContestMutations, lockProblemMutations } from "@/lib/contest/locks";
 import { DomainError, NotFoundError, ValidationError } from "@/lib/errors";
 import { startersFor } from "@/lib/judge/starters";
+import type { AuthoredComparator } from "@/lib/schemas/api";
 import { LANGUAGE_IDS } from "@/lib/judge/runtimes";
 import { SignatureSchema, type Signature, type SignatureType } from "@/lib/schemas/seed";
 
@@ -97,9 +106,16 @@ export interface CreateProblemInput {
   readonly inputSpec?: string;
   readonly outputSpec?: string;
   readonly constraints?: string;
-  readonly difficulty: "E" | "M" | "H";
+  readonly difficulty: "E" | "M" | "H" | null;
+  /** INDIVIDUAL by default; GROUP marks the organizer's "team question". */
+  readonly round?: "INDIVIDUAL" | "GROUP";
   readonly timeLimitMs?: number;
   readonly memoryLimitMb?: number;
+  /** Absent means the default, whitespace. */
+  readonly comparator?: AuthoredComparator;
+  /** The author's own correct solution, judged privately. Travels with its language. */
+  readonly referenceSolution?: string | null;
+  readonly referenceLanguage?: LanguageId | null;
   /** Optional. Omit for a blank editor; provide it for HackerRank-style function stubs. */
   readonly signature?: AuthoredSignature | null;
   readonly testCases: readonly AuthoredTestCase[];
@@ -118,9 +134,16 @@ export interface UpdateProblemInput {
   readonly inputSpec?: string;
   readonly outputSpec?: string;
   readonly constraints?: string;
-  readonly difficulty: "E" | "M" | "H";
+  readonly difficulty: "E" | "M" | "H" | null;
+  /** INDIVIDUAL by default; GROUP marks the organizer's "team question". */
+  readonly round?: "INDIVIDUAL" | "GROUP";
   readonly timeLimitMs?: number;
   readonly memoryLimitMb?: number;
+  /** Absent means the default, whitespace. */
+  readonly comparator?: AuthoredComparator;
+  /** The author's own correct solution, judged privately. Travels with its language. */
+  readonly referenceSolution?: string | null;
+  readonly referenceLanguage?: LanguageId | null;
   /** Absent leaves the stored signature untouched. `null` removes it. */
   readonly signature?: AuthoredSignature | null;
   readonly testCases: readonly AuthoredTestCase[];
@@ -215,7 +238,11 @@ interface ValidatedCore {
   readonly inputSpec: string;
   readonly outputSpec: string;
   readonly constraints: string;
-  readonly difficulty: "E" | "M" | "H";
+  readonly difficulty: "E" | "M" | "H" | null;
+  readonly round: "INDIVIDUAL" | "GROUP";
+  readonly comparator: AuthoredComparator | null;
+  readonly referenceSolution: string | null;
+  readonly referenceLanguage: LanguageId | null;
   readonly timeLimitMs: number;
   readonly memoryLimitMb: number;
   /** Samples first, so ordinal order matches the seed convention and sample 1 is case 1. */
@@ -254,6 +281,16 @@ function validateAuthoredCore(input: CreateProblemInput | UpdateProblemInput): V
     }
   }
 
+  const round = input.round ?? "INDIVIDUAL";
+  if (round !== "GROUP" && input.difficulty === null) {
+    throw new ValidationError(
+      "Pick a difficulty, or designate the question as a team question.",
+    );
+  }
+  if ((input.referenceSolution == null) !== (input.referenceLanguage == null)) {
+    throw new ValidationError("A reference solution and its language travel together.");
+  }
+
   return {
     title,
     statementMd: statement,
@@ -261,6 +298,10 @@ function validateAuthoredCore(input: CreateProblemInput | UpdateProblemInput): V
     outputSpec: input.outputSpec?.trim() ?? "",
     constraints: input.constraints?.trim() ?? "",
     difficulty: input.difficulty,
+    round,
+    comparator: input.comparator ?? null,
+    referenceSolution: input.referenceSolution ?? null,
+    referenceLanguage: input.referenceLanguage ?? null,
     timeLimitMs: input.timeLimitMs ?? 2000,
     memoryLimitMb: input.memoryLimitMb ?? 256,
     // `Array.prototype.sort` is stable, so cases keep the order the organizer typed them in
@@ -380,9 +421,12 @@ export async function createAuthoredProblem(input: CreateProblemInput): Promise<
         difficulty: core.difficulty,
         state: "PUBLISHED",
         type: "ALGORITHM",
-        round: "INDIVIDUAL",
+        round: core.round,
         timeLimitMs: core.timeLimitMs,
         memoryLimitMb: core.memoryLimitMb,
+        comparator: core.comparator ?? undefined,
+        referenceSolution: core.referenceSolution,
+        referenceLanguage: core.referenceLanguage,
         // allowedLanguages is omitted so the schema default applies: all ten variants. That
         // default is the whole point of not asking which languages. createdAt and updatedAt are
         // the database's to set (@default(now()) and @updatedAt), so they are not passed here.
@@ -565,9 +609,15 @@ export interface AuthoredProblemDraft {
   readonly inputSpec: string;
   readonly outputSpec: string;
   readonly constraints: string;
-  readonly difficulty: "E" | "M" | "H";
+  readonly difficulty: "E" | "M" | "H" | null;
+  readonly round: "INDIVIDUAL" | "GROUP";
   readonly timeLimitMs: number;
   readonly memoryLimitMb: number;
+  /** Null means the default, whitespace. */
+  readonly comparator: AuthoredComparator | null;
+  readonly referenceSolution: string | null;
+  readonly referenceLanguage: LanguageId | null;
+  readonly referenceValidatedAt: string | null;
   /** Null when the question has no starter code, which is the normal case. */
   readonly signature: AuthoredSignature | null;
   /**
@@ -661,8 +711,13 @@ export async function loadAuthoredProblem(slug: string): Promise<AuthoredProblem
       outputSpec: true,
       constraints: true,
       difficulty: true,
+      round: true,
       timeLimitMs: true,
       memoryLimitMb: true,
+      comparator: true,
+      referenceSolution: true,
+      referenceLanguage: true,
+      referenceValidatedAt: true,
       signature: true,
       testCases: {
         select: { ordinal: true, inputPath: true, expectedOutputPath: true, isSample: true },
@@ -691,16 +746,39 @@ export async function loadAuthoredProblem(slug: string): Promise<AuthoredProblem
     inputSpec: problem.inputSpec,
     outputSpec: problem.outputSpec,
     constraints: problem.constraints,
-    // A seeded problem may carry no difficulty at all; the form has to start somewhere, and
-    // Easy is the value an organizer is most likely to correct rather than accept by accident.
-    difficulty: problem.difficulty ?? "E",
+    /*
+      A seeded problem may carry no difficulty; the form has to start somewhere, and Easy is
+      the value an organizer is most likely to correct rather than accept by accident. A GROUP
+      question keeps its null: the form's fourth designation, Team, IS that state.
+    */
+    difficulty: problem.difficulty ?? (problem.round === "GROUP" ? null : "E"),
+    round: problem.round,
     timeLimitMs: problem.timeLimitMs,
     memoryLimitMb: problem.memoryLimitMb,
+    comparator: (() => {
+      const parsed = AuthoredComparatorLoadSchema.safeParse(problem.comparator);
+      return parsed.success ? parsed.data : null;
+    })(),
+    referenceSolution: problem.referenceSolution,
+    referenceLanguage: problem.referenceLanguage,
+    referenceValidatedAt: problem.referenceValidatedAt?.toISOString() ?? null,
     signature,
     signatureEditable: editable,
     testCases,
   };
 }
+
+/**
+ * The stored comparator column re-read for the form. "special" is representable in the judge
+ * but not authorable in the builder; loading one answers null so the form falls back to the
+ * default rather than silently rewriting a hand-planted checker on the next save. (No such
+ * row exists today; this is the shape that keeps it survivable if one ever does.)
+ */
+const AuthoredComparatorLoadSchema = z.union([
+  z.object({ kind: z.literal("whitespace") }),
+  z.object({ kind: z.literal("exact") }),
+  z.object({ kind: z.literal("float"), epsilon: z.number().positive() }),
+]);
 
 /**
  * Read one stored test file, stripping the single trailing newline `ensureTrailingNewline` added.
@@ -844,8 +922,21 @@ export async function updateAuthoredProblem(
           outputSpec: core.outputSpec,
           constraints: core.constraints,
           difficulty: core.difficulty,
+          round: core.round,
           timeLimitMs: core.timeLimitMs,
           memoryLimitMb: core.memoryLimitMb,
+          // A JSON column clears with DbNull, same as signature below.
+          comparator: core.comparator ?? Prisma.DbNull,
+          referenceSolution: core.referenceSolution,
+          referenceLanguage: core.referenceLanguage,
+          /*
+            EVERY edit clears the validation stamp, unconditionally. The stamp means "the stored
+            reference passed THESE cases under THESE limits and THIS comparator"; the edit that
+            just happened may have changed any of them, and deciding which edits were harmless is
+            how a stale green check outlives the thing it certified. Re-validating after an edit
+            is one click.
+          */
+          referenceValidatedAt: null,
           // A DRAFT is a problem missing an original statement or its own test data, and
           // `validateAuthoredCore` has just required both. RETIRED is a decision somebody made
           // about this question and is not an editor's to reverse.
@@ -1026,4 +1117,236 @@ async function removeEmptyTestDirectories(slug: string): Promise<void> {
 function ensureTrailingNewline(text: string): string {
   if (text === "") return "\n";
   return text.endsWith("\n") ? text : `${text}\n`;
+}
+
+// ---------------------------------------------------------------------------
+// Validating: the reference solution through the real judge, against every case
+// ---------------------------------------------------------------------------
+
+export interface ValidationCaseResult {
+  readonly ordinal: number;
+  readonly isSample: boolean;
+  readonly verdict: string;
+  readonly runtimeMs: number | null;
+}
+
+export interface ValidationReport {
+  readonly verdict: string;
+  readonly passed: number;
+  readonly total: number;
+  /** Set exactly when every case passed; the publish gate reads the stored stamp. */
+  readonly validatedAt: string | null;
+  readonly cases: readonly ValidationCaseResult[];
+}
+
+/** Generous but bounded: a validation is compile + every case, once. */
+const VALIDATE_TIMEOUT_CEILING_MS = 300_000;
+
+/**
+ * Judge the stored reference solution against EVERY test case, in a real container, and stamp
+ * `referenceValidatedAt` when all of them pass.
+ *
+ * This is the builder's "Validate question" action, and the reason it exists is the list of
+ * things it catches that no amount of reading catches: expected outputs that are simply wrong,
+ * inputs the statement's own reference cannot parse, limits the reference cannot meet, and a
+ * comparator stricter than the output format the author had in mind. G13 does the same job for
+ * file-authored content; this is the same idea for questions born in the form.
+ *
+ * A failed validation CLEARS any earlier stamp rather than leaving it: the stamp must always
+ * describe the current content, and the current content just failed.
+ */
+export async function validateAuthoredProblem(
+  slug: string,
+  now: Date = new Date(),
+): Promise<ValidationReport> {
+  const problem = await prisma.problem.findUnique({
+    where: { slug },
+    select: {
+      id: true,
+      timeLimitMs: true,
+      memoryLimitMb: true,
+      comparator: true,
+      referenceSolution: true,
+      referenceLanguage: true,
+      testCases: {
+        select: {
+          id: true,
+          ordinal: true,
+          inputPath: true,
+          expectedOutputPath: true,
+          isSample: true,
+          points: true,
+          group: true,
+        },
+        orderBy: { ordinal: "asc" },
+      },
+    },
+  });
+  if (problem === null) throw new NotFoundError("Problem");
+  if (problem.referenceSolution === null || problem.referenceLanguage === null) {
+    throw new ValidationError(
+      "Add a reference solution first. Validation judges it against every case, which is what " +
+        "proves the expected outputs are right.",
+    );
+  }
+  if (problem.testCases.length === 0) {
+    throw new ValidationError("Add at least one test case before validating.");
+  }
+
+  const parsedComparator = ComparatorSchema.safeParse(problem.comparator);
+  const job = buildJudgeJob({
+    submissionId: `validate-${randomUUID()}`,
+    language: problem.referenceLanguage,
+    sourceCode: problem.referenceSolution,
+    problem: { timeLimitMs: problem.timeLimitMs, memoryLimitMb: problem.memoryLimitMb },
+    testCases: problem.testCases,
+    host: hostLimits(),
+    comparator: parsedComparator.success ? parsedComparator.data : undefined,
+  });
+
+  const timeoutMs = Math.min(
+    VALIDATE_TIMEOUT_CEILING_MS,
+    runtimeFor(problem.referenceLanguage).compileTimeoutMs +
+      job.limits.wallClockKillMs * job.testCases.length +
+      20_000,
+  );
+  const result = await runJobAndWait(job, timeoutMs);
+
+  const byId = new Map(problem.testCases.map((testCase) => [testCase.id, testCase]));
+  const cases: ValidationCaseResult[] = result.testResults.map((test) => {
+    const testCase = byId.get(test.testCaseId);
+    return {
+      ordinal: testCase?.ordinal ?? 0,
+      isSample: testCase?.isSample ?? false,
+      verdict: test.verdict,
+      runtimeMs: test.runtimeMs,
+    };
+  });
+  const passed = cases.filter((entry) => entry.verdict === "AC").length;
+  const allPassed =
+    result.verdict === "AC" && passed === problem.testCases.length;
+
+  await prisma.problem.update({
+    where: { id: problem.id },
+    data: { referenceValidatedAt: allPassed ? now : null },
+  });
+
+  return {
+    verdict: result.verdict,
+    passed,
+    total: problem.testCases.length,
+    validatedAt: allPassed ? now.toISOString() : null,
+    cases,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Generating: the reference's own output becomes each case's expected output
+// ---------------------------------------------------------------------------
+
+export interface GenerateOutputsInput {
+  readonly referenceSolution: string;
+  readonly referenceLanguage: LanguageId;
+  readonly timeLimitMs?: number;
+  readonly memoryLimitMb?: number;
+  /** Case inputs in form order. Bounded by the route schema. */
+  readonly inputs: readonly string[];
+}
+
+export interface GeneratedOutput {
+  readonly ordinal: number;
+  /** True when the reference ran to completion on this input, whatever it printed. */
+  readonly ran: boolean;
+  readonly verdict: string;
+  readonly stdout: string;
+}
+
+/**
+ * Run the reference over raw inputs and hand back what it printed, one output per input.
+ *
+ * This is the builder's "Generate expected output": the author writes inputs, the reference is
+ * the oracle, and typing the oracle's answer by hand is both toil and the door mistyped
+ * expectations walk in through. Nothing here touches the database; the form owns the state.
+ *
+ * Inputs are staged as real files under the shared test-data root (the worker binds the same
+ * path; inline strings cannot cross that boundary) in a throwaway directory that is removed in
+ * a `finally`, success or not. Expected-output files are staged EMPTY, so the judge's verdicts
+ * here mean nothing beyond "did it run" - `ran` is the field callers read, and WA is expected
+ * (empty expectation, real output). TLE, RE and CE keep their meanings and surface to the
+ * author as this input failing.
+ */
+export async function generateExpectedOutputs(
+  input: GenerateOutputsInput,
+): Promise<readonly GeneratedOutput[]> {
+  if (input.inputs.length === 0) {
+    throw new ValidationError("Add at least one test case input first.");
+  }
+
+  const root = hostLimits().testDataRoot;
+  const previewDirRelative = path.posix.join(".authoring-preview", randomUUID());
+  const previewDirAbsolute = path.join(root, previewDirRelative);
+  await mkdir(previewDirAbsolute, { recursive: true });
+
+  try {
+    const testCases: TestCaseInput[] = [];
+    for (const [index, caseInput] of input.inputs.entries()) {
+      const ordinal = index + 1;
+      const inputRelative = path.posix.join(previewDirRelative, `${String(ordinal)}.in`);
+      const expectedRelative = path.posix.join(previewDirRelative, `${String(ordinal)}.out`);
+      await writeFile(path.join(root, inputRelative), ensureTrailingNewline(caseInput), "utf8");
+      await writeFile(path.join(root, expectedRelative), "", "utf8");
+      testCases.push({
+        id: `preview-${String(ordinal)}`,
+        ordinal,
+        inputPath: inputRelative,
+        expectedOutputPath: expectedRelative,
+        isSample: false,
+        points: 0,
+        group: null,
+      });
+    }
+
+    const job = buildJudgeJob({
+      submissionId: `generate-${randomUUID()}`,
+      language: input.referenceLanguage,
+      sourceCode: input.referenceSolution,
+      problem: {
+        timeLimitMs: input.timeLimitMs ?? 2000,
+        memoryLimitMb: input.memoryLimitMb ?? 256,
+      },
+      testCases,
+      host: hostLimits(),
+      captureOutput: true,
+    });
+
+    const timeoutMs = Math.min(
+      VALIDATE_TIMEOUT_CEILING_MS,
+      runtimeFor(input.referenceLanguage).compileTimeoutMs +
+        job.limits.wallClockKillMs * job.testCases.length +
+        20_000,
+    );
+    const result = await runJobAndWait(job, timeoutMs);
+
+    if (result.verdict === "CE") {
+      throw new ValidationError(
+        `The reference solution does not compile: ${result.compileError ?? "no compiler output"}`,
+      );
+    }
+
+    const byId = new Map(result.testResults.map((test) => [test.testCaseId, test]));
+    return testCases.map((testCase) => {
+      const test = byId.get(testCase.id);
+      const verdict = test?.verdict ?? "IE";
+      return {
+        ordinal: testCase.ordinal,
+        // WA is the EXPECTED verdict here (judged against a deliberately empty expectation);
+        // AC would mean the reference printed nothing, which still counts as having run.
+        ran: verdict === "WA" || verdict === "AC",
+        verdict,
+        stdout: test?.capturedStdout ?? "",
+      };
+    });
+  } finally {
+    await rm(previewDirAbsolute, { recursive: true, force: true });
+  }
 }

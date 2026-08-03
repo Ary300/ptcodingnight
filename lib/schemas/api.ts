@@ -92,6 +92,11 @@ export const API_ROUTES = {
   adminSession: "/api/admin/session",
   /** The problem bank: `GET` lists it, `POST` creates a coding question. */
   adminProblems: "/api/admin/problems",
+  /** Judge the stored reference against every case; stamps referenceValidatedAt on success. */
+  adminValidateProblem: (slug: string) =>
+    `/api/admin/problems/${encodeURIComponent(slug)}/validate`,
+  /** Run a reference over raw inputs and return its stdout per input. Saves nothing. */
+  adminGenerateOutputs: "/api/admin/problems/generate-outputs",
   adminFreeze: (contestId: string) =>
     `/api/admin/contests/${encodeURIComponent(contestId)}/freeze`,
   adminExport: (contestId: string) =>
@@ -1027,6 +1032,13 @@ export const TeamStandingsResponseSchema = z.object({
   frozen: z.boolean(),
   asOf: z.string(),
   endsAt: z.string(),
+  /**
+   * The contest's divisions, in the organizer's order. Teams span divisions, so the TEAM board
+   * never splits by them - these exist so the wall can offer each division's INDIVIDUAL board
+   * one tab away, which is the honest per-division view (an Intermediate winner and an Advanced
+   * winner are individual facts, not team facts).
+   */
+  divisions: z.array(z.object({ divisionId: z.string(), name: z.string() })),
   /** Configured columns, including a set that currently has no assigned player. */
   setLabels: z.array(z.string()),
   groupPointsInsideMean: z.boolean(),
@@ -1166,29 +1178,110 @@ export const AuthoredTestCaseSchema = z.object({
 });
 
 /**
+ * How the judge compares output for one authored problem, as the builder offers it.
+ *
+ * A subset of the judge's `Comparator`: "special" (a per-problem checker program) is not
+ * authorable from a form, and offering it as a dropdown option with nowhere to put the checker
+ * would be a lie. "whitespace" is the default and stays unstated in most requests: it forgives
+ * trailing spaces, trailing blank lines and line-ending differences, which are exactly the
+ * failures that make a correct first-night submission read as wrong.
+ */
+export const AuthoredComparatorSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("whitespace") }),
+  z.object({ kind: z.literal("exact") }),
+  z.object({ kind: z.literal("float"), epsilon: z.number().positive().max(1) }),
+]);
+export type AuthoredComparator = z.infer<typeof AuthoredComparatorSchema>;
+
+/**
  * The request that creates a coding question. No question type (all coding) and no language list
  * (all six, always), by design: those are the two HackerRank steps this flow deliberately omits.
+ *
+ * `difficulty` is NULLABLE because the organizer's fourth designation is Team: a team question
+ * is one the whole team works at once (`round: "GROUP"`), and the past-contest spreadsheets
+ * never gave those a tier. An INDIVIDUAL question still requires a tier, refined below.
  */
-export const CreateProblemRequestSchema = z.object({
-  title: z.string().trim().min(1, "Give the question a title.").max(120),
-  statementMd: z.string().min(1, "Write the problem statement."),
-  inputSpec: z.string().optional(),
-  outputSpec: z.string().optional(),
-  constraints: z.string().optional(),
-  difficulty: z.enum(["E", "M", "H"]),
-  timeLimitMs: z.number().int().min(500).max(10_000).optional(),
-  memoryLimitMb: z.number().int().min(64).max(1024).optional(),
-  signature: AuthoredSignatureSchema.nullable().optional(),
-  testCases: z
-    .array(AuthoredTestCaseSchema)
-    .min(1, "Add at least one test case."),
-});
+export const CreateProblemRequestSchema = z
+  .object({
+    title: z.string().trim().min(1, "Give the question a title.").max(120),
+    statementMd: z.string().min(1, "Write the problem statement."),
+    inputSpec: z.string().optional(),
+    outputSpec: z.string().optional(),
+    constraints: z.string().optional(),
+    difficulty: z.enum(["E", "M", "H"]).nullable(),
+    round: z.enum(["INDIVIDUAL", "GROUP"]).default("INDIVIDUAL"),
+    timeLimitMs: z.number().int().min(500).max(10_000).optional(),
+    memoryLimitMb: z.number().int().min(64).max(1024).optional(),
+    comparator: AuthoredComparatorSchema.optional(),
+    /**
+     * The author's own correct solution, judged privately against every case by the validate
+     * action and never shown to a student. Both fields travel together.
+     */
+    referenceSolution: z.string().max(200_000).nullable().optional(),
+    referenceLanguage: LanguageSchema.nullable().optional(),
+    signature: AuthoredSignatureSchema.nullable().optional(),
+    testCases: z
+      .array(AuthoredTestCaseSchema)
+      .min(1, "Add at least one test case."),
+  })
+  .refine((value) => value.round === "GROUP" || value.difficulty !== null, {
+    message: "Pick a difficulty, or designate the question as a team question.",
+    path: ["difficulty"],
+  })
+  .refine(
+    (value) =>
+      (value.referenceSolution == null) === (value.referenceLanguage == null),
+    {
+      message: "A reference solution and its language travel together.",
+      path: ["referenceLanguage"],
+    },
+  );
 export type CreateProblemRequest = z.infer<typeof CreateProblemRequestSchema>;
 
 export const CreateProblemResponseSchema = z.object({
   problemId: z.string(),
   slug: z.string(),
   title: z.string(),
+});
+
+/** One case's verdict from the validate action. Admin-only surface, so verdicts are unredacted. */
+export const ValidationCaseSchema = z.object({
+  ordinal: z.number().int().positive(),
+  isSample: z.boolean(),
+  verdict: z.string(),
+  runtimeMs: z.number().int().nonnegative().nullable(),
+});
+
+export const ValidationReportSchema = z.object({
+  verdict: z.string(),
+  passed: z.number().int().nonnegative(),
+  total: z.number().int().positive(),
+  validatedAt: z.string().nullable(),
+  cases: z.array(ValidationCaseSchema),
+});
+export type ValidationReport = z.infer<typeof ValidationReportSchema>;
+
+/**
+ * "Generate expected output": raw inputs in, the reference's stdout out. Nothing is saved;
+ * the form owns the state. Bounded hard because each input becomes a judged container run.
+ */
+export const GenerateOutputsRequestSchema = z.object({
+  referenceSolution: z.string().min(1, "Write the reference solution first.").max(200_000),
+  referenceLanguage: LanguageSchema,
+  timeLimitMs: z.number().int().min(500).max(10_000).optional(),
+  memoryLimitMb: z.number().int().min(64).max(1024).optional(),
+  inputs: z.array(z.string().max(1_000_000)).min(1).max(50),
+});
+export type GenerateOutputsRequest = z.infer<typeof GenerateOutputsRequestSchema>;
+
+export const GeneratedOutputSchema = z.object({
+  ordinal: z.number().int().positive(),
+  ran: z.boolean(),
+  verdict: z.string(),
+  stdout: z.string(),
+});
+export const GenerateOutputsResponseSchema = z.object({
+  outputs: z.array(GeneratedOutputSchema),
 });
 export type CreateProblemResponse = z.infer<typeof CreateProblemResponseSchema>;
 

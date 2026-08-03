@@ -130,7 +130,16 @@ export interface ProblemBuilderInitial {
   readonly inputSpec: string;
   readonly outputSpec: string;
   readonly constraints: string;
-  readonly difficulty: "E" | "M" | "H";
+  readonly difficulty: "E" | "M" | "H" | null;
+  /** GROUP is the organizer's "team question": the whole team works it at once. */
+  readonly round: "INDIVIDUAL" | "GROUP";
+  readonly timeLimitMs: number;
+  readonly memoryLimitMb: number;
+  /** Null means the default, whitespace. */
+  readonly comparator: { kind: "whitespace" } | { kind: "exact" } | { kind: "float"; epsilon: number } | null;
+  readonly referenceSolution: string | null;
+  readonly referenceLanguage: LanguageId | null;
+  readonly referenceValidatedAt: string | null;
   readonly signature: ProblemBuilderSignature | null;
   /**
    * False when a signature IS stored but this flat form cannot express it exactly, which is the
@@ -151,10 +160,28 @@ export interface ProblemBuilderProps {
   readonly edit?: ProblemBuilderEdit;
 }
 
+type Designation = "E" | "M" | "H" | "TEAM";
+
 export function ProblemBuilder({ edit }: ProblemBuilderProps = {}) {
   const router = useRouter();
   const initial = edit?.initial;
   const [step, setStep] = useState<StepKey>("details");
+  /*
+    Which steps the organizer has actually been to. The rail's check used to mean only "this
+    step's predicate holds", and the starter step's predicate holds VACUOUSLY on a blank form
+    (starter code is optional, so an untouched step is a satisfied step) - so a brand-new
+    question opened with step 2 already wearing a check mark, which reads as "you did this".
+    A check now means BEEN THERE AND SATISFIED; an unvisited step shows its number no matter
+    what its predicate says. Editing an existing question starts fully visited, because every
+    step genuinely happened when the question was written.
+  */
+  const [visited, setVisited] = useState<ReadonlySet<StepKey>>(
+    () => new Set<StepKey>(edit === undefined ? ["details"] : ["details", "starter", "tests"]),
+  );
+  const goToStep = (key: StepKey): void => {
+    setVisited((prev) => (prev.has(key) ? prev : new Set([...prev, key])));
+    setStep(key);
+  };
 
   // --- details ---
   const [title, setTitle] = useState(initial?.title ?? "");
@@ -162,9 +189,36 @@ export function ProblemBuilder({ edit }: ProblemBuilderProps = {}) {
   const [inputSpec, setInputSpec] = useState(initial?.inputSpec ?? "");
   const [outputSpec, setOutputSpec] = useState(initial?.outputSpec ?? "");
   const [constraints, setConstraints] = useState(initial?.constraints ?? "");
-  const [difficulty, setDifficulty] = useState<"E" | "M" | "H">(
-    initial?.difficulty ?? "E",
+  /*
+    The fourth designation is TEAM: past-contest spreadsheets tier questions as easy, medium,
+    hard or team, and a team question has no tier of its own - the whole team works it at once
+    (round GROUP), and its points are set in the contest line-up.
+  */
+  const [designation, setDesignation] = useState<Designation>(
+    initial === undefined
+      ? "E"
+      : initial.round === "GROUP"
+        ? "TEAM"
+        : (initial.difficulty ?? "E"),
   );
+
+  // --- judge settings (Advanced: the defaults are right for nearly every question) ---
+  const [timeLimitMs, setTimeLimitMs] = useState<number>(initial?.timeLimitMs ?? 2000);
+  const [memoryLimitMb, setMemoryLimitMb] = useState<number>(initial?.memoryLimitMb ?? 256);
+  const [comparatorKind, setComparatorKind] = useState<"whitespace" | "exact" | "float">(
+    initial?.comparator?.kind ?? "whitespace",
+  );
+  const [epsilon, setEpsilon] = useState<string>(
+    initial?.comparator?.kind === "float" ? String(initial.comparator.epsilon) : "0.000001",
+  );
+
+  // --- reference solution ---
+  const [referenceCode, setReferenceCode] = useState(initial?.referenceSolution ?? "");
+  const [referenceLanguage, setReferenceLanguage] = useState<LanguageId>(
+    initial?.referenceLanguage ?? "PYTHON_312",
+  );
+  /** The stored stamp; any save clears it server-side, so it only describes saved content. */
+  const referenceValidatedAt = initial?.referenceValidatedAt ?? null;
 
   // --- starter code ---
   // A question whose stored signature this form cannot represent keeps it: the checkbox is not
@@ -286,7 +340,20 @@ export function ProblemBuilder({ edit }: ProblemBuilderProps = {}) {
         inputSpec: inputSpec.trim() === "" ? undefined : inputSpec,
         outputSpec: outputSpec.trim() === "" ? undefined : outputSpec,
         constraints: constraints.trim() === "" ? undefined : constraints,
-        difficulty,
+        difficulty: designation === "TEAM" ? null : designation,
+        round: (designation === "TEAM" ? "GROUP" : "INDIVIDUAL") as "GROUP" | "INDIVIDUAL",
+        timeLimitMs,
+        memoryLimitMb,
+        // The default is not sent, so a stored explicit "whitespace" and an untouched form both
+        // land in the same place and the column stays null until someone chooses.
+        comparator:
+          comparatorKind === "whitespace"
+            ? undefined
+            : comparatorKind === "exact"
+              ? ({ kind: "exact" } as const)
+              : ({ kind: "float", epsilon: Number(epsilon) || 0.000001 } as const),
+        referenceSolution: referenceCode.trim() === "" ? null : referenceCode,
+        referenceLanguage: referenceCode.trim() === "" ? null : referenceLanguage,
         testCases: cases.map((c) => ({
           input: c.input,
           expectedOutput: c.expectedOutput,
@@ -346,7 +413,13 @@ export function ProblemBuilder({ edit }: ProblemBuilderProps = {}) {
         setInputSpec("");
         setOutputSpec("");
         setConstraints("");
-        setDifficulty("E");
+        setDesignation("E");
+        setTimeLimitMs(2000);
+        setMemoryLimitMb(256);
+        setComparatorKind("whitespace");
+        setEpsilon("0.000001");
+        setReferenceCode("");
+        setReferenceLanguage("PYTHON_312");
         setWantStarter(false);
         setFnName("solve");
         setReturns("int");
@@ -358,6 +431,9 @@ export function ProblemBuilder({ edit }: ProblemBuilderProps = {}) {
         setFreshFrom(nextId);
         setResetCount((n) => n + 1);
         setStep("details");
+        // A blank form has been nowhere. Without this, the second question of the night opens
+        // with every step already checked, because the visited set survived the reset.
+        setVisited(new Set<StepKey>(["details"]));
         window.scrollTo({ top: 0 });
         router.refresh();
         return;
@@ -381,7 +457,13 @@ export function ProblemBuilder({ edit }: ProblemBuilderProps = {}) {
     inputSpec,
     outputSpec,
     constraints,
-    difficulty,
+    designation,
+    timeLimitMs,
+    memoryLimitMb,
+    comparatorKind,
+    epsilon,
+    referenceCode,
+    referenceLanguage,
     wantStarter,
     signatureLocked,
     fnName,
@@ -400,15 +482,16 @@ export function ProblemBuilder({ edit }: ProblemBuilderProps = {}) {
             {STEPS.map((entry, index) => {
               const active = step === entry.key;
               const done =
-                (entry.key === "details" && detailsComplete) ||
-                (entry.key === "starter" && starterComplete) ||
-                (entry.key === "tests" && testsComplete);
+                visited.has(entry.key) &&
+                ((entry.key === "details" && detailsComplete) ||
+                  (entry.key === "starter" && starterComplete) ||
+                  (entry.key === "tests" && testsComplete));
 
               return (
                 <li key={entry.key} className="shrink-0 lg:shrink">
                   <button
                     type="button"
-                    onClick={() => setStep(entry.key)}
+                    onClick={() => goToStep(entry.key)}
                     aria-current={active ? "step" : undefined}
                     className={`flex w-full items-center gap-3 border-l-2 px-3 py-3 text-left transition-colors ${
                       active
@@ -459,6 +542,10 @@ export function ProblemBuilder({ edit }: ProblemBuilderProps = {}) {
             )}
             caseCount={cases.length}
             sampleCount={sampleCount}
+            formatsComplete={inputSpec.trim() !== "" && outputSpec.trim() !== ""}
+            constraintsComplete={constraints.trim() !== ""}
+            referenceProvided={referenceCode.trim() !== ""}
+            validated={referenceValidatedAt !== null}
           />
         </div>
       </div>
@@ -511,8 +598,16 @@ export function ProblemBuilder({ edit }: ProblemBuilderProps = {}) {
               setOutputSpec={setOutputSpec}
               constraints={constraints}
               setConstraints={setConstraints}
-              difficulty={difficulty}
-              setDifficulty={setDifficulty}
+              designation={designation}
+              setDesignation={setDesignation}
+              timeLimitMs={timeLimitMs}
+              setTimeLimitMs={setTimeLimitMs}
+              memoryLimitMb={memoryLimitMb}
+              setMemoryLimitMb={setMemoryLimitMb}
+              comparatorKind={comparatorKind}
+              setComparatorKind={setComparatorKind}
+              epsilon={epsilon}
+              setEpsilon={setEpsilon}
             />
           )}
 
@@ -537,6 +632,14 @@ export function ProblemBuilder({ edit }: ProblemBuilderProps = {}) {
               setCases={setCases}
               sampleCount={sampleCount}
               freshFrom={freshFrom}
+              referenceCode={referenceCode}
+              setReferenceCode={setReferenceCode}
+              referenceLanguage={referenceLanguage}
+              setReferenceLanguage={setReferenceLanguage}
+              referenceValidatedAt={referenceValidatedAt}
+              timeLimitMs={timeLimitMs}
+              memoryLimitMb={memoryLimitMb}
+              editSlug={edit?.slug ?? null}
             />
           )}
         </div>
@@ -595,7 +698,7 @@ export function ProblemBuilder({ edit }: ProblemBuilderProps = {}) {
                 type="button"
                 variant="secondary"
                 disabled={submitting}
-                onClick={() => setStep(STEPS[stepIndex - 1]?.key ?? "details")}
+                onClick={() => goToStep(STEPS[stepIndex - 1]?.key ?? "details")}
               >
                 Back
               </Button>
@@ -604,7 +707,7 @@ export function ProblemBuilder({ edit }: ProblemBuilderProps = {}) {
               <Button
                 type="button"
                 disabled={submitting}
-                onClick={() => setStep(STEPS[stepIndex + 1]?.key ?? "tests")}
+                onClick={() => goToStep(STEPS[stepIndex + 1]?.key ?? "tests")}
               >
                 Next: {STEPS[stepIndex + 1]?.title}
               </Button>
@@ -735,8 +838,16 @@ function DetailsStep({
   setOutputSpec,
   constraints,
   setConstraints,
-  difficulty,
-  setDifficulty,
+  designation,
+  setDesignation,
+  timeLimitMs,
+  setTimeLimitMs,
+  memoryLimitMb,
+  setMemoryLimitMb,
+  comparatorKind,
+  setComparatorKind,
+  epsilon,
+  setEpsilon,
 }: {
   title: string;
   setTitle: (value: string) => void;
@@ -748,8 +859,16 @@ function DetailsStep({
   setOutputSpec: (value: string) => void;
   constraints: string;
   setConstraints: (value: string) => void;
-  difficulty: "E" | "M" | "H";
-  setDifficulty: (value: "E" | "M" | "H") => void;
+  designation: Designation;
+  setDesignation: (value: Designation) => void;
+  timeLimitMs: number;
+  setTimeLimitMs: (value: number) => void;
+  memoryLimitMb: number;
+  setMemoryLimitMb: (value: number) => void;
+  comparatorKind: "whitespace" | "exact" | "float";
+  setComparatorKind: (value: "whitespace" | "exact" | "float") => void;
+  epsilon: string;
+  setEpsilon: (value: string) => void;
 }) {
   return (
     <>
@@ -806,13 +925,101 @@ function DetailsStep({
       </BuilderSection>
 
       <BuilderSection title="Question settings">
-        <DifficultyPicker value={difficulty} onChange={setDifficulty} />
+        <DifficultyPicker value={designation} onChange={setDesignation} />
         <p
           className="rounded-panel border border-rule-hair bg-ink/[0.025] p-4 text-ink/70"
           style={{ fontSize: "var(--text-sm)" }}
         >
           Every supported language is available automatically.
         </p>
+
+        {/*
+          The judge's knobs, closed by default because the defaults are right for nearly every
+          question: 2 seconds and 256 MB judge the whole current bank. Open it for the question
+          that legitimately needs more, not to tune numbers that were never the problem.
+        */}
+        <details className="rounded-panel border border-rule-hair">
+          <summary
+            className="cursor-pointer px-4 py-3 font-semibold"
+            style={{ fontSize: "var(--text-sm)" }}
+          >
+            Advanced judge settings
+          </summary>
+          <div className="flex flex-col gap-group border-t border-rule-hair p-4">
+            <div className="grid gap-group sm:grid-cols-2">
+              <TextInput
+                label="Time limit (ms)"
+                type="number"
+                value={String(timeLimitMs)}
+                hint="Per test, per language multipliers applied by the judge. Default 2000."
+                onChange={(event) => {
+                  const parsed = Number(event.target.value);
+                  if (Number.isFinite(parsed)) setTimeLimitMs(Math.trunc(parsed));
+                }}
+              />
+              <TextInput
+                label="Memory limit (MB)"
+                type="number"
+                value={String(memoryLimitMb)}
+                hint="Per test. Default 256."
+                onChange={(event) => {
+                  const parsed = Number(event.target.value);
+                  if (Number.isFinite(parsed)) setMemoryLimitMb(Math.trunc(parsed));
+                }}
+              />
+            </div>
+
+            <fieldset>
+              <legend
+                className="mb-1 font-semibold"
+                style={{ fontSize: "var(--text-sm)" }}
+              >
+                Output comparison
+              </legend>
+              <div className="flex flex-wrap gap-2">
+                {(
+                  [
+                    { value: "whitespace", label: "Standard text" },
+                    { value: "exact", label: "Exact text" },
+                    { value: "float", label: "Numeric tolerance" },
+                  ] as const
+                ).map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => setComparatorKind(option.value)}
+                    aria-pressed={comparatorKind === option.value}
+                    className={`rounded border px-4 py-1.5 font-semibold ${
+                      comparatorKind === option.value
+                        ? "border-panther bg-panther text-paper"
+                        : "border-rule-edge text-ink/75 hover:border-rule-firm"
+                    }`}
+                    style={{ fontSize: "var(--text-sm)" }}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-1 text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
+                {comparatorKind === "whitespace"
+                  ? "Standard: trailing spaces, trailing blank lines and line-ending differences are forgiven. Leading spaces still count, so drawing problems judge correctly."
+                  : comparatorKind === "exact"
+                    ? "Exact: every byte must match, including trailing whitespace. Choose this only when whitespace IS the answer."
+                    : "Numeric: each number may differ from the expected value by the tolerance below."}
+              </p>
+              {comparatorKind === "float" && (
+                <div className="mt-2 w-48">
+                  <TextInput
+                    label="Tolerance"
+                    value={epsilon}
+                    hint="Absolute. 0.000001 suits most floating-point answers."
+                    onChange={(event) => setEpsilon(event.target.value)}
+                  />
+                </div>
+              )}
+            </fieldset>
+          </div>
+        </details>
       </BuilderSection>
     </>
   );
@@ -1040,13 +1247,171 @@ function TestsStep({
   setCases,
   sampleCount,
   freshFrom,
+  referenceCode,
+  setReferenceCode,
+  referenceLanguage,
+  setReferenceLanguage,
+  referenceValidatedAt,
+  timeLimitMs,
+  memoryLimitMb,
+  editSlug,
 }: {
   cases: DraftCase[];
   setCases: Dispatch<SetStateAction<DraftCase[]>>;
   sampleCount: number;
   /** Cards with an id past this line were added this session and get an entrance. */
   freshFrom: number;
+  referenceCode: string;
+  setReferenceCode: (value: string) => void;
+  referenceLanguage: LanguageId;
+  setReferenceLanguage: (value: LanguageId) => void;
+  /** The stored stamp, or null. Any save clears it server-side. */
+  referenceValidatedAt: string | null;
+  timeLimitMs: number;
+  memoryLimitMb: number;
+  /** Null while creating: Validate judges SAVED content, so it lives on the edit screen. */
+  editSlug: string | null;
 }) {
+  const [generateBusy, setGenerateBusy] = useState(false);
+  const [validateBusy, setValidateBusy] = useState(false);
+  const [judgeNote, setJudgeNote] = useState<string | null>(null);
+  const [validation, setValidation] = useState<{
+    verdict: string;
+    passed: number;
+    total: number;
+    validatedAt: string | null;
+  } | null>(null);
+  const uploadRef = useRef<HTMLInputElement>(null);
+
+  /*
+    "Generate expected output": the reference is the oracle, and typing what a program would
+    print by hand is the door wrong expectations walk in through. Runs every case's input
+    through the reference in a real container and fills the expected outputs from what it
+    printed. Overwrites only after the run, so a thrown request leaves the form untouched.
+  */
+  const generateOutputs = async (): Promise<void> => {
+    setGenerateBusy(true);
+    setJudgeNote(null);
+    try {
+      const response = await fetch(API_ROUTES.adminGenerateOutputs, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          referenceSolution: referenceCode,
+          referenceLanguage,
+          timeLimitMs,
+          memoryLimitMb,
+          inputs: cases.map((entry) => entry.input),
+        }),
+      });
+      const payload: unknown = await response.json();
+      if (!response.ok) {
+        setJudgeNote(errorMessageFromPayload(payload) ?? "The judge could not run the reference.");
+        return;
+      }
+      const data =
+        typeof payload === "object" && payload !== null && "data" in payload
+          ? (payload as { data: { outputs: { ordinal: number; ran: boolean; verdict: string; stdout: string }[] } }).data
+          : null;
+      if (data === null) {
+        setJudgeNote("The server returned an unexpected response.");
+        return;
+      }
+      const failed = data.outputs.filter((output) => !output.ran);
+      setCases((current) =>
+        current.map((entry, index) => {
+          const output = data.outputs.find((candidate) => candidate.ordinal === index + 1);
+          return output !== undefined && output.ran
+            ? { ...entry, expectedOutput: output.stdout }
+            : entry;
+        }),
+      );
+      setJudgeNote(
+        failed.length === 0
+          ? `Filled ${String(data.outputs.length)} expected output${data.outputs.length === 1 ? "" : "s"} from the reference.`
+          : `Filled ${String(data.outputs.length - failed.length)}; the reference failed on case${failed.length === 1 ? "" : "s"} ${failed.map((output) => String(output.ordinal)).join(", ")} (${failed.map((output) => output.verdict).join(", ")}).`,
+      );
+    } catch {
+      setJudgeNote("Could not reach the server.");
+    } finally {
+      setGenerateBusy(false);
+    }
+  };
+
+  /*
+    "Validate question": the reference against EVERY saved case, through the real judge.
+    Validates what is STORED, which is why it lives on the edit screen: pressing it with
+    unsaved edits would certify the wrong content, so the button says to save first.
+  */
+  const validateQuestion = async (): Promise<void> => {
+    if (editSlug === null) return;
+    setValidateBusy(true);
+    setJudgeNote(null);
+    setValidation(null);
+    try {
+      const response = await fetch(API_ROUTES.adminValidateProblem(editSlug), {
+        method: "POST",
+      });
+      const payload: unknown = await response.json();
+      if (!response.ok) {
+        setJudgeNote(errorMessageFromPayload(payload) ?? "Validation could not run.");
+        return;
+      }
+      const data =
+        typeof payload === "object" && payload !== null && "data" in payload
+          ? (payload as { data: { verdict: string; passed: number; total: number; validatedAt: string | null } }).data
+          : null;
+      if (data === null) {
+        setJudgeNote("The server returned an unexpected response.");
+        return;
+      }
+      setValidation(data);
+    } catch {
+      setJudgeNote("Could not reach the server.");
+    } finally {
+      setValidateBusy(false);
+    }
+  };
+
+  /*
+    Case files, the way most people already have them: NN.in with a matching NN.out. Every
+    selected .in becomes a case paired by stem with its .out; a .in with no .out arrives with
+    an empty expected output for Generate to fill. Appended, never replacing what is typed.
+  */
+  const uploadCases = async (files: FileList | null): Promise<void> => {
+    if (files === null || files.length === 0) return;
+    const byStem = new Map<string, { input?: string; output?: string }>();
+    for (const file of Array.from(files)) {
+      const match = /^(.*)\.(in|out|txt)$/i.exec(file.name);
+      if (match === null) continue;
+      const stem = match[1] ?? file.name;
+      const kind = (match[2] ?? "").toLowerCase();
+      const text = await file.text();
+      const entry = byStem.get(stem) ?? {};
+      if (kind === "out") entry.output = text;
+      else entry.input = text;
+      byStem.set(stem, entry);
+    }
+    const stems = [...byStem.keys()].sort();
+    const additions: DraftCase[] = stems
+      .map((stem) => byStem.get(stem))
+      .filter((entry): entry is { input?: string; output?: string } => entry !== undefined)
+      .filter((entry) => entry.input !== undefined || entry.output !== undefined)
+      .map((entry) => ({
+        id: makeId(),
+        input: entry.input ?? "",
+        expectedOutput: entry.output ?? "",
+        isSample: false,
+      }));
+    if (additions.length > 0) setCases((current) => [...current, ...additions]);
+    setJudgeNote(
+      additions.length === 0
+        ? "No .in/.out files found in that selection."
+        : `Added ${String(additions.length)} case${additions.length === 1 ? "" : "s"} from files.`,
+    );
+    if (uploadRef.current !== null) uploadRef.current.value = "";
+  };
+
   return (
     <BuilderSection
       title="Judge cases"
@@ -1143,9 +1508,11 @@ function TestsStep({
                 mono
                 required
                 // HackerRank lets a case omit its output, and then "candidates see only their
-                // own output". Our judge compares byte for byte, so the output is required; the
-                // hint says WHY rather than leaving "required" to read as arbitrary.
-                hint="The judge compares the program's output to this text byte for byte, so every case needs one. Samples show students the full diff. Hidden cases show pass or fail only."
+                // own output". Our judge compares against this text, so the output is required;
+                // the hint says WHY, and describes the DEFAULT comparison honestly: standard
+                // text forgives trailing whitespace and line endings, and the sentence that
+                // claimed "byte for byte" taught authors the wrong fear.
+                hint="The judge compares output to this text, forgiving trailing spaces and line-ending differences (change that under Advanced judge settings). Samples show students the full diff. Hidden cases show pass or fail only."
                 value={testCase.expectedOutput}
                 rows={6}
                 placeholder="Exact expected output"
@@ -1165,18 +1532,40 @@ function TestsStep({
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-rule-hair pt-4">
-        <Button
-          type="button"
-          variant="secondary"
-          onClick={() =>
-            setCases((current) => [
-              ...current,
-              { id: makeId(), input: "", expectedOutput: "", isSample: false },
-            ])
-          }
-        >
-          Add test case
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() =>
+              setCases((current) => [
+                ...current,
+                { id: makeId(), input: "", expectedOutput: "", isSample: false },
+              ])
+            }
+          >
+            Add test case
+          </Button>
+          {/*
+            Most authors already have cases as files. Pairs NN.in with NN.out by name; a .in
+            with no .out arrives empty for Generate to fill. Appends, never replaces.
+          */}
+          <Button
+            type="button"
+            variant="quiet"
+            onClick={() => uploadRef.current?.click()}
+          >
+            Upload case files
+          </Button>
+          <input
+            ref={uploadRef}
+            type="file"
+            multiple
+            accept=".in,.out,.txt"
+            className="hidden"
+            aria-label="Upload test case files"
+            onChange={(event) => void uploadCases(event.target.files)}
+          />
+        </div>
         <p
           className={
             sampleCount === 0 ? "font-semibold text-panther" : "text-ink/60"
@@ -1189,8 +1578,113 @@ function TestsStep({
           {sampleCount === 0 ? ". Mark at least one case as a sample." : ""}
         </p>
       </div>
+
+      {/*
+        The reference solution: recommended, private, and the only honest oracle. Everything
+        below it exists to catch what reading cannot: expected outputs that are wrong, inputs
+        the intended solution cannot parse, and limits it cannot meet.
+      */}
+      <div className="mt-group flex flex-col gap-group rounded-panel border border-rule-edge p-4 sm:p-5">
+        <div>
+          <h4 className="font-semibold" style={{ fontSize: "var(--text-sm)" }}>
+            Reference solution
+            <span className="ml-2 font-normal text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
+              Recommended
+            </span>
+          </h4>
+          <p className="mt-1 text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
+            Used privately to verify the cases and to generate expected outputs. Students never
+            see it.
+          </p>
+        </div>
+
+        <div className="w-56">
+          <Select
+            label="Language"
+            value={referenceLanguage}
+            onChange={(event) => setReferenceLanguage(event.target.value as LanguageId)}
+          >
+            {LANGUAGE_IDS.map((language) => (
+              <option key={language} value={language}>
+                {VARIANTS[language].label}
+              </option>
+            ))}
+          </Select>
+        </div>
+
+        <TextArea
+          label="Solution code"
+          mono
+          value={referenceCode}
+          rows={10}
+          placeholder="A correct program that reads stdin and prints the expected output."
+          onChange={(event) => setReferenceCode(event.target.value)}
+        />
+
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={generateBusy || validateBusy || referenceCode.trim() === "" || cases.length === 0}
+            onClick={() => void generateOutputs()}
+          >
+            {generateBusy ? "Running the reference…" : "Generate expected outputs"}
+          </Button>
+          {editSlug !== null && (
+            <Button
+              type="button"
+              disabled={generateBusy || validateBusy}
+              onClick={() => void validateQuestion()}
+            >
+              {validateBusy ? "Judging every case…" : "Validate question"}
+            </Button>
+          )}
+          {editSlug === null && (
+            <span className="text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
+              Save first, then Validate question judges the saved reference against every case.
+            </span>
+          )}
+        </div>
+
+        {/* The stored stamp describes SAVED content; a save clears it server-side. */}
+        {validation === null && referenceValidatedAt !== null && (
+          <p className="text-ink/70" style={{ fontSize: "var(--text-xs)" }}>
+            <span className="font-semibold">Validated.</span> The saved reference passed every
+            case. Editing anything clears this until the next validation.
+          </p>
+        )}
+
+        {validation !== null && (
+          <p
+            role="status"
+            className={`motion-swap-in font-semibold ${
+              validation.validatedAt !== null ? "" : "text-panther"
+            }`}
+            style={{ fontSize: "var(--text-sm)" }}
+          >
+            {validation.validatedAt !== null
+              ? `Validated: all ${String(validation.total)} cases pass through the real judge.`
+              : `Validation failed: ${String(validation.passed)} of ${String(validation.total)} cases pass (${validation.verdict}). Fix the reference or the cases and run it again.`}
+          </p>
+        )}
+
+        {judgeNote !== null && (
+          <p role="status" className="motion-swap-in text-ink/70" style={{ fontSize: "var(--text-xs)" }}>
+            {judgeNote}
+          </p>
+        )}
+      </div>
     </BuilderSection>
   );
+}
+
+/** The envelope's error message, if the payload carries one this form can show. */
+function errorMessageFromPayload(payload: unknown): string | null {
+  if (typeof payload === "object" && payload !== null && "error" in payload) {
+    const message = (payload as { error: { message?: string } }).error.message;
+    return typeof message === "string" ? message : null;
+  }
+  return null;
 }
 
 function QualityReview({
@@ -1199,13 +1693,27 @@ function QualityReview({
   expectedOutputsComplete,
   caseCount,
   sampleCount,
+  formatsComplete,
+  constraintsComplete,
+  referenceProvided,
+  validated,
 }: {
   detailsComplete: boolean;
   starterComplete: boolean;
   expectedOutputsComplete: boolean;
   caseCount: number;
   sampleCount: number;
+  formatsComplete: boolean;
+  constraintsComplete: boolean;
+  referenceProvided: boolean;
+  validated: boolean;
 }) {
+  /*
+    Two lists, and the boundary between them is the point: "Required" is what the save itself
+    refuses without, so it can never read as advice; "Recommended" is what a good question has
+    and a legal one may lack. Mixing them taught authors that everything on the list was equally
+    optional, which is exactly backwards for the top half.
+  */
   return (
     <aside
       className="rounded-panel border border-rule-edge bg-paper p-4"
@@ -1217,15 +1725,47 @@ function QualityReview({
       >
         Quality review
       </h2>
-      <ul className="mt-tight flex flex-col gap-tight">
+      <h3
+        className="mt-tight font-semibold uppercase tracking-wide text-ink/60"
+        style={{ fontSize: "var(--text-xs)" }}
+      >
+        Required to save
+      </h3>
+      <ul className="mt-1 flex flex-col gap-tight">
         <ReviewItem ok={detailsComplete}>Title and statement</ReviewItem>
-        <ReviewItem ok={starterComplete}>Starter code ready</ReviewItem>
+        <ReviewItem ok={caseCount >= 1}>At least one test case</ReviewItem>
         <ReviewItem ok={expectedOutputsComplete}>
           Expected output for every case
         </ReviewItem>
         <ReviewItem ok={sampleCount > 0}>At least one sample case</ReviewItem>
+      </ul>
+      <h3
+        className="mt-group font-semibold uppercase tracking-wide text-ink/60"
+        style={{ fontSize: "var(--text-xs)" }}
+      >
+        Recommended
+      </h3>
+      <ul className="mt-1 flex flex-col gap-tight">
+        <ReviewItem ok={formatsComplete} recommendation>
+          Input and output formats
+        </ReviewItem>
+        <ReviewItem ok={constraintsComplete} recommendation>
+          Constraints
+        </ReviewItem>
+        <ReviewItem ok={sampleCount >= 2} recommendation>
+          Two sample cases
+        </ReviewItem>
         <ReviewItem ok={caseCount >= 3} recommendation>
           Three or more test cases
+        </ReviewItem>
+        <ReviewItem ok={starterComplete} recommendation>
+          Starter code ready
+        </ReviewItem>
+        <ReviewItem ok={referenceProvided} recommendation>
+          Reference solution
+        </ReviewItem>
+        <ReviewItem ok={validated} recommendation>
+          Judge validation passed
         </ReviewItem>
       </ul>
     </aside>
@@ -1589,13 +2129,16 @@ function DifficultyPicker({
   value,
   onChange,
 }: {
-  value: "E" | "M" | "H";
-  onChange: (value: "E" | "M" | "H") => void;
+  value: Designation;
+  onChange: (value: Designation) => void;
 }) {
-  const options: readonly { value: "E" | "M" | "H"; label: string }[] = [
+  const options: readonly { value: Designation; label: string }[] = [
     { value: "E", label: "Easy" },
     { value: "M", label: "Medium" },
     { value: "H", label: "Hard" },
+    // The fourth designation, from the past-contest spreadsheets: a team question is worked by
+    // the whole team at once and lands in the line-up's group slot by default.
+    { value: "TEAM", label: "Team" },
   ];
   return (
     <fieldset>

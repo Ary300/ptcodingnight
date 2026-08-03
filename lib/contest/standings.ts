@@ -566,6 +566,12 @@ export async function getTeamStandings(
     frozen: !admin && isPublicBoardFrozen(input.contest, now),
     asOf: (upTo ?? now).toISOString(),
     endsAt: input.contest.endsAt.toISOString(),
+    // Sorted by the organizer's own order, already the shape the scoring input carries. The
+    // TEAM board never splits by division (teams span them); the wall uses this list to offer
+    // each division's INDIVIDUAL board one tab away.
+    divisions: [...input.config.divisions]
+      .sort((a, b) => a.sortOrder - b.sortOrder)
+      .map((division) => ({ divisionId: division.divisionId, name: division.name })),
     setLabels: input.problemSetLabels.map(([, label]) => label),
     groupPointsInsideMean: input.config.groupPointsInsideMean,
     sideActivitiesFlat: input.config.sideActivitiesFlat,

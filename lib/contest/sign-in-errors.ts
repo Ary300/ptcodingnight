@@ -95,7 +95,7 @@ const MESSAGES: Readonly<Record<SignInErrorCode, (provider: string) => string>> 
     `before you can sign in this way.`,
   no_contest: () =>
     "Your account is ready, but there is no contest open right now, so there is nothing to " +
-    "enrol you in. An organizer needs to open tonight's contest, then sign in again.",
+    "enroll you in. An organizer needs to open tonight's contest, then sign in again.",
   enrolment_failed: () =>
     "Your account is ready, but we could not add you to the contest just now. Try signing in " +
     "again in a moment.",

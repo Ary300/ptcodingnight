@@ -11,7 +11,12 @@ import type { z } from "zod";
 
 import type { PublicTestResult, SubmissionView } from "@/lib/schemas/api";
 import type { RunSamplesResponseSchema } from "@/lib/schemas/api";
-import type { JudgeResult, Language } from "@/lib/schemas/judge";
+import {
+  ComparatorSchema,
+  type Comparator,
+  type JudgeResult,
+  type Language,
+} from "@/lib/schemas/judge";
 import { AUDIT_ACTIONS, writeAudit } from "@/lib/contest/audit";
 import {
   assertCanSubmit,
@@ -92,6 +97,8 @@ interface SubmissionTarget {
   readonly timeLimitMs: number;
   readonly memoryLimitMb: number;
   readonly allowedLanguages: readonly Language[];
+  /** The problem's own comparison rule; undefined falls back to the judge default, whitespace. */
+  readonly comparator: Comparator | undefined;
   readonly testCases: readonly TestCaseInput[];
 }
 
@@ -128,6 +135,7 @@ async function resolveTarget(
           state: true,
           timeLimitMs: true,
           memoryLimitMb: true,
+          comparator: true,
           allowedLanguages: true,
           testCases: {
             select: {
@@ -190,12 +198,21 @@ async function resolveTarget(
     throw new ValidationError(`${language} is not allowed on this problem`);
   }
 
+  const storedComparator = ComparatorSchema.safeParse(contestProblem.problem.comparator);
+
   return {
     contestProblemId: contestProblem.id,
     contestId: contestProblem.contestId,
     slug: contestProblem.problem.slug,
     timeLimitMs: contestProblem.problem.timeLimitMs,
     memoryLimitMb: contestProblem.problem.memoryLimitMb,
+    /*
+      The problem's own comparison rule, parsed rather than cast because Json is a trust
+      boundary in both directions. An unparseable or absent column falls back to undefined,
+      which buildJudgeJob turns into the default: whitespace. Without this line the builder's
+      comparator setting was a stored opinion the judge never heard.
+    */
+    comparator: storedComparator.success ? storedComparator.data : undefined,
     allowedLanguages: contestProblem.problem.allowedLanguages,
     testCases: contestProblem.problem.testCases,
   };
@@ -253,6 +270,7 @@ export async function createSubmission(
         problem: target,
         testCases: target.testCases,
         host: hostLimits(),
+        comparator: target.comparator,
       }),
     );
   } catch (error: unknown) {
@@ -610,6 +628,7 @@ export async function runSamples(
     problem: target,
     testCases: target.testCases,
     host: hostLimits(),
+    comparator: target.comparator,
     samplesOnly: true,
   });
 

@@ -138,6 +138,7 @@ function jobFor(runtime: RuntimeId, rep: number): JudgeJob {
       group: null,
     })),
     attempt: 1,
+    captureOutput: false,
   };
 }
 

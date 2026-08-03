@@ -40,7 +40,15 @@ export default async function ProjectorPage({
   const params = await searchParams;
   const contestId = firstValue(params.contest, params.contestId);
 
-  if (params.mode === "individual") return <ProjectorScreen contestId={contestId} />;
+  if (params.mode === "individual") {
+    return (
+      <ProjectorScreen
+        contestId={contestId}
+        // The team board's division tabs link here with the division they name.
+        initialDivisionId={firstValue(params.division)}
+      />
+    );
+  }
 
   return <TeamProjectorScreen contestId={contestId} />;
 }

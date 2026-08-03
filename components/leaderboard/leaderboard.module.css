@@ -908,6 +908,57 @@
   color: var(--color-panther);
 }
 
+/*
+  The board switch on the TEAM wall: "Teams" plus one entry per division, linking to that
+  division's INDIVIDUAL board. Centred under the header band, sized off the same projector
+  scale as everything else. The active entry is inert text: the board you are on is a fact,
+  not a control.
+*/
+.boardSwitch {
+  display: flex;
+  justify-content: center;
+  gap: calc(var(--gap, 0.5rem) * 1.5);
+  margin-bottom: var(--gap, 0.5rem);
+}
+
+.boardSwitchItem {
+  color: var(--muted, var(--color-ink));
+  font-size: var(--fs-sm, var(--text-sm));
+  letter-spacing: 0.04em;
+  padding: 0.1em 0.4em;
+  text-decoration: none;
+  text-transform: uppercase;
+}
+
+a.boardSwitchItem:hover {
+  color: var(--color-ink);
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+.boardSwitchActive {
+  border-bottom: 2px solid var(--color-panther);
+  color: var(--color-ink);
+  font-weight: 700;
+}
+
+/* The individual board's way back to the team wall, sitting under the division tabs. */
+.teamsLink {
+  color: var(--muted, var(--color-ink));
+  display: inline-block;
+  font-size: var(--fs-sm, var(--text-sm));
+  letter-spacing: 0.04em;
+  margin-top: var(--gap, 0.5rem);
+  text-decoration: none;
+  text-transform: uppercase;
+}
+
+.teamsLink:hover {
+  color: var(--color-ink);
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
 .tabs {
   display: flex;
   flex-direction: column;

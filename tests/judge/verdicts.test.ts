@@ -116,6 +116,7 @@ function jobFor(entry: Manifest["cases"][number]): JudgeJob {
     comparator: { kind: "whitespace" },
     testCases: testCasesFor(entry),
     attempt: 1,
+    captureOutput: false,
   };
 }
 

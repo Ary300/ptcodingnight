@@ -60,6 +60,8 @@ const SIGN_IN_STATES = ["SCHEDULED", "RUNNING", "FROZEN"] as const;
 export interface ContestChoice {
   readonly contestId: string;
   readonly name: string;
+  /** The permanent arena. Ranks below every real contest, however live its window looks. */
+  readonly isPractice: boolean;
   readonly state: string;
   readonly startsAt: Date;
   readonly endsAt: Date;
@@ -116,7 +118,14 @@ export async function contestsForUser(
       ],
     },
     orderBy: [{ startsAt: "asc" }, { id: "asc" }],
-    select: { id: true, name: true, state: true, startsAt: true, endsAt: true },
+    select: {
+      id: true,
+      name: true,
+      isPractice: true,
+      state: true,
+      startsAt: true,
+      endsAt: true,
+    },
   });
 
   const mine =
@@ -134,6 +143,7 @@ export async function contestsForUser(
   const choices: ContestChoice[] = contests.map((contest) => ({
     contestId: contest.id,
     name: contest.name,
+    isPractice: contest.isPractice,
     state: contest.state,
     startsAt: contest.startsAt,
     endsAt: contest.endsAt,
@@ -146,6 +156,17 @@ export async function contestsForUser(
 
   // Sorted on a copy: `Array.prototype.sort` mutates, and these rows are the query's, not ours.
   return [...choices].sort((a, b) => {
+    /*
+      Real contests beat the practice arena BEFORE any clock comparison, because the arena's
+      window always contains now (that is what makes it permanent) and would otherwise outrank
+      tonight's SCHEDULED contest every time. On the night, the real contest wins the sign-in;
+      any other day, the arena is the only row and wins by default; a student who wants the
+      arena while a real contest is pending picks it from the chooser, which reads the rest of
+      this list.
+    */
+    const byPractice = Number(a.isPractice) - Number(b.isPractice);
+    if (byPractice !== 0) return byPractice;
+
     const byWindow = Number(b.containsNow) - Number(a.containsNow);
     if (byWindow !== 0) return byWindow;
 

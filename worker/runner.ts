@@ -982,6 +982,8 @@ export async function judge(
             : verdict === "RE" && testCase.isSample
               ? buildErrorSnippet(run.stderr)
               : null,
+        // Already capped: `run.stdout` was read through the derived per-test output cap.
+        ...(job.captureOutput ? { capturedStdout: run.stdout } : {}),
       });
     }
 

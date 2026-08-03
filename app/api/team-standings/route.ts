@@ -50,6 +50,8 @@ async function currentContestId(now: Date): Promise<string> {
       state: { in: ["RUNNING", "FROZEN"] },
       startsAt: { lte: now },
       endsAt: { gt: now },
+      // Same rule as /api/standings: the permanent arena must never win the wall's default.
+      isPractice: false,
     },
     // RUNNING before FROZEN on a tie, then the one that started most recently.
     orderBy: [{ state: "asc" }, { startsAt: "desc" }],
@@ -64,7 +66,7 @@ async function currentContestId(now: Date): Promise<string> {
     would be worse than showing a contest that is over.
   */
   const recent = await prisma.contest.findFirst({
-    where: { state: { in: ["RUNNING", "FROZEN"] } },
+    where: { state: { in: ["RUNNING", "FROZEN"] }, isPractice: false },
     orderBy: [{ state: "asc" }, { startsAt: "desc" }],
     select: { id: true },
   });
