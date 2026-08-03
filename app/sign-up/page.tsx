@@ -10,6 +10,18 @@ export const metadata: Metadata = {
 };
 
 /**
+ * Rendered per request, never prerendered at build time.
+ *
+ * This page asks the ENVIRONMENT which OAuth providers this server has credentials for, and a
+ * build machine is not the server: `next build` tried to prerender it, `parseContestEnv` refused
+ * the build image's empty environment, and the whole production build died with "Export
+ * encountered an error on /sign-up". `/sign-in` never hit this only because it takes
+ * `searchParams`, which opts it out of prerendering as a side effect - an accident, not a
+ * decision, and this makes the decision explicit on the page that needs it.
+ */
+export const dynamic = "force-dynamic";
+
+/**
  * `/sign-up` — create an account, on the same split screen as `/sign-in`.
  *
  * This page exists because "Create your account" used to link to the login page, which showed a

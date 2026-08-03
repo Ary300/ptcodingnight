@@ -1,6 +1,21 @@
 @import "tailwindcss";
 
 /*
+ * Tailwind v4 scans every non-gitignored file for class-name candidates while PostCSS
+ * compiles THIS file, and the problem bank made that scan enormous: 92 authored problems
+ * committed roughly a million lines of test data under content/, none of it containing a
+ * class name. The scan ran long enough that Turbopack's loader IPC deadline fired and the
+ * production build died with "TurbopackInternalError: app/globals.css ... deadline has
+ * elapsed" - on the droplet twice and in a local amd64 container once, while the fast
+ * native build stayed just inside the deadline and G0 kept passing. Excluding the data
+ * directories is both the fix and honest: no Tailwind class will ever live in a .in file.
+ */
+@source not "../content";
+@source not "../fixtures";
+@source not "../data";
+@source not "../docs";
+
+/*
  * Park Tudor Coding Night — design tokens.
  * Spec: docs/DESIGN.md. Do not add a colour or a font size here without updating it.
  *
