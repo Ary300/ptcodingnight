@@ -31,10 +31,10 @@ larrys-array,Larry's Array,implementation,M,general,authored,spreadsheet history
 icecream-parlor,Ice Cream Parlor,search,E,general,authored,spreadsheet history also records M
 gena,Gena Playing Hanoi,search,M,general,authored,spreadsheet history records H; kept per record
 swap-case,sWAP cASE,strings,E,general,authored,spreadsheet history records M; kept per record; not in the current catalog index
-flipping-bits,Flipping bits,bit-manipulation,E,general,planned,
-lonely-integer,Lonely Integer,bit-manipulation,E,general,planned,
-maximizing-xor,Maximizing XOR,bit-manipulation,E,general,planned,
-sum-vs-xor,Sum vs XOR,bit-manipulation,E,general,planned,
+flipping-bits,Flipping bits,bit-manipulation,E,general,authored,
+lonely-integer,Lonely Integer,bit-manipulation,E,general,authored,
+maximizing-xor,Maximizing XOR,bit-manipulation,E,general,authored,
+sum-vs-xor,Sum vs XOR,bit-manipulation,E,general,authored,
 2s-complement,2's complement,bit-manipulation,H,advanced,planned,catalog tier Advanced
 changing-bits,Changing Bits,bit-manipulation,H,advanced,planned,catalog tier Advanced
 hamming-distance,Hamming Distance,bit-manipulation,H,advanced,planned,catalog tier Expert
@@ -265,18 +265,18 @@ the-quickest-way-up,Snakes and Ladders: The Quickest Way Up,graph-theory,M,advan
 synchronous-shopping,Synchronous Shopping,graph-theory,M,advanced,planned,
 the-story-of-a-tree,The Story of a Tree,graph-theory,M,advanced,planned,
 bfs-shortest-reach-in-a-graph,BFS: Shortest Reach in a Graph,graphs,M,advanced,planned,not in the current catalog index
-beautiful-pairs,Beautiful Pairs,greedy,E,general,planned,
+beautiful-pairs,Beautiful Pairs,greedy,E,general,authored,
 grid-challenge,Grid Challenge,greedy,E,general,authored,
-jim-and-the-orders,Jim and the Orders,greedy,E,general,planned,
-largest-permutation,Largest Permutation,greedy,E,general,planned,
+jim-and-the-orders,Jim and the Orders,greedy,E,general,authored,
+largest-permutation,Largest Permutation,greedy,E,general,authored,
 luck-balance,Luck Balance,greedy,E,general,authored,
 marcs-cakewalk,Marc's Cakewalk,greedy,E,general,authored,
-mark-and-toys,Mark and Toys,greedy,E,general,planned,
-maximum-perimeter-triangle,Maximum Perimeter Triangle,greedy,E,general,planned,
+mark-and-toys,Mark and Toys,greedy,E,general,authored,
+maximum-perimeter-triangle,Maximum Perimeter Triangle,greedy,E,general,authored,
 minimum-absolute-difference-in-an-array,Minimum Absolute Difference in an Array,greedy,E,general,authored,
-two-arrays,Permuting Two Arrays,greedy,E,general,planned,
-priyanka-and-toys,Priyanka and Toys,greedy,E,general,planned,
-sherlock-and-the-beast,Sherlock and The Beast,greedy,E,general,planned,
+two-arrays,Permuting Two Arrays,greedy,E,general,authored,
+priyanka-and-toys,Priyanka and Toys,greedy,E,general,authored,
+sherlock-and-the-beast,Sherlock and The Beast,greedy,E,general,authored,
 accessory-collection,Accessory Collection,greedy,H,general,planned,
 chief-hopper,Chief Hopper,greedy,H,general,planned,
 board-cutting,Cutting Boards,greedy,H,general,planned,
