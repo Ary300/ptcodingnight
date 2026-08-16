@@ -27,6 +27,10 @@ import { useResource } from "./data/useResource";
 */
 const NAV = [
   { href: "/contest", label: "Problems" },
+  // Second, not last: for a student who has not written a program yet this is the tab that has
+  // something they can do, and burying it behind their own submission history would hide the
+  // one surface the organizer added it for.
+  { href: "/contest/puzzles", label: "Puzzles" },
   { href: "/team", label: "My team" },
   { href: "/submissions", label: "My submissions" },
 ] as const;
@@ -49,6 +53,16 @@ function StubBanner() {
 
 export function CompetitorChrome({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  /*
+    THE LONGEST MATCHING TAB WINS, and that is not a refinement: "/contest" is a prefix of
+    "/contest/puzzles", so a plain prefix test marks BOTH tabs current on the puzzles page. Two
+    elements carrying aria-current="page" is the same defect the admin tab strip documents and
+    its a11y spec guards against. Longest match also keeps a problem page (/contest/<slug>)
+    under Problems, which prefix matching got right by luck rather than by rule.
+  */
+  const currentNavHref = NAV.map((item) => item.href)
+    .filter((href) => pathname === href || pathname.startsWith(`${href}/`))
+    .sort((a, b) => b.length - a.length)[0];
   const participant = useParticipant();
 
   /**
@@ -342,7 +356,7 @@ export function CompetitorChrome({ children }: { children: ReactNode }) {
           >
             <ul className="flex items-stretch gap-1">
               {NAV.map((item) => {
-                const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
+                const active = item.href === currentNavHref;
                 return (
                   <li key={item.href} className="flex shrink-0">
                     {/*

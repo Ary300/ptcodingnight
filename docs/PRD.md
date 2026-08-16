@@ -369,6 +369,14 @@ candidates. Surface those flags in the problem picker so organizers stop repeati
   team total with the arithmetic shown. A student who can see how the mean was computed does not
   need to trust it.
 - **My submissions:** full history with code, verdict, and score.
+- **Puzzles:** decoding binary, a Caesar cipher, a hex conversion, a seating logic puzzle, a number
+  sequence, a sudoku. No language, no editor, no judge — a prompt and a box to type an answer in.
+  Marking happens on the server and the answer key never reaches the browser. A correct answer pays
+  the solver's **team**, once per puzzle, as a side-activity award (§9.2), so the scoring engine
+  needs no concept of a puzzle. Wrong answers cost nothing and are unlimited, and the screen says so
+  before anybody types: these exist for the student who cannot write a program yet, and a penalty
+  would defeat the purpose. A student not yet on a team can still solve one and is told plainly that
+  there is nobody to pay.
 
 ### 9.2 Organizer experience
 
@@ -385,6 +393,11 @@ candidates. Surface those flags in the problem picker so organizers stop repeati
 - **Side-activity entry:** per team, a labelled point entry (metal puzzle, train tracks,
   Connections). Admin-only, audit-logged with who entered it and when. This is the one score input
   with no submission behind it, so its audit trail is the only record that exists.
+- **Puzzles:** every puzzle, whether it is showing to students, and how many teams have solved it,
+  with one switch per puzzle. Hiding a puzzle mid-contest — because it turned out to be broken, or
+  because the answer got shouted across the room — leaves every point it has already paid alone.
+  Puzzle text, points and answers are authored in `scripts/seed-puzzles.ts` and reviewed there, not
+  typed into a form on the night.
 - **Live console:** submissions feed, queue depth, judge health, per-participant and per-team
   drill-down, manual rejudge, manual verdict override (audit-logged, with a required reason),
   and **session revocation** for a named participant.

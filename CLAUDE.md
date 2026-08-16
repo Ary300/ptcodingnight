@@ -79,10 +79,25 @@ performed none of them:
   contest from `?contest=`, and nothing enumerated contests, so the screens told the organizer to
   add an id by hand. `GET /api/admin/contests` plus `ContestPicker` fixed it. T7's team-management
   gap is closed; `/admin/awards` still renders the per-division individual board.
-- **Join by code is fully removed** — the flat `POST /api/join` outlived the contest-scoped route,
-  along with the claim cookie and the client's `join()` method. Students sign in with a provider
-  and an organizer puts them on a team.
+- **The old team-wide join code is gone; a PER-PARTICIPANT one replaced it.** The flat
+  `POST /api/join` outlived the contest-scoped route, along with the claim cookie and the client's
+  `join()` method, and all of that was deleted. What the organizer asked for afterwards is not the
+  same feature: a roster built before the night, one opaque code per SEAT, and typing it puts that
+  student on their team with no account at all. `lib/contest/join-code.ts` owns it, the code is
+  globally unique with the unique index as the collision arbiter, and it encodes nothing — not the
+  team, not the division. A moved student keeps their code, because the code names a seat and the
+  seat is what moved. `/admin/contests/{id}/slips` prints them and `JoinCodeLookup` resolves one at
+  the desk.
 - **`/admin/**` is gated in the layout** (T8), not only in its routes.
+
+**Puzzles are points without a compiler.** Binary, a Caesar cipher, hex, a seating puzzle, a
+sequence, a sudoku — `/contest/puzzles` for students, `/admin/puzzles` for the switch, authored in
+`scripts/seed-puzzles.ts`. A solve writes a `TeamSideActivity`, which is the currency the metal
+puzzle already pays in, so **nothing in `lib/scoring/` knows a puzzle exists.** One award per team
+per puzzle, arbitrated by a unique index rather than a check-then-write, because two teammates
+racing to submit the same answer is the normal case. The sudoku is marked by VALIDATING the grid
+against its givens, never against a stored solution, so it cannot be wrong about a puzzle whose
+uniqueness nobody verified.
 
 `docs/TODO.md` is the honest list — read it before assuming a feature is reachable over HTTP.
 
@@ -106,6 +121,8 @@ docker compose up -d     # full stack: web, worker, postgres, redis
 
 npx tsx scripts/seed-demo.ts   # a contest you can actually open: 6 published problems,
                                # 2 teams of DIFFERENT sizes, and submission history
+npx tsx scripts/seed-puzzles.ts  # the 6 browser puzzles. Idempotent; leaves solves and awards
+                                 # alone, and does not un-hide a puzzle an organizer hid
 ./scripts/smoke-prod.sh        # against a LIVE deployment; see docs/DEPLOY.md
 
 docker compose -f docker-compose.prod.yml up -d --build   # production stack, + Caddy
@@ -303,6 +320,12 @@ imports nothing from either. If scoring needs a fact, it arrives as an argument.
 - **A CSS variable defined on one class is undefined everywhere else, and silently.** The projector's
   team board did not stand on `.stage`, so `var(--fs-xl)` was undefined and the contest clock
   rendered at the browser's default 16px **on a 1920 wall**. Nothing errored.
+- **A space between `</span>` and the text after it is compiled away when that text wraps to a
+  second source line.** `/admin/puzzles` shipped "6 of 6showing on the students' puzzle page" from
+  source that has the space right there in it. Nothing warns, no gate looks, and it survives review
+  because the file you are reading is correct. Write the space as `{" "}` whenever a text node both
+  follows an element and continues onto another line, and read the rendered string — not the JSX —
+  when checking copy: `document.querySelector(...).innerText`, which is how this one was caught.
 - **eslint walks into `.claude/worktrees/`**, which is a second checkout inside the repo root. One
   run reported 35,418 problems from another branch's vendored bundle; another died with `ENOENT` as
   that agent deleted a scratch file mid-run. `globalIgnores` now excludes `.claude/**`. A gate that

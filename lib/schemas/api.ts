@@ -66,6 +66,14 @@ export const API_ROUTES = {
   stream: (contestId: string) =>
     `/api/contests/${encodeURIComponent(contestId)}/stream`,
 
+  /** Browser puzzles for this contest's viewer: list, and answer one. */
+  puzzles: (contestId: string) =>
+    `/api/contests/${encodeURIComponent(contestId)}/puzzles`,
+  puzzleAttempt: (contestId: string, slug: string) =>
+    `/api/contests/${encodeURIComponent(contestId)}/puzzles/${encodeURIComponent(slug)}`,
+  /** The organizer's puzzle list, and the show/hide toggle. */
+  adminPuzzles: "/api/admin/puzzles",
+
   runSamples: "/api/run-samples",
   submissions: "/api/submissions",
   submission: (id: string) => `/api/submissions/${encodeURIComponent(id)}`,
@@ -733,6 +741,51 @@ export type AdminWhoseCode = z.infer<typeof AdminWhoseCodeResponseSchema>;
 export const AdminMintJoinCodesResponseSchema = z.object({
   minted: z.number().int().nonnegative(),
   alreadyHad: z.number().int().nonnegative(),
+});
+
+/**
+ * A puzzle as a student sees it. NO answer key: the read that feeds the screen cannot leak one
+ * because it never selects one.
+ */
+export const PuzzleSchema = z.object({
+  slug: z.string(),
+  title: z.string(),
+  topic: z.string(),
+  promptMd: z.string(),
+  check: z.enum(["TEXT", "SUDOKU"]),
+  hint: z.string().nullable(),
+  points: z.number().int(),
+  solved: z.boolean(),
+  solvedBy: z.string().nullable(),
+});
+export type Puzzle = z.infer<typeof PuzzleSchema>;
+
+export const PuzzleListSchema = z.object({ puzzles: z.array(PuzzleSchema) });
+
+export const PuzzleAttemptRequestSchema = z.object({
+  answer: z.string().min(1, "Type an answer first.").max(4000),
+});
+
+export const PuzzleAttemptResponseSchema = z.object({
+  correct: z.boolean(),
+  message: z.string(),
+  awarded: z.number().int().nonnegative(),
+});
+
+/** The organizer's list: every puzzle including hidden ones, with how many teams solved it. */
+export const AdminPuzzleRowSchema = z.object({
+  slug: z.string(),
+  title: z.string(),
+  topic: z.string(),
+  points: z.number().int(),
+  active: z.boolean(),
+  solveCount: z.number().int().nonnegative(),
+});
+export type AdminPuzzleRow = z.infer<typeof AdminPuzzleRowSchema>;
+export const AdminPuzzleListSchema = z.object({ puzzles: z.array(AdminPuzzleRowSchema) });
+export const AdminSetPuzzleActiveRequestSchema = z.object({
+  slug: z.string().min(1),
+  active: z.boolean(),
 });
 
 export const AdminCreateTeamRequestSchema = z.object({

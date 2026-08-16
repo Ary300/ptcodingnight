@@ -66,6 +66,20 @@ test.describe("axe-core: the organizer setup flow", () => {
     await expect(current).toHaveAttribute("href", `/admin/contests/${contestId}/teams`);
   });
 
+  /*
+    The puzzle screen is a data table whose last column is a button per row, which is the shape
+    that most often ships with nothing but a colour to say which state a row is in. Here the button
+    says "Hide" or "Show", so the state is in its name.
+  */
+  test("the puzzle list", async ({ page }) => {
+    await signInAsOrganizer(page);
+    await page.goto("/admin/puzzles");
+
+    await expect(page.getByRole("heading", { name: "Puzzles", level: 1 })).toBeVisible();
+    await expect(page.getByRole("table")).toBeVisible();
+    await auditPage(page, "/admin/puzzles");
+  });
+
   test("the contest shell survives 360px without overflowing the document", async ({ page }) => {
     await signInAsOrganizer(page);
     const contestId = await runningContestId(page);

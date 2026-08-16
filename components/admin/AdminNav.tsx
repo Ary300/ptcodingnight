@@ -35,6 +35,9 @@ import { usePathname } from "next/navigation";
 const LINKS = [
   { href: "/admin", label: "Contests" },
   { href: "/admin/problems", label: "Problem bank" },
+  // Puzzles have no contest either: the binary one is the binary one in every division, and its
+  // points reach the board through whichever contest the solver's team is already in.
+  { href: "/admin/puzzles", label: "Puzzles" },
 ] as const;
 
 /**

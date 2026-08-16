@@ -431,6 +431,23 @@ export class ContestApi {
     return this.req().post(`/api/admin/teams/${teamId}/side-activities`, { data: body });
   }
 
+  // --- puzzles --------------------------------------------------------------
+
+  puzzlesRaw(): Promise<APIResponse> {
+    return this.req().get(`/api/contests/${this.contestId}/puzzles`);
+  }
+
+  answerPuzzleRaw(slug: string, answer: string): Promise<APIResponse> {
+    return this.req().post(`/api/contests/${this.contestId}/puzzles/${slug}`, {
+      data: { answer },
+    });
+  }
+
+  /** Show or hide one puzzle. Organizer only. Hiding keeps every award already made. */
+  setPuzzleActiveRaw(slug: string, active: boolean): Promise<APIResponse> {
+    return this.req().post("/api/admin/puzzles", { data: { slug, active } });
+  }
+
   adminLoginRaw(passcode: string): Promise<APIResponse> {
     return this.req().post("/api/admin/session", { data: { passcode } });
   }

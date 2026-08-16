@@ -471,6 +471,75 @@ model TeamSideActivity {
   @@index([teamId])
 }
 
+/// How a puzzle's answer is checked. Both are exact rules, never a human reading a submission.
+enum PuzzleCheck {
+  /// One typed answer, compared after trimming, collapsing spaces and folding case.
+  TEXT
+  /// A completed 9x9 grid as 81 digits. Checked for VALIDITY against the givens rather than
+  /// against one stored solution, so any legal completion is accepted.
+  SUDOKU
+}
+
+/// A puzzle a student solves in the browser: decode the binary, finish the sudoku, break the
+/// cipher. No compiler, no stdin, no language to know.
+///
+/// ## Why these are side activities and not problems
+///
+/// The organizer already runs physical side activities for points (the metal puzzle, train
+/// tracks, Connections), and these are the same thing with the marking automated. Modelling them
+/// as `TeamSideActivity` awards means the scoring engine needs no new concept and no new code
+/// path: the points land in the column that already exists, replay from the same log, and appear
+/// on the board exactly as a hand-entered award does. Treating them as judged PROBLEMS would
+/// have been the wrong shape twice over, since there is no program and no test data.
+model Puzzle {
+  id        String      @id @default(cuid())
+  slug      String      @unique
+  title     String
+  /// "Binary" | "Cipher" | "Sudoku" | "Logic" - shown as a chip, purely for browsing.
+  topic     String
+  /// Markdown. The whole puzzle: the prompt, the data, and what shape the answer takes.
+  promptMd  String
+  check     PuzzleCheck @default(TEXT)
+  /// TEXT: the accepted answer, stored already normalised. SUDOKU: the 81-character givens,
+  /// zero for a blank cell. Never sent to a student.
+  answerKey String
+  /// A nudge a student may reveal. Costs nothing: these exist to keep people playing.
+  hint      String?
+  /// Flat points to the solver's team, once per team, exactly like a hand-entered award.
+  points    Int         @default(25)
+  /// Off hides it from students everywhere without deleting the solves already recorded.
+  active    Boolean     @default(true)
+  /// Browsing order, easiest first.
+  sortOrder Int         @default(0)
+
+  createdAt DateTime @default(now())
+
+  solves PuzzleSolve[]
+
+  @@index([active])
+}
+
+/// One team's solve of one puzzle, and the award it produced.
+///
+/// Unique on (puzzle, team) so a team is paid once however many members type the answer, and so
+/// a double submit cannot double the points. The award row is linked rather than re-derived,
+/// which is what lets an organizer delete a mis-scored award and have the solve say so.
+model PuzzleSolve {
+  id       String @id @default(cuid())
+  puzzleId String
+  teamId   String
+  /// Who typed the winning answer. Kept for the organizer's curiosity and for disputes.
+  participantId String
+
+  awardedPoints Int
+  solvedAt      DateTime @default(now())
+
+  puzzle Puzzle @relation(fields: [puzzleId], references: [id], onDelete: Cascade)
+
+  @@unique([puzzleId, teamId])
+  @@index([teamId])
+}
+
 model Division {
   id        String @id @default(cuid())
   contestId String
