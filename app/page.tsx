@@ -29,6 +29,57 @@ const HOW = [
 ] as const;
 
 /**
+ * What the night is actually like, for a family or a student who has never been to one.
+ *
+ * The four steps above answer "what do I do"; these answer "what is this evening". They are the
+ * details that make it Park Tudor's contest rather than a generic programming site, and every one
+ * of them is a thing the product does: divisions an organizer names, team problems on a shared
+ * feed, the browser puzzles and the metal puzzle paying the same side points, and the board on the
+ * wall of the room.
+ */
+const NIGHT = [
+  {
+    title: "Divisions, so the race is fair",
+    body: "Organizers set up divisions and name them. A student in their first year is not ranked against a fourth-year competitor.",
+  },
+  {
+    title: "Team questions",
+    body: "Some problems belong to the whole team. You talk them through at one table and anybody on the team can submit.",
+  },
+  {
+    title: "Points without a compiler",
+    body: "Decode binary, break a cipher, finish a sudoku, or take apart the metal puzzle. Every one of them scores for your team.",
+  },
+  {
+    title: "The board on the wall",
+    body: "Standings go up on the projector all evening and freeze near the end, so the last stretch is played without knowing.",
+  },
+] as const;
+
+/**
+ * The two students behind the night.
+ *
+ * Real people with real photographs, so this section is held to the same rules as everything else:
+ * a name is a heading rather than a caption, the role is stated plainly, and the images carry
+ * `alt` text that names the person. A decorative `alt=""` would be wrong here — the photograph of
+ * somebody is information about them.
+ */
+const PEOPLE = [
+  {
+    name: "Sameer Zaidi",
+    role: "President, Computer Science Club",
+    photo: "/people/sameer-zaidi.jpg",
+    body: "Sameer organizes Coding Night. He builds the divisions and the teams, picks the questions, and runs the room while it happens.",
+  },
+  {
+    name: "Aryav Das",
+    role: "Officer, Computer Science Club",
+    photo: "/people/aryav-das.jpg",
+    body: "Aryav built this site for the club, from the judge that runs your code in a sandbox to the board the projector shows.",
+  },
+] as const;
+
+/**
  * The board in the hero.
  *
  * Static, and deliberately so — it is a picture of the product, not a live read. It renders the
@@ -90,7 +141,22 @@ function BoardPreview() {
       >
         Sample standings. Team score is the team average plus side points.
       </p>
-      <div className="overflow-x-auto">
+      {/*
+        A labelled, FOCUSABLE region, not a bare `overflow-x-auto`.
+
+        Six columns do not fit a 360px phone, so this box genuinely scrolls sideways there — and a
+        scroll box with nothing focusable inside it cannot be scrolled from a keyboard at all in
+        Safari. axe rates that serious, and it went unseen because the landing audit ran at desktop
+        width, where the table fits and the box therefore does not scroll. The team standings board
+        has the same `overflow-x-auto` and passes on its own merits: every row in it holds a button,
+        so the region already has focusable content. This table is static, so it needs the tab stop.
+      */}
+      <div
+        className="overflow-x-auto"
+        role="region"
+        aria-label="Sample team standings"
+        tabIndex={0}
+      >
         <table
           className="w-full border-collapse"
           style={{ fontSize: "var(--text-xs)" }}
@@ -216,7 +282,17 @@ export default async function Home() {
             also the way in for the first time. There is no separate sign-up to build — the first
             Google or GitHub sign-in creates the account — but nothing on the page said so.
           */}
-          <nav aria-label="Site" className="ml-auto flex items-center gap-1.5 sm:gap-3">
+          {/*
+            `flex-wrap` and `justify-end`: four items reach 358px at 360, which is 30px wider than
+            the content box, so the bar pushed the whole DOCUMENT sideways. It has four items
+            because the join-code link landed beside "Log in" and "Create account" without anybody
+            measuring the row afterwards. Wrapping drops the CTA to its own right-aligned line
+            instead of dragging the page.
+          */}
+          <nav
+            aria-label="Site"
+            className="ml-auto flex flex-wrap items-center justify-end gap-1.5 sm:gap-3"
+          >
             <Link
               href="/projector"
               className="rounded-chip px-2 py-1.5 whitespace-nowrap text-ink/75 hover:text-ink sm:px-3"
@@ -309,7 +385,7 @@ export default async function Home() {
               className="text-ink/60 uppercase"
               style={{ fontSize: "var(--text-xs)", letterSpacing: "0.14em" }}
             >
-              Park Tudor School
+              Park Tudor School <span className="text-ink/40">&middot;</span> Computer Science Club
             </p>
 
             <h1
@@ -329,8 +405,9 @@ export default async function Home() {
               className="mt-5 max-w-xl text-ink/75"
               style={{ fontSize: "var(--text-md)", textWrap: "pretty" }}
             >
-              Park Tudor Coding Night is our team programming contest. Solve your assigned
-              questions, work together on team problems, and follow every result on the live board.
+              Coding Night is the Computer Science Club&rsquo;s team programming contest. Solve your
+              assigned questions, work together on the team problems, and follow every result on the
+              board at the front of the room.
             </p>
 
             {/* Two actions, one obviously primary. */}
@@ -407,6 +484,102 @@ export default async function Home() {
         </ol>
       </section>
 
+      {/* --- what the night is like ------------------------------------------ */}
+      {/*
+        Paper against the page's tinted ground, so the page reads as bands rather than as one long
+        column. The panther mark sits behind it at the same 5.5% the hero uses, which is the only
+        opacity in this build measured to leave text above the DESIGN.md §7 floor.
+      */}
+      <section className="relative overflow-hidden border-y border-rule-hair bg-paper">
+        <Image
+          src="/brand/pt-panther.png"
+          alt=""
+          aria-hidden="true"
+          width={275}
+          height={235}
+          className="pointer-events-none absolute -bottom-16 -left-20 hidden w-[26rem] max-w-none opacity-[0.055] lg:block"
+        />
+        <div className="relative mx-auto w-full max-w-6xl px-4 py-14">
+          <h2 className="font-display font-bold" style={{ fontSize: "var(--text-lg)" }}>
+            One evening at Park Tudor
+          </h2>
+          <p className="mt-2 max-w-2xl text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
+            Coding Night is the Computer Science Club&rsquo;s own contest. Teams sit together, the
+            board is on the wall, and the questions are written for this room.
+          </p>
+
+          <ul className="motion-stagger mt-8 grid gap-x-8 gap-y-7 sm:grid-cols-2">
+            {NIGHT.map((item) => (
+              <li key={item.title} className="motion-swap-in max-w-[46ch]">
+                {/*
+                  A short panther rule above each heading, not a card. Four boxes here would make
+                  a second stack of the same shape as the numbered steps directly above, and the
+                  page would read as two rows of the same component.
+                */}
+                <span aria-hidden="true" className="block h-0.5 w-8 bg-panther" />
+                <h3
+                  className="mt-3 font-display font-bold"
+                  style={{ fontSize: "var(--text-md)" }}
+                >
+                  {item.title}
+                </h3>
+                <p className="mt-1.5 text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
+                  {item.body}
+                </p>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </section>
+
+      {/* --- who runs it ------------------------------------------------------ */}
+      <section className="mx-auto w-full max-w-6xl px-4 py-14">
+        <h2 className="font-display font-bold" style={{ fontSize: "var(--text-lg)" }}>
+          Who runs Coding Night
+        </h2>
+        <p className="mt-2 max-w-2xl text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
+          Two students, one club. Find either of us in the room if something goes wrong on the
+          night.
+        </p>
+
+        <ul className="motion-stagger mt-8 grid gap-4 sm:grid-cols-2">
+          {PEOPLE.map((person) => (
+            <li
+              key={person.name}
+              className="motion-swap-in flex items-start gap-4 rounded-panel border border-rule-hair bg-paper p-5"
+            >
+              {/*
+                `sizes` pins what the browser downloads: the box is 88px at every breakpoint, so
+                without it Next serves an image for the layout width and a 400px headshot arrives
+                as a much larger file than the slot it lands in.
+              */}
+              <Image
+                src={person.photo}
+                alt={person.name}
+                width={400}
+                height={400}
+                sizes="88px"
+                className="h-22 w-22 shrink-0 rounded-panel border border-rule-edge object-cover"
+              />
+              <div className="min-w-0">
+                <h3 className="font-display font-bold" style={{ fontSize: "var(--text-md)" }}>
+                  {person.name}
+                </h3>
+                <p
+                  className="mt-0.5 text-ink/60 uppercase"
+                  style={{ fontSize: "var(--text-xs)", letterSpacing: "0.08em" }}
+                >
+                  {person.role}
+                </p>
+                <p className="mt-2 text-ink/75" style={{ fontSize: "var(--text-sm)" }}>
+                  {person.body}
+                </p>
+              </div>
+            </li>
+          ))}
+        </ul>
+      </section>
+
       {/* --- the closing band ------------------------------------------------ */}
       {/*
         One dark band before the footer, carrying the same action as the hero.
@@ -440,8 +613,16 @@ export default async function Home() {
       {/* --- footer ---------------------------------------------------------- */}
       <footer className="mt-auto border-t border-rule-hair">
         <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center gap-x-6 gap-y-2 px-4 py-6">
-          <span className="text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
-            Park Tudor Coding Night
+          <span className="flex items-center gap-2 text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
+            <Image
+              src="/brand/pt-panther.png"
+              alt=""
+              aria-hidden="true"
+              width={275}
+              height={235}
+              className="h-5 w-auto opacity-70"
+            />
+            Run by the Computer Science Club at Park Tudor School
           </span>
           {/* `py-1.5` lifts both targets from 19px to 31px, matching the header links (2.5.8). */}
           <Link

@@ -34,6 +34,13 @@ test.describe("axe-core: zero critical or serious", () => {
     // said so, and a student with no account read "Sign in" as a door that was not for them.
     // `.first()` because it appears in the bar and again in the hero, on purpose.
     await expect(page.getByRole("link", { name: "Create your account" }).first()).toBeVisible();
+
+    // The two students who run the night are named on the page, and their photographs carry their
+    // names. A headshot is information about a person, so `alt=""` would be wrong here — and an
+    // unnamed image next to a name is exactly the pairing axe cannot tell apart from a decoration.
+    await expect(page.getByRole("heading", { name: "Sameer Zaidi", level: 3 })).toBeVisible();
+    await expect(page.getByRole("img", { name: "Aryav Das" })).toBeVisible();
+
     await auditPage(page, "/");
   });
 
@@ -156,5 +163,29 @@ test.describe("competitor surfaces are usable at 360px (DESIGN.md §7)", () => {
   test("the lobby fits too", async ({ page }) => {
     await openLobby(page);
     await auditPage(page, "/contest @360px");
+  });
+
+  /*
+    The front door, which had no 360 test and needed one.
+
+    The site bar reached four items when the join-code link landed next to "Log in" and "Create
+    account". The row measured 358px inside a 328px content box, so `/` pushed the whole document
+    sideways on a phone — on the one page every visitor sees first, and with every gate green.
+    The bar wraps now; this is the measurement that says so.
+  */
+  test("the landing page does not push the document sideways", async ({ page }) => {
+    await page.goto("/");
+    await expect(page.getByRole("navigation", { name: "Site" })).toBeVisible();
+
+    const overflow = await page.evaluate(() => {
+      const doc = document.documentElement;
+      return { scrollWidth: doc.scrollWidth, clientWidth: doc.clientWidth };
+    });
+    expect(
+      overflow.scrollWidth,
+      `/ is ${String(overflow.scrollWidth)}px wide in a ${String(overflow.clientWidth)}px viewport`,
+    ).toBeLessThanOrEqual(overflow.clientWidth + 1);
+
+    await auditPage(page, "/ @360px");
   });
 });
