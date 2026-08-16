@@ -439,11 +439,30 @@ export function RosterManager({ contestId }: RosterManagerProps) {
         Shown only here, on the organizer's own screen, and only when a seat actually has one.
       */}
       {person.joinCode !== null && (
-        <span className="flex items-center gap-2 text-ink/70" style={{ fontSize: "var(--text-xs)" }}>
+        <span className="flex flex-wrap items-center gap-2 text-ink/70" style={{ fontSize: "var(--text-xs)" }}>
           <span>Join code</span>
           <span className="numeric font-semibold text-ink" style={{ letterSpacing: "0.14em" }}>
             {person.joinCode}
           </span>
+          {/*
+            Reissue is deliberate and rare, so it is quiet text rather than a button competing
+            with the row's real actions. Moving somebody between teams does NOT come here: the
+            code names the person, so it keeps working across a move and the slip in their hand
+            stays good. This is for a slip handed to the wrong student, read aloud, or reused.
+          */}
+          <Button
+            type="button"
+            variant="quiet"
+            size="sm"
+            disabled={busy}
+            onClick={() => {
+              void send(API_ROUTES.adminReissueJoinCode(contestId), "POST", {
+                participantId: person.participantId,
+              });
+            }}
+          >
+            New code
+          </Button>
         </span>
       )}
 
@@ -606,7 +625,7 @@ export function RosterManager({ contestId }: RosterManagerProps) {
             has an account from a previous contest.
           */}
           <form
-            className="flex flex-wrap items-end gap-2 rounded-panel border border-rule-hair p-4"
+            className="rounded-panel border border-rule-hair p-4"
             onSubmit={(event) => {
               event.preventDefault();
               const name = newSeatName.trim();
@@ -618,34 +637,46 @@ export function RosterManager({ contestId }: RosterManagerProps) {
               setNewSeatName("");
             }}
           >
-            <div className="w-56">
-              <TextInput
-                label="Add a student by name"
-                value={newSeatName}
-                placeholder="Full name"
-                hint="No account needed. They get a join code."
-                onChange={(event) => setNewSeatName(event.target.value)}
-              />
-            </div>
-            {roster.teams.length > 0 && (
-              <div className="w-52">
-                <Select
-                  label="Team"
-                  value={newSeatTeamId}
-                  onChange={(event) => setNewSeatTeamId(event.target.value)}
-                >
-                  <option value="">(no team yet)</option>
-                  {roster.teams.map((team: RosterTeam) => (
-                    <option key={team.teamId} value={team.teamId}>
-                      {team.name}
-                    </option>
-                  ))}
-                </Select>
+            {/*
+              The three controls share ONE row and `items-end` lines up their boxes. The hint
+              lives under the row rather than under the name field, because a hint attached to
+              one field makes that column taller and `items-end` then aligns the team picker and
+              the button to the bottom of the HINT: the organizer saw the name box sitting a
+              line above the other two. A note about the whole action belongs to the whole
+              action anyway.
+            */}
+            <div className="flex flex-wrap items-end gap-2">
+              <div className="w-56">
+                <TextInput
+                  label="Add a student by name"
+                  value={newSeatName}
+                  placeholder="Full name"
+                  onChange={(event) => setNewSeatName(event.target.value)}
+                />
               </div>
-            )}
-            <Button type="submit" disabled={busy || newSeatName.trim() === ""}>
-              Add and make a code
-            </Button>
+              {roster.teams.length > 0 && (
+                <div className="w-52">
+                  <Select
+                    label="Team"
+                    value={newSeatTeamId}
+                    onChange={(event) => setNewSeatTeamId(event.target.value)}
+                  >
+                    <option value="">(no team yet)</option>
+                    {roster.teams.map((team: RosterTeam) => (
+                      <option key={team.teamId} value={team.teamId}>
+                        {team.name}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+              )}
+              <Button type="submit" disabled={busy || newSeatName.trim() === ""}>
+                Add and make a code
+              </Button>
+            </div>
+            <p className="mt-2 text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
+              No account needed. They get a join code to type at the door.
+            </p>
           </form>
 
           <TextInput

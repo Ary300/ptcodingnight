@@ -49,6 +49,8 @@ export function ContestTabs({ contestId }: { readonly contestId: string }) {
     { href: `${base}/problems`, label: "Problems" },
     { href: `${base}/sets`, label: "Sets" },
     { href: `${base}/teams`, label: "Teams" },
+    // The paper the night runs on: one printable slip per student, code and team side by side.
+    { href: `${base}/slips`, label: "Join slips" },
     { href: `${base}/side-activities`, label: "Side activities" },
     { href: `${base}/console`, label: "Live console" },
     { href: `${base}/awards`, label: "Awards" },

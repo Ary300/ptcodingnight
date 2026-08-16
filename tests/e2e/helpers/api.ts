@@ -313,6 +313,18 @@ export class ContestApi {
     return this.req().post(`/api/admin/contests/${this.contestId}/roster/named`, { data: body });
   }
 
+  /** Replace one seat's code, invalidating its printed slip. */
+  reissueJoinCodeRaw(participantId: string): Promise<APIResponse> {
+    return this.req().post(`/api/admin/contests/${this.contestId}/roster/reissue-code`, {
+      data: { participantId },
+    });
+  }
+
+  /** Resolve a code to its seat. Organizer only; signs nobody in. */
+  whoseCodeRaw(code: string): Promise<APIResponse> {
+    return this.req().post("/api/admin/join-codes/lookup", { data: { code } });
+  }
+
   /** Give every seat without a code one. Idempotent. */
   mintJoinCodesRaw(): Promise<APIResponse> {
     return this.req().post(`/api/admin/contests/${this.contestId}/roster/codes`, { data: {} });

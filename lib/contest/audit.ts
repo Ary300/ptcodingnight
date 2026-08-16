@@ -83,6 +83,9 @@ export const AUDIT_ACTIONS = {
   /// which problems the player may open and which board ranks them, so the row carries a reason
   /// the same way a team move does — "why is this student suddenly Advanced" is asked at 9pm too.
   participantDivisionSet: "participant.division_set",
+  /// A join code was replaced, which INVALIDATES the slip already in somebody's hand. Audited
+  /// because "my code stopped working" has to have an answer that is not a shrug.
+  participantJoinCodeReissued: "participant.join_code_reissued",
   /// A human overriding the seeded set derivation. After this, reDeriveAssignment reports
   /// matchesStored: false for the contest, and whoever shows a student "here is why you got set
   /// C" needs to know that happened.

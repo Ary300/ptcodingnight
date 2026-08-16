@@ -159,3 +159,92 @@ test("minting codes is idempotent, so a printed slip never stops working", async
     expect(filled.joinCode, "a seat without a code should have gained one").not.toBeNull();
   }
 });
+
+test("a team move keeps the code working, so the printed slip survives a reshuffle", async ({
+  playwright,
+}) => {
+  const first = await testDb().team.create({
+    data: {
+      contestId: seeded.contestId,
+      name: `E2E Before ${String(Date.now())}`,
+      joinCode: `B${String(Date.now()).slice(-5)}`,
+    },
+    select: { id: true },
+  });
+  const second = await testDb().team.create({
+    data: {
+      contestId: seeded.contestId,
+      name: `E2E After ${String(Date.now())}`,
+      joinCode: `A${String(Date.now()).slice(-5)}`,
+    },
+    select: { id: true, name: true },
+  });
+
+  const { data } = await readOk(
+    await admin.addNamedParticipantRaw({
+      displayName: `E2E Mover ${String(Date.now())}`,
+      teamId: first.id,
+    }),
+  );
+  const seat = data as { participantId: string; joinCode: string };
+
+  /*
+    THE PROPERTY THIS FEATURE IS BUILT AROUND. The code names the PERSON, not their team, so
+    moving them does not invalidate the slip in their hand: they type the same six characters
+    and land on whichever team they are on now. A code with the team baked into it would either
+    be a lie after this move or need reprinting, which is the whole argument against a prefix.
+  */
+  await testDb().participant.update({
+    where: { id: seat.participantId },
+    data: { teamId: second.id },
+  });
+
+  const context = await playwright.request.newContext();
+  const response = await context.post("/api/auth/join-code", { data: { code: seat.joinCode } });
+  expect(response.status(), "the same code must still work after a team move").toBe(200);
+
+  const mine = await context.get(`/api/contests/${seeded.contestId}/teams/mine`);
+  const view = (await mine.json()) as { data: { team: { name: string } | null } };
+  expect(view.data.team?.name, "and it must land on the NEW team").toBe(second.name);
+});
+
+test("reissuing a code kills the old slip and only the old slip", async ({ playwright }) => {
+  const { data } = await readOk(
+    await admin.addNamedParticipantRaw({ displayName: `E2E Reissue ${String(Date.now())}` }),
+  );
+  const seat = data as { participantId: string; joinCode: string };
+
+  const reissued = await readOk(await admin.reissueJoinCodeRaw(seat.participantId));
+  const next = (reissued.data as { joinCode: string }).joinCode;
+  expect(next, "a reissue must actually change the code").not.toBe(seat.joinCode);
+
+  const context = await playwright.request.newContext();
+  const withOld = await readEnvelope(
+    await context.post("/api/auth/join-code", { data: { code: seat.joinCode } }),
+  );
+  expect(withOld.status, "the printed slip must stop working").toBeGreaterThanOrEqual(400);
+
+  const withNew = await context.post("/api/auth/join-code", { data: { code: next } });
+  // `status()` on a raw APIResponse; `readEnvelope` is what hands back a plain `status`.
+  expect(withNew.status(), "the new code must work").toBe(200);
+});
+
+test("an organizer can resolve a code to its seat, and a student cannot", async ({
+  playwright,
+}) => {
+  const { data } = await readOk(
+    await admin.addNamedParticipantRaw({ displayName: `E2E Lookup ${String(Date.now())}` }),
+  );
+  const seat = data as { participantId: string; joinCode: string };
+
+  const found = await readOk(await admin.whoseCodeRaw(seat.joinCode));
+  expect((found.data as { displayName: string }).displayName).toContain("E2E Lookup");
+
+  // The lookup is an organizer tool. A code session must not be able to enumerate the roster
+  // with it, so the same call from a competitor is refused.
+  const student = new ContestApi(await playwright.request.newContext(), seeded.contestId);
+  await student.signIn({ displayName: `E2E Peeker ${String(Date.now())}` });
+  const refused = await readEnvelope(await student.whoseCodeRaw(seat.joinCode));
+  expect(refused.status).toBeGreaterThanOrEqual(400);
+  expect(refused.status).toBeLessThan(500);
+});

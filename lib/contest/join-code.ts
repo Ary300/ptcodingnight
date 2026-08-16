@@ -1,8 +1,9 @@
 import { randomInt } from "node:crypto";
 
 import { prisma } from "@/lib/db";
-import { DomainError } from "@/lib/errors";
+import { DomainError, NotFoundError } from "@/lib/errors";
 import { assertCanJoin } from "@/lib/contest/gate";
+import { AUDIT_ACTIONS, writeAudit } from "@/lib/contest/audit";
 
 /**
  * Per-person join codes: the way most students get into the contest.
@@ -143,4 +144,80 @@ export async function mintJoinCode(participantId: string): Promise<string> {
     "CONFLICT",
     "Could not find a free join code after several tries. Try again.",
   );
+}
+
+/**
+ * Replace a seat's code, invalidating whatever was printed for it.
+ *
+ * DELIBERATE and manual, never automatic. A move between teams does not reissue: the code
+ * identifies the PERSON, so after a move it signs them into their new team and the slip in their
+ * hand keeps working. Reissuing exists for the cases where the old slip must stop working, and
+ * they are all human problems rather than data ones:
+ *
+ *  - the wrong student was handed the wrong slip;
+ *  - a slip was lost, or photographed, or read out to the room;
+ *  - the seat is being reused for a different student entirely.
+ *
+ * Audited, because "my code stopped working" needs an answer better than a shrug.
+ */
+export async function reissueJoinCode(
+  participantId: string,
+  actor: string,
+): Promise<{ displayName: string; joinCode: string }> {
+  const participant = await prisma.participant.findUnique({
+    where: { id: participantId },
+    select: { id: true, displayName: true, joinCode: true, contestId: true },
+  });
+  if (participant === null) throw new NotFoundError("Participant");
+
+  const joinCode = await mintJoinCode(participant.id);
+  await writeAudit({
+    actor,
+    action: AUDIT_ACTIONS.participantJoinCodeReissued,
+    entity: `Participant:${participant.id}`,
+    before: { hadCode: participant.joinCode !== null },
+    after: { displayName: participant.displayName },
+    reason: "the previous slip no longer opens this seat",
+  });
+  return { displayName: participant.displayName, joinCode };
+}
+
+/**
+ * Who does this code belong to? The organizer's desk lookup.
+ *
+ * A team prefix inside the code was the tempting way to answer "whose slip is this" at the desk.
+ * This answers it without putting a fact that changes into a string that cannot: the code stays
+ * opaque, and the console resolves it on demand.
+ *
+ * Admin-only, and it never signs anybody in.
+ */
+export async function whoseJoinCode(code: string): Promise<{
+  displayName: string;
+  teamName: string | null;
+  divisionName: string | null;
+  setLabel: string | null;
+  contestName: string;
+  contestState: string;
+}> {
+  const normalized = normalizeJoinCode(code);
+  const participant = await prisma.participant.findUnique({
+    where: { joinCode: normalized },
+    select: {
+      displayName: true,
+      team: { select: { name: true } },
+      division: { select: { name: true } },
+      chosenSet: { select: { label: true } },
+      contest: { select: { name: true, state: true } },
+    },
+  });
+  if (participant === null) throw new DomainError("NOT_FOUND", UNKNOWN_CODE_MESSAGE);
+
+  return {
+    displayName: participant.displayName,
+    teamName: participant.team?.name ?? null,
+    divisionName: participant.division?.name ?? null,
+    setLabel: participant.chosenSet?.label ?? null,
+    contestName: participant.contest.name,
+    contestState: participant.contest.state,
+  };
 }

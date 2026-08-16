@@ -120,6 +120,11 @@ export const API_ROUTES = {
   /** Mint join codes for every seat in the contest that lacks one. */
   adminMintJoinCodes: (contestId: string) =>
     `/api/admin/contests/${encodeURIComponent(contestId)}/roster/codes`,
+  /** Replace one seat's code, invalidating its printed slip. */
+  adminReissueJoinCode: (contestId: string) =>
+    `/api/admin/contests/${encodeURIComponent(contestId)}/roster/reissue-code`,
+  /** Resolve a code to the person and team it belongs to. Signs nobody in. */
+  adminWhoseCode: "/api/admin/join-codes/lookup",
   adminMoveParticipant: (contestId: string) =>
     `/api/admin/contests/${encodeURIComponent(contestId)}/roster/move`,
   adminReassignSet: (contestId: string) =>
@@ -695,6 +700,34 @@ export const AdminAddNamedParticipantResponseSchema = z.object({
   displayName: z.string(),
   joinCode: z.string(),
 });
+
+/**
+ * Replace one seat's code, invalidating the slip already printed for it. Deliberate and manual:
+ * a move between teams does NOT reissue, because the code identifies the person.
+ */
+export const AdminReissueJoinCodeRequestSchema = z.object({
+  participantId: z.string().min(1),
+});
+
+export const AdminReissueJoinCodeResponseSchema = z.object({
+  displayName: z.string(),
+  joinCode: z.string(),
+});
+
+/** The desk lookup: whose slip is this? Never signs anybody in. */
+export const AdminWhoseCodeRequestSchema = z.object({
+  code: z.string().trim().min(1).max(32),
+});
+
+export const AdminWhoseCodeResponseSchema = z.object({
+  displayName: z.string(),
+  teamName: z.string().nullable(),
+  divisionName: z.string().nullable(),
+  setLabel: z.string().nullable(),
+  contestName: z.string(),
+  contestState: z.string(),
+});
+export type AdminWhoseCode = z.infer<typeof AdminWhoseCodeResponseSchema>;
 
 /** Mint codes for every seat that has none. Idempotent: a seat with a code keeps it. */
 export const AdminMintJoinCodesResponseSchema = z.object({

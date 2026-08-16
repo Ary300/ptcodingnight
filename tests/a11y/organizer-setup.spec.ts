@@ -54,7 +54,9 @@ test.describe("axe-core: the organizer setup flow", () => {
     await page.goto(`/admin/contests/${contestId}/teams`);
 
     const tabs = page.getByRole("navigation", { name: "Contest sections" }).getByRole("link");
-    await expect(tabs).toHaveCount(7);
+    // Eight since the join-slip printing tab landed. The count is here so a tab that silently
+    // disappears fails something; the property the test is actually about is below.
+    await expect(tabs).toHaveCount(8);
 
     // Exactly one tab is current, and it is the one whose path we are on. The Setup tab has its
     // own `/setup` segment precisely so that the bare contest URL is not a prefix of all five
