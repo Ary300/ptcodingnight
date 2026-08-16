@@ -133,6 +133,12 @@ export const API_ROUTES = {
     `/api/admin/contests/${encodeURIComponent(contestId)}/roster/reissue-code`,
   /** Resolve a code to the person and team it belongs to. Signs nobody in. */
   adminWhoseCode: "/api/admin/join-codes/lookup",
+  /** Every seat's code, for the wall the organizer projects while the room arrives. */
+  adminCodeWall: (contestId: string) =>
+    `/api/admin/contests/${encodeURIComponent(contestId)}/code-wall`,
+  /** When the public board should stop updating, as minutes before the end. */
+  adminFreezeSchedule: (contestId: string) =>
+    `/api/admin/contests/${encodeURIComponent(contestId)}/freeze-schedule`,
   adminMoveParticipant: (contestId: string) =>
     `/api/admin/contests/${encodeURIComponent(contestId)}/roster/move`,
   adminReassignSet: (contestId: string) =>
@@ -783,6 +789,33 @@ export const AdminPuzzleRowSchema = z.object({
 });
 export type AdminPuzzleRow = z.infer<typeof AdminPuzzleRowSchema>;
 export const AdminPuzzleListSchema = z.object({ puzzles: z.array(AdminPuzzleRowSchema) });
+
+/**
+ * One seat on the projected code wall.
+ *
+ * `arrived` is what lets the wall shrink as the room fills: a seat holding a live session no longer
+ * needs its code shown to everybody. The code is still sent for an arrived seat, because the
+ * organizer's own view of this screen lists the whole roster and the room's view is a filter over
+ * it, not a different payload.
+ */
+export const CodeWallSeatSchema = z.object({
+  participantId: z.string(),
+  displayName: z.string(),
+  joinCode: z.string(),
+  teamName: z.string().nullable(),
+  divisionName: z.string().nullable(),
+  arrived: z.boolean(),
+});
+export type CodeWallSeat = z.infer<typeof CodeWallSeatSchema>;
+
+export const CodeWallSchema = z.object({
+  contestName: z.string(),
+  /** A to Z by display name, so the wall's paging is the server's decision and not the client's. */
+  seats: z.array(CodeWallSeatSchema),
+  /** Seats with no code yet, which the organizer has to mint before projecting anything. */
+  seatsWithoutCode: z.number().int().nonnegative(),
+});
+export type CodeWall = z.infer<typeof CodeWallSchema>;
 export const AdminSetPuzzleActiveRequestSchema = z.object({
   slug: z.string().min(1),
   active: z.boolean(),
@@ -1267,6 +1300,30 @@ export const OverrideVerdictRequestSchema = z.object({
 export const FreezeRequestSchema = z.object({
   frozen: z.boolean(),
 });
+
+/**
+ * The freeze CLOCK, as minutes before the end rather than an absolute instant.
+ *
+ * The organizer's sentence is "freeze the board thirty minutes before the end", and asking them to
+ * convert that into a datetime is asking them to do arithmetic against a contest window they may be
+ * about to change. The server does the subtraction, so the two facts cannot drift: move the end time
+ * and the freeze is re-derived from it rather than left pointing at the old evening.
+ *
+ * `null` clears it. The bound is checked again in `setFreezeSchedule`, which also refuses a freeze
+ * that would start before the contest does.
+ */
+export const AdminFreezeScheduleRequestSchema = z.object({
+  minutesBeforeEnd: z.number().int().min(1).max(720).nullable(),
+});
+
+export const AdminFreezeScheduleResponseSchema = z.object({
+  contestId: z.string(),
+  freezeAt: z.string().nullable(),
+  minutesBeforeEnd: z.number().int().nullable(),
+  /** True when that instant has already passed, so the public board is frozen as of now. */
+  activeNow: z.boolean(),
+});
+export type AdminFreezeScheduleResponse = z.infer<typeof AdminFreezeScheduleResponseSchema>;
 
 // ---------------------------------------------------------------------------
 // SSE

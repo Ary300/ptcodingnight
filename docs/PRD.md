@@ -393,6 +393,15 @@ candidates. Surface those flags in the problem picker so organizers stop repeati
 - **Side-activity entry:** per team, a labelled point entry (metal puzzle, train tracks,
   Connections). Admin-only, audit-logged with who entered it and when. This is the one score input
   with no submission behind it, so its audit trail is the only record that exists.
+- **Code wall:** the join codes on the projector, A to Z by name, paged with the letter range of the
+  page stated so a student knows whether to look now or wait. A seat drops off the wall once it signs
+  in, so the list shrinks toward zero as the room fills and doubles as a "who is still missing"
+  board. One key blacks the screen out. Organizer-gated, because a projected code is a code the whole
+  room can type, and that exposure is the accepted cost of not queueing forty students at one desk.
+- **Freeze schedule:** when the public board stops updating, set as minutes before the end rather
+  than as an absolute time. The server subtracts from the contest's own window, so moving the end
+  time re-derives the freeze instead of leaving it pointing at the previous evening. Judging never
+  stops and the organizer's view stays live, which is what makes the unfreeze at the end a reveal.
 - **Puzzles:** every puzzle, whether it is showing to students, and how many teams have solved it,
   with one switch per puzzle. Hiding a puzzle mid-contest — because it turned out to be broken, or
   because the answer got shouted across the room — leaves every point it has already paid alone.

@@ -65,10 +65,29 @@ printf '\033[1m=== preconditions ===\033[0m\n'
 
 DOCKER_UP=0
 DOCKER_BASELINE=""
+
+# Count only what the JUDGE could have created.
+#
+# This used to count `docker ps -a` — every container on the machine — and that made the leak
+# check fail for reasons that had nothing to do with this repo. Measured: a run reported
+# "24 -> 33" while the list of leaked containers printed underneath it was EMPTY, because the nine
+# new containers were a GitHub MCP server spawning one per invocation somewhere else on the same
+# laptop. A gate that fails for unrelated reasons trains you to ignore the gate (CLAUDE.md), and
+# this one was already contradicting itself in its own output.
+#
+# Every judge container is named by `containerName` in worker/runner.ts as `ptcn-judge-<...>`, so
+# that prefix is exactly the set this check is about, and it is the same filter the failure
+# message prints. Removal is explicit rather than `--rm` (docker inspect is the only way to read
+# OOMKilled), which is why a leak here is worth catching at all.
+judge_container_count() {
+  docker ps -a --filter "name=ptcn-judge" -q | wc -l | tr -d ' '
+}
+
 if docker ps >/dev/null 2>&1; then
   DOCKER_UP=1
-  DOCKER_BASELINE="$(docker ps -a -q | wc -l | tr -d ' ')"
-  printf '  docker daemon    up, docker ps -a baseline = %s\n' "$DOCKER_BASELINE"
+  DOCKER_BASELINE="$(judge_container_count)"
+  printf '  docker daemon    up, ptcn-judge containers at baseline = %s (host total %s)\n' \
+    "$DOCKER_BASELINE" "$(docker ps -a -q | wc -l | tr -d ' ')"
 else
   printf '  \033[1;31mdocker daemon    DOWN\033[0m — G4/G5/G8 and the api-judged E2E project cannot pass\n'
 fi
@@ -149,14 +168,15 @@ run_gate G5 "sandbox        " "npm run test:sandbox"
 # G5 has a second condition beyond its exit code: no leaked containers. Checked here, while
 # the sandbox suite is still the only thing in this run that has created any.
 if [ "$DOCKER_UP" = "1" ]; then
-  DOCKER_AFTER_G5="$(docker ps -a -q | wc -l | tr -d ' ')"
+  DOCKER_AFTER_G5="$(judge_container_count)"
   if [ "$DOCKER_AFTER_G5" != "$DOCKER_BASELINE" ]; then
-    printf '\n\033[1;31mCONTAINER LEAK (G5)\033[0m docker ps -a went %s -> %s\n' \
+    printf '\n\033[1;31mCONTAINER LEAK (G5)\033[0m ptcn-judge containers went %s -> %s\n' \
       "$DOCKER_BASELINE" "$DOCKER_AFTER_G5"
+    docker ps -a --filter "name=ptcn-judge" --format '  leaked: {{.Names}} {{.Status}}'
     RESULTS+=("G5|sandbox leak  |FAIL|containers leaked: $DOCKER_BASELINE -> $DOCKER_AFTER_G5")
     FAILED=$((FAILED + 1))
   else
-    printf '\n  G5 container check: docker ps -a back at baseline (%s)\n' "$DOCKER_BASELINE"
+    printf '\n  G5 container check: ptcn-judge containers back at baseline (%s)\n' "$DOCKER_BASELINE"
   fi
 fi
 
@@ -189,15 +209,16 @@ run_gate G8 "load           " "npm run test:load"
 # G7's judged project, G8 and G13 all create containers, so the host is checked again at the end
 # of the run. A leak here is not G5's — it belongs to whichever gate created it.
 if [ "$DOCKER_UP" = "1" ]; then
-  DOCKER_FINAL="$(docker ps -a -q | wc -l | tr -d ' ')"
+  DOCKER_FINAL="$(judge_container_count)"
   if [ "$DOCKER_FINAL" != "$DOCKER_BASELINE" ]; then
-    printf '\n\033[1;31mCONTAINER LEAK (whole run)\033[0m docker ps -a went %s -> %s\n' \
+    printf '\n\033[1;31mCONTAINER LEAK (whole run)\033[0m ptcn-judge containers went %s -> %s\n' \
       "$DOCKER_BASELINE" "$DOCKER_FINAL"
     docker ps -a --filter "name=ptcn-judge" --format '  leaked: {{.Names}} {{.Status}}'
-    RESULTS+=("-- |container leak|FAIL|docker ps -a $DOCKER_BASELINE -> $DOCKER_FINAL after the full run")
+    RESULTS+=("-- |container leak|FAIL|ptcn-judge $DOCKER_BASELINE -> $DOCKER_FINAL after the full run")
     FAILED=$((FAILED + 1))
   else
-    printf '\n  whole-run container check: docker ps -a back at baseline (%s)\n' "$DOCKER_BASELINE"
+    printf '\n  whole-run container check: ptcn-judge containers back at baseline (%s)\n' \
+      "$DOCKER_BASELINE"
   fi
 fi
 

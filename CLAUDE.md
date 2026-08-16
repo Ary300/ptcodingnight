@@ -90,6 +90,17 @@ performed none of them:
   the desk.
 - **`/admin/**` is gated in the layout** (T8), not only in its routes.
 
+**The codes go on the projector, and the freeze has a clock.** Both were asked for after the join-code
+work landed. `/wall/{contestId}` is the code wall: names A to Z with their codes, paged with the
+page's letter range stated, and a seat DROPS OFF once it holds a live session, so the wall thins as
+the room fills. It sits outside `/admin` and gates itself — `/admin/**` wraps every page in an
+entrance transform, and a transform on an ancestor makes `position: fixed` resolve against that
+ancestor, so a projector surface rendered clipped under a breadcrumb. The freeze schedule is set in
+MINUTES before the end (`POST /api/admin/contests/{id}/freeze-schedule`), because the organizer's
+sentence is "thirty minutes before the end" and an absolute datetime goes stale the moment the window
+moves. Nothing new enforces the freeze: a past `freezeAt` already means the public board is computed
+as-of that instant.
+
 **Puzzles are points without a compiler.** Binary, a Caesar cipher, hex, a seating puzzle, a
 sequence, a sudoku — `/contest/puzzles` for students, `/admin/puzzles` for the switch, authored in
 `scripts/seed-puzzles.ts`. A solve writes a `TeamSideActivity`, which is the currency the metal
@@ -326,6 +337,11 @@ imports nothing from either. If scoring needs a fact, it arrives as an argument.
   because the file you are reading is correct. Write the space as `{" "}` whenever a text node both
   follows an element and continues onto another line, and read the rendered string — not the JSX —
   when checking copy: `document.querySelector(...).innerText`, which is how this one was caught.
+- **The container-leak check counts `ptcn-judge` containers, not every container on the host.** It
+  used to count `docker ps -a`, so any other Docker workload on the same laptop failed it: one run
+  reported "24 -> 33" with the list of leaked containers printing EMPTY underneath, because the nine
+  new ones were a GitHub MCP server spawning one per invocation. The count and the list have to name
+  the same set, or the gate is telling you about somebody else's machine.
 - **eslint walks into `.claude/worktrees/`**, which is a second checkout inside the repo root. One
   run reported 35,418 problems from another branch's vendored bundle; another died with `ENOENT` as
   that agent deleted a scratch file mid-run. `globalIgnores` now excludes `.claude/**`. A gate that

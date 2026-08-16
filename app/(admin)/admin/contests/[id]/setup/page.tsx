@@ -2,7 +2,9 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 
 import { ContestStateActions } from "@/components/admin/ContestStateActions";
+import { FreezeSchedule } from "@/components/admin/FreezeSchedule";
 import { AlertPlate, Panel } from "@/components/admin/Panel";
+import { minutesBeforeEndOf } from "@/lib/contest/admin";
 
 import { AssignSetsButton } from "../assign-sets-button";
 import { contestSetup, type ContestSetup } from "../contest-setup";
@@ -166,6 +168,26 @@ export default async function ContestSetupPage({
             value={setup.freezeAt === null ? "No freeze" : formatWhen(setup.freezeAt)}
           />
         </dl>
+
+        {/*
+          The freeze was READ-ONLY here and settable only in the create form, as an absolute
+          datetime. So a contest that already existed could not be given a freeze at all without
+          going into the database, which is the state the organizer found it in.
+        */}
+        <div className="mt-5 border-t border-rule-edge pt-5">
+          <h3 className="font-display font-bold" style={{ fontSize: "var(--text-sm)" }}>
+            Freeze the board before the finish
+          </h3>
+          <div className="mt-2">
+            <FreezeSchedule
+              contestId={setup.contestId}
+              endsAt={setup.endsAt.toISOString()}
+              freezeAt={setup.freezeAt === null ? null : setup.freezeAt.toISOString()}
+              minutesBeforeEnd={minutesBeforeEndOf(setup.endsAt, setup.freezeAt)}
+              frozenNow={setup.state === "FROZEN"}
+            />
+          </div>
+        </div>
       </Panel>
     </div>
   );

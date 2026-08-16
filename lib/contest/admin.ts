@@ -203,6 +203,147 @@ export async function setFrozen(
   return result;
 }
 
+/** The longest freeze an organizer can schedule: half a day, which is longer than any event here. */
+export const MAX_FREEZE_MINUTES = 720;
+
+/**
+ * When the board stops updating, given the end of the contest and how long before it to stop.
+ *
+ * Pure, and separate from the write, because this subtraction is the whole feature and it is the
+ * part somebody will want to check by hand against a wall clock.
+ */
+export function freezeAtFromMinutes(endsAt: Date, minutesBeforeEnd: number): Date {
+  return new Date(endsAt.getTime() - minutesBeforeEnd * 60_000);
+}
+
+/**
+ * How many whole minutes before the end a stored `freezeAt` falls, or null when there is none.
+ *
+ * Rounded to the nearest minute for DISPLAY only. An organizer who typed 30 must read 30 back even
+ * if the two timestamps are a few hundred milliseconds off a clean multiple, which they are whenever
+ * the contest window itself carries seconds.
+ */
+export function minutesBeforeEndOf(endsAt: Date, freezeAt: Date | null): number | null {
+  if (freezeAt === null) return null;
+  return Math.round((endsAt.getTime() - freezeAt.getTime()) / 60_000);
+}
+
+export interface FreezeScheduleResult {
+  readonly contestId: string;
+  readonly freezeAt: string | null;
+  readonly minutesBeforeEnd: number | null;
+  /** True when the scheduled instant has already passed, so the public board is frozen now. */
+  readonly activeNow: boolean;
+}
+
+/**
+ * Set or clear the freeze CLOCK: "stop the public board this many minutes before the end".
+ *
+ * This is a different act from `setFrozen`, and keeping them apart is the point. `setFrozen` is an
+ * organizer pressing a button while a room watches. This is a decision made days earlier that fires
+ * on its own, and it needs no attention on the night — the freeze the organizer asked for happens
+ * whether or not anybody remembers it.
+ *
+ * Nothing new enforces it. A `freezeAt` in the past already means the public board is computed
+ * as-of that instant (`setFrozen` calls the same condition `scheduledFreezeIsActive`), and the
+ * scoring engine has always taken the freeze as a parameter rather than reading a clock. So this
+ * writes one timestamp and the existing rule does the rest.
+ *
+ * The refusals are all cases where the stored value would be a lie:
+ *
+ * - A freeze longer than the contest would sit before its own start, which is not a freeze, it is
+ *   a board that never updates.
+ * - An ENDED or ARCHIVED contest has no board left to stop.
+ * - A contest that is FROZEN right now already has `freezeAt` set to the moment it was frozen by
+ *   hand. Rewriting that would move the cutoff every public replay is computed against, so the
+ *   organizer unfreezes first and the audit log keeps both facts.
+ */
+export async function setFreezeSchedule(
+  contestId: string,
+  minutesBeforeEnd: number | null,
+  admin: AdminViewer,
+  clock: Clock = systemClock,
+): Promise<FreezeScheduleResult> {
+  if (minutesBeforeEnd !== null) {
+    if (!Number.isInteger(minutesBeforeEnd) || minutesBeforeEnd < 1) {
+      throw new DomainError("VALIDATION", "Give a whole number of minutes, at least one.");
+    }
+    if (minutesBeforeEnd > MAX_FREEZE_MINUTES) {
+      throw new DomainError(
+        "VALIDATION",
+        `A freeze can start at most ${String(MAX_FREEZE_MINUTES)} minutes before the end.`,
+      );
+    }
+  }
+
+  const result = await prisma.$transaction(async (tx) => {
+    await lockContestMutations(tx, contestId);
+    const now = clock();
+
+    const contest = await tx.contest.findUnique({
+      where: { id: contestId },
+      select: { id: true, state: true, startsAt: true, endsAt: true, freezeAt: true },
+    });
+    if (contest === null) throw new NotFoundError("Contest");
+
+    if (contest.state === "ENDED" || contest.state === "ARCHIVED") {
+      throw new DomainError(
+        "CONTEST_NOT_RUNNING",
+        "This contest is over, so there is no board left to freeze.",
+      );
+    }
+    if (contest.state === "FROZEN") {
+      throw new DomainError(
+        "CONTEST_NOT_RUNNING",
+        "The board is frozen right now. Unfreeze it first, then set when it should freeze.",
+      );
+    }
+
+    const freezeAt =
+      minutesBeforeEnd === null ? null : freezeAtFromMinutes(contest.endsAt, minutesBeforeEnd);
+
+    if (freezeAt !== null && freezeAt.getTime() <= contest.startsAt.getTime()) {
+      throw new DomainError(
+        "VALIDATION",
+        "That freeze starts before the contest does. Pick a shorter freeze, or a longer contest.",
+      );
+    }
+
+    const updated = await tx.contest.update({
+      where: { id: contestId },
+      data: { freezeAt },
+      select: { freezeAt: true, endsAt: true },
+    });
+
+    await writeAudit(
+      {
+        actor: `admin:${admin.sessionId}`,
+        action: AUDIT_ACTIONS.contestFreezeScheduled,
+        entity: `Contest:${contestId}`,
+        before: {
+          freezeAt: contest.freezeAt === null ? null : contest.freezeAt.toISOString(),
+        },
+        after: {
+          freezeAt: updated.freezeAt === null ? null : updated.freezeAt.toISOString(),
+          minutesBeforeEnd,
+        },
+      },
+      tx,
+    );
+
+    return {
+      contestId,
+      freezeAt: updated.freezeAt === null ? null : updated.freezeAt.toISOString(),
+      minutesBeforeEnd: minutesBeforeEndOf(updated.endsAt, updated.freezeAt),
+      activeNow: updated.freezeAt !== null && now.getTime() >= updated.freezeAt.getTime(),
+    };
+  });
+
+  // The public board's cutoff just moved, so anything cached against the old one is wrong.
+  invalidateScoringInput(contestId);
+  return result;
+}
+
 export interface OverrideInput {
   readonly submissionId: string;
   readonly verdict: Verdict;

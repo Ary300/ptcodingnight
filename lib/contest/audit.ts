@@ -39,6 +39,10 @@ export const AUDIT_ACTIONS = {
   contestStateSet: "contest.state_set",
   contestFreeze: "contest.freeze",
   contestUnfreeze: "contest.unfreeze",
+  /// The freeze CLOCK was set or cleared, which is not the same act as freezing. This one is a
+  /// decision made before the night ("stop the board 30 minutes before the end") and it fires
+  /// later on its own; the two above are an organizer pressing a button while the room watches.
+  contestFreezeScheduled: "contest.freeze_scheduled",
   participantJoin: "participant.join",
   /// An organizer put a known account on a contest roster before anyone signed into it. The row
   /// that makes "who added this person, and when" answerable for a participant nobody ever saw

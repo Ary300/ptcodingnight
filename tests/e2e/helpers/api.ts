@@ -325,6 +325,11 @@ export class ContestApi {
     return this.req().post("/api/admin/join-codes/lookup", { data: { code } });
   }
 
+  /** Every seat's code for the projected wall. The most sensitive read in the console. */
+  codeWallRaw(): Promise<APIResponse> {
+    return this.req().get(`/api/admin/contests/${this.contestId}/code-wall`);
+  }
+
   /** Give every seat without a code one. Idempotent. */
   mintJoinCodesRaw(): Promise<APIResponse> {
     return this.req().post(`/api/admin/contests/${this.contestId}/roster/codes`, { data: {} });
@@ -454,6 +459,13 @@ export class ContestApi {
 
   async adminLogin(passcode: string): Promise<void> {
     await unwrap(await this.adminLoginRaw(passcode), z.object({ role: z.literal("ADMIN") }));
+  }
+
+  /** Set or clear the freeze CLOCK, in minutes before the contest's end. */
+  freezeScheduleRaw(minutesBeforeEnd: number | null): Promise<APIResponse> {
+    return this.req().post(`/api/admin/contests/${this.contestId}/freeze-schedule`, {
+      data: { minutesBeforeEnd },
+    });
   }
 
   freezeRaw(frozen: boolean): Promise<APIResponse> {

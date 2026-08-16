@@ -80,6 +80,38 @@ test.describe("axe-core: the organizer setup flow", () => {
     await auditPage(page, "/admin/puzzles");
   });
 
+  /*
+    The projected code wall, at both projector resolutions.
+
+    It is the one organizer screen a whole room reads, so it is audited the way the standings board
+    is: at 1920x1080 and again at 1280x720, because the two differ by a scale factor and a floor
+    that holds at one size can fail at the other. The blackout is audited too — it is a full-screen
+    cover with the only way back written on it.
+  */
+  test("the code wall at 1920x1080", async ({ page }) => {
+    await signInAsOrganizer(page);
+    const contestId = await runningContestId(page);
+    await page.setViewportSize({ width: 1920, height: 1080 });
+    await page.goto(`/wall/${contestId}`);
+
+    // Wait for the fetch, not the heading: auditing the loading state audits nothing.
+    await expect(page.getByRole("button", { name: /Hide screen/ })).toBeVisible();
+    await auditPage(page, "/wall/{id} @1920x1080");
+  });
+
+  test("the code wall at 1280x720, and its blackout", async ({ page }) => {
+    await signInAsOrganizer(page);
+    const contestId = await runningContestId(page);
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await page.goto(`/wall/${contestId}`);
+    await expect(page.getByRole("button", { name: /Hide screen/ })).toBeVisible();
+    await auditPage(page, "/wall/{id} @1280x720");
+
+    await page.getByRole("button", { name: /Hide screen/ }).click();
+    await expect(page.getByRole("region", { name: "Screen hidden" })).toBeVisible();
+    await auditPage(page, "/wall/{id} (blacked out)");
+  });
+
   test("the contest shell survives 360px without overflowing the document", async ({ page }) => {
     await signInAsOrganizer(page);
     const contestId = await runningContestId(page);
