@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import { adminRoster } from "@/lib/contest/teams";
 import { contestNameFor } from "@/lib/contest/contests";
 import { JoinCodeLookup } from "@/components/admin/JoinCodeLookup";
@@ -63,6 +65,26 @@ export default async function ContestSlipsPage({
           </p>
         )}
       </header>
+
+      {/*
+        The projected version of this page, linked from the top of it.
+
+        An organizer who is thinking about codes is standing here, and the alternative to paper is
+        the thing they most want to know exists. It opens a full-screen wall that rotates through
+        the roster; it is not a tab because it deliberately leaves the console shell.
+      */}
+      <div className="print:hidden">
+        <Link
+          href={`/wall/${encodeURIComponent(id)}`}
+          className="inline-block rounded-chip bg-panther px-4 py-2 font-semibold text-paper hover:bg-panther-deep"
+          style={{ fontSize: "var(--text-sm)" }}
+        >
+          Put the codes on the projector
+        </Link>
+        <p className="mt-1.5 text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
+          A full-screen wall of names and codes, A to Z, that drops each student once they sign in.
+        </p>
+      </div>
 
       <div className="print:hidden">
         <JoinCodeLookup />

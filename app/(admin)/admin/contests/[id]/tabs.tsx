@@ -49,7 +49,10 @@ export function ContestTabs({ contestId }: { readonly contestId: string }) {
     { href: `${base}/problems`, label: "Problems" },
     { href: `${base}/sets`, label: "Sets" },
     { href: `${base}/teams`, label: "Teams" },
-    // The paper the night runs on: one printable slip per student, code and team side by side.
+    // The paper the night runs on: one printable slip per student, code and team side by side. The
+    // projected version of the same codes (`/wall/<id>`) is linked from the top of that tab rather
+    // than being a tab itself, because it leaves the console shell on purpose and a tab strip that
+    // cannot mark its own current item is worse than a link where the codes already are.
     { href: `${base}/slips`, label: "Join slips" },
     { href: `${base}/side-activities`, label: "Side activities" },
     { href: `${base}/console`, label: "Live console" },

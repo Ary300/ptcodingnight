@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { DomainError, NotFoundError } from "@/lib/errors";
 import { assertCanJoin } from "@/lib/contest/gate";
 import { AUDIT_ACTIONS, writeAudit } from "@/lib/contest/audit";
+import { byDisplayName } from "@/lib/contest/code-wall";
 
 /**
  * Per-person join codes: the way most students get into the contest.
@@ -220,4 +221,55 @@ export async function whoseJoinCode(code: string): Promise<{
     contestName: participant.contest.name,
     contestState: participant.contest.state,
   };
+}
+
+/**
+ * Every seat in the contest that has a code, A to Z, with whether that seat is already signed in.
+ *
+ * Feeds the projected code wall (`/admin/contests/{id}/wall`). The paging and the ordering rule live
+ * in `lib/contest/code-wall.ts`, which is pure so the client component can import it; this is the
+ * read, and it stays here with the rest of the code handling.
+ *
+ * "Arrived" means a LIVE session, not any session that ever existed: an organizer who revokes a
+ * student's session has decided that student must sign in again, so their code comes back onto the
+ * wall. Expiry is read the same way, for the same reason.
+ */
+export async function codeWallSeats(
+  contestId: string,
+  now: Date,
+): Promise<readonly CodeWallSeatRow[]> {
+  const participants = await prisma.participant.findMany({
+    where: { contestId, joinCode: { not: null } },
+    select: {
+      id: true,
+      displayName: true,
+      joinCode: true,
+      team: { select: { name: true } },
+      division: { select: { name: true } },
+      _count: {
+        select: { sessions: { where: { revokedAt: null, expiresAt: { gt: now } } } },
+      },
+    },
+  });
+
+  return participants
+    .map((participant) => ({
+      participantId: participant.id,
+      displayName: participant.displayName,
+      // Non-null by the query's own filter. The fallback keeps the type honest without a cast.
+      joinCode: participant.joinCode ?? "",
+      teamName: participant.team?.name ?? null,
+      divisionName: participant.division?.name ?? null,
+      arrived: participant._count.sessions > 0,
+    }))
+    .sort(byDisplayName);
+}
+
+export interface CodeWallSeatRow {
+  readonly participantId: string;
+  readonly displayName: string;
+  readonly joinCode: string;
+  readonly teamName: string | null;
+  readonly divisionName: string | null;
+  readonly arrived: boolean;
 }

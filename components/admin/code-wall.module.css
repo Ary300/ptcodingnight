@@ -1,0 +1,300 @@
+/*
+ * The projected code wall. Sizes come from the projector scale in app/globals.css
+ * (`--text-proj-*`), the same scale the standings board stands on, multiplied by one shared
+ * factor so 1920x1080 and 1280x720 differ by scale alone and never by layout.
+ *
+ * Why its own module rather than reusing `.stage` from the leaderboard: that class carries the
+ * standings board's row metrics, and a variable defined on one class is undefined everywhere else
+ * in this build (the projector clock once rendered at 16px on a 1920 wall for exactly that
+ * reason). The tokens are shared; the metrics are not.
+ */
+
+.wall {
+  --wall-scale: 1;
+
+  --fs-sm: calc(var(--text-proj-sm) * var(--wall-scale));
+  --fs-md: calc(var(--text-proj-md) * var(--wall-scale));
+  --fs-lg: calc(var(--text-proj-lg) * var(--wall-scale));
+  --fs-xl: calc(var(--text-proj-xl) * var(--wall-scale));
+
+  /* Ink at 72% on paper, the same mix the standings board uses for secondary text. */
+  --muted: color-mix(in srgb, var(--color-ink) 72%, var(--color-paper));
+
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--fs-sm) * 0.6);
+  padding: calc(var(--fs-sm) * 0.9) calc(var(--fs-sm) * 1.2);
+  overflow: hidden;
+  background: var(--color-paper);
+  color: var(--color-ink);
+}
+
+/* The 1280x720 projector, and any window smaller than a desk monitor. */
+@media (max-height: 899px), (max-width: 1599px) {
+  .wall {
+    --wall-scale: 0.667;
+  }
+}
+
+@media (max-width: 640px) {
+  .wall {
+    --wall-scale: 0.42;
+  }
+}
+
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: calc(var(--fs-sm) * 0.5);
+  border-bottom: 2px solid var(--color-rule-edge);
+  padding-bottom: calc(var(--fs-sm) * 0.5);
+}
+
+.title {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: var(--fs-md);
+  line-height: 1.1;
+}
+
+/*
+ * The instruction, which is the most important text on the screen.
+ *
+ * A wall of codes with no address is a puzzle. This line says where to type it, in the accent, at
+ * the size of a heading, because a student walking in reads one line before they start hunting for
+ * their name.
+ */
+.instruction {
+  font-family: var(--font-mono);
+  font-size: var(--fs-md);
+  font-weight: 700;
+  color: var(--color-panther);
+  letter-spacing: 0.01em;
+}
+
+/*
+ * The letter range and the arrival count.
+ *
+ * Body face, not mono: it is a sentence, and "A to O" set in a monospace whose zero and capital O
+ * are near-identical reads as "A to 0" from across a room. The counts inside it are small enough
+ * not to need tabular figures, since nothing is lining up under them.
+ */
+.meta {
+  font-family: var(--font-body);
+  font-size: var(--fs-sm);
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.grid {
+  flex: 1 1 auto;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-auto-rows: min-content;
+  gap: calc(var(--fs-sm) * 0.6);
+  align-content: start;
+  min-height: 0;
+}
+
+@media (max-width: 1599px) {
+  .grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.seat {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--fs-sm) * 0.1);
+  border: 1px solid var(--color-rule-edge);
+  border-radius: var(--radius-panel);
+  padding: calc(var(--fs-sm) * 0.45) calc(var(--fs-sm) * 0.6);
+  min-width: 0;
+}
+
+.name {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: var(--fs-sm);
+  line-height: 1.15;
+  /* Two lines, then ellipsis: a long name must not push the code out of its card. */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+}
+
+/*
+ * The code. Mono, tracked out, and the largest thing in the card.
+ *
+ * Tracking matters more here than size: six characters read one at a time across a room, and the
+ * alphabet already excludes O, 0, I and 1 so the remaining glyphs cannot be confused for each
+ * other.
+ */
+.code {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: var(--fs-lg);
+  letter-spacing: 0.12em;
+  line-height: 1.05;
+}
+
+.team {
+  font-family: var(--font-mono);
+  font-size: calc(var(--fs-sm) * 0.72);
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/*
+ * An arrived seat, when the organizer has asked to see the whole roster.
+ *
+ * A dashed border and a hairline ground, NOT a wrapper opacity. Dimming a card with `opacity`
+ * takes every colour inside it below its measured contrast floor, which is the rule the standings
+ * board learned and which the a11y suite asserts on the projector. Secondary text here already
+ * carries its own mix.
+ */
+.arrivedSeat {
+  border-style: dashed;
+  background: color-mix(in srgb, var(--color-ink) 3%, transparent);
+}
+
+.arrivedSeat .name {
+  color: var(--muted);
+}
+
+.arrivedMark {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: var(--fs-md);
+  line-height: 1.05;
+  color: var(--muted);
+}
+
+.foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: calc(var(--fs-sm) * 0.5);
+  border-top: 1px solid var(--color-rule-hair);
+  padding-top: calc(var(--fs-sm) * 0.4);
+  font-family: var(--font-mono);
+  font-size: calc(var(--fs-sm) * 0.8);
+  color: var(--muted);
+}
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: calc(var(--fs-sm) * 0.35);
+}
+
+/*
+ * The controls are for the person at the laptop, not for the room, so they are small and quiet.
+ * They stay visible rather than hiding on idle: a control that appears on mouse move is a control
+ * an organizer cannot find while forty people watch.
+ */
+.button {
+  font-family: var(--font-mono);
+  font-size: calc(var(--fs-sm) * 0.8);
+  border: 1px solid var(--color-rule-edge);
+  border-radius: var(--radius-chip);
+  padding: 0.35em 0.7em;
+  background: transparent;
+  color: var(--color-ink);
+  cursor: pointer;
+}
+
+.button:hover {
+  border-color: var(--color-rule-firm);
+  background: color-mix(in srgb, var(--color-ink) 5%, transparent);
+}
+
+.pageDots {
+  font-family: var(--font-mono);
+  font-size: calc(var(--fs-sm) * 0.8);
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
+/*
+ * The blackout, for the moment a projected roster should stop being visible.
+ *
+ * Full cover rather than a dimmer, because the point is that nothing on the roster can be read
+ * from the back of the room, and it says how to bring the wall back so the organizer is never
+ * stuck in front of a blank screen.
+ */
+.blackout {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  background: var(--color-ink);
+  color: var(--color-paper);
+  text-align: center;
+}
+
+.blackoutTitle {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: var(--fs-md);
+}
+
+.blackoutHint {
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  color: color-mix(in srgb, var(--color-paper) 82%, var(--color-ink));
+}
+
+.empty {
+  font-family: var(--font-display);
+  font-size: var(--fs-md);
+  align-self: center;
+  margin: auto;
+  text-align: center;
+  max-width: 30ch;
+}
+
+/*
+ * The page swap: a 3px rise, TRANSFORM ONLY.
+ *
+ * The room needs to register that the page changed rather than wonder whether it misread a name,
+ * and this is the same entrance every other surface in the build uses. It is not a cross-fade for
+ * the reason globals.css states at length: fading text takes every alpha'd colour inside it below
+ * its contrast floor for the length of the animation, and axe measured exactly that at 4.16:1 the
+ * first time an entrance here shipped with opacity in it.
+ */
+@media (prefers-reduced-motion: no-preference) {
+  .grid {
+    animation: wall-page-in var(--motion-swap, 200ms) var(--motion-ease, ease-out) both;
+  }
+}
+
+@keyframes wall-page-in {
+  from {
+    transform: translateY(3px);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
