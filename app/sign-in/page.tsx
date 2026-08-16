@@ -168,6 +168,24 @@ export default async function SignInPage({
               providerAvailability={providerAvailability}
             />
 
+            {/*
+              THE NIGHT'S ACTUAL DOOR, and it is a button rather than a sentence because on the
+              night most students have a slip of paper and no account. The two account paths
+              stay exactly where they were: this is a third way in, not a replacement.
+            */}
+            <div className="mt-6 border-t border-rule-hair pt-6">
+              <p className="text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
+                Competing tonight? An organizer gave you a code.
+              </p>
+              <Link
+                href="/join"
+                className="mt-2 inline-flex items-center justify-center rounded border border-rule-firm px-4 py-2 font-semibold transition-[color,background-color,border-color,transform] duration-[var(--motion-press)] hover:border-ink hover:bg-ink/[0.03] active:scale-[0.97]"
+                style={{ fontSize: "var(--text-sm)" }}
+              >
+                Enter a join code
+              </Link>
+            </div>
+
             <p className="mt-6 text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
               New here?{" "}
               <Link

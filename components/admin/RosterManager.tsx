@@ -116,6 +116,9 @@ export function RosterManager({ contestId }: RosterManagerProps) {
   const [busy, setBusy] = useState(false);
 
   const [newTeamName, setNewTeamName] = useState("");
+  /** The pre-contest roster build: a name and a team, no account. */
+  const [newSeatName, setNewSeatName] = useState("");
+  const [newSeatTeamId, setNewSeatTeamId] = useState("");
   // null means "the organizer has not touched the division picker yet", and the effective value
   // then falls back to the contest's FIRST division: an organizer building a division's teams
   // should not have to pick the same division for every one. "" is the explicit (open team)
@@ -430,6 +433,20 @@ export function RosterManager({ contestId }: RosterManagerProps) {
         </span>
       )}
 
+      {/*
+        THE SLIP. This is what gets read aloud or printed and handed to the student, so it is
+        monospaced and tracked out: a code that is hard to transcribe is a queue at the desk.
+        Shown only here, on the organizer's own screen, and only when a seat actually has one.
+      */}
+      {person.joinCode !== null && (
+        <span className="flex items-center gap-2 text-ink/70" style={{ fontSize: "var(--text-xs)" }}>
+          <span>Join code</span>
+          <span className="numeric font-semibold text-ink" style={{ letterSpacing: "0.14em" }}>
+            {person.joinCode}
+          </span>
+        </span>
+      )}
+
       {/* An inline confirm form expanding inside the row: panel duration, transform-only.
           Paper ground, so the contrast law is satisfied without argument. */}
       {removing !== null && removing.participantId === person.participantId && (
@@ -552,6 +569,24 @@ export function RosterManager({ contestId }: RosterManagerProps) {
       <Panel
         title="Add a student"
         level="framed"
+        aside={
+          /*
+            One press gives every seat that lacks a code one, and it is IDEMPOTENT: a seat that
+            already has a code keeps exactly the code it has, so pressing it after the slips are
+            printed cannot invalidate a slip somebody is holding.
+          */
+          <Button
+            type="button"
+            variant="quiet"
+            size="sm"
+            disabled={busy}
+            onClick={() => {
+              void send(API_ROUTES.adminMintJoinCodes(contestId), "POST", {});
+            }}
+          >
+            Give everyone a join code
+          </Button>
+        }
         description={
           <>
             Anybody with an account can be put on this contest, whether or not
@@ -562,6 +597,57 @@ export function RosterManager({ contestId }: RosterManagerProps) {
         }
       >
         <div className="flex flex-col gap-group">
+          {/*
+            ADD BY NAME, first, because it is what building a roster before the night actually
+            looks like: the organizer has a list of names, not a list of accounts. The server
+            mints the code and the new seat appears in the list below wearing it.
+
+            The account search underneath still exists for the other case, a student who already
+            has an account from a previous contest.
+          */}
+          <form
+            className="flex flex-wrap items-end gap-2 rounded-panel border border-rule-hair p-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              const name = newSeatName.trim();
+              if (name === "") return;
+              void send(API_ROUTES.adminAddNamedParticipant(contestId), "POST", {
+                displayName: name,
+                teamId: newSeatTeamId === "" ? null : newSeatTeamId,
+              });
+              setNewSeatName("");
+            }}
+          >
+            <div className="w-56">
+              <TextInput
+                label="Add a student by name"
+                value={newSeatName}
+                placeholder="Full name"
+                hint="No account needed. They get a join code."
+                onChange={(event) => setNewSeatName(event.target.value)}
+              />
+            </div>
+            {roster.teams.length > 0 && (
+              <div className="w-52">
+                <Select
+                  label="Team"
+                  value={newSeatTeamId}
+                  onChange={(event) => setNewSeatTeamId(event.target.value)}
+                >
+                  <option value="">(no team yet)</option>
+                  {roster.teams.map((team: RosterTeam) => (
+                    <option key={team.teamId} value={team.teamId}>
+                      {team.name}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+            )}
+            <Button type="submit" disabled={busy || newSeatName.trim() === ""}>
+              Add and make a code
+            </Button>
+          </form>
+
           <TextInput
             label="Search by name or email"
             type="search"

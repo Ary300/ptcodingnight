@@ -6,6 +6,7 @@ import { AUDIT_ACTIONS, writeAudit, type Db } from "@/lib/contest/audit";
 import { lockContestMutations } from "@/lib/contest/locks";
 import { assertCanMutateStandingsInputs } from "@/lib/contest/gate";
 import { assignSetForOne } from "@/lib/contest/set-assignment";
+import { mintJoinCode } from "@/lib/contest/join-code";
 import { uniqueDisplayName } from "@/lib/contest/enrolment";
 import { invalidateScoringInput } from "@/lib/contest/standings";
 import { newTeamCode } from "@/lib/contest/team-code";
@@ -941,6 +942,124 @@ export async function adminAddableUsers(
   }));
 }
 
+/**
+ * Add a roster seat for somebody with no account, and mint the code they will type.
+ *
+ * This is how the night is built now: organizers enter the teams and their members in advance,
+ * print the codes, and hand each student a slip. `adminAddParticipant` (below) remains for the
+ * other case, attaching an account that already exists.
+ *
+ * The seat is a full `Participant`, so everything downstream - the roster, set dealing, team
+ * size as the scoring divisor, the standings - sees an ordinary player and needs no special
+ * case. `userId` stays null, which the schema has always allowed for exactly this.
+ */
+export async function adminAddNamedParticipant(
+  contestId: string,
+  input: {
+    readonly displayName: string;
+    readonly teamId?: string | null;
+    readonly divisionId?: string | null;
+  },
+  actor: string,
+): Promise<{ participantId: string; displayName: string; joinCode: string }> {
+  const contest = await prisma.contest.findUnique({
+    where: { id: contestId },
+    select: { id: true, state: true },
+  });
+  if (contest === null) throw new NotFoundError("Contest");
+  if (contest.state === "ENDED" || contest.state === "ARCHIVED") {
+    throw new DomainError(
+      "CONTEST_NOT_RUNNING",
+      "This contest is over, so nobody else can be added to it.",
+    );
+  }
+
+  if (input.teamId != null) {
+    const team = await prisma.team.findUnique({
+      where: { id: input.teamId },
+      select: { contestId: true, divisionId: true },
+    });
+    if (team === null) throw new NotFoundError("Team");
+    if (team.contestId !== contestId) {
+      throw new ValidationError("That team belongs to a different contest");
+    }
+  }
+  if (input.divisionId != null) {
+    const division = await prisma.division.findUnique({
+      where: { id: input.divisionId },
+      select: { contestId: true },
+    });
+    if (division === null) throw new NotFoundError("Division");
+    if (division.contestId !== contestId) {
+      throw new ValidationError("That division belongs to a different contest");
+    }
+  }
+
+  /*
+    The team's own division is adopted when the caller names a team but no division, the same
+    rule `adminMoveParticipant` follows: a seat on an Advanced team is an Advanced seat, and
+    making the organizer say it twice is how the two facts drift apart.
+  */
+  const teamDivision =
+    input.teamId == null
+      ? null
+      : (
+          await prisma.team.findUnique({
+            where: { id: input.teamId },
+            select: { divisionId: true },
+          })
+        )?.divisionId ?? null;
+
+  const displayName = await uniqueDisplayName(contestId, input.displayName);
+  const participant = await prisma.participant.create({
+    data: {
+      contestId,
+      userId: null,
+      displayName,
+      teamId: input.teamId ?? null,
+      divisionId: input.divisionId ?? teamDivision,
+    },
+    select: { id: true },
+  });
+
+  const joinCode = await mintJoinCode(participant.id);
+
+  await writeAudit({
+    actor,
+    action: AUDIT_ACTIONS.participantAdded,
+    entity: `Participant:${participant.id}`,
+    after: { displayName, teamId: input.teamId ?? null, byJoinCode: true },
+    reason: "roster seat created for a student with no account",
+  });
+
+  invalidateScoringInput(contestId);
+  return { participantId: participant.id, displayName, joinCode };
+}
+
+/**
+ * Give every seat in this contest a code, leaving the ones that already have one alone.
+ *
+ * The organizer's "print the slips" button: a roster built before join codes existed, or one
+ * assembled from accounts, still needs codes for the students who will type rather than log in.
+ * Idempotent on purpose, because re-running it must never invalidate a slip already handed out.
+ */
+export async function mintMissingJoinCodes(
+  contestId: string,
+): Promise<{ minted: number; alreadyHad: number }> {
+  const seats = await prisma.participant.findMany({
+    where: { contestId },
+    select: { id: true, joinCode: true },
+    orderBy: { joinedAt: "asc" },
+  });
+  let minted = 0;
+  for (const seat of seats) {
+    if (seat.joinCode !== null) continue;
+    await mintJoinCode(seat.id);
+    minted += 1;
+  }
+  return { minted, alreadyHad: seats.length - minted };
+}
+
 export interface AddParticipantResult {
   readonly participantId: string;
   readonly displayName: string;
@@ -1191,6 +1310,8 @@ export interface RosterMember {
    */
   readonly divisionId: string | null;
   readonly divisionName: string | null;
+  /** The code this seat's student types to get in, or null if they sign in with an account. */
+  readonly joinCode: string | null;
 }
 
 /** The organizer's roster: every team, its members, and everybody on no team at all. */
@@ -1215,6 +1336,7 @@ export async function adminRoster(contestId: string): Promise<{
     id: true,
     displayName: true,
     userId: true,
+    joinCode: true,
     user: { select: { email: true } },
     chosenSetId: true,
     chosenSet: { select: { label: true } },
@@ -1227,6 +1349,7 @@ export async function adminRoster(contestId: string): Promise<{
     id: string;
     displayName: string;
     userId: string | null;
+    joinCode: string | null;
     user: { email: string | null } | null;
     _count: { submissions: number };
     chosenSetId: string | null;
@@ -1239,6 +1362,7 @@ export async function adminRoster(contestId: string): Promise<{
     participantId: row.id,
     displayName: row.displayName,
     userId: row.userId,
+    joinCode: row.joinCode,
     email: row.user?.email ?? null,
     submissionCount: row._count.submissions,
     chosenSetId: row.chosenSetId,

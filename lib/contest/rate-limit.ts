@@ -244,6 +244,14 @@ export const credentialBackoff = new CredentialBackoff();
 export const passwordBackoff = new CredentialBackoff();
 
 /**
+ * Join-code sign-in's backoff, and a THIRD bucket for the same reason the first two are
+ * separate: on the night this is the door forty students walk through at once, and sharing a
+ * bucket with the organizer passcode would let a room of mistyped codes slow down the console
+ * that has to start the contest.
+ */
+export const joinCodeBackoff = new CredentialBackoff();
+
+/**
  * A bound on how many expensive operations run AT ONCE, with a bounded queue.
  *
  * `CredentialBackoff` delays; it does not refuse, and a delay is not a resource bound. Password

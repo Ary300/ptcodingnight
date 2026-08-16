@@ -304,6 +304,20 @@ export class ContestApi {
     return this.req().get(`/api/admin/contests/${this.contestId}/roster`);
   }
 
+  /** Add a roster seat by name, no account. Returns the minted join code. */
+  addNamedParticipantRaw(body: {
+    displayName: string;
+    teamId?: string | null;
+    divisionId?: string | null;
+  }): Promise<APIResponse> {
+    return this.req().post(`/api/admin/contests/${this.contestId}/roster/named`, { data: body });
+  }
+
+  /** Give every seat without a code one. Idempotent. */
+  mintJoinCodesRaw(): Promise<APIResponse> {
+    return this.req().post(`/api/admin/contests/${this.contestId}/roster/codes`, { data: {} });
+  }
+
   createTeamAsAdminRaw(body: {
     name: string;
     /** The division this team fields for; omitted or null makes an open team. */

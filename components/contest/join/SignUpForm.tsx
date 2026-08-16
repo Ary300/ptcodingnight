@@ -196,6 +196,21 @@ export function SignUpForm({ providerAvailability }: SignUpFormProps) {
         </button>
       </form>
 
+      {/* The night's door, offered here too: a student who lands on Create account with a slip
+          in their hand should not have to make an account to use the code on it. */}
+      <div className="mt-6 border-t border-rule-hair pt-6">
+        <p className="text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
+          Competing tonight? An organizer gave you a code.
+        </p>
+        <Link
+          href="/join"
+          className="mt-2 inline-flex items-center justify-center rounded border border-rule-firm px-4 py-2 font-semibold transition-[color,background-color,border-color,transform] duration-[var(--motion-press)] hover:border-ink hover:bg-ink/[0.03] active:scale-[0.97]"
+          style={{ fontSize: "var(--text-sm)" }}
+        >
+          Enter a join code
+        </Link>
+      </div>
+
       <p className="mt-6 text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
         Already have an account?{" "}
         <Link href="/sign-in" className="font-semibold text-panther underline underline-offset-2">

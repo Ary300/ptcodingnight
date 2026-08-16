@@ -682,6 +682,19 @@ model Participant {
   /// contributes to no team score, and the admin UI flags them.
   teamId String?
 
+  /// The code this person types to get into the contest, or null for a participant who signs in
+  /// with an account instead.
+  ///
+  /// GLOBALLY unique, not per contest, and that is the whole point: a student types six
+  /// characters and nothing else. A per-contest code would need the student to say WHICH
+  /// contest first, which is the question the code exists to avoid asking. Nullable because
+  /// most existing participants arrived through an account and have no code.
+  ///
+  /// It identifies a ROSTER SEAT, not a person: the organizer builds the teams beforehand, and
+  /// the code is what attaches a body to the seat that was already made for them. Typing it
+  /// signs you in AS that participant, already on that team, already in that division.
+  joinCode String? @unique
+
   /// The Round 1 problem set this player was assigned.
   ///
   /// Named `chosenSetId` because three formats are supported (Contest.setSelection) and only one

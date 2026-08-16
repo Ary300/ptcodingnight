@@ -234,6 +234,14 @@ export default async function Home() {
               </Link>
             ) : (
               <>
+                {/* First, because on the night it is what most people need. */}
+                <Link
+                  href="/join"
+                  className="rounded-chip px-2 py-1.5 whitespace-nowrap text-ink/75 hover:text-ink sm:px-3"
+                  style={{ fontSize: "var(--text-xs)" }}
+                >
+                  Join code
+                </Link>
                 <Link
                   href="/sign-in"
                   className="rounded-chip px-2 py-1.5 whitespace-nowrap text-ink/75 hover:text-ink sm:px-3"

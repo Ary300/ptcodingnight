@@ -114,6 +114,12 @@ export const API_ROUTES = {
     `/api/admin/contests/${encodeURIComponent(contestId)}/teams`,
   adminTeam: (teamId: string) =>
     `/api/admin/teams/${encodeURIComponent(teamId)}`,
+  /** Add a roster seat by name (no account) and mint its join code. */
+  adminAddNamedParticipant: (contestId: string) =>
+    `/api/admin/contests/${encodeURIComponent(contestId)}/roster/named`,
+  /** Mint join codes for every seat in the contest that lacks one. */
+  adminMintJoinCodes: (contestId: string) =>
+    `/api/admin/contests/${encodeURIComponent(contestId)}/roster/codes`,
   adminMoveParticipant: (contestId: string) =>
     `/api/admin/contests/${encodeURIComponent(contestId)}/roster/move`,
   adminReassignSet: (contestId: string) =>
@@ -578,6 +584,14 @@ export const RosterMemberSchema = TeamMemberSchema.extend({
    */
   divisionId: z.string().nullable(),
   divisionName: z.string().nullable(),
+  /**
+   * The code this person types to get in, or null if they sign in with an account.
+   *
+   * On the organizer's screen and nowhere else. It is not a credential (see
+   * `lib/contest/join-code.ts`), but it IS the thing a student needs handed to them, so the
+   * roster is where it lives and the roster is admin-only.
+   */
+  joinCode: z.string().nullable(),
 });
 export type RosterMember = z.infer<typeof RosterMemberSchema>;
 
@@ -660,6 +674,32 @@ export const AdminAddParticipantRequestSchema = z.object({
  */
 export const AdminReasonSchema = z.object({
   reason: z.string().trim().max(300).optional().default(""),
+});
+
+/**
+ * Add a roster seat for somebody who has no account, which on the night is nearly everybody.
+ *
+ * A name, optionally a team and a division, and the server mints the join code. Distinct from
+ * `AdminAddParticipantRequestSchema`, which attaches an EXISTING account to the contest: that
+ * one needs a userId and this one must not, because the whole point is that the student has
+ * never been here before.
+ */
+export const AdminAddNamedParticipantRequestSchema = z.object({
+  displayName: z.string().trim().min(1, "Give the student a name.").max(40),
+  teamId: z.string().min(1).nullable().optional(),
+  divisionId: z.string().min(1).nullable().optional(),
+});
+
+export const AdminAddNamedParticipantResponseSchema = z.object({
+  participantId: z.string(),
+  displayName: z.string(),
+  joinCode: z.string(),
+});
+
+/** Mint codes for every seat that has none. Idempotent: a seat with a code keeps it. */
+export const AdminMintJoinCodesResponseSchema = z.object({
+  minted: z.number().int().nonnegative(),
+  alreadyHad: z.number().int().nonnegative(),
 });
 
 export const AdminCreateTeamRequestSchema = z.object({
