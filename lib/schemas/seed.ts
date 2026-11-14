@@ -406,6 +406,16 @@ export const ProblemManifestSchema = z.strictObject({
    * questions are public all year, so a scored round may not contain one.
    */
   practiceOnly: z.boolean().optional(),
+  /**
+   * Published and solvable, but the set planner never deals it into a contest set.
+   *
+   * For a problem whose whole point is a data type: a sum that only fits a 64-bit integer, an
+   * unsigned 32-bit flip, a number too long for any integer type. Fine to practise on all year,
+   * wrong for a night whose brief is "no odd runtime or type requirements". The importer writes it
+   * to `Problem.keepOutOfSets`, and `problemBank()` reports it as a ready blocker so the planner
+   * skips it and the organizer can read why.
+   */
+  keepOutOfSets: z.boolean().optional(),
 });
 export type ProblemManifest = z.infer<typeof ProblemManifestSchema>;
 

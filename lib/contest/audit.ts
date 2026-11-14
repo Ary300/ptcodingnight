@@ -43,6 +43,9 @@ export const AUDIT_ACTIONS = {
   /// decision made before the night ("stop the board 30 minutes before the end") and it fires
   /// later on its own; the two above are an organizer pressing a button while the room watches.
   contestFreezeScheduled: "contest.freeze_scheduled",
+  /// The GROUP-question clock was set or cleared: "team questions open thirty minutes in". Same
+  /// shape as the freeze clock, decided before the night and fired on its own.
+  contestGroupUnlockScheduled: "contest.group_unlock_scheduled",
   participantJoin: "participant.join",
   /// An organizer put a known account on a contest roster before anyone signed into it. The row
   /// that makes "who added this person, and when" answerable for a participant nobody ever saw

@@ -356,6 +356,16 @@ model Contest {
   /// re-derive the whole split in front of a room.
   setPlanSeed String?
 
+  /// Whole-team (GROUP) questions open this many minutes after `startsAt`; null means at the start.
+  ///
+  /// The night runs an INDIVIDUAL stretch first ("the first thirty minutes are your own set") and
+  /// opens team collaboration afterwards. Stored as MINUTES AFTER THE START rather than as an
+  /// absolute instant, for the same reason the freeze is stored as minutes before the end: the
+  /// organizer's sentence is "thirty minutes in", and an absolute timestamp goes stale the moment
+  /// the contest is started early or its window moves. `ContestProblem.unlockAt` still applies per
+  /// row; the effective unlock of a GROUP row is the later of the two.
+  groupUnlockMinutes Int?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -511,6 +521,13 @@ model Puzzle {
   active    Boolean     @default(true)
   /// Browsing order, easiest first.
   sortOrder Int         @default(0)
+  /// The seat this puzzle belongs to: a set label ("A".."D"), or null for a puzzle open to everyone.
+  ///
+  /// The brief is ONE non-programming puzzle per team member, so each teammate needs a different
+  /// one. Teammates already hold different set letters under RANDOM_ASSIGNED (that is the format's
+  /// contract, checked at start), so the letter is the seat: a student sees the puzzle for their
+  /// own letter plus any open to all. Nothing about awards changes; a solve still pays the team once.
+  forSetLabel String?
 
   createdAt DateTime @default(now())
 
@@ -584,6 +601,11 @@ model Problem {
   /// (API-level, like DRAFT): practice questions are public 365 days a year, and a public
   /// question in a scored round is a question somebody has already solved.
   practiceOnly Boolean @default(false)
+  /// Published and solvable, but never dealt into a contest set by the planner. For a problem whose
+  /// whole point is a data type (a sum only a 64-bit integer holds, an unsigned 32-bit flip). An
+  /// organizer may still place it on the Problems tab by hand; the planner reports it as a ready
+  /// blocker so the reason is readable rather than the problem simply being absent.
+  keepOutOfSets Boolean @default(false)
   state       ProblemState @default(DRAFT)
 
   type       ProblemType

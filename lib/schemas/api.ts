@@ -139,6 +139,9 @@ export const API_ROUTES = {
   /** When the public board should stop updating, as minutes before the end. */
   adminFreezeSchedule: (contestId: string) =>
     `/api/admin/contests/${encodeURIComponent(contestId)}/freeze-schedule`,
+  /** When the whole-team questions open, as minutes after the start. */
+  adminGroupUnlock: (contestId: string) =>
+    `/api/admin/contests/${encodeURIComponent(contestId)}/group-unlock`,
   adminMoveParticipant: (contestId: string) =>
     `/api/admin/contests/${encodeURIComponent(contestId)}/roster/move`,
   adminReassignSet: (contestId: string) =>
@@ -761,6 +764,8 @@ export const PuzzleSchema = z.object({
   check: z.enum(["TEXT", "SUDOKU"]),
   hint: z.string().nullable(),
   points: z.number().int(),
+  /** The set letter this puzzle is for, or null when it is open to every teammate. */
+  forSetLabel: z.string().nullable(),
   solved: z.boolean(),
   solvedBy: z.string().nullable(),
 });
@@ -784,6 +789,8 @@ export const AdminPuzzleRowSchema = z.object({
   title: z.string(),
   topic: z.string(),
   points: z.number().int(),
+  /** The seat (set letter) this puzzle belongs to, or null for one open to everyone. */
+  forSetLabel: z.string().nullable(),
   active: z.boolean(),
   solveCount: z.number().int().nonnegative(),
 });
@@ -922,6 +929,13 @@ export const ProblemSummarySchema = z.object({
   bestScore: z.number().int().nonnegative().nullable(),
   solved: z.boolean(),
   unlocked: z.boolean(),
+  /**
+   * When this row opens, as an ISO instant, so a locked row can say "Opens 7:30 PM" instead of a
+   * bare "Locked". It is the EFFECTIVE opening: for a GROUP row, the later of its own unlock and the
+   * contest's group clock (`effectiveUnlockAt` in lib/contest/gate.ts). Null means no clock holds
+   * the row; absent means the server predates the field, and a client treats both the same way.
+   */
+  unlockAt: z.string().nullable().optional(),
 });
 export type ProblemSummary = z.infer<typeof ProblemSummarySchema>;
 
@@ -1324,6 +1338,31 @@ export const AdminFreezeScheduleResponseSchema = z.object({
   activeNow: z.boolean(),
 });
 export type AdminFreezeScheduleResponse = z.infer<typeof AdminFreezeScheduleResponseSchema>;
+
+/**
+ * The GROUP-question clock, as minutes after the start.
+ *
+ * The night opens with an individual stretch and then team collaboration, and the organizer's
+ * sentence is "team questions open thirty minutes in". The server adds, so starting the contest
+ * early or moving its window re-derives the instant instead of leaving a stale timestamp behind.
+ *
+ * `null` clears it: team questions open with everything else.
+ */
+export const AdminGroupUnlockRequestSchema = z.object({
+  minutesAfterStart: z.number().int().min(1).max(720).nullable(),
+});
+
+export const AdminGroupUnlockResponseSchema = z.object({
+  contestId: z.string(),
+  minutesAfterStart: z.number().int().nullable(),
+  /** The derived instant, for checking against a wall clock. Null when nothing is scheduled. */
+  groupUnlockAt: z.string().nullable(),
+  /** True when that instant has already passed, so team questions are open now. */
+  openNow: z.boolean(),
+  /** How many GROUP rows the clock applies to. Zero means the setting is harmless but idle. */
+  groupProblemCount: z.number().int().nonnegative(),
+});
+export type AdminGroupUnlockResponse = z.infer<typeof AdminGroupUnlockResponseSchema>;
 
 // ---------------------------------------------------------------------------
 // SSE
