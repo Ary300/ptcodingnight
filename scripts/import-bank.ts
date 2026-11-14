@@ -129,6 +129,10 @@ async function main(): Promise<void> {
             ? Prisma.DbNull
             : (manifest.comparator as Prisma.InputJsonValue),
         signature: manifest.signature ?? Prisma.DbNull,
+        // Written on create AND update, with the absent case spelled out as false, so a manifest
+        // that drops the flag puts the problem back into the pool on the next import. An
+        // `?? undefined` here would leave the row as it was and report success.
+        keepOutOfSets: manifest.keepOutOfSets ?? false,
         testCases: { create: cases },
       };
       await prisma.problem.upsert({

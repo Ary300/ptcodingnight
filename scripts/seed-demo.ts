@@ -271,6 +271,7 @@ async function main(): Promise<void> {
            * is what "this problem declares no signature" means.
            */
           signature: manifest.signature ?? Prisma.DbNull,
+          keepOutOfSets: manifest.keepOutOfSets ?? false,
           testCases: { create: cases },
         },
         update: {
@@ -289,6 +290,8 @@ async function main(): Promise<void> {
           // predates the manifest's signature would otherwise keep an empty editor forever,
           // with the seed reporting success.
           signature: manifest.signature ?? Prisma.DbNull,
+          // Absent means false, on update too, so a manifest that drops the flag lifts it.
+          keepOutOfSets: manifest.keepOutOfSets ?? false,
           testCases: { create: cases },
         },
         select: { id: true },

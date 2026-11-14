@@ -10,9 +10,10 @@ import { Panel } from "@/components/admin/Panel";
 /**
  * Admin side-activity entry — PRD §9.2.
  *
- * The metal puzzle, train tracks, Connections. **The only score input with no submission behind
- * it**, which makes this screen the only place those points can come from and its audit trail the
- * only record that they happened at all.
+ * Kahoot, the metal puzzle, train tracks, Connections. **The only score input with no submission
+ * behind it**, which makes this screen the only place those points can come from and its audit
+ * trail the only record that they happened at all. Kahoot is a flat award by finishing place, and
+ * the field offers the suggested payout when the label says Kahoot; the scoring engine is not told.
  *
  * Two consequences visible in the UI:
  *
@@ -74,6 +75,33 @@ export interface SideActivityEntryProps {
 
 /** Matches the API's bound. Stated here so the form can refuse before a round trip. */
 const MAX_POINTS = 1000;
+
+/**
+ * The activities the night actually runs, as one-click labels. The field stays editable, so a
+ * preset is a spelling the breakdown will show consistently rather than a restriction: "Kahoot"
+ * typed five ways by three organizers is five rows on a team's breakdown for one game.
+ * "Correction" is here because a correction is a NEW negative entry, and it should be named as one.
+ */
+const LABEL_PRESETS: readonly string[] = [
+  "Kahoot",
+  "Metal puzzle",
+  "Train tracks",
+  "Connections",
+  "Correction",
+];
+
+/**
+ * How Kahoot pays out. Kahoot has its own podium and the organizer asked how to fold it into the
+ * score; the answer is a flat award per team by finishing place, entered here like any other side
+ * activity, so `lib/scoring/` never learns that Kahoot exists. The numbers are a suggestion the
+ * organizer reads before typing, and the points field takes whatever they decide.
+ */
+const KAHOOT_HINT =
+  "Suggested: 60 for first, 40 for second, 20 for third, 10 for every other team that played.";
+
+function isKahoot(label: string): boolean {
+  return label.trim().toLowerCase() === "kahoot";
+}
 
 /**
  * Awards always render signed and always as integers. The sign is the whole meaning of a
@@ -340,6 +368,31 @@ export function SideActivityEntry({ contestId }: SideActivityEntryProps) {
             ))}
           </Select>
 
+          {/*
+            One click per activity the night runs. A real group with a name, so a screen reader
+            announces what the five buttons have in common before reading the first one.
+            `aria-pressed` marks the preset the field currently holds, and clears the moment the
+            organizer edits the text, because a pressed "Kahoot" over a field reading "Kahoot
+            round 2" would be the button lying about the field.
+          */}
+          <div role="group" aria-label="Activity presets" className="flex flex-wrap gap-2">
+            {LABEL_PRESETS.map((preset) => (
+              <Button
+                key={preset}
+                type="button"
+                variant="secondary"
+                size="sm"
+                aria-pressed={label === preset}
+                onClick={() => {
+                  setLabel(preset);
+                  setLabelError(null);
+                }}
+              >
+                {preset}
+              </Button>
+            ))}
+          </div>
+
           <TextInput
             label="Activity"
             required
@@ -347,6 +400,9 @@ export function SideActivityEntry({ contestId }: SideActivityEntryProps) {
             value={label}
             maxLength={120}
             placeholder="Metal puzzle"
+            // Through `hint`, not a loose paragraph, so the sentence is tied to the field by
+            // `aria-describedby` and rendered at the file's muted floor (`text-ink/60`).
+            hint={isKahoot(label) ? KAHOOT_HINT : undefined}
             onChange={(event) => {
               setLabel(event.target.value);
               setLabelError(null);

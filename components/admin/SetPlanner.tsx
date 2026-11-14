@@ -88,11 +88,20 @@ const DIFFICULTY_LABEL: Readonly<Record<Difficulty, string>> = {
 
 const DIFFICULTIES: readonly Difficulty[] = ["E", "M", "H"];
 
-/** The recipe previous years ran: one of each. Every count is editable and may be zero. */
+/**
+ * The organizer's recipe for the night: one Easy that falls quickly, two Mediums that take fifteen
+ * to twenty minutes each, and no Hard at all. In their words, "I would not put any really hard,
+ * time consuming problems." The brief is confidence over difficulty: a student who finishes three
+ * questions has a better night than one who stares at a fourth, and the room is sixteen-year-olds
+ * with seventy-five minutes, not a selection round.
+ *
+ * Earlier years ran one of each. Every count is editable and may be zero; a zero line is dropped
+ * from the recipe sent to the server, which is how `composition` already treats it.
+ */
 const DEFAULT_COUNTS: Readonly<Record<Difficulty, string>> = {
   E: "1",
-  M: "1",
-  H: "1",
+  M: "2",
+  H: "0",
 };
 
 /**

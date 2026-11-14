@@ -39,6 +39,44 @@ function toUiPastStatus(status: string | null): string | null {
   return status === null ? null : status.toLowerCase().replace(/_/g, "-");
 }
 
+/** The facts about one problem that decide whether it may go into a live contest. */
+export interface ReadyFacts {
+  readonly state: AdminProblemRow["state"];
+  readonly hasStatement: boolean;
+  readonly testCaseCount: number;
+  readonly sampleCaseCount: number;
+  /** Set in the problem's manifest for a question whose whole point is a data type. */
+  readonly keepOutOfSets: boolean;
+}
+
+/**
+ * The reason a problem stays out of sets when its manifest says so. The sentence names where the
+ * decision was made, because the organizer reading it on the Problems tab has no other way to
+ * find out that the flag exists or how to lift it.
+ */
+export const KEPT_OUT_OF_SETS_BLOCKER =
+  "Kept out of sets: this problem is about a data type (see its manifest). Place it by hand if you want it.";
+
+/**
+ * Every reason a problem may not be dealt into a live contest, in a fixed order, as sentences an
+ * organizer reads. Pure, so the list can be asserted without a database.
+ *
+ * `keepOutOfSets` is a blocker rather than a separate flag because `set-build.ts`'s `gatherPool`
+ * already drops any problem with a non-empty list. One field answering "may this be dealt" is the
+ * reason this module exists; a second one would be a second answer free to disagree.
+ */
+export function readyBlockersFor(facts: ReadyFacts): string[] {
+  const blockers: string[] = [];
+  if (facts.state === "DRAFT") blockers.push("Still a DRAFT");
+  if (facts.state === "ARCHIVED") blockers.push("Archived");
+  if (!facts.hasStatement) blockers.push("No original statement written");
+  if (facts.testCaseCount === 0) blockers.push("No test cases");
+  if (facts.sampleCaseCount === 0)
+    blockers.push("No sample cases, so a student cannot self-check");
+  if (facts.keepOutOfSets) blockers.push(KEPT_OUT_OF_SETS_BLOCKER);
+  return blockers;
+}
+
 export async function problemBank(): Promise<AdminProblemBank> {
   /*
     `statementMd` IS NOT SELECTED, and that one word was the whole cost of this screen.
@@ -61,6 +99,7 @@ export async function problemBank(): Promise<AdminProblemBank> {
       difficulty: string | null;
       pastStatus: string | null;
       round: string;
+      keepOutOfSets: boolean;
       hasStatement: boolean;
       testCaseCount: bigint;
       sampleCaseCount: bigint;
@@ -68,7 +107,7 @@ export async function problemBank(): Promise<AdminProblemBank> {
   >`
     SELECT p."id", p."slug", p."title", p."state"::text AS "state",
            p."difficulty"::text AS "difficulty", p."pastStatus"::text AS "pastStatus",
-           p."round"::text AS "round",
+           p."round"::text AS "round", p."keepOutOfSets",
            (btrim(p."statementMd") <> '') AS "hasStatement",
            COUNT(t."id")                                  AS "testCaseCount",
            COUNT(t."id") FILTER (WHERE t."isSample")       AS "sampleCaseCount"
@@ -85,18 +124,20 @@ export async function problemBank(): Promise<AdminProblemBank> {
       const testCaseCount = Number(row.testCaseCount);
       const sampleCaseCount = Number(row.sampleCaseCount);
 
-      const blockers: string[] = [];
-      if (toUiState(row.state) === "DRAFT") blockers.push("Still a DRAFT");
-      if (toUiState(row.state) === "ARCHIVED") blockers.push("Archived");
-      if (!hasStatement) blockers.push("No original statement written");
-      if (testCaseCount === 0) blockers.push("No test cases");
-      if (sampleCaseCount === 0) blockers.push("No sample cases, so a student cannot self-check");
+      const state = toUiState(row.state);
+      const blockers = readyBlockersFor({
+        state,
+        hasStatement,
+        testCaseCount,
+        sampleCaseCount,
+        keepOutOfSets: row.keepOutOfSets,
+      });
 
       return {
         problemId: row.id,
         slug: row.slug,
         title: row.title,
-        state: toUiState(row.state),
+        state,
         difficulty: row.difficulty as AdminProblemRow["difficulty"],
         pastStatus: toUiPastStatus(row.pastStatus),
         round: row.round,
