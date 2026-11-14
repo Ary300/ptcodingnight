@@ -53,6 +53,21 @@ function StatusMark({ solved, partial }: { solved: boolean; partial: boolean }) 
   );
 }
 
+/**
+ * What a locked row's badge says.
+ *
+ * "Opens 7:30 PM" when the server knows when, which it does for a team question held shut by the
+ * contest's group clock; a bare "Locked" otherwise. A word in every state, so the badge never
+ * relies on its colour alone. Printed in the reader's own zone, since the student compares it with
+ * the clock on the wall, not with the ISO string the API speaks in.
+ */
+export function lockedLabel(unlockAt: string | null | undefined): string {
+  if (unlockAt === null || unlockAt === undefined) return "Locked";
+  const at = new Date(unlockAt);
+  if (Number.isNaN(at.getTime())) return "Locked";
+  return `Opens ${at.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}`;
+}
+
 /** The separator between metadata items. U+00B7 is inside the vendored Latin subset. */
 function Dot() {
   return (
@@ -147,10 +162,10 @@ function ProblemCard({ problem }: { problem: ProblemSummary }) {
         <Rail state="brand" />
         {body}
         <span
-          className="numeric mr-3 self-center rounded-chip bg-ink px-2 py-0.5 text-paper sm:mr-4"
+          className="numeric mr-3 self-center whitespace-nowrap rounded-chip bg-ink px-2 py-0.5 text-paper sm:mr-4"
           style={{ fontSize: "var(--text-xs)" }}
         >
-          Locked
+          {lockedLabel(problem.unlockAt)}
         </span>
       </li>
     );

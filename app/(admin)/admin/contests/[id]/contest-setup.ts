@@ -33,6 +33,10 @@ export interface ContestSetup {
   readonly startsAt: Date;
   readonly endsAt: Date;
   readonly freezeAt: Date | null;
+  /** Minutes after the start before the GROUP questions open. Null means at the start. */
+  readonly groupUnlockMinutes: number | null;
+  /** GROUP rows in the line-up: the rows the group clock applies to. */
+  readonly groupProblemCount: number;
   readonly setSelection: "RANDOM_ASSIGNED" | "PLAYER_CHOOSES" | "ONE_SET_PER_TEAM";
   /** Slots in the line-up. Zero is what `setContestState` refuses to publish. */
   readonly problemCount: number;
@@ -64,6 +68,7 @@ export async function contestSetup(contestId: string): Promise<ContestSetup | nu
       startsAt: true,
       endsAt: true,
       freezeAt: true,
+      groupUnlockMinutes: true,
       setSelection: true,
       _count: {
         select: { contestProblems: true, teams: true, participants: true, divisions: true },
@@ -72,10 +77,11 @@ export async function contestSetup(contestId: string): Promise<ContestSetup | nu
   });
   if (contest === null) return null;
 
-  const [unassigned, unassignedSet, noDivision] = await Promise.all([
+  const [unassigned, unassignedSet, noDivision, groupProblemCount] = await Promise.all([
     prisma.participant.count({ where: { contestId, teamId: null } }),
     prisma.participant.count({ where: { contestId, chosenSetId: null } }),
     prisma.participant.count({ where: { contestId, divisionId: null } }),
+    prisma.contestProblem.count({ where: { contestId, round: "GROUP" } }),
   ]);
 
   return {
@@ -85,6 +91,8 @@ export async function contestSetup(contestId: string): Promise<ContestSetup | nu
     startsAt: contest.startsAt,
     endsAt: contest.endsAt,
     freezeAt: contest.freezeAt,
+    groupUnlockMinutes: contest.groupUnlockMinutes,
+    groupProblemCount,
     setSelection: contest.setSelection,
     problemCount: contest._count.contestProblems,
     teamCount: contest._count.teams,

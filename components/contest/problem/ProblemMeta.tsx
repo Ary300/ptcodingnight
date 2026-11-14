@@ -2,6 +2,8 @@ import { Crumbs, TabStrip } from "@/components/ui";
 
 import type { ProblemDetail } from "@/lib/schemas/api";
 
+import { lockedLabel } from "../lobby/ProblemList";
+
 /**
  * The furniture HackerRank puts around a problem: a breadcrumb above the title, a status pill
  * beside it, a folder-tab strip under it, and a metadata rail down the right — Difficulty,
@@ -59,9 +61,9 @@ export function DifficultyPill({ difficulty }: { difficulty: string | null }) {
 /**
  * The pill beside the title — where HackerRank puts its red `locked` badge.
  *
- * It is a WORD in every state, never a colour on its own (DESIGN.md §3): "Locked", "Solved",
- * "Attempted". Solved is the filled one because it is the state a student is looking for when
- * they scan back over a problem they have already been in.
+ * It is a WORD in every state, never a colour on its own (DESIGN.md §3): "Locked" or "Opens 7:30
+ * PM", "Solved", "Attempted". Solved is the filled one because it is the state a student is looking
+ * for when they scan back over a problem they have already been in.
  */
 export function ProblemStatusPill({ detail }: { detail: ProblemDetail }) {
   if (!detail.unlocked) {
@@ -75,7 +77,7 @@ export function ProblemStatusPill({ detail }: { detail: ProblemDetail }) {
         <svg width="10" height="12" viewBox="0 0 10 12" aria-hidden="true" fill="currentColor">
           <path d="M5 0a3 3 0 0 0-3 3v1H1v8h8V4H8V3a3 3 0 0 0-3-3zm0 1.5A1.5 1.5 0 0 1 6.5 3v1h-3V3A1.5 1.5 0 0 1 5 1.5z" />
         </svg>
-        Locked
+        {lockedLabel(detail.unlockAt)}
       </span>
     );
   }

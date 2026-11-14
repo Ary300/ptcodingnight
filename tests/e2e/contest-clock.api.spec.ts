@@ -31,9 +31,11 @@ test.afterAll(async () => {
 /** A minimal contest whose only line-up slot borrows the fixture's PUBLISHED problem. */
 async function clockContest(options: {
   joinCode: string;
-  state: "SCHEDULED" | "RUNNING";
+  state: "SCHEDULED" | "RUNNING" | "FROZEN";
   startsAt: Date;
   endsAt: Date;
+  /** A freeze already in force, pressed or scheduled. Null is the default and means no freeze. */
+  freezeAt?: Date | null;
   withProblem?: boolean;
 }): Promise<string> {
   const db = testDb();
@@ -46,6 +48,7 @@ async function clockContest(options: {
       state: options.state,
       startsAt: options.startsAt,
       endsAt: options.endsAt,
+      freezeAt: options.freezeAt ?? null,
     },
     select: { id: true },
   });
@@ -175,5 +178,79 @@ test("the organizer's console poll also moves the clock", async ({ playwright })
   const poll = await readEnvelope(await admin.consoleRaw());
   expect(poll.status).toBe(200);
 
+  expect(await contestState(contestId)).toBe("ENDED");
+});
+
+/*
+  The frozen exception. An ENDED contest's board is never frozen (`isPublicBoardFrozen`), so a clock
+  that ended a FROZEN contest at `endsAt` would paint the final standings on the projector the moment
+  time ran out, with the Kahoot points unentered and nobody at the front. The reveal is the
+  organizer's press of "Unfreeze and reveal", which is what ends a past-end contest.
+*/
+test("a FROZEN contest whose end time has passed stays frozen until the organizer reveals it", async ({
+  playwright,
+}) => {
+  const contestId = await clockContest({
+    joinCode: "CLKFRZ",
+    state: "FROZEN",
+    startsAt: new Date(Date.now() - 2 * 60 * 60_000),
+    endsAt: new Date(Date.now() - 60_000),
+    freezeAt: new Date(Date.now() - 20 * 60_000),
+  });
+
+  const context = await playwright.request.newContext();
+  const student = anonApi(context, contestId);
+  const poll = await readEnvelope(await student.teamStandingsRaw());
+  expect(poll.status).toBe(200);
+  expect(await contestState(contestId), "the poll ended a frozen contest, which reveals its board").toBe(
+    "FROZEN",
+  );
+  expect((await student.teamStandings()).frozen, "the public board must still be frozen").toBe(true);
+
+  // The reveal: unfreezing a contest past its end is what ends it.
+  const admin = new ContestApi(await playwright.request.newContext(), contestId);
+  await admin.adminLogin(requiredEnv("ADMIN_PASSCODE"));
+  const revealed = await admin.freeze(false);
+  expect(revealed.frozen).toBe(false);
+  expect(revealed.state).toBe("ENDED");
+  expect(await contestState(contestId)).toBe("ENDED");
+  expect((await student.teamStandings()).frozen).toBe(false);
+});
+
+test("a RUNNING contest whose scheduled freeze has fired is left for the reveal too", async ({
+  playwright,
+}) => {
+  // The scheduled freeze materialises as a frozen board without the state ever becoming FROZEN.
+  const contestId = await clockContest({
+    joinCode: "CLKSCH",
+    state: "RUNNING",
+    startsAt: new Date(Date.now() - 2 * 60 * 60_000),
+    endsAt: new Date(Date.now() - 60_000),
+    freezeAt: new Date(Date.now() - 20 * 60_000),
+  });
+
+  const context = await playwright.request.newContext();
+  const student = anonApi(context, contestId);
+  const poll = await readEnvelope(await student.teamStandingsRaw());
+  expect(poll.status).toBe(200);
+  expect(await contestState(contestId), "the poll ended a contest whose board is frozen").toBe("RUNNING");
+  expect((await student.teamStandings()).frozen).toBe(true);
+});
+
+test("a RUNNING contest whose scheduled freeze never arrived still ends on the clock", async ({
+  playwright,
+}) => {
+  // A freeze set AFTER the end is no freeze at all; the old rule holds and the board goes final.
+  const contestId = await clockContest({
+    joinCode: "CLKLATE",
+    state: "RUNNING",
+    startsAt: new Date(Date.now() - 2 * 60 * 60_000),
+    endsAt: new Date(Date.now() - 60_000),
+    freezeAt: new Date(Date.now() + 10 * 60_000),
+  });
+
+  const context = await playwright.request.newContext();
+  const poll = await readEnvelope(await anonApi(context, contestId).teamStandingsRaw());
+  expect(poll.status).toBe(200);
   expect(await contestState(contestId)).toBe("ENDED");
 });

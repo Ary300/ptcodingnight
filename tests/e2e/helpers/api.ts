@@ -468,6 +468,12 @@ export class ContestApi {
     });
   }
 
+  groupUnlockRaw(minutesAfterStart: number | null): Promise<APIResponse> {
+    return this.req().post(`/api/admin/contests/${this.contestId}/group-unlock`, {
+      data: { minutesAfterStart },
+    });
+  }
+
   freezeRaw(frozen: boolean): Promise<APIResponse> {
     return this.req().post(`/api/admin/contests/${this.contestId}/freeze`, {
       data: { frozen },

@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { NotFoundError, ValidationError } from "@/lib/errors";
 import { prisma } from "@/lib/db";
+import { clockShouldEnd } from "@/lib/contest/gate";
 import { lockContestMutations, lockProblemMutations } from "@/lib/contest/locks";
 import {
   problemDivisionConflicts,
@@ -674,9 +675,13 @@ export async function setContestState(
  *   the organizer's own Start button.
  * - SCHEDULED with the whole window in the past is LEFT ALONE. That row is a rehearsal that never
  *   happened; springing it to life on the next poll would run it now, which nobody asked for.
- * - RUNNING or FROZEN past `endsAt`: end it. This is what "What happens when the clock hits zero"
- *   already promises on the lobby, and what the organizer expected of the debris rows that sat
- *   RUNNING for days ("I think those were supposed to have ended").
+ * - RUNNING or FROZEN past `endsAt`: end it, UNLESS the public board is frozen. This is what
+ *   "What happens when the clock hits zero" already promises on the lobby, and what the organizer
+ *   expected of the debris rows that sat RUNNING for days ("I think those were supposed to have
+ *   ended"). The frozen exception is `clockShouldEnd` in gate.ts: an ENDED contest's board is never
+ *   frozen, so ending a frozen contest on the clock would reveal the final standings at 8:15 with
+ *   the Kahoot points unentered and nobody at the front. A frozen contest waits for the organizer's
+ *   "Unfreeze and reveal", which ends it; submissions still close on the window regardless.
  * - `onlyFromState` guards the race: forty pre-start lobbies poll the same second the gun fires,
  *   the lock serialises them, and every caller after the first sees the transition already made.
  *
@@ -690,7 +695,14 @@ export async function reconcileContestClockById(
 ): Promise<"unchanged" | "started" | "ended"> {
   const contest = await prisma.contest.findUnique({
     where: { id: contestId },
-    select: { id: true, state: true, startsAt: true, endsAt: true, isPractice: true },
+    select: {
+      id: true,
+      state: true,
+      startsAt: true,
+      endsAt: true,
+      freezeAt: true,
+      isPractice: true,
+    },
   });
   // The practice arena is permanent by definition: no clock may start or end it.
   if (contest === null || contest.isPractice) return "unchanged";
@@ -703,6 +715,7 @@ export async function reconcileContestClock(
     readonly state: string;
     readonly startsAt: Date;
     readonly endsAt: Date;
+    readonly freezeAt: Date | null;
   },
   now: Date = new Date(),
 ): Promise<"unchanged" | "started" | "ended"> {
@@ -720,7 +733,7 @@ export async function reconcileContestClock(
     }
     if (
       (contest.state === "RUNNING" || contest.state === "FROZEN") &&
-      contest.endsAt.getTime() <= now.getTime()
+      clockShouldEnd({ ...contest, state: contest.state }, now)
     ) {
       const result = await setContestState(
         contest.id,

@@ -10,7 +10,9 @@ import {
   assertCanSubmit,
   assertProblemIsLive,
   assertUnlocked,
+  effectiveUnlockAt,
   isPublicBoardFrozen,
+  clockShouldEnd,
   isUnlocked,
   assertCanListProblems,
   standingsCutoff,
@@ -132,6 +134,56 @@ describe("unlocking", () => {
   });
 });
 
+describe("effectiveUnlockAt", () => {
+  /*
+    The night opens with an individual stretch and the team questions follow. The contest column
+    says how long that stretch is, in minutes after the start; every reader derives the GROUP rows'
+    opening from it here, and nothing writes the derived instant into a row.
+  */
+  const THIRTY_IN = new Date(STARTS.getTime() + 30 * 60_000);
+  const withClock = { startsAt: STARTS, groupUnlockMinutes: 30 };
+  const noClock = { startsAt: STARTS, groupUnlockMinutes: null };
+
+  it("opens a GROUP row at startsAt plus the contest's minutes", () => {
+    expect(effectiveUnlockAt({ round: "GROUP", unlockAt: null }, withClock)).toEqual(THIRTY_IN);
+  });
+
+  it("leaves a GROUP row's own unlock alone when the contest has no group clock", () => {
+    expect(effectiveUnlockAt({ round: "GROUP", unlockAt: FREEZE }, noClock)).toEqual(FREEZE);
+    expect(effectiveUnlockAt({ round: "GROUP", unlockAt: null }, noClock)).toBeNull();
+  });
+
+  it("takes the LATER of the row's own unlock and the group clock", () => {
+    // Row later than the clock: the row wins.
+    expect(effectiveUnlockAt({ round: "GROUP", unlockAt: FREEZE }, withClock)).toEqual(FREEZE);
+    // Row earlier than the clock: the clock wins. A per-row unlock cannot open a team question
+    // before the individual stretch is over.
+    const early = new Date(STARTS.getTime() + 5 * 60_000);
+    expect(effectiveUnlockAt({ round: "GROUP", unlockAt: early }, withClock)).toEqual(THIRTY_IN);
+  });
+
+  it("never applies the group clock to an INDIVIDUAL row", () => {
+    expect(effectiveUnlockAt({ round: "INDIVIDUAL", unlockAt: null }, withClock)).toBeNull();
+    expect(effectiveUnlockAt({ round: "INDIVIDUAL", unlockAt: FREEZE }, withClock)).toEqual(FREEZE);
+  });
+
+  it("feeds isUnlocked, so a team question is shut during the stretch and open at the instant", () => {
+    const opensAt = effectiveUnlockAt({ round: "GROUP", unlockAt: null }, withClock);
+    expect(isUnlocked(opensAt, new Date(THIRTY_IN.getTime() - 1))).toBe(false);
+    expect(isUnlocked(opensAt, THIRTY_IN)).toBe(true);
+    expect(() => assertUnlocked(opensAt, STARTS, "e2e-group-problem")).toThrow(ForbiddenError);
+  });
+
+  it("is derived from the start, so a contest started early opens its team questions early", () => {
+    const earlierStart = new Date(STARTS.getTime() - 10 * 60_000);
+    const opensAt = effectiveUnlockAt(
+      { round: "GROUP", unlockAt: null },
+      { startsAt: earlierStart, groupUnlockMinutes: 30 },
+    );
+    expect(opensAt).toEqual(new Date(earlierStart.getTime() + 30 * 60_000));
+  });
+});
+
 describe("isPublicBoardFrozen", () => {
   it("is frozen when an organizer pressed freeze", () => {
     expect(isPublicBoardFrozen(contest({ state: "FROZEN", freezeAt: FREEZE }), ENDS)).toBe(true);
@@ -227,5 +279,30 @@ describe("listing a contest's problems is looser than reading one", () => {
     const scheduled = contest({ state: "SCHEDULED" });
     expect(() => assertCanListProblems(scheduled.state)).not.toThrow();
     expect(() => assertCanSubmit(scheduled, scheduled.startsAt)).toThrow();
+  });
+});
+
+describe("clockShouldEnd", () => {
+  it("ends a running contest once its end time has passed", () => {
+    expect(clockShouldEnd(contest({ state: "RUNNING" }), ENDS)).toBe(true);
+    expect(clockShouldEnd(contest({ state: "RUNNING" }), new Date(ENDS.getTime() - 1))).toBe(false);
+  });
+
+  it("leaves a frozen board to the organizer, because ending it would reveal it", () => {
+    // Pressed freeze, then the clock ran out: the reveal is the organizer's press, not the poll.
+    expect(clockShouldEnd(contest({ state: "FROZEN", freezeAt: FREEZE }), ENDS)).toBe(false);
+    // A scheduled freeze that has fired is the same board, still RUNNING on paper.
+    expect(clockShouldEnd(contest({ state: "RUNNING", freezeAt: FREEZE }), ENDS)).toBe(false);
+  });
+
+  it("ends a running contest whose scheduled freeze never arrived before the end", () => {
+    const lateFreeze = new Date(ENDS.getTime() + 60_000);
+    expect(clockShouldEnd(contest({ state: "RUNNING", freezeAt: lateFreeze }), ENDS)).toBe(true);
+  });
+
+  it("never touches a contest that is not live", () => {
+    for (const state of ["DRAFT", "SCHEDULED", "ENDED", "ARCHIVED"] as const) {
+      expect(clockShouldEnd(contest({ state }), ENDS)).toBe(false);
+    }
   });
 });

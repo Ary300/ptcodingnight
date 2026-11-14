@@ -344,6 +344,159 @@ export async function setFreezeSchedule(
   return result;
 }
 
+/** The longest individual stretch an organizer can set, the same half day the freeze allows. */
+export const MAX_GROUP_UNLOCK_MINUTES = 720;
+
+/**
+ * When the team questions open, given the start of the contest and how long after it to wait.
+ *
+ * Pure, and separate from the write, for the same reason `freezeAtFromMinutes` is: this addition
+ * is the whole feature and the part somebody will check by hand against the clock on the wall.
+ */
+export function groupUnlockAtFromMinutes(startsAt: Date, minutesAfterStart: number): Date {
+  return new Date(startsAt.getTime() + minutesAfterStart * 60_000);
+}
+
+/**
+ * How many whole minutes after the start an instant falls, or null when there is none.
+ *
+ * Rounded to the nearest minute for DISPLAY only, as `minutesBeforeEndOf` is. The column stores
+ * the minutes themselves, so this exists for the places that hold an instant and want the sentence.
+ */
+export function minutesAfterStartOf(startsAt: Date, at: Date | null): number | null {
+  if (at === null) return null;
+  return Math.round((at.getTime() - startsAt.getTime()) / 60_000);
+}
+
+/**
+ * The one window rule, pure so it is a unit test: team questions that open at or after the end
+ * never open at all, and a stored value that promises otherwise would be a lie.
+ */
+export function assertGroupUnlockInsideWindow(
+  startsAt: Date,
+  endsAt: Date,
+  minutesAfterStart: number,
+): void {
+  const opensAt = groupUnlockAtFromMinutes(startsAt, minutesAfterStart);
+  if (opensAt.getTime() >= endsAt.getTime()) {
+    throw new DomainError(
+      "VALIDATION",
+      "That opens the team questions after the contest ends. Pick fewer minutes, or a longer contest.",
+    );
+  }
+}
+
+/** The 1..720 bound, pure so a bad number is refused before any lock is taken. */
+export function assertGroupUnlockMinutes(minutesAfterStart: number): void {
+  if (!Number.isInteger(minutesAfterStart) || minutesAfterStart < 1) {
+    throw new DomainError("VALIDATION", "Give a whole number of minutes, at least one.");
+  }
+  if (minutesAfterStart > MAX_GROUP_UNLOCK_MINUTES) {
+    throw new DomainError(
+      "VALIDATION",
+      `Team questions can open at most ${String(MAX_GROUP_UNLOCK_MINUTES)} minutes after the start.`,
+    );
+  }
+}
+
+export interface GroupUnlockResult {
+  readonly contestId: string;
+  readonly minutesAfterStart: number | null;
+  readonly groupUnlockAt: string | null;
+  /** True when the instant has already passed, so the team questions are open now. */
+  readonly openNow: boolean;
+  /** How many GROUP rows the clock applies to. Zero means the setting is harmless but idle. */
+  readonly groupProblemCount: number;
+}
+
+/**
+ * Set or clear the GROUP-question CLOCK: "team questions open this many minutes after the start".
+ *
+ * The mirror of `setFreezeSchedule`. The night opens with an individual stretch and the team
+ * questions follow, and the organizer's sentence is "thirty minutes in", so the column stores
+ * MINUTES and every reader adds them to `startsAt` on the way out (`effectiveUnlockAt` in gate.ts).
+ * Starting the contest early or moving its window re-derives the opening; nothing stale is left in
+ * any row.
+ *
+ * Nothing new enforces it. The list, the statement and the submit path already gate on a row's
+ * unlock instant; this gives GROUP rows a second clock and the gate takes the later of the two.
+ *
+ * No `invalidateScoringInput`: when a question opens changes which submissions can exist, never
+ * how an existing one scores.
+ *
+ * Refusals, all cases where the stored value would be a lie:
+ *
+ * - A number outside 1..720, or a fraction.
+ * - An ENDED or ARCHIVED contest has no team questions left to open.
+ * - An opening at or after the end is a question that never opens.
+ */
+export async function setGroupUnlock(
+  contestId: string,
+  minutesAfterStart: number | null,
+  admin: AdminViewer,
+  clock: Clock = systemClock,
+): Promise<GroupUnlockResult> {
+  if (minutesAfterStart !== null) assertGroupUnlockMinutes(minutesAfterStart);
+
+  return prisma.$transaction(async (tx) => {
+    await lockContestMutations(tx, contestId);
+    const now = clock();
+
+    const contest = await tx.contest.findUnique({
+      where: { id: contestId },
+      select: { id: true, state: true, startsAt: true, endsAt: true, groupUnlockMinutes: true },
+    });
+    if (contest === null) throw new NotFoundError("Contest");
+
+    if (contest.state === "ENDED" || contest.state === "ARCHIVED") {
+      throw new DomainError(
+        "CONTEST_NOT_RUNNING",
+        "This contest is over, so there are no team questions left to open.",
+      );
+    }
+
+    if (minutesAfterStart !== null) {
+      assertGroupUnlockInsideWindow(contest.startsAt, contest.endsAt, minutesAfterStart);
+    }
+
+    const [updated, groupProblemCount] = await Promise.all([
+      tx.contest.update({
+        where: { id: contestId },
+        data: { groupUnlockMinutes: minutesAfterStart },
+        select: { startsAt: true, groupUnlockMinutes: true },
+      }),
+      tx.contestProblem.count({ where: { contestId, round: "GROUP" } }),
+    ]);
+
+    const groupUnlockAt =
+      updated.groupUnlockMinutes === null
+        ? null
+        : groupUnlockAtFromMinutes(updated.startsAt, updated.groupUnlockMinutes);
+
+    await writeAudit(
+      {
+        actor: `admin:${admin.sessionId}`,
+        action: AUDIT_ACTIONS.contestGroupUnlockScheduled,
+        entity: `Contest:${contestId}`,
+        before: { groupUnlockMinutes: contest.groupUnlockMinutes },
+        after: {
+          groupUnlockMinutes: updated.groupUnlockMinutes,
+          groupUnlockAt: groupUnlockAt === null ? null : groupUnlockAt.toISOString(),
+        },
+      },
+      tx,
+    );
+
+    return {
+      contestId,
+      minutesAfterStart: updated.groupUnlockMinutes,
+      groupUnlockAt: groupUnlockAt === null ? null : groupUnlockAt.toISOString(),
+      openNow: groupUnlockAt !== null && now.getTime() >= groupUnlockAt.getTime(),
+      groupProblemCount,
+    };
+  });
+}
+
 export interface OverrideInput {
   readonly submissionId: string;
   readonly verdict: Verdict;

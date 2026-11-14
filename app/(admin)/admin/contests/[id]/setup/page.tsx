@@ -3,8 +3,9 @@ import type { ReactNode } from "react";
 
 import { ContestStateActions } from "@/components/admin/ContestStateActions";
 import { FreezeSchedule } from "@/components/admin/FreezeSchedule";
+import { GroupUnlock } from "@/components/admin/GroupUnlock";
 import { AlertPlate, Panel } from "@/components/admin/Panel";
-import { minutesBeforeEndOf } from "@/lib/contest/admin";
+import { groupUnlockAtFromMinutes, minutesBeforeEndOf } from "@/lib/contest/admin";
 
 import { AssignSetsButton } from "../assign-sets-button";
 import { contestSetup, type ContestSetup } from "../contest-setup";
@@ -158,16 +159,52 @@ export default async function ContestSetupPage({
 
       <Panel
         title="Window"
-        description="When the contest runs, and when the public board stops updating."
+        description="When the contest runs, when the team questions open, and when the public board stops updating."
       >
-        <dl className="grid gap-x-8 gap-y-3 sm:grid-cols-3" style={{ fontSize: "var(--text-sm)" }}>
+        {/*
+          Four facts. Two columns from `sm` and four from `lg`: a three-column grid held a fourth
+          fact as a lone orphan row, and four columns at 640px wrap "Aug 1, 8:09 PM EDT" to three
+          lines each.
+        */}
+        <dl
+          className="grid gap-x-8 gap-y-3 sm:grid-cols-2 lg:grid-cols-4"
+          style={{ fontSize: "var(--text-sm)" }}
+        >
           <Fact label="Starts" value={formatWhen(setup.startsAt)} />
           <Fact label="Ends" value={formatWhen(setup.endsAt)} />
+          <Fact
+            label="Team questions open"
+            value={
+              setup.groupUnlockMinutes === null
+                ? "At the start"
+                : formatWhen(groupUnlockAtFromMinutes(setup.startsAt, setup.groupUnlockMinutes))
+            }
+          />
           <Fact
             label="Board freezes"
             value={setup.freezeAt === null ? "No freeze" : formatWhen(setup.freezeAt)}
           />
         </dl>
+
+        {/*
+          The night opens with an individual stretch. This is the clock that ends it, set in the
+          organizer's own unit, minutes after the start, and derived on every read so a contest
+          started early opens its team questions early too.
+        */}
+        <div className="mt-5 border-t border-rule-edge pt-5">
+          <h3 className="font-display font-bold" style={{ fontSize: "var(--text-sm)" }}>
+            Open team questions after the individual stretch
+          </h3>
+          <div className="mt-2">
+            <GroupUnlock
+              contestId={setup.contestId}
+              startsAt={setup.startsAt.toISOString()}
+              minutesAfterStart={setup.groupUnlockMinutes}
+              groupProblemCount={setup.groupProblemCount}
+              over={setup.state === "ENDED" || setup.state === "ARCHIVED"}
+            />
+          </div>
+        </div>
 
         {/*
           The freeze was READ-ONLY here and settable only in the create form, as an absolute

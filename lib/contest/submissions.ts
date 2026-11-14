@@ -22,6 +22,7 @@ import {
   assertCanSubmit,
   assertProblemIsLive,
   assertUnlocked,
+  effectiveUnlockAt,
 } from "@/lib/contest/gate";
 import { hostLimits } from "@/lib/contest/host";
 import { lockContestMutations } from "@/lib/contest/locks";
@@ -118,6 +119,7 @@ async function resolveTarget(
       id: true,
       contestId: true,
       divisionId: true,
+      round: true,
       unlockAt: true,
       setId: true,
       contest: {
@@ -126,6 +128,7 @@ async function resolveTarget(
           startsAt: true,
           endsAt: true,
           freezeAt: true,
+          groupUnlockMinutes: true,
           allowReadingUnassignedSets: true,
         },
       },
@@ -192,7 +195,13 @@ async function resolveTarget(
     contestProblem.problem.state,
     contestProblem.problem.slug,
   );
-  assertUnlocked(contestProblem.unlockAt, now, contestProblem.problem.slug);
+  // The same clock the list and the statement are gated on. A team question held shut by the
+  // contest's group clock must refuse points too, or the lobby's lock is decoration.
+  assertUnlocked(
+    effectiveUnlockAt(contestProblem, contestProblem.contest),
+    now,
+    contestProblem.problem.slug,
+  );
 
   if (!contestProblem.problem.allowedLanguages.includes(language)) {
     throw new ValidationError(`${language} is not allowed on this problem`);

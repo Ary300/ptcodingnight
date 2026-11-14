@@ -116,6 +116,38 @@ export function isProblemLive(state: ProblemState): boolean {
   return state === "PUBLISHED";
 }
 
+/** The part of a `ContestProblem` row that decides when it opens. */
+export interface UnlockRowInput {
+  readonly round: "INDIVIDUAL" | "GROUP";
+  readonly unlockAt: Date | null;
+}
+
+/** The part of a contest row that decides when its GROUP questions open. */
+export interface UnlockContestInput {
+  readonly startsAt: Date;
+  readonly groupUnlockMinutes: number | null;
+}
+
+/**
+ * When this row actually opens, given the contest it sits in.
+ *
+ * Two clocks can hold a row shut. The row's own `unlockAt` applies to any round. The contest's
+ * `groupUnlockMinutes` applies to GROUP rows only: the night opens with an individual stretch and
+ * the team questions follow, so a GROUP row opens at `startsAt + groupUnlockMinutes` or at its own
+ * `unlockAt`, whichever is LATER. An INDIVIDUAL row never hears about the group clock.
+ *
+ * The contest column is the single source of truth. Nothing writes the derived instant back into
+ * the rows, so starting the contest early or moving its window re-derives every opening from here
+ * rather than leaving twenty stale timestamps behind.
+ */
+export function effectiveUnlockAt(row: UnlockRowInput, contest: UnlockContestInput): Date | null {
+  if (row.round !== "GROUP" || contest.groupUnlockMinutes === null) return row.unlockAt;
+
+  const groupOpensAt = new Date(contest.startsAt.getTime() + contest.groupUnlockMinutes * 60_000);
+  if (row.unlockAt === null) return groupOpensAt;
+  return row.unlockAt.getTime() > groupOpensAt.getTime() ? row.unlockAt : groupOpensAt;
+}
+
 export function isUnlocked(unlockAt: Date | null, now: Date): boolean {
   return unlockAt === null || now.getTime() >= unlockAt.getTime();
 }
@@ -143,6 +175,24 @@ export function isPublicBoardFrozen(contest: ContestGateInput, now: Date): boole
   if (contest.freezeAt === null) return false;
   if (contest.state !== "RUNNING" && contest.state !== "SCHEDULED") return false;
   return now.getTime() >= contest.freezeAt.getTime();
+}
+
+/**
+ * Should the CLOCK end this contest now?
+ *
+ * The window says yes once `endsAt` has passed and the contest is still live. The one exception is
+ * a contest whose public board is frozen: the organizer froze it (or scheduled the freeze) so the
+ * finish is played without knowing who is winning, and ending it would make `isPublicBoardFrozen`
+ * false and paint the final board on the projector with nobody at the front. On Coding Night the
+ * freeze fires at 8:00, submissions close at 8:15 (`assertCanSubmit` checks the window on its own,
+ * whatever the state), Kahoot points are entered at 8:35, and the reveal is the organizer's press
+ * of "Unfreeze and reveal", which is what ends a past-end contest (`setFrozen`). So a frozen board
+ * is left to the organizer, and an unfrozen one ends on the clock as it always did.
+ */
+export function clockShouldEnd(contest: ContestGateInput, now: Date): boolean {
+  if (contest.state !== "RUNNING" && contest.state !== "FROZEN") return false;
+  if (now.getTime() < contest.endsAt.getTime()) return false;
+  return !isPublicBoardFrozen(contest, now);
 }
 
 /**

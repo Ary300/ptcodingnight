@@ -18,6 +18,7 @@ import {
   assertCanReadProblems,
   assertProblemIsLive,
   assertUnlocked,
+  effectiveUnlockAt,
   isProblemLive,
   isUnlocked,
 } from "@/lib/contest/gate";
@@ -105,7 +106,13 @@ export async function listProblems(
 ): Promise<ProblemSummary[]> {
   const contest = await prisma.contest.findUnique({
     where: { id: contestId },
-    select: { id: true, state: true, startsAt: true, allowReadingUnassignedSets: true },
+    select: {
+      id: true,
+      state: true,
+      startsAt: true,
+      groupUnlockMinutes: true,
+      allowReadingUnassignedSets: true,
+    },
   });
   if (contest === null) throw new NotFoundError("Contest");
 
@@ -165,8 +172,11 @@ export async function listProblems(
     scope.admin ||
     (contest.state !== "SCHEDULED" && now.getTime() >= contest.startsAt.getTime());
 
-  return visible.map((cp) =>
-    ProblemSummarySchema.parse({
+  return visible.map((cp) => {
+    // The row's own clock and the contest's group clock, resolved in one place (gate.ts). The
+    // instant is handed to the lobby so a locked team question can say WHEN it opens.
+    const opensAt = effectiveUnlockAt(cp, contest);
+    return ProblemSummarySchema.parse({
       contestProblemId: cp.id,
       slug: started ? cp.problem.slug : "",
       title: started ? cp.problem.title : `Problem ${cp.slotLabel}`,
@@ -176,9 +186,10 @@ export async function listProblems(
       isGroupProblem: cp.round === "GROUP",
       bestScore: scores.get(cp.id)?.score ?? null,
       solved: solvedIds.has(cp.id),
-      unlocked: scope.admin || (started && isUnlocked(cp.unlockAt, now)),
-    }),
-  );
+      unlocked: scope.admin || (started && isUnlocked(opensAt, now)),
+      unlockAt: opensAt === null ? null : opensAt.toISOString(),
+    });
+  });
 }
 
 /**
@@ -205,7 +216,13 @@ export async function getProblemDetail(
 ): Promise<ProblemDetail> {
   const contest = await prisma.contest.findUnique({
     where: { id: contestId },
-    select: { id: true, state: true, startsAt: true, allowReadingUnassignedSets: true },
+    select: {
+      id: true,
+      state: true,
+      startsAt: true,
+      groupUnlockMinutes: true,
+      allowReadingUnassignedSets: true,
+    },
   });
   if (contest === null) throw new NotFoundError("Contest");
 
@@ -255,10 +272,11 @@ export async function getProblemDetail(
     throw new ForbiddenError("That problem is in a set you were not assigned");
   }
 
+  const opensAt = effectiveUnlockAt(contestProblem, contest);
   if (!scope.admin) {
     // The DRAFT gate, in the API rather than the UI — this is the check PRD §8 is about.
     assertProblemIsLive(contestProblem.problem.state, contestProblem.problem.slug);
-    assertUnlocked(contestProblem.unlockAt, now, contestProblem.problem.slug);
+    assertUnlocked(opensAt, now, contestProblem.problem.slug);
   }
 
   const [samples, scores, solvedIds, hintsTaken, signature] = await Promise.all([
@@ -281,7 +299,8 @@ export async function getProblemDetail(
     isGroupProblem: contestProblem.round === "GROUP",
     bestScore: scores.get(contestProblem.id)?.score ?? null,
     solved: solvedIds.has(contestProblem.id),
-    unlocked: scope.admin || isUnlocked(contestProblem.unlockAt, now),
+    unlocked: scope.admin || isUnlocked(opensAt, now),
+    unlockAt: opensAt === null ? null : opensAt.toISOString(),
     statementMd: contestProblem.problem.statementMd,
     inputSpec: contestProblem.problem.inputSpec,
     outputSpec: contestProblem.problem.outputSpec,
@@ -447,7 +466,14 @@ export async function getTeamProblemFeed(
 ): Promise<TeamProblemFeed> {
   const contest = await prisma.contest.findUnique({
     where: { id: contestId },
-    select: { id: true, state: true, startsAt: true, endsAt: true, freezeAt: true },
+    select: {
+      id: true,
+      state: true,
+      startsAt: true,
+      endsAt: true,
+      freezeAt: true,
+      groupUnlockMinutes: true,
+    },
   });
   if (contest === null) throw new NotFoundError("Contest");
 
@@ -456,13 +482,22 @@ export async function getTeamProblemFeed(
 
   const contestProblem = await prisma.contestProblem.findFirst({
     where: { contestId, problem: { slug } },
-    select: { id: true, round: true, problem: { select: { state: true, slug: true } } },
+    select: {
+      id: true,
+      round: true,
+      unlockAt: true,
+      problem: { select: { state: true, slug: true } },
+    },
   });
   if (contestProblem === null || contestProblem.round !== "GROUP") {
     throw new NotFoundError("Problem");
   }
   if (!scope.admin) {
     assertProblemIsLive(contestProblem.problem.state, contestProblem.problem.slug);
+    // The feed is metadata only, and nothing can be submitted while the team questions are
+    // locked, so this guards one thing: a slug probed before 7:30 must not confirm that it is a
+    // team question. Same clock as the statement and the submit path.
+    assertUnlocked(effectiveUnlockAt(contestProblem, contest), now, contestProblem.problem.slug);
   }
 
   const me =
