@@ -19,14 +19,14 @@ Full `npm run verify` run, every gate's real output in the transcript:
 | Gate | State | Note |
 |---|---|---|
 | G0 build, G1 typecheck, G2 lint | PASS | |
-| G3 unit | PASS | 360 tests, 96.2% statements |
+| G3 unit | PASS | 841 tests across 55 files (2026-11-13) |
 | G4 judge fixtures | PASS | 57/57 across all five runtimes |
 | G5 sandbox | PASS | 19/19, and `docker ps -a` back at baseline |
 | G6 golden scoring | PASS | includes the team formula and its variants |
-| G7 E2E | PASS | 109/109 against the **real API**, both browser profiles |
-| G8 load | **FAIL on this machine as it stands** | Same commit, eleven measurements: 7,363 / 7,476 / 8,713 / 9,261 ms pass; 14,737 / 16,447 / 18,723 / 22,781 / 45,620 ms fail. The 45,620 ms was inside a full `npm run verify` with a dev server, a browser and eleven unrelated containers up; the 16,447 ms was **standalone** on the same busy host, and is worse than every verify-embedded run from a quieter day. A factor of 6.2 with no code change. 40/40 AC and zero dropped every time — only the waiting moves. T3, `docs/HOSTING.md` §3 |
-| G9 a11y | PASS | 34/34. `/admin/awards` renders the team board and is now behind the organizer gate, so the audit signs in as an organizer to reach the admin surfaces |
-| G13 problem content | PASS | 20/20 references, 297 test cases, 0 containers leaked |
+| G7 E2E | PASS | 313/313 against the **real API**, both browser profiles (2026-11-13) |
+| G8 load | **FAIL on this machine as it stands** | Same commit, eleven measurements: 7,363 / 7,476 / 8,713 / 9,261 ms pass; 14,737 / 16,447 / 18,723 / 22,781 / 45,620 ms fail. The 45,620 ms was inside a full `npm run verify` with a dev server, a browser and eleven unrelated containers up; the 16,447 ms was **standalone** on the same busy host, and is worse than every verify-embedded run from a quieter day. A factor of 6.2 with no code change. 40/40 AC and zero dropped every time — only the waiting moves. 2026-11-13: 11,503 ms p95, 40/40 AC, zero dropped, with the dev server on :3100 because an unrelated process held :3000. T3, `docs/HOSTING.md` §3 |
+| G9 a11y | PASS | 60/60 (2026-11-13). `/admin/awards` renders the team board and is now behind the organizer gate, so the audit signs in as an organizer to reach the admin surfaces |
+| G13 problem content | PASS | 104/104 references, 1,775 test cases, 384 generated starters, 0 containers leaked (2026-11-13) |
 | G10 cold start, G11 security | NOT RUN | neither is scriptable from inside the clone |
 | G12 clean tree | PASS | |
 
@@ -109,6 +109,23 @@ per puzzle, arbitrated by a unique index rather than a check-then-write, because
 racing to submit the same answer is the normal case. The sudoku is marked by VALIDATING the grid
 against its givens, never against a stored solution, so it cannot be wrong about a puzzle whose
 uniqueness nobody verified.
+
+**The night is prepared to the teacher's brief (2026-11-13), and `docs/NIGHT.md` is the run-of-show.**
+Mr. Ritz's email asked for one non-programming puzzle per team member, a Kahoot in the scoring, no
+odd runtime or data-type requirements, one Easy and two Medium per person, a stability test with a
+HackerRank fallback, quick awards, and a 7:00 to 8:15 window with the first thirty minutes individual.
+What landed: a puzzle belongs to a SEAT (`Puzzle.forSetLabel`, the student's set letter, so a team of
+four holds four different puzzles and a puzzle for another seat is a 404); team questions open N
+minutes after the start (`Contest.groupUnlockMinutes`, derived on every read through
+`effectiveUnlockAt` so "Open now" moves it with the window, set on the Setup tab beside the freeze);
+the planner defaults to 1 Easy, 2 Medium, 0 Hard; six new Medium problems bring the bank to 11
+Medium; four Easies that leaned on 64-bit integers were re-constrained to fit 32-bit, and the three
+whose point IS the data type carry `keepOutOfSets` and surface as a planner blocker; the
+side-activity screen has a Kahoot preset with the 60/40/20/10 payout. **And the clock no longer ends
+a frozen contest**: `clockShouldEnd` leaves a frozen board to the organizer's "Unfreeze and reveal",
+because an ENDED contest's board is public and the reconciler used to end FROZEN contests at
+`endsAt`, which would have painted the final standings on the projector at 8:15 with the Kahoot
+points unentered. Submissions still close on the window regardless of state.
 
 `docs/TODO.md` is the honest list — read it before assuming a feature is reachable over HTTP.
 

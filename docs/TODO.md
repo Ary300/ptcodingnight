@@ -26,6 +26,8 @@ and a couple are reachable but wrong on this hardware.
 | T9 | ~~Mount permissions untested on Linux~~ **fixed** — it would have made every submission IE | resolved |
 | T10 | `isGroupProblem` still shadows `round` | low |
 | T11 | Contract gaps in `lib/schemas/api.ts` | low |
+| T15 | One puzzle per team member is keyed to the set letter, so it holds under `RANDOM_ASSIGNED` only | low, by design |
+| T16 | Locked team questions still list their titles before the group clock opens them | low |
 
 ---
 
@@ -601,3 +603,31 @@ the honest position is that "the fine UI details are done" is not a claim this r
 
 The findings are recoverable from the workflow transcripts under
 `.claude/projects/.../subagents/workflows/wf_f6023788-266/agent-*.jsonl`.
+
+---
+
+## T15 — Puzzle seats are set letters, so they need `RANDOM_ASSIGNED`
+
+**Severity: low, and a consequence of a deliberate choice.** Recorded 2026-11-13.
+
+The brief was one non-programming puzzle per team member. The seat a puzzle belongs to is the
+student's set letter (`Puzzle.forSetLabel`), because under the default `RANDOM_ASSIGNED` format every
+teammate already holds a different letter and the start check enforces it. The other two formats break
+the promise: `ONE_SET_PER_TEAM` gives a whole team one letter, so the team sees one seat puzzle rather
+than four, and `PLAYER_CHOOSES` lets two teammates pick the same letter. Nothing leaks and nothing
+double-pays in either case; a team simply has fewer puzzles. Coding Night runs `RANDOM_ASSIGNED`, so
+this is noted rather than built. A per-roster seat index would fix it if a future night needs it.
+
+---
+
+## T16 — Locked team questions still show their titles
+
+**Severity: low.** Recorded 2026-11-13.
+
+`listProblems` returns slug and title for a locked row once the contest has started; only the
+statement, samples, starters, submissions and the team feed are refused until the row unlocks. The
+group clock (`Contest.groupUnlockMinutes`) applies that to every team question for the individual
+stretch, so from 7:00 a student can read the team questions' titles and difficulties, and a title
+from the public index names a problem a student could look up. The same was already true of any row
+with an `unlockAt`. If titles are meant to stay hidden during the individual stretch, `listProblems`
+should withhold them for locked rows the way it withholds them before the start.
