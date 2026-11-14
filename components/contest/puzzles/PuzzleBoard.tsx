@@ -25,11 +25,22 @@ import { useResource } from "../data/useResource";
  * Points land on the TEAM, once per puzzle, which the screen states before anybody types: two
  * teammates racing to submit is the normal case, and the second one should already know why they
  * were told it only pays once.
+ *
+ * ## One puzzle per teammate
+ *
+ * The brief asked for a non-programming puzzle for EACH team member. A puzzle belongs to a seat,
+ * named by the set letter the student already holds, and the server lists only the viewer's own
+ * seat puzzle plus anything open to everyone. Each card wears a chip saying which it is, so a
+ * student who hears a teammate talking about a cipher they cannot see knows that is by design. A
+ * student with no set yet has no seat to show a puzzle for, and the empty state says what has to
+ * happen first rather than describing a void.
  */
 export function PuzzleBoard() {
   const participant = useParticipant();
   const contestId =
     participant.status === "joined" ? participant.participant.contestId : null;
+  const hasSet =
+    participant.status === "joined" && participant.participant.chosenSetId !== null;
   const scopeKey = participant.status === "joined" ? participant.scopeKey : participant.status;
 
   const load = useCallback(async () => {
@@ -74,15 +85,20 @@ export function PuzzleBoard() {
   return (
     <div className="motion-swap-in flex flex-col gap-group">
       <p className="text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
-        A wrong answer costs nothing and you can try as many times as you like. Each puzzle pays
-        your whole team, once.{" "}
+        Each teammate has one puzzle of their own. Solving yours pays your whole team, once. A
+        wrong answer costs nothing and you can try as many times as you like.{" "}
         <span className="numeric font-semibold text-ink">
           {solved}/{list.length}
         </span>{" "}
         solved.
       </p>
 
-      {list.length === 0 && (
+      {list.length === 0 && !hasSet && (
+        <p className="text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
+          Your puzzle appears once an organizer has given you a set.
+        </p>
+      )}
+      {list.length === 0 && hasSet && (
         <p className="text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
           No puzzles are open right now.
         </p>
@@ -150,8 +166,25 @@ function PuzzleCard({
         <h3 className="font-display font-bold" style={{ fontSize: "var(--text-md)" }}>
           {puzzle.title}
         </h3>
-        <span className="text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
-          {puzzle.topic} · <span className="numeric">{puzzle.points}</span> points
+        <span className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+          {/*
+            Which kind of puzzle this is. The server never lists another seat's puzzle, so a
+            lettered one here is always the viewer's own. Differentiated by weight and border
+            rather than by alpha, because this chip can sit on either ground.
+          */}
+          <span
+            className={`rounded-full border px-2 py-0.5 font-semibold ${
+              puzzle.forSetLabel === null
+                ? "border-rule-edge text-ink/70"
+                : "border-ink bg-ink text-paper"
+            }`}
+            style={{ fontSize: "var(--text-xs)" }}
+          >
+            {puzzle.forSetLabel === null ? "Open to everyone" : "Your puzzle"}
+          </span>
+          <span className="text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
+            {puzzle.topic} · <span className="numeric">{puzzle.points}</span> points
+          </span>
         </span>
       </header>
 

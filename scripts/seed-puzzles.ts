@@ -14,8 +14,14 @@ import { parseServerEnv } from "@/lib/schemas/env";
  * knowing a language yet. They pay their team through the same side-activity award the metal
  * puzzle pays through, so nothing about scoring changes.
  *
- * Idempotent, keyed on slug: re-running updates the prompt and the points and leaves every solve
- * and every award already made exactly where they are.
+ * Idempotent, keyed on slug: re-running updates the prompt, the points and the seat letter, and
+ * leaves every solve and every award already made exactly where they are.
+ *
+ * ONE PUZZLE PER TEAM MEMBER. Teams are up to four, and under `RANDOM_ASSIGNED` every teammate
+ * holds a different set letter, so the four lettered puzzles below are the night's default: a
+ * student on set A gets the binary, B the cipher, C the hex, D the seating puzzle. All four are
+ * worth the same, so no letter is luckier than another. The two open-to-everyone puzzles are
+ * created HIDDEN and are bonuses an organizer can show from /admin/puzzles.
  *
  * TEXT answers are stored NORMALISED, through the same function the checker uses on the way in.
  * Storing "Meridian Hills" and comparing it against a normalised attempt would fail forever, and
@@ -33,7 +39,12 @@ interface PuzzleSeed {
   readonly hint?: string;
   readonly points: number;
   readonly sortOrder: number;
+  /** The set letter this puzzle is for, or null for one every teammate can see. */
+  readonly forSetLabel: string | null;
 }
+
+/** Every seat puzzle pays this, so the letter a student drew never decides their points. */
+const SEAT_PUZZLE_POINTS = 25;
 
 /*
   A sudoku whose solution is unique, written as 81 characters with 0 for a blank. The checker
@@ -57,8 +68,9 @@ const PUZZLES: readonly PuzzleSeed[] = [
     title: "Read the machine's mind",
     topic: "Binary",
     check: "TEXT",
-    points: 20,
+    points: SEAT_PUZZLE_POINTS,
     sortOrder: 10,
+    forSetLabel: "A",
     promptMd: `Computers spell in ones and zeros. Every letter is one group of eight bits, and the
 groups below are separated by spaces.
 
@@ -75,8 +87,9 @@ Decode it and type the word.`,
     title: "The orchard cipher",
     topic: "Cipher",
     check: "TEXT",
-    points: 25,
+    points: SEAT_PUZZLE_POINTS,
     sortOrder: 20,
+    forSetLabel: "B",
     promptMd: `Every letter below has been pushed the same number of places forward through the
 alphabet, wrapping from Z back to A. Push them back to read the message.
 
@@ -93,8 +106,9 @@ Type the two words you get.`,
     title: "What colour is that?",
     topic: "Numbers",
     check: "TEXT",
-    points: 20,
+    points: SEAT_PUZZLE_POINTS,
     sortOrder: 30,
+    forSetLabel: "C",
     promptMd: `Colours on the web are written in hexadecimal: base sixteen, where the digits run
 0 to 9 and then A to F. This site's red is written \`E4572E\`.
 
@@ -108,8 +122,9 @@ type it.`,
     title: "Mr. Ritz seats the Science Bowl team",
     topic: "Logic",
     check: "TEXT",
-    points: 30,
+    points: SEAT_PUZZLE_POINTS,
     sortOrder: 40,
+    forSetLabel: "D",
     /*
       THREE CLUES, AND THE PUZZLE HAS EXACTLY ONE ANSWER. The first draft had four clues and TWO
       answers (Kylie Dominic Navraj Oliver also satisfied every one of them), which would have
@@ -133,6 +148,7 @@ Type the four names in chair order, separated by spaces.`,
     check: "TEXT",
     points: 20,
     sortOrder: 50,
+    forSetLabel: null,
     promptMd: `The apple crates in the old orchard barn are stacked in a pattern:
 
 \`\`\`
@@ -150,6 +166,7 @@ Type the next number.`,
     check: "SUDOKU",
     points: 40,
     sortOrder: 60,
+    forSetLabel: null,
     promptMd: `Fill the grid so every row, every column and every three by three box contains
 each digit from 1 to 9 exactly once. Zeros are the blanks.
 
@@ -192,15 +209,21 @@ async function main(): Promise<void> {
         hint: puzzle.hint ?? null,
         points: puzzle.points,
         sortOrder: puzzle.sortOrder,
+        // In the update too, so re-seeding an existing database assigns the letters.
+        forSetLabel: puzzle.forSetLabel,
       };
       await prisma.puzzle.upsert({
         where: { slug: puzzle.slug },
         // `active` only on create: an organizer who hid a puzzle mid-contest must not have it
-        // reappear because somebody re-ran the seed.
-        create: { slug: puzzle.slug, active: true, ...shared },
+        // reappear because somebody re-ran the seed, and one shown as a bonus must not vanish.
+        // A fresh database shows only the seat puzzles, which is "one puzzle per member" by
+        // default; the open-to-everyone ones start hidden and an organizer can show them from
+        // /admin/puzzles as bonuses.
+        create: { slug: puzzle.slug, active: puzzle.forSetLabel !== null, ...shared },
         update: shared,
       });
-      console.log(`  ${puzzle.slug}: ${puzzle.topic}, ${String(puzzle.points)} points`);
+      const seat = puzzle.forSetLabel === null ? "everyone" : `set ${puzzle.forSetLabel}`;
+      console.log(`  ${puzzle.slug}: ${puzzle.topic}, ${String(puzzle.points)} points, ${seat}`);
     }
     console.log(`Seeded ${String(PUZZLES.length)} puzzles.`);
   } finally {

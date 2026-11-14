@@ -19,7 +19,41 @@ import { invalidateScoringInput } from "@/lib/contest/standings";
  * - A student with no team may still SOLVE, and is told plainly that nothing was awarded.
  *   Refusing them would be worse: on practice, and before an organizer finishes the roster,
  *   there is no team to pay and the puzzle is still worth doing.
+ * - ONE PUZZLE PER TEAM MEMBER. The brief asked for a non-programming puzzle for each teammate,
+ *   so a puzzle may belong to a SEAT, named by the set letter the teammate already holds under
+ *   `RANDOM_ASSIGNED` (teammates hold different letters; the start check enforces it). A student
+ *   sees the puzzle for their own letter plus any puzzle open to everyone, and an answer to a
+ *   puzzle outside that view is refused as if the puzzle did not exist, so a teammate cannot farm
+ *   another seat's puzzle by guessing its slug. `puzzleVisibleTo` is the one definition of the
+ *   rule; the list query and the attempt both go through it.
  */
+
+/**
+ * May a viewer holding this set label see a puzzle that belongs to that seat?
+ *
+ * A null `forSetLabel` is a puzzle open to everyone. A null `viewerSetLabel` is a student who has
+ * not been given a set yet, and they see only the open ones: there is no seat to show a puzzle
+ * for, and showing them all would hand one team four puzzles before sets are dealt. Pure, so it
+ * is testable without a database and so the Prisma `where` in `listPuzzles` can be checked
+ * against it.
+ */
+export function puzzleVisibleTo(
+  forSetLabel: string | null,
+  viewerSetLabel: string | null,
+): boolean {
+  if (forSetLabel === null) return true;
+  return viewerSetLabel !== null && forSetLabel === viewerSetLabel;
+}
+
+/**
+ * The Prisma filter equivalent of `puzzleVisibleTo`, so the list query asks the database the same
+ * question the pure rule answers. Kept next to the rule so the two cannot drift apart unnoticed.
+ */
+function visibleWhere(viewerSetLabel: string | null): { OR: { forSetLabel: string | null }[] } {
+  return viewerSetLabel === null
+    ? { OR: [{ forSetLabel: null }] }
+    : { OR: [{ forSetLabel: null }, { forSetLabel: viewerSetLabel }] };
+}
 
 /**
  * Both sides of a text comparison, flattened the same way.
@@ -103,21 +137,29 @@ export interface PuzzleListEntry {
   readonly check: "TEXT" | "SUDOKU";
   readonly hint: string | null;
   readonly points: number;
+  /** The seat this puzzle is for, or null when every teammate can see it. */
+  readonly forSetLabel: string | null;
   /** True when the viewer's team has already been paid for this one. */
   readonly solved: boolean;
   readonly solvedBy: string | null;
 }
 
 /**
- * Every active puzzle, with whether this viewer's team has already solved it.
+ * Every active puzzle this viewer may see, with whether their team has already solved it.
+ *
+ * Visibility is the viewer's own seat plus the puzzles open to everyone (`puzzleVisibleTo`). A
+ * viewer with no set yet sees only the open ones.
  *
  * The answer key is not selected, so it cannot be leaked by a serialiser change later. That is
  * deliberate belt and braces: the shape of this function is the guarantee, not a mapping step
  * further down that somebody might edit.
  */
-export async function listPuzzles(teamId: string | null): Promise<PuzzleListEntry[]> {
+export async function listPuzzles(
+  teamId: string | null,
+  viewerSetLabel: string | null,
+): Promise<PuzzleListEntry[]> {
   const puzzles = await prisma.puzzle.findMany({
-    where: { active: true },
+    where: { active: true, ...visibleWhere(viewerSetLabel) },
     orderBy: [{ sortOrder: "asc" }, { title: "asc" }],
     select: {
       slug: true,
@@ -127,6 +169,7 @@ export async function listPuzzles(teamId: string | null): Promise<PuzzleListEntr
       check: true,
       hint: true,
       points: true,
+      forSetLabel: true,
       solves:
         teamId === null
           ? false
@@ -156,6 +199,7 @@ export async function listPuzzles(teamId: string | null): Promise<PuzzleListEntr
       check: puzzle.check,
       hint: puzzle.hint,
       points: puzzle.points,
+      forSetLabel: puzzle.forSetLabel,
       solved: solve !== undefined,
       solvedBy: solve === undefined ? null : (solverNames.get(solve.participantId) ?? null),
     };
@@ -177,12 +221,17 @@ export interface PuzzleAttemptResult {
  * paid with no record of why, or credited with a solve that paid nothing. The unique index on
  * (puzzle, team) is what makes the double submit safe: the second writer loses the race at the
  * database and is told the puzzle is already solved, which is true.
+ *
+ * A puzzle the viewer cannot see is refused with the same NotFound a hidden or unknown slug gets.
+ * The message must not say "that belongs to seat B": a teammate who guessed a slug learns nothing
+ * from the refusal, which is what keeps one puzzle per member from becoming four per team.
  */
 export async function attemptPuzzle(input: {
   readonly slug: string;
   readonly answer: string;
   readonly participantId: string;
   readonly teamId: string | null;
+  readonly viewerSetLabel: string | null;
   readonly contestId: string;
 }): Promise<PuzzleAttemptResult> {
   const puzzle = await prisma.puzzle.findUnique({
@@ -194,9 +243,16 @@ export async function attemptPuzzle(input: {
       answerKey: true,
       points: true,
       active: true,
+      forSetLabel: true,
     },
   });
-  if (puzzle === null || !puzzle.active) throw new NotFoundError("Puzzle");
+  if (
+    puzzle === null ||
+    !puzzle.active ||
+    !puzzleVisibleTo(puzzle.forSetLabel, input.viewerSetLabel)
+  ) {
+    throw new NotFoundError("Puzzle");
+  }
 
   if (puzzle.check === "SUDOKU") {
     const verdict = checkSudoku(puzzle.answerKey, input.answer);
@@ -274,6 +330,7 @@ export async function adminPuzzleList(): Promise<
     title: string;
     topic: string;
     points: number;
+    forSetLabel: string | null;
     active: boolean;
     solveCount: number;
   }[]
@@ -285,6 +342,7 @@ export async function adminPuzzleList(): Promise<
       title: true,
       topic: true,
       points: true,
+      forSetLabel: true,
       active: true,
       _count: { select: { solves: true } },
     },
@@ -294,6 +352,7 @@ export async function adminPuzzleList(): Promise<
     title: puzzle.title,
     topic: puzzle.topic,
     points: puzzle.points,
+    forSetLabel: puzzle.forSetLabel,
     active: puzzle.active,
     solveCount: puzzle._count.solves,
   }));

@@ -1,14 +1,54 @@
 import { describe, expect, it } from "vitest";
 
-import { checkSudoku, normalizePuzzleAnswer } from "@/lib/contest/puzzles";
+import { checkSudoku, normalizePuzzleAnswer, puzzleVisibleTo } from "@/lib/contest/puzzles";
 
 /**
- * The two pure halves of puzzle marking.
+ * The pure parts of the puzzle board: marking, and who may see which puzzle.
  *
- * Both are the sole definition of "right answer" for their kind of puzzle, so a bug here is a
- * student told they are wrong when they are not. That is the failure worth spending tests on:
- * unlike a judged problem there is no verdict panel, no diff and no re-run to appeal to.
+ * The two markers are the sole definition of "right answer" for their kind of puzzle, so a bug
+ * there is a student told they are wrong when they are not. That is the failure worth spending
+ * tests on: unlike a judged problem there is no verdict panel, no diff and no re-run to appeal to.
+ *
+ * The visibility rule is what makes "one puzzle per team member" true. It is also the only thing
+ * standing between a teammate and the other three seats' puzzles, so it gets the same treatment.
  */
+
+describe("puzzleVisibleTo", () => {
+  it("shows a puzzle open to everyone to any viewer, set or no set", () => {
+    expect(puzzleVisibleTo(null, "A")).toBe(true);
+    expect(puzzleVisibleTo(null, null)).toBe(true);
+  });
+
+  it("shows a seat puzzle only to the viewer holding that seat", () => {
+    expect(puzzleVisibleTo("A", "A")).toBe(true);
+    expect(puzzleVisibleTo("A", "B")).toBe(false);
+    expect(puzzleVisibleTo("D", "A")).toBe(false);
+  });
+
+  it("hides every seat puzzle from a viewer with no set yet", () => {
+    // There is no seat to show a puzzle for. Showing them all would hand one team four puzzles
+    // before the sets are dealt, and the board's empty state says what has to happen first.
+    expect(puzzleVisibleTo("A", null)).toBe(false);
+    expect(puzzleVisibleTo("B", null)).toBe(false);
+  });
+
+  it("compares the letter exactly, so a set label is a seat and not a prefix", () => {
+    // Sets are labelled by the organizer. "A" and "Advanced A" are different seats, and a rule that
+    // matched by prefix or by case would quietly give one student two puzzles.
+    expect(puzzleVisibleTo("A", "Advanced A")).toBe(false);
+    expect(puzzleVisibleTo("a", "A")).toBe(false);
+  });
+
+  it("gives four teammates on four letters one seat puzzle each and no overlap", () => {
+    // The brief in one assertion: a team of four, four lettered puzzles, every student sees
+    // exactly their own.
+    const seats = ["A", "B", "C", "D"];
+    for (const viewer of seats) {
+      const visible = seats.filter((forSetLabel) => puzzleVisibleTo(forSetLabel, viewer));
+      expect(visible).toEqual([viewer]);
+    }
+  });
+});
 
 describe("normalizePuzzleAnswer", () => {
   it("forgives the noise a person adds by accident", () => {

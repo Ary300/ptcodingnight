@@ -19,6 +19,13 @@ import { API_ROUTES, AdminPuzzleListSchema, type AdminPuzzleRow } from "@/lib/sc
  * puzzle mid-contest is usually that it turned out to be broken or that the answer got shouted
  * across the room — and in both cases the organizer is about to wonder whether the fix just took
  * points away from four teams. It did not, and the copy answers it before it is asked.
+ *
+ * ## The seat column
+ *
+ * A puzzle belongs to a seat (a set letter) or to everyone. The brief is one puzzle per team
+ * member, so the four lettered puzzles are the default night and the open ones are bonuses an
+ * organizer can show. The letter is authored in the seed and shown here read-only, because the
+ * decision an organizer makes in the room is still only whether a puzzle is showing.
  */
 export function PuzzleManager({ initial }: { initial: readonly AdminPuzzleRow[] }) {
   const [rows, setRows] = useState<readonly AdminPuzzleRow[]>(initial);
@@ -54,6 +61,7 @@ export function PuzzleManager({ initial }: { initial: readonly AdminPuzzleRow[] 
   }, []);
 
   const open = rows.filter((row) => row.active).length;
+  const seatsShowing = rows.filter((row) => row.active && row.forSetLabel !== null).length;
 
   return (
     <div className="flex flex-col gap-3">
@@ -65,8 +73,10 @@ export function PuzzleManager({ initial }: { initial: readonly AdminPuzzleRow[] 
           reads as "6 of 6showing" — a rendering bug with no compiler warning behind it.
         */}
         <span className="numeric">{rows.length}</span>{" "}
-        showing on the students&rsquo; puzzle page. Hiding one keeps every point it has already
-        paid.
+        showing on the students&rsquo; puzzle page,{" "}
+        <span className="numeric font-semibold text-ink">{seatsShowing}</span>{" "}
+        of them for one seat each. A student sees their own seat&rsquo;s puzzle and any open to
+        everyone. Hiding one keeps every point it has already paid.
       </p>
 
       {error !== null && (
@@ -77,7 +87,8 @@ export function PuzzleManager({ initial }: { initial: readonly AdminPuzzleRow[] 
 
       <table className="w-full border-collapse text-left">
         <caption className="sr-only">
-          Every puzzle, whether it is showing, and how many teams have solved it
+          Every puzzle, which seat it belongs to, whether it is showing, and how many teams have
+          solved it
         </caption>
         <thead>
           <tr className="border-b border-rule-edge text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
@@ -86,6 +97,9 @@ export function PuzzleManager({ initial }: { initial: readonly AdminPuzzleRow[] 
             </th>
             <th scope="col" className="py-2 pr-4 font-semibold">
               Topic
+            </th>
+            <th scope="col" className="py-2 pr-4 font-semibold">
+              Seat
             </th>
             <th scope="col" className="py-2 pr-4 text-right font-semibold">
               Points
@@ -106,6 +120,13 @@ export function PuzzleManager({ initial }: { initial: readonly AdminPuzzleRow[] 
               </th>
               <td className="py-3 pr-4 text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
                 {row.topic}
+              </td>
+              <td className="py-3 pr-4" style={{ fontSize: "var(--text-sm)" }}>
+                {row.forSetLabel === null ? (
+                  <span className="text-ink/70">Everyone</span>
+                ) : (
+                  <span className="numeric font-semibold">{row.forSetLabel}</span>
+                )}
               </td>
               <td className="numeric py-3 pr-4 text-right" style={{ fontSize: "var(--text-sm)" }}>
                 {row.points}

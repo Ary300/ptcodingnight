@@ -7,10 +7,14 @@ import { openLobby } from "./helpers/journey";
  * G9 — the puzzle board, which is the one competitor screen a student uses INSTEAD of the editor.
  *
  * That makes it the screen most likely to be opened by somebody who is not confident with a
- * computer, and it is a page of nothing but forms: six inputs whose only visible label is the
- * heading above them, and a result line that has to be announced rather than merely coloured. Both
- * of those are places an unlabelled control hides, so the board gets its own audit rather than
- * riding along in the general competitor sweep.
+ * computer, and it is a page of nothing but forms: one input per visible puzzle whose only visible
+ * label is the heading above it, and a result line that has to be announced rather than merely
+ * coloured. Both of those are places an unlabelled control hides, so the board gets its own audit
+ * rather than riding along in the general competitor sweep.
+ *
+ * The journey's student is placed on the set that holds the live problem, so the board lists that
+ * seat's puzzle plus any open to everyone. At least one card is present whenever the puzzles have
+ * been seeded, which is what the "Check my answer" wait below depends on.
  */
 
 test.describe("axe-core: the puzzle board", () => {

@@ -11,7 +11,9 @@ import { requireCompetitorOf, viewerFromRequest } from "@/lib/contest/viewer";
  * `POST /api/contests/{id}/puzzles/{slug}` — submit an answer.
  *
  * Checking happens server-side and the key never leaves it. A correct answer pays the caller's
- * team once, as a side activity award, which is the same currency the metal puzzle pays in.
+ * team once, as a side activity award, which is the same currency the metal puzzle pays in. The
+ * caller's set letter travels with the attempt, because a puzzle pinned to another seat has to be
+ * refused here and not only left off the list.
  */
 
 export const runtime = "nodejs";
@@ -31,7 +33,7 @@ export async function POST(
 
     const participant = await prisma.participant.findUnique({
       where: { id: viewer.participantId },
-      select: { teamId: true },
+      select: { teamId: true, chosenSet: { select: { label: true } } },
     });
 
     return jsonOk(
@@ -41,6 +43,7 @@ export async function POST(
           answer: input.answer,
           participantId: viewer.participantId,
           teamId: participant?.teamId ?? null,
+          viewerSetLabel: participant?.chosenSet?.label ?? null,
           contestId: id,
         }),
       ),

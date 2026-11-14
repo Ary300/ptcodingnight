@@ -23,8 +23,9 @@ export default async function AdminPuzzlesPage() {
         </h1>
         <p className="mt-1 max-w-[62ch] text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
           Binary, ciphers, sudoku. A student solves one in the browser with no code and no compiler,
-          and it pays their whole team once, the same way the metal puzzle does. Students find them
-          under <strong>Puzzles</strong> during a contest.
+          and it pays their whole team once, the same way the metal puzzle does. Each teammate gets
+          the puzzle for their own set letter, so a team of four works four different puzzles.
+          Students find them under <strong>Puzzles</strong> during a contest.
         </p>
       </header>
 
