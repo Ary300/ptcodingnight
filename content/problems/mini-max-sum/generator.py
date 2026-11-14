@@ -5,13 +5,13 @@ Usage: python3 generator.py <seed>
 Deterministic per seed. The input is always exactly five integers, so the seed
 selects the shape of the values rather than the size: uniform noise over the
 full range, all-equal crates, tied extremes, values pinned to the constraint
-bounds, and near-ceiling loads that force 64-bit sums.
+bounds, and near-ceiling loads.
 """
 
 import random
 import sys
 
-MAX_VALUE = 10**9
+MAX_VALUE = 10**8
 
 
 def build_values(seed: int, rng: random.Random) -> list[int]:
@@ -45,7 +45,7 @@ def build_values(seed: int, rng: random.Random) -> list[int]:
         # Small values only; sums stay tiny.
         return [rng.randint(0, 50) for _ in range(5)]
 
-    # shape == 5: everything near the ceiling, so any sum of four overflows 32 bits.
+    # shape == 5: everything near the ceiling, so the sums sit close to their maximum.
     values = [MAX_VALUE - rng.randint(0, 1000) for _ in range(5)]
     rng.shuffle(values)
     return values

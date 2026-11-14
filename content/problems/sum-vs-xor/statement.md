@@ -21,9 +21,7 @@ such that $n + x = n \oplus x$.
 
 ## Constraints
 
-- $0 \le n \le 10^{18}$
-- The answer always fits in a signed 64-bit integer, but for large $n$ it does **not**
-  fit in a 32-bit one.
+- $0 \le n \le 10^9$
 
 ## Example
 

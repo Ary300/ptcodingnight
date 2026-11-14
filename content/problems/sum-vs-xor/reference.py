@@ -5,6 +5,7 @@ set bit in common with n. Every such x with 0 <= x <= n is a subset of the zero
 bits of n strictly below n's highest set bit (any such subset is automatically
 < 2^(highest bit) <= n). So the answer is 2^(number of zero bits in the binary
 representation of n). n = 0 has no set bits at all; only x = 0 qualifies.
+With n <= 10^9 < 2^30 the answer is at most 2^29, so it fits a 32-bit integer.
 """
 
 import sys

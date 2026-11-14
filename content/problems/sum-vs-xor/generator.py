@@ -14,10 +14,10 @@ Seed layout:
 import random
 import sys
 
-MAX_N = 10**18
+MAX_N = 10**9
 
-# 0101...01 over 60 bits (below the ceiling), and its shift 1010...10.
-ALTERNATING_LOW = (4**30 - 1) // 3
+# 0101...01 over 30 bits (below the ceiling), and its shift 1010...10.
+ALTERNATING_LOW = (4**15 - 1) // 3
 ALTERNATING_HIGH = 2 * ALTERNATING_LOW
 
 
@@ -34,11 +34,11 @@ def build_case(seed: int) -> int:
         # Maximum n allowed by the constraints.
         return MAX_N
     if seed == 4:
-        # All ones: 2^59 - 1. No zero bits, so the answer is 1 despite huge n.
-        return 2**59 - 1
+        # All ones: 2^29 - 1. No zero bits, so the answer is 1 despite large n.
+        return 2**29 - 1
     if seed == 5:
-        # A single set bit: 2^59. Every lower bit is zero; the largest answer.
-        return 2**59
+        # A single set bit: 2^29. Every lower bit is zero; the largest answer.
+        return 2**29
     if seed == 6:
         # Alternating bits starting with 0 at the top of each pair.
         return ALTERNATING_LOW
@@ -47,13 +47,13 @@ def build_case(seed: int) -> int:
         return ALTERNATING_HIGH
     if seed == 8:
         # A power of ten: trailing zero bits without being a power of two.
-        return 10**15
+        return 10**8
 
     if seed < 100:
         return rng.randint(0, 1000)
     if seed < 1000:
-        return rng.randint(0, 10 ** rng.randint(4, 17))
-    return rng.randint(10**17, MAX_N)
+        return rng.randint(0, 10 ** rng.randint(4, 8))
+    return rng.randint(10**8, MAX_N)
 
 
 def main() -> None:

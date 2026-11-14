@@ -2,8 +2,8 @@
 
 Read five integers. The minimum sum of four of them is the total minus the
 largest value; the maximum sum of four is the total minus the smallest value.
-Python integers are arbitrary precision, so no overflow care is needed here,
-but the statement warns 32-bit languages about the 4 * 10^9 ceiling.
+With every value at most 10^8, the largest sum of four is 4 * 10^8 and the
+full total is 5 * 10^8, so everything fits a 32-bit integer in every language.
 """
 
 import sys

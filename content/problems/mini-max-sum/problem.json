@@ -24,7 +24,7 @@
   "signature": {
     "name": "miniMaxSum",
     "returns": {
-      "type": "long[]",
+      "type": "int[]",
       "join": " "
     },
     "params": [

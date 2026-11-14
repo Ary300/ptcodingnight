@@ -2,8 +2,8 @@
 
 The doubling multiplier grows with the eating position, so the largest calorie
 counts must take the smallest multipliers: sort descending and pay 2^i for the
-i-th cupcake in that order. All arithmetic stays inside a signed 64-bit integer
-because 1000 * (2^40 - 1) < 2^63.
+i-th cupcake in that order. With n <= 15 and c <= 1000 the total is at most
+1000 * (2^15 - 1) = 32,767,000, so it fits a 32-bit integer in every language.
 """
 
 import sys

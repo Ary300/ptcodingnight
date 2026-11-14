@@ -1,0 +1,43 @@
+{
+  "slug": "library-shelf-shuffle",
+  "title": "Library Shelf Shuffle",
+  "difficulty": "M",
+  "timeLimitMs": 2000,
+  "memoryLimitMb": 256,
+  "allowedLanguages": [
+    "PYTHON_312",
+    "JAVA_8",
+    "JAVA_11",
+    "JAVA_17",
+    "JAVA_21",
+    "C_17",
+    "CPP_11",
+    "CPP_17",
+    "JAVASCRIPT_NODE22",
+    "GO_123"
+  ],
+  "comparator": {
+    "kind": "whitespace"
+  },
+  "sampleCount": 2,
+  "originAttribution": "Original problem written for Park Tudor Coding Night. Statement, reference solution, generator and test data are all authored for this platform.",
+  "signature": {
+    "name": "shelfShuffle",
+    "returns": {
+      "type": "string[]",
+      "join": "\n"
+    },
+    "params": [
+      {
+        "name": "n",
+        "type": "int",
+        "passed": false
+      },
+      {
+        "name": "events",
+        "type": "int[]",
+        "length": "n"
+      }
+    ]
+  }
+}

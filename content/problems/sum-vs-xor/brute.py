@@ -1,7 +1,7 @@
 """Brute-force solution for 'Sum vs XOR'.
 
-A per-candidate enumeration of x in [0, n] is O(n) and can never terminate at
-n = 10^18, so the definition-literal check is instead run bit by bit: this is a
+A per-candidate enumeration of x in [0, n] is O(n) and cannot finish in time at
+n = 10^9, so the definition-literal check is instead run bit by bit: this is a
 digit DP that constructs x one binary digit at a time (LSB first) and directly
 simulates the addition n + x with a carry, demanding that every sum bit equal
 the corresponding XOR bit and that no carry survive the top. The x <= n bound

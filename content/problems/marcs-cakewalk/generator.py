@@ -3,7 +3,7 @@
 Usage: python3 generator.py <seed>
 
 Deterministic per seed. Small seeds produce tiny boxes; large seeds push n to
-the ceiling of 40. The seed also selects the shape of the calorie list so the
+the ceiling of 15. The seed also selects the shape of the calorie list so the
 test set covers the degenerate cases (a single cupcake, all counts equal,
 already sorted in either direction, heavy duplication, both calorie bounds)
 and not just uniform noise.
@@ -12,12 +12,12 @@ and not just uniform noise.
 import random
 import sys
 
-MAX_N = 40
+MAX_N = 15
 MAX_CAL = 1000
 
 
 def choose_n(seed: int) -> int:
-    """Grow with the seed: seed 1 -> 1 cupcake, seed >= 7 -> the ceiling."""
+    """Grow with the seed: seed 1 -> 1 cupcake, seed >= 4 -> the ceiling."""
     return max(1, min(MAX_N, seed * seed))
 
 
@@ -46,7 +46,7 @@ def build_box(seed: int, n: int, rng: random.Random) -> list[int]:
         pool = [1, MAX_CAL] + [rng.randint(1, MAX_CAL) for _ in range(3)]
         return [rng.choice(pool) for _ in range(n)]
 
-    # shape == 5: near-maximal values, stressing the 64-bit ceiling.
+    # shape == 5: near-maximal values, so the total sits close to its ceiling.
     return [rng.randint(MAX_CAL - 5, MAX_CAL) for _ in range(n)]
 
 

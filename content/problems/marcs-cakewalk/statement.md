@@ -21,12 +21,11 @@ is the calorie count of the $i$-th cupcake.
 
 ## Output
 
-Print a single integer: the minimum total number of miles. The answer can exceed the range
-of a 32-bit integer, so use a 64-bit type; it always fits in a signed 64-bit integer.
+Print a single integer: the minimum total number of miles.
 
 ## Constraints
 
-- $1 \le n \le 40$
+- $1 \le n \le 15$
 - $1 \le c_i \le 1000$
 
 ## Example

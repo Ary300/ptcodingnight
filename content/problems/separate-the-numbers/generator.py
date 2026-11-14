@@ -4,16 +4,16 @@ Usage: python3 generator.py <seed>
 
 Deterministic per seed. seed % 6 selects the shape so the test set covers the
 adversarial cases as well as noise: genuine consecutive chains starting from
-1-digit and from 15-16 digit numbers (the 64-bit-adjacent range), chains that
-roll over a power of ten (99 -> 100, 999999999999999 -> 1000000000000000),
-chains corrupted in one digit, tapes with leading zeros, and pure random
-digit strings. Larger seeds push the tape toward the 32-character ceiling.
+1-digit and from 6-8 digit numbers (the longest first number the tape allows),
+chains that roll over a power of ten (99 -> 100, 99999 -> 100000), chains
+corrupted in one digit, tapes with leading zeros, and pure random digit
+strings. Larger seeds push the tape toward the 16-character ceiling.
 """
 
 import random
 import sys
 
-MAX_LEN = 32
+MAX_LEN = 16
 
 
 def build_chain(start: int, target_len: int) -> str:
@@ -49,13 +49,13 @@ def make_tape(seed: int, rng: random.Random) -> str:
 
     if shape == 2:
         # Genuine chain starting just below a power of ten, so it rolls over.
-        digits = rng.randint(2, 15)
+        digits = rng.randint(2, 7)
         start = 10 ** digits - rng.randint(1, 3)
         return build_chain(start, target_len)
 
     if shape == 3:
         # Chain with exactly one digit mutated.
-        start = rng.randint(1, 10 ** rng.randint(1, 12))
+        start = rng.randint(1, 10 ** rng.randint(1, 7))
         s = list(build_chain(start, target_len))
         pos = rng.randrange(len(s))
         old = s[pos]
@@ -69,9 +69,11 @@ def make_tape(seed: int, rng: random.Random) -> str:
         chain = build_chain(start, target_len - 1)
         return ("0" + chain)[:MAX_LEN]
 
-    # shape == 5: genuine chain with a huge start (13 to 16 digit first number).
-    digits = rng.randint(13, 16)
-    start = rng.randint(10 ** (digits - 1), 10 ** digits - 1)
+    # shape == 5: genuine chain with a long start (6 to 8 digit first number).
+    # The start stays two below the next power of ten so start + 1 keeps the same
+    # digit count and both numbers fit on the tape.
+    digits = rng.randint(6, 8)
+    start = rng.randint(10 ** (digits - 1), 10 ** digits - 2)
     return build_chain(start, MAX_LEN)
 
 

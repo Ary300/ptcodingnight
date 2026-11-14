@@ -22,9 +22,7 @@ integers, then the maximum sum of four of the five integers.
 ## Constraints
 
 - Exactly $5$ integers are given.
-- $0 \le a_i \le 10^9$ for every $i$.
-- The maximum sum can be as large as $4 \times 10^9$, which does not fit in a signed
-  32-bit integer. Use a 64-bit type where that matters.
+- $0 \le a_i \le 10^8$ for every $i$.
 
 ## Example
 

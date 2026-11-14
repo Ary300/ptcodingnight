@@ -1,0 +1,52 @@
+{
+  "slug": "hall-pass-ledger",
+  "title": "Hall Pass Ledger",
+  "difficulty": "M",
+  "timeLimitMs": 2000,
+  "memoryLimitMb": 256,
+  "allowedLanguages": [
+    "PYTHON_312",
+    "JAVA_8",
+    "JAVA_11",
+    "JAVA_17",
+    "JAVA_21",
+    "C_17",
+    "CPP_11",
+    "CPP_17",
+    "JAVASCRIPT_NODE22",
+    "GO_123"
+  ],
+  "comparator": {
+    "kind": "whitespace"
+  },
+  "sampleCount": 2,
+  "originAttribution": "Original problem written for Park Tudor Coding Night. Statement, reference solution, generator and test data are all authored for this platform.",
+  "signature": {
+    "name": "hallPassLedger",
+    "returns": {
+      "type": "string[]",
+      "join": "\n"
+    },
+    "params": [
+      {
+        "name": "n",
+        "type": "int",
+        "passed": false
+      },
+      {
+        "name": "closing",
+        "type": "int"
+      },
+      {
+        "name": "names",
+        "type": "string[]",
+        "length": "n"
+      },
+      {
+        "name": "minutes",
+        "type": "int[]",
+        "length": "n"
+      }
+    ]
+  }
+}

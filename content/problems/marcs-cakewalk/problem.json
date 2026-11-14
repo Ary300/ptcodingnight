@@ -24,7 +24,7 @@
   "signature": {
     "name": "marcsCakewalk",
     "returns": {
-      "type": "long"
+      "type": "int"
     },
     "params": [
       {

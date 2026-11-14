@@ -24,12 +24,12 @@
   "signature": {
     "name": "sumVsXor",
     "returns": {
-      "type": "long"
+      "type": "int"
     },
     "params": [
       {
         "name": "n",
-        "type": "long"
+        "type": "int"
       }
     ]
   }

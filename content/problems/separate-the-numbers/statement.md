@@ -28,10 +28,8 @@ If a valid split exists, print `YES`, a single space, and the first integer of t
 
 ## Constraints
 
-- $1 \le |s| \le 32$
+- $1 \le |s| \le 16$
 - $s$ consists only of the characters `0` through `9`
-- In any valid split the first integer has at most $16$ digits, so every number involved
-  fits in a signed 64-bit integer
 
 ## Example
 

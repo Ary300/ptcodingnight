@@ -3,7 +3,7 @@
 For n <= 8 this enumerates every eating order and takes the true minimum, which
 is the definition of the task and shares no reasoning with the reference's
 greedy. That exhaustive mode is what the stress test exercises. For larger n
-(the full constraint allows n = 40, where n! is unreachable) it falls back to
+(the full constraint allows n = 15, where n! is unreachable) it falls back to
 the most definition-literal polynomial method available: repeatedly eat the
 most caloric cupcake remaining, without using a library sort.
 """
