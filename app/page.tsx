@@ -8,13 +8,13 @@ import { viewerFromCookies } from "@/lib/contest/viewer";
 const HOW = [
   {
     n: "1",
-    title: "Sign in",
-    body: "Use your Park Tudor Google account or GitHub. Your first sign-in creates your account.",
+    title: "Enter your join code",
+    body: "Your slip carries a six-character code. Type it and you are signed in, already on your team. There is no account to make.",
   },
   {
     n: "2",
-    title: "Find your team",
-    body: "An organizer adds you to a team and assigns your question set.",
+    title: "Meet your team",
+    body: "Your slip names your team, your division and your question set. An organizer built the roster before the night.",
   },
   {
     n: "3",
@@ -275,18 +275,18 @@ export default async function Home() {
           </span>
 
           {/*
-            A quiet text link and one filled button, which is the pair HackerRank puts here
-            ("Log In" beside "Create a free account"). The filled one says CREATE, not "sign in",
-            and that wording is the fix for a real confusion: this site had a Sign in page and no
-            Sign up page, so a student with no account could not tell that the front door was
-            also the way in for the first time. There is no separate sign-up to build — the first
-            Google or GitHub sign-in creates the account — but nothing on the page said so.
+            One quiet text link and one filled button, which is the pair HackerRank puts here. The
+            filled one is the join code, because the organizer's decision for the night is "the
+            join code system, not login": every student arrives with a printed slip, and the slip
+            is the whole sign-in. Accounts still exist for organizers and for the practice arena,
+            so account sign-in stays on the bar as the quiet link beside it. The old pair here was
+            "Log in" and "Create your account", which sent a student holding a slip off to make an
+            account they did not need.
           */}
           {/*
-            `flex-wrap` and `justify-end`: four items reach 358px at 360, which is 30px wider than
-            the content box, so the bar pushed the whole DOCUMENT sideways. It has four items
-            because the join-code link landed beside "Log in" and "Create account" without anybody
-            measuring the row afterwards. Wrapping drops the CTA to its own right-aligned line
+            `flex-wrap` and `justify-end`: the bar once reached four items and 358px at 360, which
+            is 30px wider than the content box, so `/` pushed the whole DOCUMENT sideways. Three
+            items fit now, and wrapping is kept so the row can only ever drop to its own line
             instead of dragging the page.
           */}
           <nav
@@ -310,29 +310,23 @@ export default async function Home() {
               </Link>
             ) : (
               <>
-                {/* First, because on the night it is what most people need. */}
-                <Link
-                  href="/join"
-                  className="rounded-chip px-2 py-1.5 whitespace-nowrap text-ink/75 hover:text-ink sm:px-3"
-                  style={{ fontSize: "var(--text-xs)" }}
-                >
-                  Join code
-                </Link>
                 <Link
                   href="/sign-in"
                   className="rounded-chip px-2 py-1.5 whitespace-nowrap text-ink/75 hover:text-ink sm:px-3"
                   style={{ fontSize: "var(--text-xs)" }}
                 >
-                  Log in
+                  Sign in
                 </Link>
+                {/*
+                  The same label as the hero and the closing band, so the action keeps one name
+                  from the first thing a student reads to the heading on `/join`.
+                */}
                 <Link
-                  href="/sign-up"
+                  href="/join"
                   className="rounded-chip bg-panther px-3 py-1.5 font-semibold whitespace-nowrap text-paper hover:bg-panther-deep"
                   style={{ fontSize: "var(--text-xs)" }}
                 >
-                  {/* The shorter label below `sm` keeps the CTA on one line in a 360 header. */}
-                  <span className="sm:hidden">Create account</span>
-                  <span className="hidden sm:inline">Create your account</span>
+                  Enter your join code
                 </Link>
               </>
             )}
@@ -413,11 +407,11 @@ export default async function Home() {
             {/* Two actions, one obviously primary. */}
             <div className="mt-8 flex flex-wrap items-center gap-3">
               <Link
-                href={signedIn ? destination : "/sign-in"}
+                href={signedIn ? destination : "/join"}
                 className="rounded-chip bg-panther px-5 py-2.5 font-semibold text-paper hover:bg-panther-deep"
                 style={{ fontSize: "var(--text-sm)" }}
               >
-                {signedIn ? enterLabel : "Sign in to compete"}
+                {signedIn ? enterLabel : "Enter your join code"}
               </Link>
               <Link
                 href="/projector"
@@ -428,9 +422,19 @@ export default async function Home() {
               </Link>
             </div>
 
+            {/*
+              Account sign-in, demoted to one quiet line. It is for the two kinds of people who
+              are not holding a slip: organizers, and anyone using the practice arena.
+            */}
             {!signedIn && (
               <p className="mt-4 text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
-                First time here? Signing in with Google or GitHub creates your account.
+                Organizer or practice account?{" "}
+                <Link
+                  href="/sign-in"
+                  className="font-semibold text-ink/75 underline underline-offset-2 hover:text-ink"
+                >
+                  Sign in
+                </Link>
               </p>
             )}
           </div>
@@ -597,15 +601,15 @@ export default async function Home() {
             <p className="mt-1.5 text-paper/80" style={{ fontSize: "var(--text-sm)" }}>
               {signedIn
                 ? "Open the contest to see your team and assigned problems."
-                : "Sign in to see your team, assigned problems, and submissions."}
+                : "Type the code on your slip to see your team, your problems, and the board."}
             </p>
           </div>
           <Link
-            href={signedIn ? destination : "/sign-in"}
+            href={signedIn ? destination : "/join"}
             className="rounded-chip bg-panther px-5 py-2.5 font-semibold text-paper hover:bg-panther-deep"
             style={{ fontSize: "var(--text-sm)" }}
           >
-            {signedIn ? enterLabel : "Sign in to compete"}
+            {signedIn ? enterLabel : "Enter your join code"}
           </Link>
         </div>
       </section>

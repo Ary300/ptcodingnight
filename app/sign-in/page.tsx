@@ -12,12 +12,15 @@ export const metadata: Metadata = {
 };
 
 /**
- * Sign-in for everyone, on the same split-screen as `/join`.
+ * Account sign-in, on the same split-screen as `/join`.
  *
- * This used to be organizer-only, with students entering through a join code. The join code is
- * gone: students sign up with Google or GitHub — the first sign-in creates their account — and an
- * organizer places them on a team afterwards. The break-glass path is the organizer passcode at
- * the bottom of the form, which works when OAuth does not.
+ * The organizer's decision for the night is "the join code system, not login", so a student with
+ * a slip should never need this page. It leads with the way back to `/join` for anyone who landed
+ * here by habit, and the account form below it is for organizers and for the practice arena. The
+ * break-glass path is the organizer passcode at the bottom of the form, which works when OAuth
+ * does not. Google and GitHub render only when this server holds their credentials
+ * (`oauthProviderAvailability`), so the production box, which has neither configured, shows no
+ * button that can only bounce a person back here with `provider_unconfigured`.
  *
  * Outside the `(competitor)` route group on purpose: that group's chrome carries the competitor
  * nav and a contest countdown, neither of which belongs on the page an organizer reaches before
@@ -47,7 +50,6 @@ export default async function SignInPage({
   const provider = typeof params.provider === "string" ? params.provider : null;
   const error = signInErrorMessage(code, provider);
   const providerAvailability = oauthProviderAvailability();
-  const studentSignInAvailable = providerAvailability.google || providerAvailability.github;
 
   /*
     Arrival motion via a class on the page root, not a template. This page is outside both route
@@ -66,10 +68,9 @@ export default async function SignInPage({
         <p className="font-display font-bold" style={{ fontSize: "var(--text-2xl)" }}>
           Coding Night
         </p>
-        <p className="mt-3 text-paper/75" style={{ fontSize: "var(--text-sm)" }}>
-          {studentSignInAvailable
-            ? "Sign in to find your team and your problems for the night."
-            : "Student sign-in is not set up on this server. Organizers can sign in below."}
+        <p className="mt-3 max-w-[38ch] text-paper/85" style={{ fontSize: "var(--text-sm)" }}>
+          Organizers and practice accounts sign in here. Competing tonight? The code on your slip is
+          your way in.
         </p>
       </BrandPanel>
 
@@ -157,37 +158,56 @@ export default async function SignInPage({
             Sign in
           </h1>
           <p className="mt-2 text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
-            {studentSignInAvailable
-              ? "Students and organizers both start here."
-              : "Organizer sign-in is available below."}
+            For organizers and practice accounts.
           </p>
 
-          <div className="mt-6">
+          {/*
+            THE NIGHT'S ACTUAL DOOR, FIRST. It sat under the account form as an afterthought, so a
+            student who typed ptcodingnight.com/sign-in out of habit met two provider buttons and
+            an email form before any mention of the slip in their hand. It is a filled button
+            because it is the primary action on this page for almost everyone who reaches it on
+            the night; the account form is for a handful of people.
+          */}
+          <div
+            className="mt-5 rounded-panel border border-rule-edge bg-ink/[0.03] p-4"
+            data-testid="join-code-door"
+          >
+            <p className="font-semibold" style={{ fontSize: "var(--text-sm)" }}>
+              Competing tonight?
+            </p>
+            <p className="mt-1 text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
+              Your slip has a six-character join code on it. That is your sign-in, and it puts you
+              straight onto your team.
+            </p>
+            <Link
+              href="/join"
+              className="mt-3 inline-flex items-center justify-center rounded-chip bg-panther px-4 py-2 font-semibold text-paper transition-[background-color,transform] duration-[var(--motion-press)] hover:bg-panther-deep active:scale-[0.97]"
+              style={{ fontSize: "var(--text-sm)" }}
+            >
+              Have a join code? Enter it here
+            </Link>
+          </div>
+
+          {/*
+            `aria-hidden` on the two rule spans only: the sentence between them is the one place
+            that says the form below is for a different audience, and a screen reader must hear it.
+          */}
+          <div className="my-5 flex items-center gap-3">
+            <span className="h-px flex-1 bg-ink/15" aria-hidden="true" />
+            <span className="text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
+              or sign in with an account
+            </span>
+            <span className="h-px flex-1 bg-ink/15" aria-hidden="true" />
+          </div>
+
+          <div>
             <SignInForm
               initialError={error}
               providerAvailability={providerAvailability}
             />
 
-            {/*
-              THE NIGHT'S ACTUAL DOOR, and it is a button rather than a sentence because on the
-              night most students have a slip of paper and no account. The two account paths
-              stay exactly where they were: this is a third way in, not a replacement.
-            */}
-            <div className="mt-6 border-t border-rule-hair pt-6">
-              <p className="text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
-                Competing tonight? An organizer gave you a code.
-              </p>
-              <Link
-                href="/join"
-                className="mt-2 inline-flex items-center justify-center rounded border border-rule-firm px-4 py-2 font-semibold transition-[color,background-color,border-color,transform] duration-[var(--motion-press)] hover:border-ink hover:bg-ink/[0.03] active:scale-[0.97]"
-                style={{ fontSize: "var(--text-sm)" }}
-              >
-                Enter a join code
-              </Link>
-            </div>
-
             <p className="mt-6 text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
-              New here?{" "}
+              Need a practice account?{" "}
               <Link
                 href="/sign-up"
                 className="font-semibold text-panther underline underline-offset-2"

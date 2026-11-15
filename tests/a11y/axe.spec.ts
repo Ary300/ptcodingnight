@@ -9,9 +9,9 @@ import { openLobby, openProblem } from "./helpers/journey";
  * Also the sign-in screen and the submissions history, because they are on the same walk and a
  * student who cannot get through sign-in never reaches the ones that were audited.
  *
- * The `/join` audit is gone with the page: students sign in with a provider now, and team
- * membership is decided in the organizer's roster. `/sign-in` is audited in its place, including
- * the `?error=` state the OAuth callback redirects to.
+ * `/join` is audited because it is the door every student walks through on the night (the
+ * organizer's decision: "the join code system, not login"). `/sign-in` is audited too, including
+ * the `?error=` state the OAuth callback redirects to, because it is how an organizer gets in.
  */
 
 test.describe("axe-core: zero critical or serious", () => {
@@ -29,11 +29,12 @@ test.describe("axe-core: zero critical or serious", () => {
     await expect(
       page.getByRole("heading", { level: 1, name: /Code with your team/i }),
     ).toBeVisible();
-    // The primary call to action says CREATE, not "sign in". There is no separate sign-up page to
-    // build — the first Google or GitHub sign-in creates the account — but nothing on the page
-    // said so, and a student with no account read "Sign in" as a door that was not for them.
-    // `.first()` because it appears in the bar and again in the hero, on purpose.
-    await expect(page.getByRole("link", { name: "Create your account" }).first()).toBeVisible();
+    // The primary call to action is the join code, because that is how a student gets in on the
+    // night: a printed slip, one code per seat, no account. `.first()` because it appears in the
+    // bar, again in the hero and again in the closing band, on purpose. Account sign-in is still
+    // on the page, demoted to a quiet link for organizers and the practice arena.
+    await expect(page.getByRole("link", { name: "Enter your join code" }).first()).toBeVisible();
+    await expect(page.getByRole("link", { name: "Sign in", exact: true }).first()).toBeVisible();
 
     // The two students who run the night are named on the page, and their photographs carry their
     // names. A headshot is information about a person, so `alt=""` would be wrong here — and an
@@ -44,9 +45,28 @@ test.describe("axe-core: zero critical or serious", () => {
     await auditPage(page, "/");
   });
 
+  test("join with a code", async ({ page }) => {
+    await page.goto("/join");
+    await expect(
+      page.getByRole("heading", { name: "Enter your join code", level: 1 }),
+    ).toBeVisible();
+    // The field is labelled and described: the hint about the code's shape is what a student at
+    // the desk reads when a character will not go in, so it has to be announced with the field.
+    const field = page.getByLabel("Your join code");
+    await expect(field).toBeVisible();
+    await expect(field).toHaveAttribute("aria-describedby", "join-code-hint");
+    await auditPage(page, "/join");
+  });
+
   test("organizer sign-in", async ({ page }) => {
     await page.goto("/sign-in");
     await expect(page.getByRole("heading", { name: "Sign in", level: 1 })).toBeVisible();
+    // The join code leads the page, above the account form, for the student who typed this URL
+    // out of habit. Audited with it in place because it is a filled panther control on a tinted
+    // panel, which is a new ground for the contrast rules to meet.
+    await expect(
+      page.getByRole("link", { name: "Have a join code? Enter it here" }),
+    ).toBeVisible();
     await auditPage(page, "/sign-in");
 
     // The error state is a different DOM — the OAuth callback redirects here with `?error=`

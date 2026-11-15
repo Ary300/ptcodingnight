@@ -166,21 +166,30 @@ test.describe("the competitor journey in a browser", () => {
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
   });
 
-  test("a signed-out visitor is offered SIGN-IN rather than bounced to it", async ({ page }) => {
+  test("a signed-out visitor is offered the JOIN CODE rather than bounced to a form", async ({
+    page,
+  }) => {
     await page.goto("/contest");
 
-    // "You are not signed in", not "You are not in the contest yet". The lobby's panel is now the
-    // one every competitor screen shows — /team and /submissions used to have their own wording,
-    // and two of them read "Join the contest first", which is the route layer's ForbiddenError
-    // naming a flow that was deleted. `components/contest/lobby/SignInRequired.tsx`.
+    // "You are not signed in", not "You are not in the contest yet". The lobby's panel is the one
+    // every competitor screen shows; /team and /submissions used to have their own wording, and
+    // two of them read "Join the contest first", which is the route layer's ForbiddenError
+    // rendered verbatim. `components/contest/lobby/SignInRequired.tsx`.
     await expect(page.getByRole("heading", { name: "You are not signed in" })).toBeVisible();
 
-    // Sign-in, not a join code. Codes are gone from every student-facing surface: team membership
-    // is decided only in the organizer's roster, and a student's route in is Google or GitHub.
-    await expect(page.getByRole("link", { name: "Sign in to compete" })).toBeVisible();
+    // The join code first, because it is how a student gets in on the night (the organizer's
+    // decision: "the join code system, not login"). Account sign-in is still offered, second, for
+    // organizers and the practice arena. Both links, and the code is the filled one.
+    const door = page.getByRole("link", { name: "Enter your join code" });
+    await expect(door).toBeVisible();
+    await expect(door).toHaveAttribute("href", "/join");
+    await expect(page.getByRole("link", { name: "Sign in", exact: true })).toHaveAttribute(
+      "href",
+      "/sign-in",
+    );
     await expect(
-      page.getByRole("link", { name: /join.*code|contest code/i }),
-      "no student-facing surface may offer a join code",
+      page.getByRole("link", { name: "Sign in to compete" }),
+      "the account form must not be presented as the way to compete",
     ).toHaveCount(0);
 
     expect(new URL(page.url()).pathname, "no redirect race on the sessionStorage read").toBe(

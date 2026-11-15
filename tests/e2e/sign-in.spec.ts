@@ -230,12 +230,31 @@ test.describe("the organizer forms", () => {
 });
 
 test.describe("the page a student meets", () => {
-  test("offers only providers configured on the server and does not ask for a code", async ({
+  test("leads with the join code, then offers only providers configured on the server", async ({
     page,
     request,
   }) => {
-    // The join code is gone. A page that still asks for one is a page that turns students away.
+    /*
+      The organizer's decision for the night: "the join code system, not login". A student who
+      types /sign-in out of habit must meet the way back to their slip BEFORE any account control,
+      and must never meet a provider button this server cannot honour: on the production box
+      neither OAuth provider is configured, and a button there could only bounce them back here
+      with `provider_unconfigured`.
+    */
     await page.goto("/sign-in");
+
+    const door = page.getByRole("link", { name: "Have a join code? Enter it here" });
+    await expect(door).toBeVisible();
+    await expect(door).toHaveAttribute("href", "/join");
+
+    // Above the account form, measured rather than assumed: "first" is a position on the page.
+    const doorBox = await door.boundingBox();
+    const emailBox = await page.locator('input[type="email"]').boundingBox();
+    expect(doorBox).not.toBeNull();
+    expect(emailBox).not.toBeNull();
+    expect(doorBox!.y, "the join-code door renders below the account form").toBeLessThan(
+      emailBox!.y,
+    );
 
     const configured = {
       google: await providerIsConfigured(request, "google"),
@@ -251,12 +270,15 @@ test.describe("the page a student meets", () => {
 
     if (!configured.google && !configured.github) {
       await expect(page.getByTestId("student-signin-unavailable")).toContainText(
-        "Google and GitHub sign-in are unavailable",
+        "Google and GitHub sign-in are not set up on this server",
       );
     }
 
+    // The old page told students they did not need a code. They do: it is the only thing on
+    // their slip, and a page that says otherwise sends them to make an account at the desk.
     const text = await page.evaluate(() => document.body.innerText);
-    expect(text).toContain("Students do not need a code");
+    expect(text).not.toContain("Students do not need a code");
+    expect(text).toContain("join code");
   });
 
   test("configured OAuth buttons are document navigations, not fetches", async ({

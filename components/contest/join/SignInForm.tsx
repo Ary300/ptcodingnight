@@ -238,10 +238,13 @@ export function SignInForm({
       )}
 
       {/*
-        OAuth first, and prominent. This is how a STUDENT signs up now — the buttons are the
-        primary action for almost everyone who reaches this page, so they sit above the fold
-        rather than under an "or" divider as an afterthought for people who could not remember a
-        password. The email form below is for organizers, who are a handful of people.
+        OAuth first within the account form, and ONLY when this server holds the provider's
+        credentials. The page above this form already leads with the join code, which is how a
+        student gets in on the night; these buttons are for practice accounts and for organizers
+        with a school Google account. On the production box neither provider is configured, so
+        neither button renders and nothing here can bounce a person back with
+        `provider_unconfigured`. The email form below is for organizers, who are a handful of
+        people.
 
         `no-html-link-for-pages` is suppressed on both, and only here. The rule exists to stop an
         `<a>` doing a full page load to a route the client router could have handled — but these
@@ -296,38 +299,38 @@ export function SignInForm({
           </div>
 
           <p className="mt-3 text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
-            Students do not need a code. Your first sign-in creates your account, and an organizer
-            puts you on a team.
+            Your first Google or GitHub sign-in creates your account.
           </p>
+
+          {/*
+            `aria-hidden` sits on the two rule spans, NOT the wrapper: the words between them are
+            the one statement that the email form below is a different path, and hiding the
+            wrapper sent a screen reader straight from the OAuth links to "Email" with no warning.
+          */}
+          <div className="my-5 flex items-center gap-3">
+            <span className="h-px flex-1 bg-ink/15" aria-hidden="true" />
+            {/* 60, not 55. Ink at 55% over paper is 4.34:1, under AA's 4.5:1 at this size. */}
+            <span className="text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
+              or with email and password
+            </span>
+            <span className="h-px flex-1 bg-ink/15" aria-hidden="true" />
+          </div>
         </>
       ) : (
-        <div
-          className="rounded-chip border border-rule-firm bg-ink/[0.03] px-3 py-3"
+        /*
+          One quiet line where the buttons would be, for the organizer who expected them. A
+          student never needs this: the join-code door above the form is their way in, so the
+          missing providers are a fact about the server and not a problem for the room.
+        */
+        <p
+          className="mb-4 text-ink/60"
+          style={{ fontSize: "var(--text-xs)" }}
           data-testid="student-signin-unavailable"
         >
-          <p className="font-semibold" style={{ fontSize: "var(--text-sm)" }}>
-            Student sign-in is not set up on this server.
-          </p>
-          <p className="mt-1 text-ink/70" style={{ fontSize: "var(--text-xs)" }}>
-            Students do not need a code. Google and GitHub sign-in are unavailable. Ask an
-            organizer for help.
-          </p>
-        </div>
+          Google and GitHub sign-in are not set up on this server. Organizers use email and
+          password, or the passcode below.
+        </p>
       )}
-
-      {/*
-        `aria-hidden` sits on the two rule spans, NOT the wrapper: "or, for organizers" is the one
-        statement that the email form below is for a different audience, and hiding the wrapper
-        sent a screen reader straight from the OAuth links to "Email" with no such warning.
-      */}
-      <div className="my-5 flex items-center gap-3">
-        <span className="h-px flex-1 bg-ink/15" aria-hidden="true" />
-        {/* 60, not 55. Ink at 55% over paper is 4.34:1, under AA's 4.5:1 at this size. */}
-        <span className="text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
-          {studentSignInAvailable ? "or, for organizers" : "organizer sign-in"}
-        </span>
-        <span className="h-px flex-1 bg-ink/15" aria-hidden="true" />
-      </div>
 
       <form ref={formRef} className="flex flex-col gap-3" onSubmit={(event) => void submit(event)}>
         <label className="flex flex-col gap-1" style={{ fontSize: "var(--text-sm)" }}>

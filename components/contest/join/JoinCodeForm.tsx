@@ -6,9 +6,11 @@ import { useState } from "react";
 /**
  * The join-code form: type the code on your slip, and you are in.
  *
- * The night's main door, by the teacher's instruction. Nobody makes an account at the desk;
- * organizers built the teams beforehand and every seat has a code. One field, one button, and
- * on success a document navigation to the contest so every layer sees the new cookie.
+ * The night's main door, by the teacher's instruction and the organizer's decision. Nobody makes
+ * an account at the desk; organizers built the teams beforehand and every seat has a code. One
+ * field, one button, and on success a document navigation to the contest so every layer sees the
+ * new cookie. The pointer at the foot is for the people with no slip, which is organizers and
+ * anyone in the practice arena.
  *
  * ## Why the field shouts
  *
@@ -83,9 +85,14 @@ export function JoinCodeForm() {
             className="numeric rounded border border-ink/25 bg-paper px-4 py-3 text-center font-semibold uppercase"
             style={{ fontSize: "var(--text-xl)", letterSpacing: "0.22em" }}
           />
+          {/*
+            The shape of the code, so a student can tell a misread before pressing the button. The
+            alphabet has no O, 0, I or 1 (`lib/contest/join-code.ts`), and saying so is what turns
+            "I typed what the paper says" into "read that character again".
+          */}
           <span id="join-code-hint" className="text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
-            Six characters, from the slip an organizer gave you. Capitals and dashes do not
-            matter.
+            Six letters and numbers from the slip an organizer gave you. Capitals, spaces and
+            dashes do not matter. A code never contains the letters O or I, or the digits 0 or 1.
           </span>
         </label>
 
@@ -117,15 +124,10 @@ export function JoinCodeForm() {
       </form>
 
       <p className="mt-6 text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
-        No code?{" "}
+        Organizer or practice account?{" "}
         <Link href="/sign-in" className="font-semibold text-panther underline underline-offset-2">
-          Sign in with an account
-        </Link>{" "}
-        or{" "}
-        <Link href="/sign-up" className="font-semibold text-panther underline underline-offset-2">
-          create one
+          Sign in
         </Link>
-        .
       </p>
     </div>
   );

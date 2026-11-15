@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useState, type FormEvent } from "react";
 
 import { Markdown } from "@/components/contest/markdown/Markdown";
@@ -60,7 +61,10 @@ export function PuzzleBoard() {
   if (participant.status !== "joined") {
     return (
       <p className="text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
-        Sign in with your join code to solve puzzles.
+        <Link href="/join" className="font-semibold text-panther underline underline-offset-2">
+          Enter your join code
+        </Link>{" "}
+        to solve puzzles.
       </p>
     );
   }

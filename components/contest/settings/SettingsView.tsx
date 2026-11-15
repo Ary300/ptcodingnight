@@ -94,7 +94,7 @@ export function SettingsView() {
           if (!cancelled) {
             setLoadError(
               response.status === 403
-                ? "Settings are for signed-in accounts. Sign in with Google, GitHub or an organizer account."
+                ? "Settings belong to accounts. A join code has none: your name and team come from the organizer's roster. Organizers and practice accounts sign in first."
                 : "We could not load your profile. Try again in a moment.",
             );
           }

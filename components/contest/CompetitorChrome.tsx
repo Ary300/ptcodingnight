@@ -142,9 +142,18 @@ export function CompetitorChrome({ children }: { children: ReactNode }) {
   const [team, setTeam] = useState<{ name: string } | null>(null);
   // The account id and the avatar's version, for the menu's picture. Read from the same session
   // response as the team, so the picture and the team name never cost two requests.
-  const [account, setAccount] = useState<{ userId: string | null; avatarVersion: string | null }>({
+  //
+  // `known` is whether the server has answered yet. A join-code student has no account, and the
+  // menu says so only once the session read has confirmed it; before the answer, a null `userId`
+  // means nothing more than "not loaded", and a note written against that would be a guess.
+  const [account, setAccount] = useState<{
+    userId: string | null;
+    avatarVersion: string | null;
+    known: boolean;
+  }>({
     userId: null,
     avatarVersion: null,
+    known: false,
   });
   /*
     Whether the session's contest is the permanent practice arena, from the same session response
@@ -190,6 +199,7 @@ export function CompetitorChrome({ children }: { children: ReactNode }) {
         setAccount({
           userId: typeof data.userId === "string" ? data.userId : null,
           avatarVersion: typeof data.avatarUpdatedAt === "string" ? data.avatarUpdatedAt : null,
+          known: true,
         });
         setContestKind(data.contestIsPractice === true ? "practice" : "real");
       } catch {
@@ -224,8 +234,8 @@ export function CompetitorChrome({ children }: { children: ReactNode }) {
    * `/contest`. Sessions live in Postgres precisely so that they can be revoked (docs/AUTH.md §3);
    * a sign-out that never tells the server is the one case where that buys nothing.
    *
-   * `/sign-in`, not `/join`: the join page was deleted with the join route, so the old destination
-   * is a 404 — signing out landed a student on a broken page.
+   * The destination is the home page, which greets a signed-out visitor with the join code first;
+   * a student who signed out of a shared machine by mistake is one tap from typing their code again.
    */
   const leave = useCallback(() => {
     void (async () => {
@@ -431,6 +441,7 @@ export function CompetitorChrome({ children }: { children: ReactNode }) {
                 setLabel={setLabel}
                 userId={account.userId}
                 avatarVersion={account.avatarVersion}
+                accountKnown={account.known}
                 onSignOut={leave}
               />
             )}

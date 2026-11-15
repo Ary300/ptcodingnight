@@ -201,19 +201,23 @@ test.describe("submission history never shows a database key", () => {
 
 test.describe("the signed-out state is a way in, not a stale error", () => {
   for (const path of ["/submissions", "/team", "/contest"]) {
-    test(`${path} offers sign-in rather than telling the student to join`, async ({ page }) => {
+    test(`${path} offers the join code rather than telling the student to join`, async ({
+      page,
+    }) => {
       // No cookie: a genuine anonymous visitor.
       await page.goto(path);
 
       /*
         "Join the contest first" is a `ForbiddenError` message from the route layer that used to be
-        rendered verbatim, in alert red, with nothing to click — and it names the join-code flow,
-        which was removed. A student who read it went looking for a code that no longer exists.
+        rendered verbatim, in alert red, with nothing to click. The way in is a link, and on the
+        night it is the join code on the student's slip; account sign-in follows as the quiet
+        second option for organizers and the practice arena.
       */
       await expect(page.getByText(/Join the contest first/i)).toHaveCount(0, { timeout: 30_000 });
-      await expect(page.getByRole("link", { name: "Sign in to compete" })).toBeVisible({
+      await expect(page.getByRole("link", { name: "Enter your join code" })).toBeVisible({
         timeout: 30_000,
       });
+      await expect(page.getByRole("link", { name: "Sign in", exact: true })).toBeVisible();
     });
   }
 });

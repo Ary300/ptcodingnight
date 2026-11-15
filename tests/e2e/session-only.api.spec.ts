@@ -37,7 +37,7 @@ test("a session cookie alone gets a student into the contest", async ({ browser 
   await page.goto("/contest");
 
   await expect(
-    page.getByText(/not in the contest yet|not in a contest yet|Sign in to compete/i),
+    page.getByText(/not in the contest yet|not in a contest yet|You are not signed in|Enter your join code/i),
     "a signed-in student was told to sign in",
   ).toHaveCount(0);
 

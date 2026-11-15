@@ -12,9 +12,11 @@ export const metadata: Metadata = {
  * `/join` — the door most students walk through on the night.
  *
  * The teacher's rule: no accounts at the desk. Organizers build every team beforehand, each seat
- * gets a code, and a student types theirs to land in the contest already on their team. Accounts
- * still exist and still work; this page is a third door beside them, not a replacement, which is
- * why both other doors are linked from here and this one is linked from both of them.
+ * gets a code, and a student types theirs to land in the contest already on their team. The
+ * organizer's decision for the night is "the join code system, not login", so this is the primary
+ * door and every student-facing call to action lands here. Accounts still exist and still work,
+ * for organizers and for the practice arena; `/sign-in` is linked from the foot of the form, and
+ * `/sign-in` links back here above its own form.
  *
  * Same split screen and the same route-group decision as `/sign-in` and `/sign-up`: outside
  * `(competitor)`, so no contest chrome wraps a page reached before any session exists.

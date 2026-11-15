@@ -141,15 +141,12 @@ section "3. Sign-in paths"
 
 # --- 3a. a competitor session ---
 #
-# There is no join code any more: a student signs in with a provider and an organizer puts them
-# on a team. This used to POST /api/join with SMOKE_JOIN_CODE, and that route is gone — so the
-# check failed on every run for a reason that had nothing to do with the deployment.
-#
-# What is checkable from outside without a browser and a Google consent screen is the ORGANIZER
-# path (3b) and the shape of the provider redirects (3c). The competitor journey needs a real
-# provider round trip, so it is a thing to click, not a thing to curl — §14.5 of docs/DEPLOY.md
-# says so, and section 4 below reports honestly that it cannot run rather than pretending.
-note "competitor sign-in is OAuth-only and needs a browser — press the buttons yourself (DEPLOY.md §14.5)"
+# A student signs in with the join code printed on their slip, one code per SEAT, minted by an
+# organizer on the Teams tab (2026-11-15: the join code is the way in; accounts are for organizers
+# and the practice arena). A code admits a real participant to a real contest, so this script does
+# not carry one: the student journey is a thing to do with a slip in hand, and section 4 below
+# reports honestly whether there is a contest to do it in.
+note "competitor sign-in is by join code — type one from the Teams tab's slips at /join (docs/NIGHT.md §3)"
 
 # --- 3b. organizer passcode ---
 if [ -z "${SMOKE_ADMIN_PASSCODE:-}" ]; then
@@ -175,7 +172,11 @@ for provider in google github; do
   location="$(curl -sSI --max-time 20 "$BASE_URL/api/auth/$provider" 2>/dev/null | tr -d '\r' | grep -i '^location:' || true)"
   case "$code" in
     30*)
-      if printf '%s' "$location" | grep -q "redirect_uri=https%3A%2F%2F"; then
+      if printf '%s' "$location" | grep -q "provider_unconfigured"; then
+        # Off by decision, not by accident: the join code is the way in, and the sign-in screen
+        # says so instead of showing a button that would fail mid-flow.
+        ok "$provider sign-in is off on this server, by decision; the join code is the way in"
+      elif printf '%s' "$location" | grep -q "redirect_uri=https%3A%2F%2F"; then
         ok "$provider sign-in redirects with an https redirect_uri"
       else
         bad "$provider redirect_uri is not https — it will not match the registered URI"
@@ -252,11 +253,12 @@ check_page() {
   fi
 }
 
-# `/join` was deleted with the join route; this checked for a screen that cannot exist and so
-# failed on every run. `/sign-in` is the front door now, and the landing page is what a visitor
-# following a link actually gets.
-check_page "/" "Coding Night" "the landing page renders"
-check_page "/sign-in" "Continue with Google" "the sign-in screen offers the providers"
+# `/join` is the front door again (2026-11-15), `/sign-in` is for organizers and practice accounts
+# and must point students back at the code, and the landing page is what a visitor following a
+# link actually gets.
+check_page "/" "Enter your join code" "the landing page renders and leads with the join code"
+check_page "/join" "join code" "the join screen renders"
+check_page "/sign-in" "Have a join code" "the sign-in screen points students at the join code"
 check_page "/projector" "Team standings" "the projector renders the team board"
 
 # The banner that says a screen is showing invented data. On a live deployment it must be ABSENT
@@ -268,7 +270,7 @@ check_page "/projector" "Team standings" "the projector renders the team board"
 # was refusing connections. A smoke test that passes when the site is down is worse than no smoke
 # test, because it is the one check someone trusts at 8pm.
 front_body="$(curl -fsS --max-time 30 "$BASE_URL/sign-in" 2>/dev/null || true)"
-if ! printf '%s' "$front_body" | grep -q "Continue with Google"; then
+if ! printf '%s' "$front_body" | grep -q "Have a join code"; then
   bad "cannot check for the demo-data banner: /sign-in did not load"
 elif printf '%s' "$front_body" | grep -q "not a live contest"; then
   bad "the DEMO DATA banner is showing — this deployment is wired to the stub backend"

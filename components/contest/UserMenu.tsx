@@ -40,6 +40,12 @@ export interface UserMenuProps {
   readonly userId?: string | null;
   /** The avatar's last-changed instant, used to bust the image cache. Null when there is none. */
   readonly avatarVersion?: string | null;
+  /**
+   * Whether the session read has answered. Until it has, a null `userId` means "not loaded yet",
+   * and the menu neither offers Settings nor explains their absence; once it has, a null `userId`
+   * is a join-code seat with no account behind it, and the menu says so.
+   */
+  readonly accountKnown?: boolean;
   readonly onSignOut: () => void;
 }
 
@@ -50,6 +56,14 @@ const ITEMS = [
   { href: "/projector", label: "Live standings" },
   { href: "/settings", label: "Settings" },
 ] as const;
+
+/**
+ * Settings read and write a `User` row, and a join-code seat has none: `/api/me` answers 403 and
+ * the screen can only report that. Offering the item to a student who signed in with a slip is
+ * offering a door that opens onto a refusal, so it renders only once the session read has
+ * confirmed there is an account behind this session.
+ */
+const ACCOUNT_ONLY_HREFS: ReadonlySet<string> = new Set(["/settings"]);
 
 /**
  * The account picture, at a given size.
@@ -108,9 +122,14 @@ export function UserMenu({
   setLabel = null,
   userId = null,
   avatarVersion = null,
+  accountKnown = false,
   onSignOut,
 }: UserMenuProps) {
   const [open, setOpen] = useState(false);
+  const hasAccount = userId !== null;
+  const items: readonly { readonly href: string; readonly label: string }[] = hasAccount
+    ? ITEMS
+    : ITEMS.filter((item) => !ACCOUNT_ONLY_HREFS.has(item.href));
   /*
     Where the phone sheet's top edge sits, in viewport pixels — null on `sm` and up, where the
     panel is the ordinary anchored dropdown.
@@ -191,23 +210,35 @@ export function UserMenu({
           chevron. Stating the whole label here rather than relying on the visible text means the
           accessible name does not change with the viewport.
         */
-        aria-label={`Account: ${displayName}`}
+        aria-label={teamName === null ? `Account: ${displayName}` : `Account: ${displayName}, ${teamName}`}
         className="flex min-w-0 items-center gap-2 rounded-chip px-1.5 py-1 text-paper/85 transition-colors duration-[var(--motion-press)] hover:text-paper"
         style={{ fontSize: "var(--text-sm)" }}
       >
         <Avatar displayName={displayName} userId={userId} version={avatarVersion} />
-        <span // Hidden only BELOW 400px, where 10rem of display name is a third of the viewport
-          // spent on something the student already knows; the avatar and the aria-label still
-          // identify the account there.
-          //
-          // 400 rather than the `sm` breakpoint on purpose. `sm` is 640px, which would hide the
-          // name on every phone including the 412px profile G7 runs — and G7 asserts that the
-          // banner shows who you are signed in as. A breakpoint chosen for tidiness would have
-          // turned a deliberate mobile affordance into a failing gate on the second-widest
-          // device in the suite.
-          className="hidden min-w-0 max-w-[10rem] truncate min-[400px]:block"
-        >
-          {displayName}
+        {/*
+          Hidden only BELOW 400px, where 10rem of display name is a third of the viewport spent on
+          something the student already knows; the avatar and the aria-label still identify the
+          account there.
+
+          400 rather than the `sm` breakpoint on purpose. `sm` is 640px, which would hide the name
+          on every phone including the 412px profile G7 runs, and G7 asserts that the banner shows
+          who you are signed in as. A breakpoint chosen for tidiness would have turned a deliberate
+          mobile affordance into a failing gate on the second-widest device in the suite.
+
+          The team sits under the name, in the bar itself. A join-code student never chose their
+          team; the slip put them on it, and the one question they ask on arrival is "did it put me
+          on the right one". That answer belongs in the header, where no click is needed. Full-strength
+          paper for the name and 85% for the team: DESIGN.md's floor on --ink is 47%, so both clear
+          it, and the two lines differ by size and weight rather than by a contrast they cannot
+          afford.
+        */}
+        <span className="hidden min-w-0 max-w-[10rem] flex-col items-start text-left leading-tight min-[400px]:flex">
+          <span className="block w-full truncate">{displayName}</span>
+          {teamName !== null && (
+            <span className="block w-full truncate text-paper/85" style={{ fontSize: "var(--text-xs)" }}>
+              {teamName}
+            </span>
+          )}
         </span>
         {/* The chevron TURNS to its new state instead of snapping; it is a flex item, so the
             transform applies. Same 100ms as every other press acknowledgment. */}
@@ -308,7 +339,7 @@ export function UserMenu({
             own element because a border on the `li` can only be full-bleed.
           */}
           <ul role="menu" aria-label="Account">
-            {ITEMS.map((item) => (
+            {items.map((item) => (
               <li key={item.href} role="none">
                 <div aria-hidden="true" className="mx-3.5 border-t border-rule-hair" />
                 <Link
@@ -343,6 +374,21 @@ export function UserMenu({
               </button>
             </li>
           </ul>
+
+          {/*
+            Why there is no Settings row, said out loud. OUTSIDE the `menu` list, because it is
+            prose and not an item (`aria-required-children` again). Only once the session read
+            has confirmed the seat has no account; before that the absence is "not loaded yet".
+          */}
+          {accountKnown && !hasAccount && (
+            <p
+              className="border-t border-rule-hair px-3.5 py-2.5 text-ink/60"
+              style={{ fontSize: "var(--text-xs)" }}
+            >
+              Signed in with a join code. Your name and team come from the organizer&rsquo;s roster,
+              so there are no account settings to change.
+            </p>
+          )}
         </div>
       )}
     </div>

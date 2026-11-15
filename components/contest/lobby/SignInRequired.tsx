@@ -9,12 +9,14 @@ import Link from "next/link";
  * button; `/contest/[slug]`, `/team` and `/submissions` each had their own sentence, two of them
  * reading **"Join the contest first"** — which is a `ForbiddenError` message from the route layer
  * (`lib/contest/viewer.ts`) rendered verbatim into `role="alert"`, in alert red, with nothing to
- * click. It names a flow that no longer exists: joining by code is gone, and a student signs in
- * with a provider and is put on a team by an organizer. So the two screens with the least to work
- * with told the student to do something impossible, in the styling reserved for errors.
+ * click. So the two screens with the least to work with told the student to do something with no
+ * way to do it, in the styling reserved for errors.
  *
  * A signed-out visitor is not an error. It is the ordinary state of someone who has not signed in
- * yet, and the only useful thing to put on the screen is the way in.
+ * yet, and the only useful thing to put on the screen is the way in. On the night that way is the
+ * join code on the student's slip (the organizer's decision: "the join code system, not login"),
+ * so the button goes to `/join`, and account sign-in follows as one quiet line for organizers and
+ * the practice arena.
  *
  * ## Why it lives under `lobby/`
  *
@@ -50,16 +52,21 @@ export function SignInRequired({ what, level = 2 }: SignInRequiredProps) {
         You are not signed in
       </Heading>
       <p className="mt-2 text-ink/75" style={{ fontSize: "var(--text-sm)" }}>
-        Sign in with your school Google or GitHub account to see {what}. The first sign-in creates
-        your account, and an organizer puts you on a team.
+        Type the join code from your slip to see {what}. It signs you in and puts you on your team.
       </p>
       <Link
-        href="/sign-in"
+        href="/join"
         className="mt-4 inline-block rounded-chip bg-panther px-4 py-2 font-semibold text-paper transition-[background-color,transform] duration-[var(--motion-press)] hover:bg-panther-deep active:scale-[0.97]"
         style={{ fontSize: "var(--text-sm)" }}
       >
-        Sign in to compete
+        Enter your join code
       </Link>
+      <p className="mt-3 text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
+        Organizer or practice account?{" "}
+        <Link href="/sign-in" className="font-semibold text-panther underline underline-offset-2">
+          Sign in
+        </Link>
+      </p>
     </div>
   );
 }
