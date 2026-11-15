@@ -4,6 +4,7 @@ import { z } from "zod";
 
 import { ContestApi, readEnvelope, readOk, waitForVerdict } from "./helpers/api";
 import { requiredEnv } from "./helpers/env";
+import { pauseLiveContests, restoreContests, type PausedContest } from "./helpers/live-contests";
 import { closeTestDb, seedE2EContest, testDb, type SeededContest } from "./helpers/seed";
 
 /**
@@ -40,9 +41,12 @@ let adminContext: APIRequestContext;
 let guestContext: APIRequestContext;
 let arenaId: string;
 let guestName: string;
+let paused: PausedContest[] = [];
 
 test.beforeAll(async ({ playwright, baseURL }) => {
   seeded = await seedE2EContest();
+  // Practice is closed while any real contest is live, and the fixture just made one live.
+  paused = await pauseLiveContests();
   adminContext = await playwright.request.newContext({ baseURL });
   admin = new ContestApi(adminContext, seeded.contestId);
   await admin.adminLogin(ADMIN_PASSCODE);
@@ -59,6 +63,7 @@ test.beforeAll(async ({ playwright, baseURL }) => {
 });
 
 test.afterAll(async () => {
+  await restoreContests(paused);
   await guestContext?.dispose();
   await adminContext?.dispose();
   await closeTestDb();
@@ -192,4 +197,55 @@ test("an organizer is refused rather than signed out", async () => {
     data: { role: string | null };
   };
   expect(session.data.role).toBe("ADMIN");
+});
+
+test("practice closes while a real contest is running, and opens again when it ends", async ({
+  playwright,
+  baseURL,
+}) => {
+  // Put the seeded contest back inside its window for this one test.
+  const now = Date.now();
+  await testDb().contest.update({
+    where: { id: seeded.contestId },
+    data: { state: "RUNNING", startsAt: new Date(now - 60_000), endsAt: new Date(now + 60 * 60_000) },
+  });
+  const fresh = await playwright.request.newContext({ baseURL });
+  try {
+    const refusedStart = await readEnvelope(await fresh.post("/api/practice/start"));
+    expect(refusedStart.status).toBe(409);
+    expect(refusedStart.message).toContain("closed while");
+    expect(refusedStart.message).toContain(seeded.name);
+
+    // The guest made earlier still holds an arena session; its submissions pause too.
+    const guest = new ContestApi(guestContext, arenaId);
+    const problems = await guest.listProblems();
+    const twoSum = problems.find((problem) => problem.slug === "practice-two-sum");
+    const refusedSubmit = await readEnvelope(
+      await guest.submitRaw({
+        contestProblemId: twoSum?.contestProblemId ?? "",
+        language: "PYTHON_312",
+        sourceCode: TWO_SUM_SOLUTION,
+      }),
+    );
+    expect(refusedSubmit.status).toBe(409);
+    expect(refusedSubmit.message).toContain("closed while");
+  } finally {
+    await fresh.dispose();
+    // Back to paused, so afterAll restores the original window exactly.
+    await testDb().contest.update({
+      where: { id: seeded.contestId },
+      data: {
+        state: "SCHEDULED",
+        startsAt: new Date(now + 24 * 60 * 60_000),
+        endsAt: new Date(now + 25 * 60 * 60_000),
+      },
+    });
+  }
+
+  const reopened = await playwright.request.newContext({ baseURL });
+  try {
+    expect((await reopened.post("/api/practice/start")).status()).toBe(200);
+  } finally {
+    await reopened.dispose();
+  }
 });

@@ -37,6 +37,7 @@ import {
   runJobAndWait,
 } from "@/lib/contest/queue";
 import { runSamplesLimiter, submitLimiter } from "@/lib/contest/rate-limit";
+import { assertPracticeOpen } from "@/lib/contest/practice-guest";
 import { normalizeJudgeScore } from "@/lib/contest/score-normalization";
 import { preserveCurrentScoreRevision } from "@/lib/contest/score-revisions";
 import {
@@ -125,6 +126,7 @@ async function resolveTarget(
       contest: {
         select: {
           state: true,
+          isPractice: true,
           startsAt: true,
           endsAt: true,
           freezeAt: true,
@@ -190,6 +192,9 @@ async function resolveTarget(
   }
 
   assertCanSubmit(contestProblem.contest, now);
+  // Practice shares the judge with the night's contest, so it pauses while one is live. Both
+  // submit and run-samples come through here, which is what makes the pause complete.
+  if (contestProblem.contest.isPractice) await assertPracticeOpen(now);
   // The DRAFT gate again, on the path that actually awards points.
   assertProblemIsLive(
     contestProblem.problem.state,

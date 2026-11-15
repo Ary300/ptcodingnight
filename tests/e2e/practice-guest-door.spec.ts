@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 
+import { pauseLiveContests, restoreContests, type PausedContest } from "./helpers/live-contests";
 import { closeTestDb, testDb } from "./helpers/seed";
 
 /**
@@ -16,7 +17,11 @@ import { closeTestDb, testDb } from "./helpers/seed";
 const NOTE =
   "Practice problems use the same editor and judge as the contest. They do not count for anything.";
 
+let paused: PausedContest[] = [];
+
 test.beforeAll(async () => {
+  // Practice is closed while any real contest is live; the e2e database always has one.
+  paused = await pauseLiveContests();
   const arena = await testDb().contest.findFirst({
     where: { isPractice: true, state: "RUNNING" },
     select: { id: true },
@@ -25,6 +30,7 @@ test.beforeAll(async () => {
 });
 
 test.afterAll(async () => {
+  await restoreContests(paused);
   await closeTestDb();
 });
 

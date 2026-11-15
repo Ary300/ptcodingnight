@@ -3,6 +3,7 @@ import type { NextResponse } from "next/server";
 import { DomainError } from "@/lib/errors";
 import { NO_STORE, handle, jsonOk } from "@/lib/contest/http";
 import {
+  assertPracticeOpen,
   contestFacts,
   createGuestParticipant,
   findPracticeArena,
@@ -53,6 +54,7 @@ export async function POST(request: Request): Promise<NextResponse> {
       return jsonOk({ displayName: plan.displayName, created: false }, NO_STORE);
     }
 
+    await assertPracticeOpen(now);
     const arena = await findPracticeArena(now);
     throttlePracticeStart(request, now);
     const guest = await createGuestParticipant(arena.id);

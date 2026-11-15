@@ -7,6 +7,7 @@ import {
   planPracticeStart,
   refusalMessage,
 } from "@/lib/contest/practice-guest";
+import { practiceClosedBy, practiceClosedMessage } from "@/lib/contest/practice-guest";
 import type { Viewer } from "@/lib/contest/viewer";
 
 /**
@@ -90,5 +91,33 @@ describe("throttle sizing", () => {
 
   it("keeps the global ceiling above the per-client one", () => {
     expect(PRACTICE_START_GLOBAL_RULE.limit).toBeGreaterThan(PRACTICE_START_PER_CLIENT_RULE.limit);
+  });
+});
+
+describe("practiceClosedBy", () => {
+  const start = new Date("2026-11-20T00:00:00Z");
+  const end = new Date("2026-11-20T01:15:00Z");
+  const night = { name: "Coding Night", state: "RUNNING", startsAt: start, endsAt: end };
+
+  it("closes practice while a real contest is inside its window", () => {
+    expect(practiceClosedBy([night], new Date("2026-11-20T00:30:00Z"))).toBe("Coding Night");
+    expect(practiceClosedBy([{ ...night, state: "FROZEN" }], end)).toBe("Coding Night");
+  });
+
+  it("opens practice before the start and after the end", () => {
+    expect(practiceClosedBy([night], new Date("2026-11-19T23:59:59Z"))).toBeNull();
+    expect(practiceClosedBy([night], new Date(end.getTime() + 1))).toBeNull();
+  });
+
+  it("ignores a contest that is published but not running, or already over", () => {
+    const during = new Date("2026-11-20T00:30:00Z");
+    expect(practiceClosedBy([{ ...night, state: "SCHEDULED" }], during)).toBeNull();
+    expect(practiceClosedBy([{ ...night, state: "ENDED" }], during)).toBeNull();
+  });
+
+  it("says which contest and when it reopens", () => {
+    expect(practiceClosedMessage("Coding Night")).toBe(
+      "Practice problems are closed while Coding Night is running. They open again when it ends.",
+    );
   });
 });

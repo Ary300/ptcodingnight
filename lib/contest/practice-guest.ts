@@ -217,3 +217,51 @@ export async function createGuestParticipant(arenaId: string): Promise<GuestPart
     "Could not pick a free guest name after several tries. Press the button again.",
   );
 }
+
+/**
+ * Practice closes while a real contest is under way.
+ *
+ * Practice runs on the same judge queue as the contest, first come first served. A room of guests
+ * (or one person scripting the door) submitting during the night would push real students'
+ * verdicts back, and the rate limits above bound how fast guests are MADE, not how much judge work
+ * they create. Practice is for beforehand anyway, so while any non-practice contest is live and
+ * inside its window, the door refuses new guests and the arena refuses submissions and sample runs.
+ * It reopens on its own at the contest's end time (2026-11-15, from an automated security review).
+ */
+export interface LiveContestFact {
+  readonly name: string;
+  readonly state: string;
+  readonly startsAt: Date;
+  readonly endsAt: Date;
+}
+
+/** The name of the contest that closes practice right now, or null when practice is open. Pure. */
+export function practiceClosedBy(contests: readonly LiveContestFact[], now: Date): string | null {
+  const live = contests.find(
+    (contest) =>
+      (contest.state === "RUNNING" || contest.state === "FROZEN") &&
+      contest.startsAt.getTime() <= now.getTime() &&
+      now.getTime() <= contest.endsAt.getTime(),
+  );
+  return live === undefined ? null : live.name;
+}
+
+export function practiceClosedMessage(contestName: string): string {
+  return `Practice problems are closed while ${contestName} is running. They open again when it ends.`;
+}
+
+/** Throws a 409 with a readable sentence when a real contest is live. */
+export async function assertPracticeOpen(now: Date): Promise<void> {
+  const contests = await prisma.contest.findMany({
+    where: {
+      isPractice: false,
+      state: { in: ["RUNNING", "FROZEN"] },
+      startsAt: { lte: now },
+      endsAt: { gte: now },
+    },
+    select: { name: true, state: true, startsAt: true, endsAt: true },
+    orderBy: { startsAt: "asc" },
+  });
+  const closedBy = practiceClosedBy(contests, now);
+  if (closedBy !== null) throw new DomainError("CONFLICT", practiceClosedMessage(closedBy));
+}
