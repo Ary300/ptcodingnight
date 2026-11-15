@@ -22,6 +22,10 @@
 	#
 	# On a deploy that is a proxy that never comes up, i.e. the whole site down, because someone
 	# left one line of .env blank. A default keeps it starting and still gets certificates.
+	#
+	# This default alone was NOT enough. docker-compose.prod.yml passes ACME_EMAIL through, and an
+	# unset variable arrives as the empty string, which Caddy treats as set. The compose file now
+	# carries the same default, so the value here is the last line of defence rather than the first.
 	email {$ACME_EMAIL:coding-night@ptcodingnight.com}
 
 	# Uncomment for a dry run against Let's Encrypt's STAGING service. The certificate it

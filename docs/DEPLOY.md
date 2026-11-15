@@ -359,6 +359,17 @@ on no registry. Go since 1.20 does not ship a pre-compiled standard library, so 
 image rebuilds it on every submission — 65.8 s against 2.5–11.8 s warm — which blows the compile
 timeout and reports **CE on correct code**.
 
+`--verify` needs Node.js on the HOST, because it reads the judge's own Go compile command out of
+`lib/judge/runtimes.ts` through `npx tsx` rather than carrying a copy. A fresh droplet has none,
+and the failure reads as "could not read the Go compile command". Install it once, then the
+repo's dependencies:
+
+```bash
+curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+sudo apt-get install -y nodejs
+cd /srv/ptcn/app && npm ci
+```
+
 ```bash
 cd /srv/ptcn/app
 ./scripts/build-judge-images.sh --verify

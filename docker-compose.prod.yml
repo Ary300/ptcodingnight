@@ -37,7 +37,11 @@ services:
       TZ: America/Indiana/Indianapolis
       # Read by the Caddyfile's `email` directive. Caddy substitutes it at PARSE time, so this
       # must reach the container as an environment variable rather than only living in .env.
-      ACME_EMAIL: ${ACME_EMAIL:-}
+      # `:-default` HERE, not only in the Caddyfile. Compose hands an unset variable to the
+      # container as the EMPTY STRING, and Caddy's `{$VAR:default}` treats empty as set, so the
+      # Caddyfile's own default never fired and a blank ACME_EMAIL crash-looped the proxy on the
+      # 2026-11-15 rebuild. Two defaults, same address, so either path lands on a real value.
+      ACME_EMAIL: ${ACME_EMAIL:-coding-night@ptcodingnight.com}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       # Certificates and the ACME account key. Losing this volume is not fatal — Caddy
