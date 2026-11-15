@@ -11,8 +11,15 @@ Sign in as an organizer with the passcode on `/sign-in`. Every organizer screen 
 ## 1. The night at a glance
 
 Doors open at 6:30 and the room empties before 8:45. The contest window is 7:00 PM to 8:15 PM
-Eastern. Once it starts, the site acts on its own three times: team questions open at 7:30, the
-public board freezes at 8:00, and submissions close at 8:15.
+Eastern. Once it starts, the site acts on its own twice: the public board freezes at 8:00, and
+submissions close at 8:15.
+
+**The format, confirmed by Navraj on 2026-11-15.** There are no team problems. Every student has
+three problems of their own, one Easy and two Medium, and only that student can submit them. For
+the first 30 minutes everyone works alone; after that, teammates may help each other in person,
+but each problem still lives on its owner's computer. The non-programming puzzle (a sudoku or
+similar) is on paper, worked during the contest, and its points are entered by hand. Two
+divisions.
 
 | Time | What happens | Who | On the site |
 |---|---|---|---|
@@ -21,9 +28,9 @@ public board freezes at 8:00, and submissions close at 8:15.
 | 6:50 | Site up or down? Decision rule in §3. | Sameer decides, Aryav reports | `/admin/contests/{id}/console` judge bar reads ok |
 | 6:55 | Hype video. Students sit with their teams, phones and laptops on `/join`. | Sameer | Code wall still up |
 | 7:00 | Press **Open now** on the Setup tab at 7:00 sharp. The window becomes 7:00 to 8:15 from the moment you press. | Aryav | Setup tab, Lifecycle panel. Swap the wall for `/projector?contest={id}` |
-| 7:00 to 7:30 | Individual stretch. Each student works their own set and their own puzzle. | Everyone | Group clock set to 30, nothing to press |
-| 7:30 | Team questions open on their own. Announce it. | Sameer announces | Nothing to press |
-| 7:30 to 8:15 | Team collaboration. Puzzles and the metal puzzle keep paying. | Everyone | Live console open, judge bar watched |
+| 7:00 to 7:30 | Individual stretch. Each student works their own three problems. Paper puzzles handed out. | Everyone | Nothing to press |
+| 7:30 | Teammates may start helping each other. Announce it. | Sameer announces | Nothing to press; the site has no switch for this |
+| 7:30 to 8:15 | Collaboration, in person. Each problem is still submitted by its owner. | Everyone | Live console open, judge bar watched. Enter puzzle points as teams finish |
 | 8:00 | Public board freezes on its own. Judging continues. | Nobody | Projector shows the frozen plate. Do not press End contest |
 | 8:15 | Submissions close by the clock. Say so. Clean rooms. | Sameer, teacher | Nothing to press. The board stays frozen |
 | 8:25 | Kahoot, 5 to 10 minutes. | Sameer hosts | Kahoot on the wall |
@@ -73,28 +80,29 @@ Each line in the teacher's email, mapped to a screen or a person.
 - [ ] **Build the sets.** `/admin/contests/{id}/sets`. Number of sets is the size of the largest
   team, so 4. The recipe defaults to 1 Easy and 2 Medium per set, which is the teacher's brief:
   one quick solve and two problems of 15 to 20 minutes each. Four sets of three is twelve distinct
-  problems plus the team questions, and no problem appears in two columns. If the bank cannot fill
-  it, the screen says exactly how many more of which difficulty it needs. Set the Team questions
-  count on the same screen. Press Build and read the grid back.
+  problems per division, and no problem appears in two columns. If the bank cannot fill it, the
+  screen says exactly how many more of which difficulty it needs. Leave Team questions at 0:
+  there are no team problems this year. Press Build and read the grid back.
 - [ ] **Assign the sets.** Setup tab, Assign problem sets. Every student gets a letter A to D,
   and teammates get different letters. The slips print the letter, so do this before printing.
-- [ ] **Set the group clock to 30 minutes.** Setup tab, the group-question clock, preset 30.
-  Team questions then open 30 minutes after the start, which is 7:30 if you press Open now at
-  7:00. The screen prints the resulting time; check it.
+- [ ] **Leave the group clock alone.** Setup tab, "Open team questions after the individual
+  stretch". It only opens team questions, and there are none this year, so it should read "Team
+  questions open with everything else at the start." The 7:30 switch to collaboration happens in
+  the room.
 - [ ] **Set the freeze to 15 minutes before the end.** Setup tab, Freeze the board before the
   finish, preset 15. The screen prints 8:00 PM. Judging never stops at the freeze and the live
   console stays live.
-- [ ] **Check the puzzles.** `/admin/puzzles`. Exactly four puzzles carry a set letter, A, B, C
-  and D, and all four are showing. A student sees the puzzle for their own letter, so a team of
-  four holds four different puzzles. Two more puzzles carry no letter and are hidden by default;
-  leave them hidden unless the room finishes early. The teacher asked for one non-programming
-  puzzle per team member, and this is where that promise is kept.
+- [ ] **Hide the on-site puzzles.** `/admin/puzzles`. The puzzle this year is on paper, so every
+  puzzle here should show as hidden; a student would otherwise see extra puzzles worth points.
+  Hiding keeps nothing from anyone and is one press to undo.
+- [ ] **Print the paper puzzle** and decide the points for a correct one before the night, so
+  entry at the desk is one number per team on `/admin/contests/{id}/side-activities`.
 - [ ] **Publish.** Setup tab, Publish. The checklist above the button says what is missing.
   Students can then sign in with their codes before 7:00 and will wait in the lobby.
 - [ ] **Run one full student journey yourself.** Use a rehearsal contest that uses the same
   problems, so the real roster stays clean. Sign in at `/join` with a code, open `/contest`,
-  open a problem, Run samples, Submit, watch the verdict, open `/team` and `/contest/puzzles`,
-  solve the puzzle for your letter. Do this on a phone as well as a laptop.
+  open a problem, Run samples, Submit, watch the verdict, open `/team`. Do this on a phone as
+  well as a laptop.
 - [ ] **Check the projector and the code wall on the actual projector.** Open
   `/projector?contest={id}` from the Setup tab's link and `/wall/{id}` from the Join slips tab's
   button, on the laptop that will drive the wall, plugged into the room's projector. Read the
@@ -179,11 +187,11 @@ would charge a big team for its size. A problem solved by one member goes into t
 not. The arithmetic the board shows for each team is
 
 ```
-teamScore = (sum of every member's points, team questions included) / teamSize
+teamScore = (sum of every member's points) / teamSize
             + sideActivityPoints
 ```
 
-Puzzle solves go through the same side-activity path, so the puzzles and Kahoot both land in the
+The paper puzzle is entered on the same screen, so the puzzle and the Kahoot both land in the
 flat term, and a student can check the whole sum on `/team`.
 
 ## 5. Awards in under ten minutes

@@ -19,7 +19,7 @@ const HOW = [
   {
     n: "3",
     title: "Solve your problems",
-    body: "Each student receives one easy and two medium problems. Team problems open at 7:30.",
+    body: "Each student receives one easy and two medium problems. For the first 30 minutes everyone works alone, and after that teammates can help each other.",
   },
   {
     n: "4",
@@ -44,7 +44,7 @@ const NIGHT = [
   },
   {
     title: "Puzzles",
-    body: "Each student also receives a puzzle that does not require programming, such as decoding binary. A correct answer adds points to the team’s score.",
+    body: "During the contest, teams also work on a puzzle that does not require programming, such as a sudoku. Solving it adds points to the team’s score.",
   },
   {
     title: "Kahoot",
@@ -410,8 +410,8 @@ export default async function Home() {
               style={{ fontSize: "var(--text-md)", textWrap: "pretty" }}
             >
               Coding Night is the Park Tudor Computer Science Club&rsquo;s annual programming
-              contest. Students compete in teams, working on their own problems first and then
-              solving team problems together.
+              contest. Each student is given their own problems, and after the first 30 minutes
+              teammates can work together to solve them.
             </p>
 
             {/* Two actions, one obviously primary. */}
