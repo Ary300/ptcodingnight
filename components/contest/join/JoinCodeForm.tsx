@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useState } from "react";
 
+import { PRACTICE_NOTE, PracticeStartButton } from "@/components/contest/join/PracticeStartButton";
+
 /**
  * The join-code form: type the code on your slip, and you are in.
  *
@@ -128,6 +130,18 @@ export function JoinCodeForm() {
       <p className="mt-6 text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
         No slip? Ask an organizer at the desk. Every seat on the roster has a code.
       </p>
+
+      {/*
+        The practice arena, for a student getting used to the site before the night. Secondary
+        styling and below the code form, because on the night the code is the door and this is
+        not. It needs no code, and a guest lands only in the arena (`lib/contest/practice-guest.ts`).
+      */}
+      <div className="mt-6 flex flex-col gap-2">
+        <PracticeStartButton variant="block" />
+        <p className="text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
+          {PRACTICE_NOTE}
+        </p>
+      </div>
 
       {/*
         The organizers' way in, at the foot of the student door, by request: on the night the

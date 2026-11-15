@@ -28,7 +28,7 @@ and a couple are reachable but wrong on this hardware.
 | T11 | Contract gaps in `lib/schemas/api.ts` | low |
 | T15 | One puzzle per team member is keyed to the set letter, so it holds under `RANDOM_ASSIGNED` only | low, by design |
 | T16 | Locked team questions still list their titles before the group clock opens them | low |
-| T17 | The practice arena is unreachable by a student now that account sign-in is gone from the UI | low, by decision |
+| T17 | ~~The practice arena is unreachable by a student~~ **fixed** by the guest door; one residual stated | low |
 
 ---
 
@@ -633,7 +633,22 @@ from the public index names a problem a student could look up. The same was alre
 with an `unlockAt`. If titles are meant to stay hidden during the individual stretch, `listProblems`
 should withhold them for locked rows the way it withholds them before the start.
 
-## T17 — The practice arena has no student door
+## T17 — The practice arena has no student door — **fixed, with one stated residual**
+
+**Fixed 2026-11-15.** The teacher asked for students to try the interface before the night.
+`POST /api/practice/start` (`lib/contest/practice-guest.ts`) creates a "Guest NNNN" participant in the
+arena and signs the browser in as it, and a "Try practice problems" button calls it from `/join` and
+from the home page hero. A browser already in the arena reuses its session; a browser signed in to a
+real contest, or as an organizer, is refused with a sentence that says to sign out first.
+`tests/e2e/practice-guest.api.spec.ts` and `tests/e2e/practice-guest-door.spec.ts` pin it.
+
+**Residual.** Every new browser that presses the button leaves a participant row in the arena, and
+nothing removes a guest whose 12-hour session has expired. The rate limits bound how fast rows
+arrive, not how many there are. Harmless to scoring, since the arena is never scored, but the arena's
+own board will grow over a year. A periodic sweep of guests with no live session would close it.
+
+The text below is the original entry, kept for the reasoning.
+
 
 **Severity: low, by decision.** Recorded 2026-11-15.
 

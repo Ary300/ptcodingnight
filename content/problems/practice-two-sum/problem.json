@@ -1,0 +1,34 @@
+{
+  "slug": "practice-two-sum",
+  "title": "Two Tables, One Total",
+  "difficulty": "E",
+  "timeLimitMs": 2000,
+  "memoryLimitMb": 256,
+  "allowedLanguages": [
+    "PYTHON_312",
+    "JAVA_21",
+    "CPP_17"
+  ],
+  "comparator": {
+    "kind": "whitespace"
+  },
+  "sampleCount": 2,
+  "originAttribution": "Written for the Park Tudor practice arena. Original task.",
+  "signature": {
+    "name": "totalEarnings",
+    "returns": {
+      "type": "int"
+    },
+    "params": [
+      {
+        "name": "a",
+        "type": "int"
+      },
+      {
+        "name": "b",
+        "type": "int"
+      }
+    ]
+  },
+  "practiceOnly": true
+}

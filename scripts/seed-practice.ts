@@ -19,9 +19,11 @@ import { parseServerEnv } from "@/lib/schemas/env";
  *
  * Sign-in used to refuse a student flatly when no contest was open ("there is nothing to
  * enroll you in"), which made the site a locked door 364 days a year. The organizer's call:
- * let people in, give them a handful of sample questions - two easy, two medium, two hard -
- * that exist only to be tried, never to be scored. `ensureEnrolled` falls back to the arena
- * when no real contest is open, and ranks every real contest above it on the night.
+ * let people in, give them a handful of sample questions that exist only to be tried, never to
+ * be scored: two one-line warm-ups, two more easy, two medium and two hard, in that order.
+ * Students have no accounts now, so the way in is the guest door, `POST /api/practice/start`
+ * (`lib/contest/practice-guest.ts`). `ensureEnrolled` still falls back to the arena for an
+ * account sign-in when no real contest is open.
  *
  * ## The properties that make it an ARENA and not a contest
  *
@@ -43,6 +45,39 @@ const ARENA_NAME = "Practice Arena";
 /** Wide open, permanently: started at the project's founding, ends far beyond the room. */
 const ARENA_STARTS_AT = new Date("2026-01-01T00:00:00.000Z");
 const ARENA_ENDS_AT = new Date("2100-01-01T00:00:00.000Z");
+
+/**
+ * The two warm-ups the teacher asked for ("literally read in 2 numbers and give the sum"). They
+ * open the list ahead of the other Easy questions, because a student's first visit should end in
+ * an AC within a minute or two.
+ */
+const ARENA_FIRST = ["practice-two-sum", "practice-bigger-number"] as const;
+
+/** Easy, then Medium, then Hard. The teacher asked for easy and medium practice; Hard goes last. */
+const DIFFICULTY_RANK: Readonly<Record<string, number>> = { E: 0, M: 1, H: 2 };
+
+interface ArenaRow {
+  readonly slug: string;
+  readonly difficulty: string | null;
+}
+
+/**
+ * The arena's slot order: the named warm-ups, then by difficulty, then by slug. Slug is the final
+ * key so a re-seed lays the slots out identically. Slots are labelled `P1`, `P2`, ... and the
+ * problem list sorts on that label as a string, so this order holds while there are at most nine.
+ */
+function arenaOrder(a: ArenaRow, b: ArenaRow): number {
+  const first = (row: ArenaRow): number => {
+    const index = (ARENA_FIRST as readonly string[]).indexOf(row.slug);
+    return index === -1 ? ARENA_FIRST.length : index;
+  };
+  const byFirst = first(a) - first(b);
+  if (byFirst !== 0) return byFirst;
+  const rank = (row: ArenaRow): number => DIFFICULTY_RANK[row.difficulty ?? "H"] ?? 3;
+  const byDifficulty = rank(a) - rank(b);
+  if (byDifficulty !== 0) return byDifficulty;
+  return a.slug < b.slug ? -1 : a.slug > b.slug ? 1 : 0;
+}
 
 function practiceManifests(): ProblemManifest[] {
   if (!existsSync(CONTENT)) throw new Error(`${CONTENT} does not exist`);
@@ -183,12 +218,7 @@ async function main(): Promise<void> {
       select: { id: true },
     });
 
-    const order = { E: 0, M: 1, H: 2 } as const;
-    const sorted = [...problemIds].sort(
-      (a, b) =>
-        (order[(a.difficulty ?? "H") as keyof typeof order] ?? 3) -
-        (order[(b.difficulty ?? "H") as keyof typeof order] ?? 3),
-    );
+    const sorted = [...problemIds].sort(arenaOrder);
     for (const [index, problem] of sorted.entries()) {
       await prisma.contestProblem.create({
         data: {

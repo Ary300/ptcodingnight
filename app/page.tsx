@@ -1,6 +1,10 @@
 import Image from "next/image";
 import Link from "next/link";
 
+import {
+  PRACTICE_NOTE,
+  PracticeStartButton,
+} from "@/components/contest/join/PracticeStartButton";
 import { viewerFromCookies } from "@/lib/contest/viewer";
 
 /** The public front door for students, families, and organizers. */
@@ -414,7 +418,7 @@ export default async function Home() {
               teammates can work together to solve them.
             </p>
 
-            {/* Two actions, one obviously primary. */}
+            {/* Three actions, one obviously primary. Practice is a secondary chip: it needs no code. */}
             <div className="mt-8 flex flex-wrap items-center gap-3">
               <Link
                 href={signedIn ? destination : "/join"}
@@ -423,6 +427,7 @@ export default async function Home() {
               >
                 {signedIn ? enterLabel : "Enter your join code"}
               </Link>
+              <PracticeStartButton variant="chip" />
               <Link
                 href="/projector"
                 className="rounded-chip border border-rule-edge px-5 py-2.5 font-semibold hover:border-rule-firm hover:bg-ink/[0.03]"
@@ -431,6 +436,9 @@ export default async function Home() {
                 See the standings
               </Link>
             </div>
+            <p className="mt-3 max-w-xl text-ink/70" style={{ fontSize: "var(--text-xs)" }}>
+              {PRACTICE_NOTE}
+            </p>
 
           </div>
 

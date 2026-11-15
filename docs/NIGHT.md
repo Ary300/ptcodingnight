@@ -99,6 +99,9 @@ Each line in the teacher's email, mapped to a screen or a person.
   entry at the desk is one number per team on `/admin/contests/{id}/side-activities`.
 - [ ] **Publish.** Setup tab, Publish. The checklist above the button says what is missing.
   Students can then sign in with their codes before 7:00 and will wait in the lobby.
+- [ ] **Tell students they can practice beforehand.** "Try practice problems" on the homepage and
+  on `/join` opens the practice problems with no code, in the same editor and judge. Nothing there
+  counts. A student already signed in to the contest is told to sign out first.
 - [ ] **Run one full student journey yourself.** Use a rehearsal contest that uses the same
   problems, so the real roster stays clean. Sign in at `/join` with a code, open `/contest`,
   open a problem, Run samples, Submit, watch the verdict, open `/team`. Do this on a phone as
@@ -200,6 +203,12 @@ has seen the last fifteen minutes, the puzzles solved since, or the Kahoot point
 entry carry on behind the frozen plate the whole time, and the clock leaves a frozen contest alone
 past 8:15 instead of ending it, so the plate stays up until you press the reveal.
 
+**Before the reveal, check the judge bar reads 0 queued and 0 judging now.** A submission made
+before 8:15 still counts if the judge finishes it after 8:15, and the reveal does not wait for it:
+pressing it with work still queued means the "final" board can change after the room has seen it.
+On this server the queue drains within a couple of minutes of 8:15, long before 8:36, so this is a
+glance, not a wait.
+
 The reveal takes one press on the live console. On `/admin/contests/{id}/console`, inside the
 frozen plate at the top, press **Unfreeze and reveal**, then confirm **Reveal the final board**. The contest is past its
 end, so this ends it and the projector repaints with the final standings. Sameer should be at the
@@ -230,6 +239,7 @@ not fixed in 10 minutes triggers the decision rule in §3.
 | Every submission comes back IE | The judge cannot see its scratch directory, or the runtime images are missing on the box | On the box, compare `ls -la /srv/ptcn/judge/scratch` on the host and inside the worker container (DEPLOY.md §13); they must list the same files. Then `scripts/build-judge-images.sh --verify`. Students never see IE as a failure; it requeues once. | Aryav |
 | Every submission comes back CE, including code that compiles | The Go image has aged past 24 hours, or a compile flag misses its cache | `scripts/build-judge-images.sh --verify` on the box, then Rejudge each CE from the live console feed | Aryav |
 | A student's problem list is empty | They have no division or no set, or the contest has not been opened | Teams tab: set their division and set in the move form. Check the Setup tab says Live. | Sameer at the roster, Aryav on Setup |
+| "The judge is busy right now" on Run samples in the last minutes | Run samples shares the judge with submissions, and 50 students submitting at once fills the queue | Nothing is broken. Tell them to Submit instead: a submission is accepted at once and judged in order, and it counts even if the verdict arrives after 8:15 | Sameer, to the room |
 | A student cannot sign in | Code typed wrong, or the Google button failing for its own reasons | Join slips tab: type the code into the lookup to see whose it is. Reissue the code from the Teams tab if it is lost. Google failing is why the codes exist; use the code. | Sameer at the door |
 | Projector shows the wrong thing | Bare `/projector` picked a different contest, or the page was never refreshed | Open `/projector?contest={id}` from the Setup tab's link. Frozen plate missing after 8:00 means the Window panel on Setup has no freeze; press Freeze the public board on the live console instead. | Aryav |
 
