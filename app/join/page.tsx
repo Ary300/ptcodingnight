@@ -37,7 +37,7 @@ export default function JoinPage() {
           Park Tudor Coding Night
         </p>
         <p className="mt-3 max-w-[38ch] text-paper/85" style={{ fontSize: "var(--text-sm)" }}>
-          Your code puts you straight onto your team. No account, no password, nothing to set up.
+          The code on your slip signs you in and puts you on your team.
         </p>
       </BrandPanel>
 

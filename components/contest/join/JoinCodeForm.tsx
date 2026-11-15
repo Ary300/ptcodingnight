@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 
 /**
@@ -126,6 +127,23 @@ export function JoinCodeForm() {
 
       <p className="mt-6 text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
         No slip? Ask an organizer at the desk. Every seat on the roster has a code.
+      </p>
+
+      {/*
+        The organizers' way in, at the foot of the student door, by request: on the night the
+        organizers open this page too, and the passcode page should be one tap away from it.
+      */}
+      <p
+        className="mt-8 border-t border-rule-hair pt-4 text-ink/70"
+        style={{ fontSize: "var(--text-sm)" }}
+      >
+        Running the night?{" "}
+        <Link
+          href="/sign-in"
+          className="font-semibold text-ink underline underline-offset-2 hover:text-panther"
+        >
+          Organizer sign-in
+        </Link>
       </p>
     </div>
   );

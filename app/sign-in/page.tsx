@@ -65,7 +65,7 @@ export default async function SignInPage({
           Park Tudor Coding Night
         </p>
         <p className="mt-3 max-w-[38ch] text-paper/85" style={{ fontSize: "var(--text-sm)" }}>
-          The organizer console: roster, sets, the live board and awards.
+          For the people running the night.
         </p>
       </BrandPanel>
 
