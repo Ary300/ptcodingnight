@@ -14,8 +14,6 @@ import { closeTestDb, testDb } from "./helpers/seed";
  * Needs the arena: `npx tsx scripts/seed-practice.ts`.
  */
 
-const NOTE =
-  "Practice problems use the same editor and judge as the contest. They do not count for anything.";
 
 let paused: PausedContest[] = [];
 
@@ -34,13 +32,16 @@ test.afterAll(async () => {
   await closeTestDb();
 });
 
-test("/join offers practice under the code form, and the button lands in the arena", async ({
+test("/join offers Practice above the code form, and the button lands in the arena", async ({
   page,
 }) => {
   await page.goto("/join");
-  const button = page.getByRole("button", { name: "Try practice problems" });
+  const button = page.getByRole("button", { name: "Practice" });
   await expect(button).toBeVisible();
-  await expect(page.getByText(NOTE)).toBeVisible();
+  // Above the form, by the organizers' call: the button's top sits above the code field's.
+  const buttonTop = (await button.boundingBox())?.y ?? Number.POSITIVE_INFINITY;
+  const fieldTop = (await page.getByLabel("Your join code").boundingBox())?.y ?? 0;
+  expect(buttonTop).toBeLessThan(fieldTop);
 
   await button.click();
   await page.waitForURL("**/contest");
@@ -49,13 +50,13 @@ test("/join offers practice under the code form, and the button lands in the are
   await expect(page.getByText("Two Tables, One Total").first()).toBeVisible();
 });
 
-test("the home page hero offers the same button beside the join code", async ({ page }) => {
+test("the home page top bar offers Practice beside the join code", async ({ page }) => {
   await page.goto("/");
-  const join = page.getByRole("link", { name: "Enter your join code" }).last();
-  const practice = page.getByRole("button", { name: "Try practice problems" });
+  const bar = page.getByRole("navigation", { name: "Site" });
+  const join = bar.getByRole("link", { name: "Enter your join code" });
+  const practice = bar.getByRole("button", { name: "Practice" });
   await expect(join).toBeVisible();
   await expect(practice).toBeVisible();
-  await expect(page.getByText(NOTE)).toBeVisible();
 
   await practice.click();
   await page.waitForURL("**/contest");

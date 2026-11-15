@@ -127,14 +127,11 @@ export function PreStartPanel({ phase }: PreStartPanelProps) {
           // course of the evening, not a fault, and an alert on arrival interrupts a screen reader
           // to say so.
           <p role="status" className="mt-3" style={{ fontSize: "var(--text-sm)" }}>
-            The start time has passed. An organizer opens the contest by hand, so it can take a
-            moment. This page checks every few seconds and will open itself. You do not need to
-            reload.
+            The contest is about to start. This page will update on its own.
           </p>
         ) : (
           <p className="mt-3" style={{ fontSize: "var(--text-sm)" }}>
-            Nothing to do until then. This page opens itself when the contest starts, so you can
-            leave it up.
+            This page will update on its own when the contest starts.
           </p>
         )}
 
@@ -152,7 +149,7 @@ export function PreStartPanel({ phase }: PreStartPanelProps) {
             value={phase.teamName ?? "Not on a team yet"}
             note={
               phase.teamName === null
-                ? "An organizer adds you. There is nothing for you to do."
+                ? "An organizer will add you to a team."
                 : phase.teamSize === null
                   ? undefined
                   : phase.teamSize === 1
@@ -165,8 +162,8 @@ export function PreStartPanel({ phase }: PreStartPanelProps) {
             value={phase.setLabel ?? "Not assigned yet"}
             note={
               phase.setLabel === null
-                ? "Assigned with your team, by an organizer."
-                : "Assigned by an organizer. Fixed for the round."
+                ? "Assigned by an organizer."
+                : "Assigned by an organizer."
             }
           />
           {/*
@@ -179,15 +176,14 @@ export function PreStartPanel({ phase }: PreStartPanelProps) {
 
       <Panel label="What happens at the start">
         <h2 className="font-display font-bold" style={{ fontSize: "var(--text-sm)" }}>
-          What happens when the clock hits zero
+          When the contest starts
         </h2>
         <ul
           className="mt-2 grid gap-1.5 text-ink/75"
           style={{ fontSize: "var(--text-sm)" }}
         >
           <li>
-            Every problem below unlocks at once. The titles and the full statements appear, and the
-            rows become links.
+            Your problems open, and you can click each one to read it.
           </li>
           <li>
             {/*
@@ -201,12 +197,10 @@ export function PreStartPanel({ phase }: PreStartPanelProps) {
             score.
           </li>
           <li>
-            Running the samples becomes free and unlimited. Sample runs are never scored and never
-            appear in your submission history.
+            You can run the sample tests as often as you like. Only submissions are scored.
           </li>
           <li>
-            Group problems are open to everybody. The rest come from your set, which is the one
-            named above.
+            Your problems come from the problem set shown above.
           </li>
         </ul>
 
@@ -235,8 +229,7 @@ export function PreStartPanel({ phase }: PreStartPanelProps) {
           inventing a rule. Nothing here required a gate change.
         */}
         <p className="mt-3 text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
-          You cannot run code yet. The statement and sample input it needs open with everything
-          else at the start.
+          You can&rsquo;t run code until the contest starts.
         </p>
       </Panel>
     </div>

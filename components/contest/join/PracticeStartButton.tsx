@@ -16,9 +16,6 @@ import { useState } from "react";
  */
 
 /** The line that goes under the button wherever it appears. One copy, so the two doors agree. */
-export const PRACTICE_NOTE =
-  "Practice problems use the same editor and judge as the contest. They do not count for anything.";
-
 const IDLE_LABEL = "Try practice problems";
 const BUSY_LABEL = "Opening practice…";
 
@@ -27,10 +24,20 @@ const STYLES = {
     "relative w-full whitespace-nowrap rounded border border-ink/25 bg-paper px-4 py-3 font-semibold text-ink transition-[background-color,transform] duration-[var(--motion-press)] hover:bg-ink/[0.04] active:scale-[0.97] disabled:cursor-not-allowed disabled:text-ink/50 disabled:active:scale-100",
   chip:
     "relative whitespace-nowrap rounded-chip border border-rule-edge px-5 py-2.5 font-semibold hover:border-rule-firm hover:bg-ink/[0.03] disabled:cursor-not-allowed disabled:text-ink/50",
+  /** The top bar's size: the same height as the join button beside it. */
+  bar:
+    "relative whitespace-nowrap rounded-chip border border-rule-edge px-3 py-1.5 font-semibold text-ink hover:border-rule-firm hover:bg-ink/[0.03] disabled:cursor-not-allowed disabled:text-ink/50",
 } as const;
 
 interface PracticeStartButtonProps {
   readonly variant: keyof typeof STYLES;
+}
+
+/** The top bar has room for one word; everywhere else the button says what it does in full. */
+function labelsFor(variant: keyof typeof STYLES): { idle: string; busy: string } {
+  return variant === "bar"
+    ? { idle: "Practice", busy: "Opening…" }
+    : { idle: IDLE_LABEL, busy: BUSY_LABEL };
 }
 
 function serverMessage(body: unknown): string | undefined {
@@ -42,6 +49,7 @@ function serverMessage(body: unknown): string | undefined {
 }
 
 export function PracticeStartButton({ variant }: PracticeStartButtonProps) {
+  const labels = labelsFor(variant);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -74,16 +82,19 @@ export function PracticeStartButton({ variant }: PracticeStartButtonProps) {
         disabled={busy}
         onClick={() => void start()}
         className={STYLES[variant]}
-        style={{ fontSize: variant === "block" ? "var(--text-md)" : "var(--text-sm)" }}
+        style={{
+          fontSize:
+            variant === "block" ? "var(--text-md)" : variant === "bar" ? "var(--text-xs)" : "var(--text-sm)",
+        }}
       >
         <span aria-hidden="true" className="invisible">
-          {IDLE_LABEL}
+          {labels.idle}
         </span>
         <span
           key={busy ? "busy" : "idle"}
           className="motion-swap-in absolute inset-0 flex items-center justify-center"
         >
-          {busy ? BUSY_LABEL : IDLE_LABEL}
+          {busy ? labels.busy : labels.idle}
         </span>
       </button>
       {error !== null && (

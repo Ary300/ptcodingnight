@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 
 import { Delta, Rail, railStateForDelta } from "@/components/ui";
 import type { StandingsResponse } from "@/lib/schemas/api";
+import { shownName } from "@/lib/contest/guest-name";
 
 /**
  * A compact standings panel for the competitor lobby. The projector owns the monumental
@@ -192,7 +193,7 @@ function DivisionBoard({
                       edge. Names with spaces still break at the spaces first. Scoped to a span
                       so the "you" tag beside it cannot be broken mid-word into "yo / u".
                     */}
-                    <span className="[overflow-wrap:anywhere]">{row.displayName}</span>
+                    <span className="[overflow-wrap:anywhere]">{shownName(row.displayName)}</span>
                     {isYou && (
                       <span className="ml-2 font-body whitespace-nowrap text-paper/55" style={{ fontSize: "var(--text-xs)" }}>
                         {/*

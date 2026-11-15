@@ -2,7 +2,6 @@ import Image from "next/image";
 import Link from "next/link";
 
 import {
-  PRACTICE_NOTE,
   PracticeStartButton,
 } from "@/components/contest/join/PracticeStartButton";
 import { viewerFromCookies } from "@/lib/contest/viewer";
@@ -310,6 +309,9 @@ export default async function Home() {
             >
               Live standings
             </Link>
+            {/* Practice sits up here, out of the hero, by the organizers' call: it needs no code
+                and is for before the night, so it should not compete with the join code. */}
+            {!signedIn && <PracticeStartButton variant="bar" />}
             {signedIn ? (
               <Link
                 href={destination}
@@ -427,7 +429,6 @@ export default async function Home() {
               >
                 {signedIn ? enterLabel : "Enter your join code"}
               </Link>
-              <PracticeStartButton variant="chip" />
               <Link
                 href="/projector"
                 className="rounded-chip border border-rule-edge px-5 py-2.5 font-semibold hover:border-rule-firm hover:bg-ink/[0.03]"
@@ -436,9 +437,6 @@ export default async function Home() {
                 See the standings
               </Link>
             </div>
-            <p className="mt-3 max-w-xl text-ink/70" style={{ fontSize: "var(--text-xs)" }}>
-              {PRACTICE_NOTE}
-            </p>
 
           </div>
 

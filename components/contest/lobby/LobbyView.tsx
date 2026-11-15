@@ -189,17 +189,17 @@ export function LobbyView({ phase = null, viewerKind }: LobbyViewProps) {
         */}
         {practiceArena ? (
           <p className="mt-1 text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
-            Running samples and submitting are both free here. Nothing in the arena is scored.
+            Nothing here is scored.
           </p>
         ) : phase === null || phase.submissionsOpen ? (
           <p className="mt-1 text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
-            Running samples is always free. Only submissions are scored.
+            You can run the sample tests as often as you like. Only submissions are scored.
           </p>
         ) : (
           <p className="mt-1 text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
             {beforeStart
-              ? "The judge is not accepting anything yet. Everything below opens at the start."
-              : "The judge is closed. Nothing you do now is scored."}
+              ? "Submissions open when the contest starts."
+              : "Submissions are closed."}
           </p>
         )}
 
@@ -316,7 +316,7 @@ export function LobbyView({ phase = null, viewerKind }: LobbyViewProps) {
                   {/* Titles are withheld so nobody can look a problem up before the start; the
                       copy states the fact and leaves the policy reasoning here. */}
                   {titlesWithheld
-                    ? "The titles stay hidden until then. The slot and what it is worth are not secret."
+                    ? "Problem titles appear when the contest starts."
                     : "What each is worth is shown beside it."}
                 </p>
                 <ProblemList problems={visibleProblems} />
@@ -363,16 +363,13 @@ function PracticeArenaNotice() {
       <Rail state="brand" />
       <div className="min-w-0 flex-1 px-4 py-3">
         <h2 className="font-display font-bold" style={{ fontSize: "var(--text-sm)" }}>
-          This is the practice arena, not the contest
+          Practice problems
         </h2>
         <p className="mt-1" style={{ fontSize: "var(--text-sm)" }}>
-          The problems below are sample questions for trying the site: the editor, running
-          samples, and submitting to the judge. Nothing you do here is scored, and none of it
-          counts on contest night.
+          These problems are for getting used to the site before Coding Night. Nothing here counts.
         </p>
         <p className="mt-1 text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
-          The arena is open for practice whenever no contest is running. On contest night,
-          signing in lands you in the real contest automatically.
+          Practice closes while the contest is running. On the night, use the join code on your slip.
         </p>
       </div>
     </section>

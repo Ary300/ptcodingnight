@@ -142,11 +142,11 @@ export function AssignmentNotice({
         <p className="mt-1" style={{ fontSize: "var(--text-sm)" }}>
           You are on a team, but an organizer has not assigned your set.{" "}
           {groupOnly
-            ? "The group problems below are open to everyone in the meantime."
-            : "Everything listed below is open to you in the meantime, and you can submit to any of it."}
+            ? "Until then, only the team problems below are open."
+            : "Until then, every problem below is open to you."}
         </p>
         <p className="mt-1 text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
-          This page checks for the assignment automatically.
+          This page will update once you&rsquo;re assigned one.
         </p>
       </Panel>
     );
@@ -167,8 +167,8 @@ export function AssignmentNotice({
       <p className="mt-1 text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
         An organizer assigned it, and it is fixed for the round.{" "}
         {groupOnly
-          ? "Your set and the rows marked group are what you see below."
-          : "Every problem listed below is open to you and yours to score on."}
+          ? "Below are your problem set and the team problems."
+          : "These are your problems."}
       </p>
     </Panel>
   );

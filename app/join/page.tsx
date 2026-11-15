@@ -3,6 +3,7 @@ import Link from "next/link";
 
 import { BrandPanel } from "@/components/contest/join/BrandPanel";
 import { JoinCodeForm } from "@/components/contest/join/JoinCodeForm";
+import { PracticeStartButton } from "@/components/contest/join/PracticeStartButton";
 
 export const metadata: Metadata = {
   title: "Join with a code | Coding Night",
@@ -48,19 +49,23 @@ export default function JoinPage() {
       */}
       <main className="motion-swap-in flex min-w-0 items-center justify-center px-4 py-10">
         <div className="w-full min-w-0 max-w-md">
-          <Link
-            href="/"
-            className="text-ink/70 underline underline-offset-2 hover:text-panther"
-            style={{ fontSize: "var(--text-xs)" }}
-          >
-            Back to the home page
-          </Link>
+          {/* Practice above the code form, out of it, by the organizers' call. */}
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <Link
+              href="/"
+              className="text-ink/70 underline underline-offset-2 hover:text-panther"
+              style={{ fontSize: "var(--text-xs)" }}
+            >
+              Back to the home page
+            </Link>
+            <PracticeStartButton variant="bar" />
+          </div>
 
           <h1 className="mt-4 font-display font-bold" style={{ fontSize: "var(--text-xl)" }}>
             Enter your join code
           </h1>
           <p className="mt-1 mb-6 text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
-            An organizer handed you a slip with a code on it. Type it below.
+            Type the code from your slip.
           </p>
 
           <JoinCodeForm />

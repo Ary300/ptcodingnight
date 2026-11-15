@@ -57,8 +57,8 @@ export function ContestEndedPanel({ phase }: ContestEndedPanelProps) {
         </h2>
         <p className="mt-1" style={{ fontSize: "var(--text-sm)" }}>
           {endedLabel === null
-            ? "The clock has run out, so the judge is no longer accepting submissions."
-            : `The clock ran out at ${endedLabel}, so the judge is no longer accepting submissions.`}{" "}
+            ? "The contest is over, and submissions are closed."
+            : `The contest ended at ${endedLabel}, and submissions are closed.`}{" "}
           The standings beside this are final.
         </p>
 
@@ -71,7 +71,7 @@ export function ContestEndedPanel({ phase }: ContestEndedPanelProps) {
           */}
           <li>
             {phase.statementsOpen
-              ? "Every problem is still open to read. Nothing you open now is scored."
+              ? "You can still read the problems, but nothing is scored now."
               : "The problems have been closed by an organizer."}
           </li>
           <li>

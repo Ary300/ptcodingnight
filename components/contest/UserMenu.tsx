@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { API_ROUTES } from "@/lib/schemas/api";
+import { shownName } from "@/lib/contest/guest-name";
 
 /**
  * The account menu HackerRank puts at the right of its nav: an avatar and a chevron, a panel with
@@ -125,6 +126,8 @@ export function UserMenu({
   accountKnown = false,
   onSignOut,
 }: UserMenuProps) {
+  // Practice guests are "Guest 6471" in the database and just "Guest" on screen.
+  const name = shownName(displayName);
   const [open, setOpen] = useState(false);
   const hasAccount = userId !== null;
   const items: readonly { readonly href: string; readonly label: string }[] = hasAccount
@@ -210,11 +213,11 @@ export function UserMenu({
           chevron. Stating the whole label here rather than relying on the visible text means the
           accessible name does not change with the viewport.
         */
-        aria-label={teamName === null ? `Account: ${displayName}` : `Account: ${displayName}, ${teamName}`}
+        aria-label={teamName === null ? `Account: ${name}` : `Account: ${name}, ${teamName}`}
         className="flex min-w-0 items-center gap-2 rounded-chip px-1.5 py-1 text-paper/85 transition-colors duration-[var(--motion-press)] hover:text-paper"
         style={{ fontSize: "var(--text-sm)" }}
       >
-        <Avatar displayName={displayName} userId={userId} version={avatarVersion} />
+        <Avatar displayName={name} userId={userId} version={avatarVersion} />
         {/*
           Hidden only BELOW 400px, where 10rem of display name is a third of the viewport spent on
           something the student already knows; the avatar and the aria-label still identify the
@@ -233,7 +236,7 @@ export function UserMenu({
           afford.
         */}
         <span className="hidden min-w-0 max-w-[10rem] flex-col items-start text-left leading-tight min-[400px]:flex">
-          <span className="block w-full truncate">{displayName}</span>
+          <span className="block w-full truncate">{name}</span>
           {teamName !== null && (
             <span className="block w-full truncate text-paper/85" style={{ fontSize: "var(--text-xs)" }}>
               {teamName}
