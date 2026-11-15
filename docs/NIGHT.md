@@ -130,10 +130,9 @@ From a laptop, with the organizer passcode in hand.
    projector render. Every line must say PASS. The script says plainly that it cannot submit a
    solution, so step 2 covers that.
 2. One full student journey, as in §2, through the rehearsal contest.
-3. One submission in each of the six languages on one easy problem: Python 3, Java 21, C, C++17,
-   JavaScript (Node.js) and Go. Each must come back AC. A Go submission that comes back CE on
-   correct code means the judge image has aged past 24 hours; Aryav rebuilds with
-   `scripts/build-judge-images.sh --verify` on the box.
+3. One submission in each of the three languages students can pick on one easy problem: Python
+   3, Java 21 and C++17. Each must come back AC. A CE on correct code means a judge image is
+   unhealthy; Aryav rebuilds with `scripts/build-judge-images.sh --verify` on the box.
 4. Check the judge bar on `/admin/contests/{id}/console`: workers alive is at least 1, queue
    reachable says yes.
 

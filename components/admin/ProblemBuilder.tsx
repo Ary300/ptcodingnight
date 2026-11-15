@@ -15,7 +15,7 @@ import {
 import { Select, TextArea, TextInput } from "@/components/admin/Field";
 import { Markdown } from "@/components/contest/markdown/Markdown";
 import { Button } from "@/components/ui";
-import { LANGUAGE_IDS, VARIANTS, type LanguageId } from "@/lib/judge/runtimes";
+import { CONTEST_LANGUAGES, VARIANTS, type LanguageId } from "@/lib/judge/runtimes";
 import { starterFor } from "@/lib/judge/starters";
 import {
   API_ROUTES,
@@ -1670,7 +1670,7 @@ function TestsStep({
             value={referenceLanguage}
             onChange={(event) => setReferenceLanguage(event.target.value as LanguageId)}
           >
-            {LANGUAGE_IDS.map((language) => (
+            {CONTEST_LANGUAGES.map((language) => (
               <option key={language} value={language}>
                 {VARIANTS[language].label}
               </option>
@@ -2120,7 +2120,7 @@ function StarterPreview({ starter }: { starter: PreviewStarter }) {
               Language
             </legend>
             <div className="flex flex-wrap gap-2">
-              {LANGUAGE_IDS.map((id) => (
+              {CONTEST_LANGUAGES.map((id) => (
                 <button
                   key={id}
                   type="button"

@@ -609,7 +609,17 @@ func main() {
   },
 };
 
-/** Every language a student may pick, in dropdown order. */
+/**
+ * The languages Coding Night offers students: Python, Java 21 and C++17.
+ *
+ * The judge still runs all ten variants below, and the judge fixtures still prove every one of
+ * them. This list is what a PROBLEM offers. The organizers asked for three on 2026-11-15 because
+ * ten options, four of them versions of Java, confused people who only needed to pick a language.
+ * It is the language set new problems are created with, and every authored manifest carries it.
+ */
+export const CONTEST_LANGUAGES: readonly LanguageId[] = ["PYTHON_312", "JAVA_21", "CPP_17"];
+
+/** Every language the judge can run, in dropdown order. */
 export const LANGUAGE_IDS: readonly LanguageId[] = [
   "PYTHON_312",
   "JAVA_8",

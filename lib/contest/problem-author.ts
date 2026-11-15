@@ -13,7 +13,7 @@ import {
   type TestCaseInput,
 } from "@/lib/contest/judge-job";
 import { runJobAndWait } from "@/lib/contest/queue";
-import { runtimeFor, type LanguageId } from "@/lib/judge/runtimes";
+import { CONTEST_LANGUAGES, runtimeFor, type LanguageId } from "@/lib/judge/runtimes";
 import { ComparatorSchema } from "@/lib/schemas/judge";
 import { lockContestMutations, lockProblemMutations } from "@/lib/contest/locks";
 import { DomainError, NotFoundError, ValidationError } from "@/lib/errors";
@@ -427,9 +427,10 @@ export async function createAuthoredProblem(input: CreateProblemInput): Promise<
         comparator: core.comparator ?? undefined,
         referenceSolution: core.referenceSolution,
         referenceLanguage: core.referenceLanguage,
-        // allowedLanguages is omitted so the schema default applies: all ten variants. That
-        // default is the whole point of not asking which languages. createdAt and updatedAt are
-        // the database's to set (@default(now()) and @updatedAt), so they are not passed here.
+        // The night's three languages, explicitly, rather than the schema default of all ten
+        // variants: the organizers narrowed the choice on 2026-11-15. Still not asked of the
+        // author, which was the point. createdAt and updatedAt are the database's to set.
+        allowedLanguages: [...CONTEST_LANGUAGES],
         signature: signature ?? undefined,
         testCases: { create: [...staged.rows] },
       },
