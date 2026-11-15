@@ -750,6 +750,20 @@ Also do this if the images are more than a day old: **a judge image rots with ag
 write fails, and `go build` exits 1 — so the judge reports **CE on correct code**. `--verify`
 asserts structurally that `trim.txt` resolves off the read-only rootfs. See CLAUDE.md.
 
+#### If the Caddyfile changed, recreate Caddy
+
+A reload is not enough. `docker-compose.prod.yml` mounts the Caddyfile as a single file, and a
+single-file bind mount stays attached to the file's original inode. `git pull` writes a NEW file,
+so `caddy reload` re-reads the old one and reports success. Found on 2026-11-15, when the www
+redirect "deployed" and www went on serving the whole site:
+
+```bash
+docker compose -f docker-compose.prod.yml up -d --force-recreate --no-deps caddy
+```
+
+Certificates live in the `caddy_data` volume and survive the recreate. The box's own
+`/srv/ptcn/update.sh` does this automatically when the pull touched the Caddyfile.
+
 ### 14.4 Migrate, only if §14.2 said so
 
 ```bash
