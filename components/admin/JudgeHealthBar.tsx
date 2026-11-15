@@ -112,7 +112,10 @@ export function JudgeHealthBar({ health }: { health: JudgeHealth }) {
           <InlineStat value={String(health.queueDepth)} label="queued" />
           <InlineStat value={String(health.active)} label="judging now" />
           <InlineStat value={String(health.failed)} label="failed jobs" />
-          <InlineStat value={String(health.workerCount)} label="workers alive" />
+          <InlineStat
+            value={String(health.workerCount)}
+            label={health.workerCount === 1 ? "worker alive" : "workers alive"}
+          />
           <InlineStat value={formatMs(health.oldestWaitingMs)} label="oldest wait" />
           <InlineStat value={health.reachable ? "yes" : "NO"} label="queue reachable" />
         </div>
@@ -165,7 +168,7 @@ export function JudgeHealthBar({ health }: { health: JudgeHealth }) {
         */}
         <Stat
           value={String(health.workerCount)}
-          label="workers alive"
+          label={health.workerCount === 1 ? "worker alive" : "workers alive"}
           alarm={health.workerCount === 0}
         />
         <Stat

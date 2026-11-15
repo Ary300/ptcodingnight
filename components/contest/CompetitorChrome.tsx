@@ -431,7 +431,7 @@ export function CompetitorChrome({ children }: { children: ReactNode }) {
               gets a frame to flash in.
             */}
             {contestKind === "real" && standings.status === "ready" && standings.data !== null && (
-              <Countdown endsAt={standings.data.endsAt} />
+              <Countdown endsAt={standings.data.endsAt} startsAt={standings.data.startsAt} />
             )}
 
             {participant.status === "joined" && (

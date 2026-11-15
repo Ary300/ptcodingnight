@@ -290,9 +290,9 @@ function TeamQuestionList({
       <ul className="mt-tight flex flex-col gap-tight">
         {rows.map((row) => (
           <li key={row.slotLabel} style={{ fontSize: "var(--text-sm)" }}>
-            <span className="font-semibold">{row.title}</span>
+            <span className="font-semibold">{row.title}</span>{" "}
             <span
-              className="numeric ml-2 text-ink/60"
+              className="numeric ml-1 text-ink/60"
               style={{ fontSize: "var(--text-xs)" }}
             >
               {row.slotLabel}, {String(row.basePoints)} points

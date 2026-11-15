@@ -10,6 +10,7 @@ import {
   type AddableUser,
   type AdminRoster,
   type RosterMember,
+  AdminMintJoinCodesResponseSchema,
 } from "@/lib/schemas/api";
 
 /**
@@ -113,6 +114,12 @@ export function RosterManager({ contestId }: RosterManagerProps) {
   const [roster, setRoster] = useState<Roster | null>(null);
   const [attempt, setAttempt] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  /*
+    What the last "Give everyone a join code" press did. It is idempotent, so pressing it when every
+    seat already has a code changes nothing, and with no sentence the organizer could not tell a
+    no-op from a failure (2026-11-15 organizer sweep).
+  */
+  const [codesNotice, setCodesNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const [newTeamName, setNewTeamName] = useState("");
@@ -245,9 +252,10 @@ export function RosterManager({ contestId }: RosterManagerProps) {
     url: string,
     method: string,
     payload: unknown,
-  ): Promise<void> => {
+  ): Promise<unknown> => {
     setBusy(true);
     setError(null);
+    setCodesNotice(null);
     try {
       const response = await fetch(url, {
         method,
@@ -257,17 +265,34 @@ export function RosterManager({ contestId }: RosterManagerProps) {
       const body: unknown = await response.json();
       if (!response.ok) {
         setError(errorFrom(body));
-        return;
+        return null;
       }
       setAttempt((n) => n + 1);
       setMoveTarget("");
       setNewTeamName("");
       closeEveryForm();
+      return body;
     } catch {
       setError("Could not reach the server.");
+      return null;
     } finally {
       setBusy(false);
     }
+  };
+
+  const mintCodes = async (): Promise<void> => {
+    const body = await send(API_ROUTES.adminMintJoinCodes(contestId), "POST", {});
+    const data =
+      typeof body === "object" && body !== null && "data" in body
+        ? AdminMintJoinCodesResponseSchema.safeParse((body as { data: unknown }).data)
+        : null;
+    if (data === null || !data.success) return;
+    const { minted, alreadyHad } = data.data;
+    setCodesNotice(
+      minted === 0
+        ? `Everyone already has a code (${String(alreadyHad)} in all). Nothing changed.`
+        : `Gave ${String(minted)} ${minted === 1 ? "student" : "students"} a code. ${String(alreadyHad)} already had one and kept it.`,
+    );
   };
 
   if (roster === null) {
@@ -594,17 +619,28 @@ export function RosterManager({ contestId }: RosterManagerProps) {
             already has a code keeps exactly the code it has, so pressing it after the slips are
             printed cannot invalidate a slip somebody is holding.
           */
-          <Button
-            type="button"
-            variant="quiet"
-            size="sm"
-            disabled={busy}
-            onClick={() => {
-              void send(API_ROUTES.adminMintJoinCodes(contestId), "POST", {});
-            }}
-          >
-            Give everyone a join code
-          </Button>
+          <div className="flex flex-col items-end gap-1">
+            <Button
+              type="button"
+              variant="quiet"
+              size="sm"
+              disabled={busy}
+              onClick={() => {
+                void mintCodes();
+              }}
+            >
+              Give everyone a join code
+            </Button>
+            {codesNotice !== null && (
+              <p
+                role="status"
+                className="motion-swap-in max-w-[32ch] text-right text-ink/70"
+                style={{ fontSize: "var(--text-xs)" }}
+              >
+                {codesNotice}
+              </p>
+            )}
+          </div>
         }
         description={
           <>

@@ -65,8 +65,9 @@ Each line in the teacher's email, mapped to a screen or a person.
 - [ ] **Check the problems for odd requirements.** `/admin/problems`. Open each problem the
   planner may deal and read its statement and limits. A problem whose whole point is a data type
   (a sum that needs 64 bits, an unsigned 32-bit flip) carries `keepOutOfSets` in its manifest in
-  `content/problems/`, so the planner never deals it, and the Sets tab reports it as a blocker with
-  the reason so nobody wonders where it went. Every problem must have passed
+  `content/problems/`, so the planner never deals it. It is missing from the cleared count on
+  `/admin/problems`; to see why, open the contest's Problems tab and switch the bank filter to
+  Everything, where its row says it is kept out of sets. Every problem must have passed
   `npm run test:content` (G13), which runs each reference solution through the real judge. A
   reference that passes locally proves the algorithm only.
 - [ ] **Build the sets.** `/admin/contests/{id}/sets`. Number of sets is the size of the largest

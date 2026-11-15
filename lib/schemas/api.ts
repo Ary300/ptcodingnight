@@ -1115,6 +1115,11 @@ export const StandingsResponseSchema = z.object({
   frozen: z.boolean(),
   /** The instant these standings reflect — `freezeAt` when frozen, otherwise now. */
   asOf: z.string(),
+  /**
+   * When the contest opens. Optional so a response from an older build still parses. The header
+   * clock needs it: before the start it counts to the START, not to the end.
+   */
+  startsAt: z.string().optional(),
   endsAt: z.string(),
   divisions: z.array(
     z.object({

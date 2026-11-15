@@ -480,6 +480,7 @@ export async function getStandings(
     contestId,
     frozen: computed.frozen,
     asOf: computed.asOf.toISOString(),
+    startsAt: input.contest.startsAt.toISOString(),
     endsAt: input.contest.endsAt.toISOString(),
     divisions: orderedKeys.map((divisionId) => ({
       divisionId,

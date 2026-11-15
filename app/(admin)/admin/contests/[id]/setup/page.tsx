@@ -9,6 +9,7 @@ import { groupUnlockAtFromMinutes, minutesBeforeEndOf } from "@/lib/contest/admi
 
 import { AssignSetsButton } from "../assign-sets-button";
 import { contestSetup, type ContestSetup } from "../contest-setup";
+import { EVENT_TIME_ZONE } from "@/lib/contest/event-time";
 
 /**
  * `/admin/contests/{id}/setup` — what is left to do before this contest can run.
@@ -55,9 +56,12 @@ export default async function ContestSetupPage({
     : live
       ? "Live contest check"
       : "Final contest check";
-  const checklistDescription = preparing
-    ? "Complete these steps before publishing the contest."
-    : live
+  const checklistDescription =
+    setup.state === "DRAFT"
+      ? "Complete these steps before publishing the contest."
+      : setup.state === "SCHEDULED"
+        ? "Published. Students can sign in now and wait in the lobby until the start."
+        : live
       ? "The contest is running. Any item below needs an organizer's attention, but it does not stop the live round."
       : "The contest is over. This is the final record of how it was set up.";
 
@@ -123,7 +127,11 @@ export default async function ContestSetupPage({
 
       <Panel
         title="Lifecycle"
-        description="Draft contests are private. Publish when setup is complete, then start and end the contest from here."
+        description={
+          setup.state === "DRAFT"
+            ? "Draft contests are private. Publish when setup is complete, then start and end the contest from here."
+            : "Start and end the contest from here."
+        }
       >
         {/*
           The two most-used pre-doors actions, FIRST and as buttons. They were 16px underlined
@@ -253,7 +261,11 @@ function Fact({ label, value }: { label: string; value: string }) {
  * UTC" knows to do the arithmetic; one who reads "8:38 PM" does not know there is any to do.
  */
 function formatWhen(when: Date): string {
-  return when.toLocaleString(undefined, {
+  // Pinned to the event's zone. `undefined` resolved to the SERVER's zone, and the production
+  // droplet runs UTC, so a 7:00 PM start printed as "Nov 17, 12:00 AM UTC" right above sentences
+  // saying 7:00 PM (2026-11-15 organizer sweep).
+  return when.toLocaleString("en-US", {
+    timeZone: EVENT_TIME_ZONE,
     month: "short",
     day: "numeric",
     hour: "numeric",

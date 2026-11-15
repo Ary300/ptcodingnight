@@ -31,6 +31,13 @@ function format(ms: number): string {
   return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
 }
 
+function announceStart(ms: number): string {
+  const minutes = Math.ceil(ms / 60_000);
+  if (minutes <= 1) return "The contest starts in under a minute.";
+  if (minutes < 60) return `The contest starts in ${String(minutes)} minutes.`;
+  return `The contest starts in ${String(Math.floor(minutes / 60))} hours ${String(minutes % 60)} minutes.`;
+}
+
 function announce(ms: number): string {
   if (ms <= 0) return "Contest over.";
   const minutes = Math.ceil(ms / 60_000);
@@ -42,24 +49,39 @@ function announce(ms: number): string {
 export interface CountdownProps {
   /** ISO instant the contest ends — from `StandingsResponse.endsAt`. */
   endsAt: string;
+  /**
+   * ISO instant the contest opens. Before it, the pill says "Starts in" and counts to the start.
+   *
+   * Without it the pill counted to the END from the lobby, so a student waiting for 7:00 saw
+   * "Time remaining 26:26:02" beside the lobby's own "Starts in 25:11:02": two clocks on one
+   * screen, disagreeing (2026-11-15 organizer sweep).
+   */
+  startsAt?: string;
   label?: string;
 }
 
-export function Countdown({ endsAt, label = "Time remaining" }: CountdownProps) {
+export function Countdown({ endsAt, startsAt, label = "Time remaining" }: CountdownProps) {
   const [remaining, setRemaining] = useState<number | null>(null);
+  const [beforeStart, setBeforeStart] = useState(false);
 
   useEffect(() => {
-    const target = new Date(endsAt).getTime();
-    if (Number.isNaN(target)) return;
+    const end = new Date(endsAt).getTime();
+    if (Number.isNaN(end)) return;
+    const start = startsAt === undefined ? Number.NaN : new Date(startsAt).getTime();
 
-    const tick = () => setRemaining(Math.max(0, target - Date.now()));
+    const tick = () => {
+      const now = Date.now();
+      const waiting = !Number.isNaN(start) && now < start;
+      setBeforeStart(waiting);
+      setRemaining(Math.max(0, (waiting ? start : end) - now));
+    };
     tick();
     const id = setInterval(tick, 1_000);
     return () => clearInterval(id);
-  }, [endsAt]);
+  }, [endsAt, startsAt]);
 
-  const over = remaining !== null && remaining <= 0;
-  const urgent = remaining !== null && remaining > 0 && remaining <= URGENT_MS;
+  const over = !beforeStart && remaining !== null && remaining <= 0;
+  const urgent = !beforeStart && remaining !== null && remaining > 0 && remaining <= URGENT_MS;
 
   return (
     /*
@@ -72,11 +94,11 @@ export function Countdown({ endsAt, label = "Time remaining" }: CountdownProps) 
       {/* "Time remaining" flips to "Finished" exactly once, at zero. Keyed so the new word
           rises in; it is a flex item, so the transform applies. */}
       <span
-        key={over ? "finished" : "running"}
+        key={over ? "finished" : beforeStart ? "waiting" : "running"}
         className="motion-swap-in whitespace-nowrap text-paper/75 uppercase"
         style={{ fontSize: "var(--text-xs)", letterSpacing: "0.08em" }}
       >
-        {over ? "Finished" : label}
+        {over ? "Finished" : beforeStart ? "Starts in" : label}
       </span>
       {/*
         The paper-to-gold flip at 5:00 is the tensest state change in the room, and it used to
@@ -97,7 +119,7 @@ export function Countdown({ endsAt, label = "Time remaining" }: CountdownProps) 
         {remaining === null ? "--:--:--" : format(remaining)}
       </span>
       <span className="sr-only" aria-live="polite">
-        {remaining === null ? "" : announce(remaining)}
+        {remaining === null ? "" : beforeStart ? announceStart(remaining) : announce(remaining)}
       </span>
     </div>
   );

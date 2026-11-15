@@ -5,6 +5,7 @@ import { useState } from "react";
 
 import { Button } from "@/components/ui";
 import { API_ROUTES, AdminFreezeScheduleResponseSchema } from "@/lib/schemas/api";
+import { EVENT_TIME_ZONE } from "@/lib/contest/event-time";
 
 /**
  * When the public board stops updating, set the way an organizer says it: minutes before the end.
@@ -158,13 +159,17 @@ export function FreezeSchedule({
 }
 
 /**
- * A wall-clock time in the reader's own zone.
+ * A wall-clock time in the event's zone (Indianapolis, Eastern).
  *
  * The organizer checks this against the clock in the room, so it is deliberately local and
  * deliberately not the ISO string the API speaks in.
  */
 function clockTime(iso: string): string {
-  return new Date(iso).toLocaleString(undefined, {
+  // The EVENT's zone, not the reader's and not the server's. This renders on the server first,
+  // and a UTC droplet printed "12:30 AM" for a 7:30 PM opening, then the browser re-rendered it in
+  // Eastern and React reported the mismatch (#418) on every load of the Setup tab.
+  return new Date(iso).toLocaleString("en-US", {
+    timeZone: EVENT_TIME_ZONE,
     weekday: "short",
     hour: "numeric",
     minute: "2-digit",
