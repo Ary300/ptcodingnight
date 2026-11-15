@@ -217,7 +217,7 @@ function PlayerProblemList({ player }: PlayerProblemListProps) {
               <span className={styles.visuallyHidden}> points</span>
             </span>
             {facts.length > 0 && (
-              <span className={styles.playerProblemFacts}>{facts.join(" · ")}</span>
+              <span className={styles.playerProblemFacts}>{facts.join(", ")}</span>
             )}
           </li>
         );
@@ -811,7 +811,7 @@ export function TeamStandingsBoard({
                         )}
                         {team.teamSize === 1 && (
                           <span className={`ml-2 ${accent}`}>
-                            · one player only
+                            (one player only)
                           </span>
                         )}
                       </span>

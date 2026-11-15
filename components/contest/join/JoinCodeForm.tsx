@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useState } from "react";
 
 /**
@@ -9,8 +8,9 @@ import { useState } from "react";
  * The night's main door, by the teacher's instruction and the organizer's decision. Nobody makes
  * an account at the desk; organizers built the teams beforehand and every seat has a code. One
  * field, one button, and on success a document navigation to the contest so every layer sees the
- * new cookie. The pointer at the foot is for the people with no slip, which is organizers and
- * anyone in the practice arena.
+ * new cookie. There is no account path beside it: students have no accounts (the organizer's
+ * instruction, 2026-11-15), so the line at the foot says what to do without a slip, which is to
+ * ask the desk.
  *
  * ## Why the field shouts
  *
@@ -82,7 +82,8 @@ export function JoinCodeForm() {
             onChange={(event) => setCode(event.target.value.toUpperCase())}
             placeholder="7K4Q9M"
             aria-describedby="join-code-hint"
-            className="numeric rounded border border-ink/25 bg-paper px-4 py-3 text-center font-semibold uppercase"
+            size={8}
+            className="numeric w-full min-w-0 rounded border border-ink/25 bg-paper px-4 py-3 text-center font-semibold uppercase"
             style={{ fontSize: "var(--text-xl)", letterSpacing: "0.22em" }}
           />
           {/*
@@ -124,10 +125,7 @@ export function JoinCodeForm() {
       </form>
 
       <p className="mt-6 text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
-        Organizer or practice account?{" "}
-        <Link href="/sign-in" className="font-semibold text-panther underline underline-offset-2">
-          Sign in
-        </Link>
+        No slip? Ask an organizer at the desk. Every seat on the roster has a code.
       </p>
     </div>
   );

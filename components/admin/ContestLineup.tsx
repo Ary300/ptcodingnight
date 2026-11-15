@@ -1212,8 +1212,8 @@ function SetShape({ slots }: { slots: readonly Slot[] }) {
         : sets
             .map(([label, count]) => `Set ${label}: ${String(count)}`)
             .concat(unlettered > 0 ? [`no set yet: ${String(unlettered)}`] : [])
-            .join(" · ")}
-      {group > 0 && ` · shared by every team: ${String(group)}`}
+            .join(", ")}
+      {group > 0 && `, shared by every team: ${String(group)}`}
       {(uneven || oneSetOnly) && (
         // Said, not enforced: a deliberately uneven round is the organizer's call to make, and
         // a screen that refused it would be wrong more often than the organizer is.
@@ -1356,7 +1356,7 @@ function ProblemPreviewDialog({
                 `${String(preview.testCaseCount)} test case${preview.testCaseCount === 1 ? "" : "s"}`,
                 `${String(preview.timeLimitMs)} ms`,
                 `${String(preview.memoryLimitMb)} MB`,
-              ].join(" · ")}
+              ].join(", ")}
             </p>
 
             <Markdown source={preview.statementMd} className="max-w-none" />

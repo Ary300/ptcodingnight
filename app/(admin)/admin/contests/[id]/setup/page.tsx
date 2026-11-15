@@ -279,7 +279,7 @@ const MARKER: Record<StepState, { glyph: string; word: string; tone: string }> =
   // changes with it.
   done: { glyph: "✓", word: "Done", tone: "text-ink/60" },
   todo: { glyph: "▸", word: "To do", tone: "text-panther" },
-  waiting: { glyph: "·", word: "Not yet", tone: "text-ink/60" },
+  waiting: { glyph: "○", word: "Not yet", tone: "text-ink/60" },
 };
 
 interface Step {

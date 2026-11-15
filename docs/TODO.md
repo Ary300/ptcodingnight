@@ -28,6 +28,7 @@ and a couple are reachable but wrong on this hardware.
 | T11 | Contract gaps in `lib/schemas/api.ts` | low |
 | T15 | One puzzle per team member is keyed to the set letter, so it holds under `RANDOM_ASSIGNED` only | low, by design |
 | T16 | Locked team questions still list their titles before the group clock opens them | low |
+| T17 | The practice arena is unreachable by a student now that account sign-in is gone from the UI | low, by decision |
 
 ---
 
@@ -631,3 +632,30 @@ stretch, so from 7:00 a student can read the team questions' titles and difficul
 from the public index names a problem a student could look up. The same was already true of any row
 with an `unlockAt`. If titles are meant to stay hidden during the individual stretch, `listProblems`
 should withhold them for locked rows the way it withholds them before the start.
+
+## T17 — The practice arena has no student door
+
+**Severity: low, by decision.** Recorded 2026-11-15.
+
+`scripts/seed-practice.ts` builds a permanent `isPractice` contest from the `content/problems/practice-*`
+questions, and `ensureEnrolled` lands a signed-in account in it when no real contest is open. The way a
+student reached it was an account: sign up at `/sign-up` or sign in with a provider, and the arena was
+where the session landed on any day that was not the night.
+
+That door is closed. The organizer's instruction was "just remove the sign in option since we dont
+need it anymore", so students have no accounts, `/sign-up` redirects to `/join`, and `/sign-in` holds
+only the organizer passcode. A join code names a seat on a real contest's roster, so no code a student
+holds can land them in the arena. The arena still exists, the seed still runs, `POST /api/auth/signup`
+still answers over HTTP, and `practice-arena.api.spec.ts` still proves the enrolment ranking. What is
+missing is a screen.
+
+Not deleted, because the arena is the only way to try the site without a scheduled contest and the
+reasoning behind it (`seed-practice.ts`) still holds. Reaching it again needs one of:
+
+- an organizer minting practice seats on the arena's roster and handing out those codes, which works
+  today with no code change, since `/admin/contests/{id}/teams` can add a seat to any contest; or
+- a future "try it" code, one shared code that resolves to a fresh arena seat each time it is typed,
+  which is a new feature and should be built only if somebody asks for it.
+
+Until one of those happens, a student with no slip has no way in, and that is the state the organizer
+chose.

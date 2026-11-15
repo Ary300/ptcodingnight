@@ -295,10 +295,10 @@ function TeamQuestionList({
               className="numeric ml-2 text-ink/60"
               style={{ fontSize: "var(--text-xs)" }}
             >
-              {row.slotLabel} · {String(row.basePoints)} points
+              {row.slotLabel}, {String(row.basePoints)} points
               {/* The distinction an organizer needs before pressing Build: the plan replaces its
                   own deals and never touches a question placed by hand on the Problems tab. */}
-              {row.dealtByPlan ? "" : " · picked by hand"}
+              {row.dealtByPlan ? "" : ", picked by hand"}
             </span>
           </li>
         ))}
@@ -359,7 +359,7 @@ function SetGrid({
                           className="numeric mt-tight block text-ink/60"
                           style={{ fontSize: "var(--text-xs)" }}
                         >
-                          {problem.slotLabel} · {String(problem.basePoints)}{" "}
+                          {problem.slotLabel}, {String(problem.basePoints)}{" "}
                           points
                         </span>
                       </>

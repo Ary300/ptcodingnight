@@ -50,13 +50,12 @@ test.afterAll(async () => {
   await closeTestDb();
 });
 
-/** The real door: the passcode disclosure on `/sign-in`, which is what a human uses. */
+/** The real door: the passcode form on `/sign-in`, which is what a human uses. */
 async function signInAsOrganizer(page: Page): Promise<void> {
   await page.goto("/sign-in");
-  await page.getByText("Organizer passcode").click();
-  // The same selector `sign-in.spec.ts` uses: the passcode input is the one control on the page
-  // that opts out of autofill, because a browser offering to remember it is a browser leaking it.
-  await page.locator('input[autocomplete="off"]').fill(ADMIN_PASSCODE);
+  // The passcode is the one field on the page since 2026-11-15. It opts out of autofill, because
+  // a browser offering to remember it is a browser leaking it.
+  await page.locator('input[name="signin-passcode"]').fill(ADMIN_PASSCODE);
   await page.getByRole("button", { name: /Open the organizer console/ }).click();
   await page.waitForURL(/\/admin/, { timeout: 60_000 });
 }

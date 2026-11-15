@@ -222,7 +222,7 @@ export function TeamProjectorScreen({
         ? // Short, because the plate directly below it carries the instant and the "judging
           // continues" part. Saying both twice reads as a stutter from ten metres away.
           "Frozen standings"
-        : `Live standings · updated ${timeOfDay(standings.asOf)}`;
+        : `Live standings, updated ${timeOfDay(standings.asOf)}`;
 
   return (
     /*

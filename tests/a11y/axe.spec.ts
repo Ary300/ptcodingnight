@@ -9,9 +9,9 @@ import { openLobby, openProblem } from "./helpers/journey";
  * Also the sign-in screen and the submissions history, because they are on the same walk and a
  * student who cannot get through sign-in never reaches the ones that were audited.
  *
- * `/join` is audited because it is the door every student walks through on the night (the
- * organizer's decision: "the join code system, not login"). `/sign-in` is audited too, including
- * the `?error=` state the OAuth callback redirects to, because it is how an organizer gets in.
+ * `/join` is audited because it is the only door a student has: students have no accounts (the
+ * organizer's instruction, 2026-11-15). `/sign-in` is the organizer passcode page and is audited
+ * too, including the `?error=` state the `/admin` layout redirects an expired session to.
  */
 
 test.describe("axe-core: zero critical or serious", () => {
@@ -27,20 +27,33 @@ test.describe("axe-core: zero critical or serious", () => {
     await page.goto("/");
     // The h1 is the hero line, not the site name. The site name lives in the bar above it.
     await expect(
-      page.getByRole("heading", { level: 1, name: /Code with your team/i }),
+      page.getByRole("heading", { level: 1, name: /Park Tudor Coding Night/i }),
     ).toBeVisible();
     // The primary call to action is the join code, because that is how a student gets in on the
     // night: a printed slip, one code per seat, no account. `.first()` because it appears in the
-    // bar, again in the hero and again in the closing band, on purpose. Account sign-in is still
-    // on the page, demoted to a quiet link for organizers and the practice arena.
+    // bar, again in the hero and again in the closing band, on purpose. There is no account
+    // sign-in anywhere a student looks; the organizer page is one quiet footer link.
     await expect(page.getByRole("link", { name: "Enter your join code" }).first()).toBeVisible();
-    await expect(page.getByRole("link", { name: "Sign in", exact: true }).first()).toBeVisible();
+    await expect(page.getByRole("link", { name: /Sign in/ })).toHaveCount(0);
+    const organizers = page.getByRole("contentinfo").getByRole("link", { name: "Organizers" });
+    await expect(organizers).toBeVisible();
+    await expect(organizers).toHaveAttribute("href", "/sign-in");
 
-    // The two students who run the night are named on the page, and their photographs carry their
-    // names. A headshot is information about a person, so `alt=""` would be wrong here — and an
-    // unnamed image next to a name is exactly the pairing axe cannot tell apart from a decoration.
-    await expect(page.getByRole("heading", { name: "Sameer Zaidi", level: 3 })).toBeVisible();
-    await expect(page.getByRole("img", { name: "Aryav Das" })).toBeVisible();
+    // The three students who run the night are named on the page, and their photographs carry
+    // their names. A headshot is information about a person, so `alt=""` would be wrong here, and
+    // an unnamed image next to a name is exactly the pairing axe cannot tell apart from a
+    // decoration. Each image must also have LOADED: a 200 with pixels, not a broken-image glyph
+    // that still carries the right alt text.
+    for (const name of ["Sameer Zaidi", "Navraj", "Aryav Das"]) {
+      await expect(page.getByRole("heading", { name, level: 3 })).toBeVisible();
+      const img = page.getByRole("img", { name });
+      await expect(img).toBeVisible();
+      await expect
+        .poll(() => img.evaluate((el) => (el as HTMLImageElement).naturalWidth), {
+          message: `${name}'s photograph did not load`,
+        })
+        .toBeGreaterThan(0);
+    }
 
     await auditPage(page, "/");
   });
@@ -60,27 +73,28 @@ test.describe("axe-core: zero critical or serious", () => {
 
   test("organizer sign-in", async ({ page }) => {
     await page.goto("/sign-in");
-    await expect(page.getByRole("heading", { name: "Sign in", level: 1 })).toBeVisible();
-    // The join code leads the page, above the account form, for the student who typed this URL
-    // out of habit. Audited with it in place because it is a filled panther control on a tinted
-    // panel, which is a new ground for the contrast rules to meet.
-    await expect(
-      page.getByRole("link", { name: "Have a join code? Enter it here" }),
-    ).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Organizer sign-in", level: 1 })).toBeVisible();
+    // The passcode is the one field, and the one line for a student who typed this URL out of
+    // habit points at the join code. No email form, no provider buttons, no sign-up.
+    await expect(page.getByLabel("Passcode")).toBeVisible();
+    const door = page.getByRole("link", { name: "Enter your join code" });
+    await expect(door).toBeVisible();
+    await expect(door).toHaveAttribute("href", "/join");
+    await expect(page.locator('input[type="email"]')).toHaveCount(0);
+    await expect(page.getByRole("link", { name: /Continue with/ })).toHaveCount(0);
     await auditPage(page, "/sign-in");
 
-    // The error state is a different DOM — the OAuth callback redirects here with `?error=`
-    // when a provider reports one, and a live region that fails an audit fails it silently.
-    // `?error=` is a CODE now, not the sentence. It used to carry the prose and the page rendered
-    // whatever arrived, which made `/sign-in` a phishing page anyone could author with a link;
-    // `lib/contest/sign-in-errors.ts` owns the copy. Audited through the same door a student
-    // arrives by, so the URL here is the one the callback actually redirects to.
-    await page.goto("/sign-in?error=cancelled&provider=google");
+    // The error state is a different DOM: the `/admin` layout redirects an expired organizer
+    // session here with `?error=organizer_required`, and a live region that fails an audit fails
+    // it silently. `?error=` is a CODE, not the sentence. It used to carry the prose and the page
+    // rendered whatever arrived, which made `/sign-in` a phishing page anyone could author with a
+    // link; `lib/contest/sign-in-errors.ts` owns the copy.
+    await page.goto("/sign-in?error=organizer_required");
     // By text, not by role: Next.js renders its own `role="alert"` route announcer on every
     // page, so `getByRole("alert")` is two elements here and neither strict mode nor a reader
     // of this test can tell which one was meant.
-    await expect(page.getByText("Google sign-in was cancelled before it finished")).toBeVisible();
-    await auditPage(page, "/sign-in (provider error)");
+    await expect(page.getByText("Sign in as an organizer to open the console")).toBeVisible();
+    await auditPage(page, "/sign-in (organizer required)");
   });
 
   test("competitor lobby", async ({ page }) => {

@@ -149,7 +149,9 @@ export function requireAccountUserId(viewer: Viewer): string {
   if ((viewer.kind === "competitor" || viewer.kind === "admin") && viewer.userId !== null) {
     return viewer.userId;
   }
-  throw new ForbiddenError("Sign in with a Google, GitHub or organizer account to change your profile");
+  throw new ForbiddenError(
+    "A join-code seat has no profile to change. Ask an organizer to correct the roster.",
+  );
 }
 
 /**

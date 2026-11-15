@@ -253,12 +253,13 @@ check_page() {
   fi
 }
 
-# `/join` is the front door again (2026-11-15), `/sign-in` is for organizers and practice accounts
-# and must point students back at the code, and the landing page is what a visitor following a
-# link actually gets.
+# `/join` is the only student door (2026-11-15), `/sign-in` is the organizer passcode page and must
+# point a student who typed it back at the code, and the landing page is what a visitor following
+# a link actually gets.
 check_page "/" "Enter your join code" "the landing page renders and leads with the join code"
 check_page "/join" "join code" "the join screen renders"
-check_page "/sign-in" "Have a join code" "the sign-in screen points students at the join code"
+check_page "/sign-in" "Organizer sign-in" "the organizer sign-in page renders"
+check_page "/sign-in" "Enter your join code" "the organizer sign-in page points students at the join code"
 check_page "/projector" "Team standings" "the projector renders the team board"
 
 # The banner that says a screen is showing invented data. On a live deployment it must be ABSENT
@@ -270,7 +271,7 @@ check_page "/projector" "Team standings" "the projector renders the team board"
 # was refusing connections. A smoke test that passes when the site is down is worse than no smoke
 # test, because it is the one check someone trusts at 8pm.
 front_body="$(curl -fsS --max-time 30 "$BASE_URL/sign-in" 2>/dev/null || true)"
-if ! printf '%s' "$front_body" | grep -q "Have a join code"; then
+if ! printf '%s' "$front_body" | grep -q "Organizer sign-in"; then
   bad "cannot check for the demo-data banner: /sign-in did not load"
 elif printf '%s' "$front_body" | grep -q "not a live contest"; then
   bad "the DEMO DATA banner is showing — this deployment is wired to the stub backend"

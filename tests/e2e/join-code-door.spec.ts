@@ -19,6 +19,11 @@ import { closeTestDb, seedE2EContest, testDb, type SeededContest } from "./helpe
  * passed the API specs. The organizer's decision ("the join code system, not login") is a
  * decision about what a student sees, so the test has to see it too.
  *
+ * Since 2026-11-15 the join code is the ONLY student door. The organizer's instruction was "just
+ * remove the sign in option since we dont need it anymore", so the landing page offers no account
+ * sign-in, `/sign-up` is a redirect to `/join`, and the one link to the organizer passcode page
+ * is in the footer. The last two tests here pin that.
+ *
  * The seat is minted the way an organizer mints one, through the roster route, and then placed
  * in the division and set that hold a live problem. That placement is a precondition rather than
  * a shortcut: every fixture problem carries a division and a set, so an unplaced seat sees an
@@ -167,4 +172,36 @@ test("the account menu of a join-code seat offers no Settings, and says why", as
   // the menu rather than left for the student to wonder about.
   await expect(menu.getByRole("menuitem", { name: "Settings" })).toHaveCount(0);
   await expect(page.getByText(/Signed in with a join code/)).toBeVisible();
+  // Sign out stays: it clears the session, which a shared classroom laptop needs. It is the only
+  // action in the menu that is not a destination.
+  await expect(menu.getByRole("menuitem", { name: "Sign out" })).toBeVisible();
+  await expect(menu.getByRole("menuitem")).toHaveCount(5);
+});
+
+test("the landing page offers the join code and no account sign-in", async ({ page }) => {
+  await page.goto("/");
+
+  // The header and the hero carry the join code. Neither carries an account link.
+  const header = page.getByRole("banner");
+  await expect(header.getByRole("link", { name: "Enter your join code" })).toBeVisible();
+  await expect(header.getByRole("link", { name: /Sign in/ })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: /Sign in/ })).toHaveCount(0);
+  await expect(page.locator('a[href="/sign-up"]')).toHaveCount(0);
+
+  const text = await page.evaluate(() => document.body.innerText);
+  expect(text).not.toContain("practice account");
+  expect(text).not.toContain("Create your account");
+
+  // The organizer page exists, once, in the footer, and does not compete with the door.
+  const organizers = page.getByRole("contentinfo").getByRole("link", { name: "Organizers" });
+  await expect(organizers).toBeVisible();
+  await expect(organizers).toHaveAttribute("href", "/sign-in");
+  await expect(page.locator('a[href="/sign-in"]')).toHaveCount(1);
+});
+
+test("/sign-up is gone: it lands on /join", async ({ page }) => {
+  await page.goto("/sign-up");
+  await page.waitForURL((url) => url.pathname === "/join");
+  await expect(page.getByRole("heading", { name: "Enter your join code", level: 1 })).toBeVisible();
+  await expect(page.getByLabel("Your join code")).toBeVisible();
 });

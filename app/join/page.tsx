@@ -13,13 +13,13 @@ export const metadata: Metadata = {
  *
  * The teacher's rule: no accounts at the desk. Organizers build every team beforehand, each seat
  * gets a code, and a student types theirs to land in the contest already on their team. The
- * organizer's decision for the night is "the join code system, not login", so this is the primary
- * door and every student-facing call to action lands here. Accounts still exist and still work,
- * for organizers and for the practice arena; `/sign-in` is linked from the foot of the form, and
- * `/sign-in` links back here above its own form.
+ * organizer's instruction (2026-11-15) is that students have no accounts at all, so this is the
+ * only student door and every student-facing call to action lands here. `/sign-in` is the
+ * organizer passcode page; it links back here for a student who typed it by habit, and nothing
+ * here links to it.
  *
- * Same split screen and the same route-group decision as `/sign-in` and `/sign-up`: outside
- * `(competitor)`, so no contest chrome wraps a page reached before any session exists.
+ * Same split screen and the same route-group decision as `/sign-in`: outside `(competitor)`, so
+ * no contest chrome wraps a page reached before any session exists.
  */
 export default function JoinPage() {
   /*
@@ -34,15 +34,20 @@ export default function JoinPage() {
           Welcome to
         </p>
         <p className="font-display font-bold" style={{ fontSize: "var(--text-2xl)" }}>
-          Coding Night
+          Park Tudor Coding Night
         </p>
         <p className="mt-3 max-w-[38ch] text-paper/85" style={{ fontSize: "var(--text-sm)" }}>
           Your code puts you straight onto your team. No account, no password, nothing to set up.
         </p>
       </BrandPanel>
 
-      <main className="motion-swap-in flex items-center justify-center px-4 py-10">
-        <div className="w-full max-w-md">
+      {/*
+        `min-w-0` on the grid item: a grid child defaults to `min-width: auto`, so the 40px code field
+        set the column's width and the whole page laid out at 480px on a 360px phone (2026-11-15
+        production sweep). The column now takes the viewport and the field shrinks to fit it.
+      */}
+      <main className="motion-swap-in flex min-w-0 items-center justify-center px-4 py-10">
+        <div className="w-full min-w-0 max-w-md">
           <Link
             href="/"
             className="text-ink/70 underline underline-offset-2 hover:text-panther"

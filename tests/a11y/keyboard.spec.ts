@@ -197,7 +197,7 @@ test.describe("keyboard-only", () => {
     // The other half of the same guarantee: autofocus must not strand the keyboard user.
     //
     // On /sign-in the first Tab from the top of the document must reach a real control rather
-    // than nothing — the page opens with the two provider buttons, which are the primary action.
+    // than nothing: the way back to the home page comes first, then the passcode field.
     await page.goto("/sign-in");
     await page.keyboard.press("Tab");
 

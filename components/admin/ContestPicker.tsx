@@ -273,7 +273,7 @@ export function ContestPicker({ tab = "", purpose, variant = "picker" }: Contest
                       className="numeric ml-auto text-ink/70"
                       style={{ fontSize: "var(--text-xs)" }}
                     >
-                      {contest.participantCount} in · {contest.teamCount}{" "}
+                      {contest.participantCount} in, {contest.teamCount}{" "}
                       {contest.teamCount === 1 ? "team" : "teams"}
                     </span>
                     {/*

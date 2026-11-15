@@ -72,7 +72,7 @@ export function OverrideForm({ submission, onSubmit, onCancel }: OverrideFormPro
         </h3>
         {/* `text-ink/70`, not `opacity-75`: a wrapper opacity multiplies with child alpha. */}
         <p className="numeric text-ink/70" style={{ fontSize: "var(--text-xs)" }}>
-          {submission.displayName} · {submission.slotLabel} {submission.problemTitle} ·{" "}
+          {submission.displayName}, {submission.slotLabel} {submission.problemTitle},{" "}
           {submission.submissionId}
         </p>
       </div>

@@ -107,7 +107,7 @@ export function JoinCodeLookup() {
               found.setLabel === null ? null : `set ${found.setLabel}`,
             ]
               .filter((part) => part !== null && part !== "")
-              .join(" · ")}
+              .join(", ")}
           </p>
           <p className="mt-1 text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
             {found.contestName} ({found.contestState.toLowerCase()})

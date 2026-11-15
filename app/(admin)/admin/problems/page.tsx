@@ -96,7 +96,7 @@ export default async function ProblemBankPage({
                   {problem.title}
                 </Link>
                 <span className="numeric ml-auto text-ink/70" style={{ fontSize: "var(--text-xs)" }}>
-                  {problem.testCaseCount} tests · {problem.sampleCaseCount} shown
+                  {problem.testCaseCount} tests, {problem.sampleCaseCount} shown
                 </span>
               </li>
             ))}

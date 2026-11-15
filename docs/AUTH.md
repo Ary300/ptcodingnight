@@ -1,5 +1,13 @@
 # AUTH — who can sign in, and how
 
+> **2026-11-15.** Student account sign-in is withdrawn from the UI. The organizer's instruction was
+> "just remove the sign in option since we dont need it anymore", so `/sign-in` is now the organizer
+> passcode page and nothing else, `/sign-up` redirects to `/join`, and no screen a student can reach
+> offers email and password, Google or GitHub. The join code on the slip is the only student door.
+> The routes under `app/api/auth/**` still exist and still work over HTTP; nothing links to them.
+> Everything below about email, password and the two providers describes the server, which is
+> unchanged. `docs/TODO.md` T17 records what this does to the practice arena.
+
 Current as of the team-scoring rewrite. **Supersedes the earlier version of this document**, which
 described a stateless signed-cookie design and justified the absence of OAuth on the grounds that the
 contest room had no internet. Both of those have changed — §6 records what and why.

@@ -76,7 +76,7 @@ async function currentContestId(): Promise<string> {
   if (session === null) {
     throw new ContestApiError(
       "NOT_JOINED",
-      "You are not signed in to a contest. Sign in with Google or GitHub to compete.",
+      "You are not signed in to a contest. Enter the join code from your slip to compete.",
     );
   }
   identityCheckedAt = Date.now();

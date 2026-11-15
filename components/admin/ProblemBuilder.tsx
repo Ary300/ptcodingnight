@@ -1638,7 +1638,7 @@ function TestsStep({
           }
           style={{ fontSize: "var(--text-xs)" }}
         >
-          {cases.length} case{cases.length === 1 ? "" : "s"} · {sampleCount}{" "}
+          {cases.length} case{cases.length === 1 ? "" : "s"}, {sampleCount}{" "}
           sample
           {sampleCount === 1 ? "" : "s"}
           {sampleCount === 0 ? ". Mark at least one case as a sample." : ""}

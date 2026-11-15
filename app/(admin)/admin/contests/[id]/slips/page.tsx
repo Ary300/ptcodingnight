@@ -116,7 +116,7 @@ export default async function ContestSlipsPage({
                   member.chosenSetLabel === null ? null : `set ${member.chosenSetLabel}`,
                 ]
                   .filter((part) => part !== null && part !== "")
-                  .join(" · ")}
+                  .join(", ")}
               </p>
 
               <p className="mt-3 text-ink/60" style={{ fontSize: "var(--text-xs)" }}>

@@ -5,15 +5,21 @@ import { requiredEnv } from "./helpers/env";
 /**
  * `/sign-in`, in a real browser, because none of what follows is visible over HTTP.
  *
+ * Since 2026-11-15 this page is the organizer's door and nothing else. The organizer's
+ * instruction was "just remove the sign in option since we dont need it anymore": students enter
+ * with the join code on their slip, there are no student accounts, and the email form, the
+ * provider buttons and the sign-up link that used to share this screen are gone. What is left is
+ * the passcode, which is the one credential the runbook depends on (`docs/NIGHT.md`).
+ *
  * Every defect pinned here passed the API specs and G7 while being wrong on the page. That is the
  * repeated shape of this project's bugs (see `docs/TODO.md` and the memory note "screens must be
  * verified by using them"): the route answers correctly and the screen does the wrong thing with
  * the answer.
  *
- *  - a passcode refusal rendered three hundred pixels away, under the unrelated PASSWORD field
- *  - an `?error=` reason rendered below the fold, nowhere near the button that produced it
+ *  - an `?error=` reason that the page rendered verbatim off the query string
  *  - a `role="alert"` that is in the server's HTML, and therefore announced to nobody
- *  - attacker-authored prose from the query string, rendered as one of our own messages
+ *  - a passcode refusal that rendered three hundred pixels from the passcode box
+ *  - an account form that a student holding a slip was shown before the way back to the slip
  *
  * Runs under both browser profiles. Students use phones (PRD §11) and the 360px case is where
  * "below the fold" stops being a nitpick.
@@ -24,59 +30,43 @@ const ADMIN_PASSCODE = requiredEnv("ADMIN_PASSCODE");
 /**
  * Alerts are looked for inside `<main>`, not on the whole document.
  *
- * Next ships a route announcer — a `<p role="alert">` that reads the new page title after a
- * client-side navigation — so an unscoped `getByRole("alert")` matches two nodes and every
+ * Next ships a route announcer, a `<p role="alert">` that reads the new page title after a
+ * client-side navigation, so an unscoped `getByRole("alert")` matches two nodes and every
  * assertion below fails on strict mode rather than on the thing it is testing.
  */
 const alerts = (page: import("@playwright/test").Page) =>
   page.getByRole("main").getByRole("alert");
 
-/** The organizer password form. Two password inputs on this page, so both are addressed by name. */
-const passwordField = 'input[autocomplete="current-password"]';
-const passcodeField = 'input[autocomplete="off"]';
+/** The one field on the page. By name, so the selector says what it is. */
+const passcodeField = 'input[name="signin-passcode"]';
 
 test.describe("the error banner", () => {
   test("renders the reason for an `?error=` code, and survives a reload", async ({ page }) => {
-    await page.goto("/sign-in?error=provider_unconfigured&provider=google");
+    // The code this page meets in practice: the `/admin` layout sends an expired session here.
+    await page.goto("/sign-in?error=organizer_required");
 
     const banner = alerts(page);
-    await expect(banner).toContainText("Google sign-in is not set up on this server");
-    // Names an alternative. A sign-in error with no next step is a dead end, and the room has one
-    // organizer for forty students.
-    await expect(banner).toContainText("Ask an organizer");
+    await expect(banner).toContainText("Sign in as an organizer to open the console");
 
     await page.reload();
-    await expect(alerts(page)).toContainText("not set up on this server");
+    await expect(alerts(page)).toContainText("Sign in as an organizer");
   });
 
-  test("sits above every sign-in option", async ({ page }) => {
+  test("sits above the passcode field, on screen without scrolling", async ({ page }) => {
     /*
-      The bug: there was one error slot and it lived under the organizer PASSWORD field, far below
-      the two buttons a student presses. On a 360px phone the real three-line message rendered
-      below the fold, so pressing "Continue with Google" on a server with no Google configured
-      looked like the button did nothing at all.
+      The bug: there was one error slot and it lived under an unrelated PASSWORD field, far
+      below the controls a person had pressed. On a 360px phone the message rendered below the
+      fold, so a refused sign-in looked like a button that did nothing at all.
     */
-    await page.goto("/sign-in?error=provider_unconfigured&provider=google");
+    await page.goto("/sign-in?error=organizer_required");
 
     const banner = await alerts(page).boundingBox();
-    const password = await page.locator(passwordField).boundingBox();
+    const passcode = await page.locator(passcodeField).boundingBox();
 
     expect(banner).not.toBeNull();
-    expect(password).not.toBeNull();
-    expect(banner!.y, "the reason renders under an unrelated password field").toBeLessThan(
-      password!.y,
-    );
+    expect(passcode).not.toBeNull();
+    expect(banner!.y, "the reason renders under the passcode field").toBeLessThan(passcode!.y);
 
-    // If Google is configured, its real navigation follows the banner. If it is not configured,
-    // there is deliberately no Google link to click and fail again.
-    const google = page.getByRole("link", { name: /Continue with Google/ });
-    if ((await google.count()) === 1) {
-      const googleBox = await google.boundingBox();
-      expect(googleBox).not.toBeNull();
-      expect(banner!.y, "the reason renders below the provider option").toBeLessThan(googleBox!.y);
-    }
-
-    // And it is on screen without scrolling, at whatever viewport this profile uses.
     const viewport = page.viewportSize();
     expect(banner!.y + banner!.height).toBeLessThan(viewport?.height ?? 0);
   });
@@ -86,24 +76,15 @@ test.describe("the error banner", () => {
   }) => {
     /*
       A live region is announced when its content CHANGES. This banner's content is in the server's
-      response — the element is already there when the browser parses the document — so there is no
-      change for a screen reader to notice, and the one message a student was redirected here to
-      read is the one they are least likely to be told about.
+      response, so there is no change for a screen reader to notice, and the one message a person
+      was redirected here to read is the one they are least likely to be told about.
 
-      Moving focus is what works across screen readers, and it fixes the sighted equivalent at the
-      same time: focus scrolls the banner into view.
-    */
-    await page.goto("/sign-in?error=cancelled&provider=github");
-
-    /*
       POLLED, because focus is moved by an effect and effects do not run until React has hydrated.
       Reading `document.activeElement` once, immediately after `goto`, is a race that this spec
-      won on a quiet machine and lost on a loaded one — it asserted "nobody is focused" a few
-      milliseconds before the banner took focus.
-
-      The right correction is here rather than in the component: the behaviour under test is "the
-      banner ends up focused", not "the banner is focused within one microtask of navigation".
+      won on a quiet machine and lost on a loaded one.
     */
+    await page.goto("/sign-in?error=organizer_required");
+
     await expect
       .poll(
         () => page.evaluate(() => document.activeElement?.getAttribute("role")),
@@ -118,7 +99,7 @@ test.describe("the error banner", () => {
   test("NEVER renders prose handed to it in the query string", async ({ page }) => {
     /*
       `?error=` used to carry the SENTENCE and the page rendered whatever arrived. React escaped
-      it, so there was never an XSS — the text itself was the payload. Anyone could hand a student
+      it, so there was never an XSS; the text itself was the payload. Anyone could hand a person
 
           /sign-in?error=Your+account+is+locked.+Email+your+password+to+…
 
@@ -142,6 +123,8 @@ test.describe("the error banner", () => {
   });
 
   test("does not invent a provider name from the query string either", async ({ page }) => {
+    // The OAuth routes still answer at their URLs and still redirect here with a provider code,
+    // so the provider vocabulary stays, and the label is still never taken from the URL.
     await page.goto("/sign-in?error=provider_unconfigured&provider=Evil%20Corp%20SSO");
 
     const visible = await page.evaluate(() => document.body.innerText);
@@ -150,18 +133,16 @@ test.describe("the error banner", () => {
   });
 });
 
-test.describe("the organizer forms", () => {
-  test("a wrong passcode reports NEXT TO the passcode box, not under the password", async ({
-    page,
-  }) => {
+test.describe("the organizer form", () => {
+  test("a wrong passcode reports NEXT TO the passcode box", async ({ page }) => {
     /*
-      Screenshot evidence for the bug: `05-wrong-passcode.png`. One shared `error` state, rendered
-      in exactly one place — inside the email form — so "That passcode is not right" appeared under
-      the PASSWORD field, above an untouched "Sign in" button, three hundred pixels from the
-      passcode box the organizer had just used. On a phone it is off screen.
+      Screenshot evidence for the old bug: `05-wrong-passcode.png`. One shared `error` state,
+      rendered in exactly one place inside the email form, so "That passcode is not right"
+      appeared under the PASSWORD field, three hundred pixels from the passcode box the organizer
+      had just used. The email form is gone; the property that the refusal sits under the control
+      that produced it is kept.
     */
     await page.goto("/sign-in");
-    await page.getByText("Organizer passcode").click();
     await page.locator(passcodeField).fill("not-the-passcode");
     await page.getByRole("button", { name: /Open the organizer console/ }).click();
 
@@ -170,55 +151,37 @@ test.describe("the organizer forms", () => {
 
     const alertBox = await alert.boundingBox();
     const passcodeBox = await page.locator(passcodeField).boundingBox();
-    const passwordBox = await page.locator(passwordField).boundingBox();
-
+    expect(alertBox).not.toBeNull();
+    expect(passcodeBox).not.toBeNull();
     expect(alertBox!.y, "the passcode error rendered above the passcode box").toBeGreaterThan(
       passcodeBox!.y,
     );
-    expect(alertBox!.y, "the passcode error rendered inside the password form").toBeGreaterThan(
-      passwordBox!.y + 100,
-    );
+    // Within the same column, not a screen away.
+    expect(alertBox!.y - (passcodeBox!.y + passcodeBox!.height)).toBeLessThan(80);
+
+    // The field is marked invalid and points at the message.
+    await expect(page.locator(passcodeField)).toHaveAttribute("aria-invalid", "true");
+    const describedBy = await page.locator(passcodeField).getAttribute("aria-describedby");
+    expect(describedBy).not.toBeNull();
+    await expect(page.locator(`#${describedBy!}`)).toContainText("passcode");
+
+    // Refused means still here.
+    expect(new URL(page.url()).pathname).toBe("/sign-in");
   });
 
-  test("a wrong password reports inside the password form and says nothing about the passcode", async ({
+  test("the button is disabled until something is typed, then reacts to what was typed", async ({
     page,
   }) => {
     await page.goto("/sign-in");
-    await page.locator('input[type="email"]').fill("nobody-at-all@parktudor.org");
-    await page.locator(passwordField).fill("not-the-passphrase");
-    await page.getByRole("button", { name: "Sign in", exact: true }).click();
+    const button = page.getByRole("button", { name: /Open the organizer console/ });
+    await expect(button).toBeDisabled();
 
-    const alert = alerts(page);
-    await expect(alert).toContainText("do not match an account");
-    // Never says WHICH half was wrong: that turns the form into an account enumerator, and
-    // organizers' addresses are their school addresses.
-    await expect(alert).not.toContainText("no such");
-
-    // The fields are marked invalid and point at the message. Both of them, because the server
-    // cannot say which one was wrong, so flagging one would be a guess presented as a fact.
-    await expect(page.locator(passwordField)).toHaveAttribute("aria-invalid", "true");
-    const describedBy = await page.locator(passwordField).getAttribute("aria-describedby");
-    expect(describedBy).not.toBeNull();
-    await expect(page.locator(`#${describedBy!}`)).toContainText("do not match");
-  });
-
-  test("one form's failure does not disable the other form's button", async ({ page }) => {
-    // `busy` was a single flag shared by both submit handlers.
-    await page.goto("/sign-in");
-    await page.getByText("Organizer passcode").click();
-    await page.locator(passcodeField).fill("not-the-passcode");
-    await page.locator('input[type="email"]').fill("organizer@parktudor.org");
-    await page.locator(passwordField).fill("a-long-enough-passphrase");
-
-    await page.getByRole("button", { name: /Open the organizer console/ }).click();
-    await expect(alerts(page)).toContainText("passcode");
-
-    await expect(page.getByRole("button", { name: "Sign in", exact: true })).toBeEnabled();
+    await page.locator(passcodeField).fill("something");
+    await expect(button).toBeEnabled();
   });
 
   test("the correct passcode opens the console", async ({ page }) => {
     await page.goto("/sign-in");
-    await page.getByText("Organizer passcode").click();
     await page.locator(passcodeField).fill(ADMIN_PASSCODE);
     await page.getByRole("button", { name: /Open the organizer console/ }).click();
 
@@ -230,205 +193,57 @@ test.describe("the organizer forms", () => {
 });
 
 test.describe("the page a student meets", () => {
-  test("leads with the join code, then offers only providers configured on the server", async ({
+  test("is the organizer page, offers no account door, and points at the join code", async ({
     page,
-    request,
   }) => {
     /*
-      The organizer's decision for the night: "the join code system, not login". A student who
-      types /sign-in out of habit must meet the way back to their slip BEFORE any account control,
-      and must never meet a provider button this server cannot honour: on the production box
-      neither OAuth provider is configured, and a button there could only bounce them back here
-      with `provider_unconfigured`.
+      The organizer's instruction: students have no accounts. A student who types /sign-in out of
+      habit must find exactly one thing to do, which is to go to /join with the slip in their
+      hand. Not an email form, not a provider button, not "Create your account". Each of those
+      was on this page until 2026-11-15 and each sent a student holding a slip to make an account
+      they did not need.
     */
     await page.goto("/sign-in");
 
-    const door = page.getByRole("link", { name: "Have a join code? Enter it here" });
+    await expect(page.getByRole("heading", { name: "Organizer sign-in", level: 1 })).toBeVisible();
+
+    const door = page.getByRole("link", { name: "Enter your join code" });
     await expect(door).toBeVisible();
     await expect(door).toHaveAttribute("href", "/join");
 
-    // Above the account form, measured rather than assumed: "first" is a position on the page.
-    const doorBox = await door.boundingBox();
-    const emailBox = await page.locator('input[type="email"]').boundingBox();
-    expect(doorBox).not.toBeNull();
-    expect(emailBox).not.toBeNull();
-    expect(doorBox!.y, "the join-code door renders below the account form").toBeLessThan(
-      emailBox!.y,
-    );
+    // The only field on the page is the passcode.
+    await expect(page.locator("main input")).toHaveCount(1);
+    await expect(page.locator(passcodeField)).toBeVisible();
+    await expect(page.locator('input[type="email"]')).toHaveCount(0);
+    await expect(page.locator('input[autocomplete="current-password"]')).toHaveCount(0);
 
-    const configured = {
-      google: await providerIsConfigured(request, "google"),
-      github: await providerIsConfigured(request, "github"),
-    };
+    // No provider navigation, configured or not.
+    await expect(page.locator('a[href^="/api/auth/"]')).toHaveCount(0);
+    await expect(page.getByRole("link", { name: /Continue with/ })).toHaveCount(0);
 
-    for (const provider of ["google", "github"] as const) {
-      const label = provider === "google" ? /Continue with Google/ : /Continue with GitHub/;
-      await expect(page.getByRole("link", { name: label })).toHaveCount(
-        configured[provider] ? 1 : 0,
-      );
-    }
-
-    if (!configured.google && !configured.github) {
-      await expect(page.getByTestId("student-signin-unavailable")).toContainText(
-        "Google and GitHub sign-in are not set up on this server",
-      );
-    }
-
-    // The old page told students they did not need a code. They do: it is the only thing on
-    // their slip, and a page that says otherwise sends them to make an account at the desk.
+    // No way to make an account.
+    await expect(page.locator('a[href="/sign-up"]')).toHaveCount(0);
     const text = await page.evaluate(() => document.body.innerText);
-    expect(text).not.toContain("Students do not need a code");
+    expect(text).not.toContain("Create your account");
+    expect(text).not.toContain("practice account");
+    expect(text).not.toContain("Google");
+    expect(text).not.toContain("GitHub");
     expect(text).toContain("join code");
   });
 
-  test("configured OAuth buttons are document navigations, not fetches", async ({
-    page,
-    request,
-  }) => {
-    // `/api/auth/{provider}` sets a state cookie and 302s to another origin. A client-side
-    // navigation cannot follow that, so these have to stay `<a href>`.
-    await page.goto("/sign-in");
-    for (const provider of ["google", "github"]) {
-      await expect(page.locator(`a[href="/api/auth/${provider}"]`)).toHaveCount(
-        (await providerIsConfigured(request, provider as "google" | "github")) ? 1 : 0,
-      );
-    }
-  });
-
-  test("the passcode disclosure starts CLOSED", async ({ page }) => {
-    // A passcode field sitting open on the front door invites every student in the room to have a
-    // go at it, and what it opens is the console that can rewrite a verdict.
-    await page.goto("/sign-in");
-    await expect(page.locator(passcodeField)).toBeHidden();
-  });
-
-  test("the passcode field is never REPLACED after it becomes typeable", async ({ page }) => {
-    /*
-      The disclosure's form carried `key={passcodeOpens}`, bumped from the details' `onToggle`,
-      purely to restart the `motion-panel-in` entrance. That remount landed one React commit
-      AFTER the browser had already painted the open panel, so there was a window — invisible on
-      an idle machine, seconds wide on a loaded one — in which the passcode input a person could
-      see and type into was about to be thrown away. Anything typed in it went to a detached node
-      that React's listeners no longer reach, `passcode` stayed "", and the submit button stayed
-      disabled with no way in but to retype.
-
-      G7 caught it exactly once, as a 105 s wait on a disabled button in `organizer-setup-flow`,
-      and passed on the retry — which is how a race reports itself and why the guard here is
-      STRUCTURAL. Asserting "type fast and it still works" would pass on a quiet machine and
-      prove nothing. Asserting the node's IDENTITY is stable cannot: a reintroduced remount fails
-      it every run, on any host.
-    */
-    await page.goto("/sign-in");
-
-    const survived = await page.evaluate(async () => {
-      const details = document.querySelector("details");
-      const summary = details?.querySelector("summary");
-      if (details === null || summary == null) throw new Error("no passcode disclosure on the page");
-
-      /*
-        Tagged in the SAME task as the click, which is the whole point. The remount lands on
-        React's commit, one tick later at the earliest; a probe that tags from the test side has
-        already lost the race on a fast host and marks the replacement instead of the original —
-        it passed against the bug when written that way. Tagging synchronously marks precisely
-        the node a person can see and type into the instant the panel opens.
-      */
-      summary.click();
-      const opened = details.querySelector('input[name="signin-passcode"]');
-      if (opened === null) throw new Error("opening the disclosure produced no passcode input");
-      opened.setAttribute("data-identity-probe", "1");
-
-      // Longer than --motion-panel (300ms), and long enough for any commit to have happened.
-      await new Promise((resolve) => setTimeout(resolve, 600));
-
-      const now = details.querySelector('input[name="signin-passcode"]');
-      return { stillThere: now === opened, tagged: now?.getAttribute("data-identity-probe") };
-    });
-
-    expect(
-      survived.stillThere,
-      "the passcode input a person sees on open was replaced; anything typed into it was lost",
-    ).toBe(true);
-    expect(survived.tagged).toBe("1");
-
-    // And the value a person types is the value the button reacts to.
-    await page.locator(passcodeField).fill("something");
+  test("/sign-up no longer exists as a screen and lands on /join", async ({ page }) => {
+    // The old page was linked from here for months. A bookmark should meet the door that works.
+    await page.goto("/sign-up");
+    await page.waitForURL((url) => url.pathname === "/join");
     await expect(
-      page.getByRole("button", { name: /Open the organizer console/ }),
-    ).toBeEnabled();
-  });
-
-  test("reopening the disclosure replays the entrance without remounting it", async ({ page }) => {
-    /*
-      The remount above was there to restart the animation, so removing it is only correct if the
-      CSS restart is real. This measures it rather than trusting the spec: opening flips
-      animation-name from `none` to `motion-panel-in` (globals.css withholds it while closed),
-      which starts a NEW animation every time.
-
-      Driven and sampled inside one `evaluate` on purpose. The entrance is 300 ms and a
-      click-then-read round trip through the driver outlives it, so sampling from the test side
-      reads `finished` on a restart that did happen — a false failure that would teach the next
-      person to delete this test rather than believe it.
-    */
-    await page.goto("/sign-in");
-
-    const seen = await page.evaluate(async () => {
-      const details = document.querySelector("details");
-      const summary = details?.querySelector("summary");
-      if (details === null || summary == null) throw new Error("no passcode disclosure on the page");
-
-      const twoFrames = (): Promise<void> =>
-        new Promise((resolve) => {
-          requestAnimationFrame(() => {
-            requestAnimationFrame(() => {
-              resolve();
-            });
-          });
-        });
-      const sample = (): { node: Element | null; anims: string[] } => {
-        const form = details.querySelector("form");
-        return {
-          node: form,
-          anims:
-            form?.getAnimations().map((a) => `${(a as CSSAnimation).animationName}:${a.playState}`) ??
-            [],
-        };
-      };
-
-      summary.click(); // first open
-      await twoFrames();
-      const first = sample();
-
-      await new Promise((resolve) => setTimeout(resolve, 450)); // let it finish
-      summary.click(); // close
-      await twoFrames();
-      const closed = sample();
-
-      summary.click(); // reopen
-      await twoFrames();
-      const reopened = sample();
-
-      return {
-        first: first.anims,
-        closed: closed.anims,
-        reopened: reopened.anims,
-        sameNode: first.node === reopened.node,
-      };
-    });
-
-    expect(seen.first, "the first open did not play the entrance").toContain(
-      "motion-panel-in:running",
-    );
-    expect(seen.closed, "a closed disclosure kept animating out of sight").toEqual([]);
-    expect(seen.reopened, "reopening showed the dead last frame instead of replaying").toContain(
-      "motion-panel-in:running",
-    );
-    expect(seen.sameNode, "the form was remounted to get the replay — that is the bug").toBe(true);
+      page.getByRole("heading", { name: "Enter your join code", level: 1 }),
+    ).toBeVisible();
   });
 
   test("does not scroll sideways at any width a student will use", async ({ page }) => {
     for (const width of [360, 768, 1280]) {
       await page.setViewportSize({ width, height: 780 });
-      await page.goto("/sign-in?error=no_contest&provider=google");
+      await page.goto("/sign-in?error=organizer_required");
       const overflow = await page.evaluate(() => ({
         scroll: document.documentElement.scrollWidth,
         client: document.documentElement.clientWidth,
@@ -439,12 +254,3 @@ test.describe("the page a student meets", () => {
     }
   });
 });
-
-async function providerIsConfigured(
-  request: import("@playwright/test").APIRequestContext,
-  provider: "google" | "github",
-): Promise<boolean> {
-  const response = await request.get(`/api/auth/${provider}`, { maxRedirects: 0 });
-  const location = response.headers().location ?? "";
-  return !location.startsWith("/sign-in?error=provider_unconfigured");
-}

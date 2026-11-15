@@ -88,7 +88,7 @@ export function ProblemStatusPill({ detail }: { detail: ProblemDetail }) {
         className="inline-flex shrink-0 items-center rounded-chip bg-panther px-2.5 py-1 font-semibold text-paper"
         style={{ fontSize: "var(--text-xs)" }}
       >
-        Solved{detail.bestScore === null ? "" : ` · ${String(detail.bestScore)} pts`}
+        Solved{detail.bestScore === null ? "" : `, ${String(detail.bestScore)} pts`}
       </span>
     );
   }
@@ -99,7 +99,7 @@ export function ProblemStatusPill({ detail }: { detail: ProblemDetail }) {
         className="inline-flex shrink-0 items-center rounded-chip border border-rule-edge px-2.5 py-1 text-ink/80"
         style={{ fontSize: "var(--text-xs)" }}
       >
-        Attempted · {detail.bestScore} pts
+        Attempted, {detail.bestScore} pts
       </span>
     );
   }

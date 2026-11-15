@@ -94,7 +94,7 @@ export function SettingsView() {
           if (!cancelled) {
             setLoadError(
               response.status === 403
-                ? "Settings belong to accounts. A join code has none: your name and team come from the organizer's roster. Organizers and practice accounts sign in first."
+                ? "Your name and team come from the organizer's roster, so there is nothing here to change. If something on your slip is wrong, ask an organizer at the desk."
                 : "We could not load your profile. Try again in a moment.",
             );
           }

@@ -407,7 +407,7 @@ export function RosterManager({ contestId }: RosterManagerProps) {
           >
             {person.chosenSetLabel === null
               ? "Choose set"
-              : `Set ${person.chosenSetLabel} · change`}
+              : `Set ${person.chosenSetLabel}, change`}
           </Button>
         )}
         {/*
@@ -761,7 +761,7 @@ export function RosterManager({ contestId }: RosterManagerProps) {
                           : `was in ${candidate.pastContests.slice(0, 2).join(", ")}`,
                       ]
                         .filter((part) => part !== null)
-                        .join(" · ")}
+                        .join(", ")}
                     </span>
                   </div>
                   {/*
@@ -1046,7 +1046,7 @@ export function RosterManager({ contestId }: RosterManagerProps) {
             className="numeric text-ink/60"
             style={{ fontSize: "var(--text-sm)" }}
           >
-            {roster.teams.length} · max {roster.maxTeamSize}
+            {roster.teams.length}, max {roster.maxTeamSize}
           </span>
         }
       >
@@ -1140,7 +1140,7 @@ export function RosterManager({ contestId }: RosterManagerProps) {
                       className="numeric text-ink/60"
                       style={{ fontSize: "var(--text-xs)" }}
                     >
-                      {team.memberCount}/{team.maxTeamSize} · divisor{" "}
+                      {team.memberCount}/{team.maxTeamSize}, divisor{" "}
                       {team.memberCount}
                     </span>
                   </span>

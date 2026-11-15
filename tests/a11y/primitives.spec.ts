@@ -122,8 +122,8 @@ test.describe("the token layer reaches the browser", () => {
 
 test.describe("a disabled control reads as off, not as broken", () => {
   /**
-   * `/sign-in` holds its Sign in button disabled until an email and a password are typed, which
-   * makes it the one place a disabled primary is on screen without any setup.
+   * `/sign-in` holds its one button disabled until a passcode is typed, which makes it the one
+   * place a disabled primary is on screen without any setup.
    *
    * The old `disabled:opacity-50` over a solid `--panther` fill painted a washed pink button:
    * still obviously a button, still obviously the primary one, and giving no signal that it was
@@ -133,7 +133,7 @@ test.describe("a disabled control reads as off, not as broken", () => {
   test("the disabled primary carries no accent fill", async ({ page }) => {
     await page.goto("/sign-in");
 
-    const button = page.getByRole("button", { name: "Sign in", exact: true }).first();
+    const button = page.getByRole("button", { name: /Open the organizer console/ });
     await expect(button).toBeDisabled();
 
     const skin = await button.evaluate((element) => {

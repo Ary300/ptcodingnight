@@ -177,20 +177,16 @@ test.describe("the competitor journey in a browser", () => {
     // rendered verbatim. `components/contest/lobby/SignInRequired.tsx`.
     await expect(page.getByRole("heading", { name: "You are not signed in" })).toBeVisible();
 
-    // The join code first, because it is how a student gets in on the night (the organizer's
-    // decision: "the join code system, not login"). Account sign-in is still offered, second, for
-    // organizers and the practice arena. Both links, and the code is the filled one.
+    // The join code, and only the join code. Students have no accounts (the organizer's
+    // instruction, 2026-11-15), so the panel offers no account sign-in beside the door.
     const door = page.getByRole("link", { name: "Enter your join code" });
     await expect(door).toBeVisible();
     await expect(door).toHaveAttribute("href", "/join");
-    await expect(page.getByRole("link", { name: "Sign in", exact: true })).toHaveAttribute(
-      "href",
-      "/sign-in",
-    );
     await expect(
-      page.getByRole("link", { name: "Sign in to compete" }),
-      "the account form must not be presented as the way to compete",
+      page.getByRole("link", { name: /Sign in/ }),
+      "a student-facing signed-out state must not offer account sign-in",
     ).toHaveCount(0);
+    await expect(page.locator('a[href="/sign-in"]')).toHaveCount(0);
 
     expect(new URL(page.url()).pathname, "no redirect race on the sessionStorage read").toBe(
       "/contest",
@@ -620,12 +616,9 @@ test.describe("the organizer can get in", () => {
 
     await page.goto("/sign-in");
 
-    // Collapsed by default: a passcode field open on the front door invites the room to try it.
-    const disclosure = page.getByText("Organizer passcode", { exact: true });
-    await expect(disclosure).toBeVisible();
-    await expect(page.getByLabel("Passcode")).toBeHidden();
-
-    await disclosure.click();
+    // The passcode is the one field on the page since 2026-11-15: this is the organizer's door
+    // and students enter at /join. Nothing to disclose first.
+    await expect(page.getByRole("heading", { name: "Organizer sign-in", level: 1 })).toBeVisible();
     await page.getByLabel("Passcode").fill(passcode);
     await page.getByRole("button", { name: /organizer console/i }).click();
 
@@ -635,7 +628,6 @@ test.describe("the organizer can get in", () => {
 
   test("a wrong passcode is refused and stays on the page", async ({ page }) => {
     await page.goto("/sign-in");
-    await page.getByText("Organizer passcode", { exact: true }).click();
     await page.getByLabel("Passcode").fill("not-the-passcode");
     await page.getByRole("button", { name: /organizer console/i }).click();
 

@@ -155,7 +155,7 @@ function ProblemLine({ problem, playerName }: ProblemLineProps) {
 
       {facts.length > 0 && (
         <p className="mt-0.5 text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
-          {facts.join(" · ")}
+          {facts.join(", ")}
         </p>
       )}
     </li>

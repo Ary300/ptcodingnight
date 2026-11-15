@@ -9,22 +9,22 @@ const HOW = [
   {
     n: "1",
     title: "Enter your join code",
-    body: "Your slip carries a six-character code. Type it and you are signed in, already on your team. There is no account to make.",
+    body: "You get a slip at the door with a six-character code on it. Type it in and you're signed in and on your team.",
   },
   {
     n: "2",
-    title: "Meet your team",
-    body: "Your slip names your team, your division and your question set. An organizer built the roster before the night.",
+    title: "Find your team",
+    body: "Your slip also tells you your team and your problem letter. Go sit with your teammates.",
   },
   {
     n: "3",
-    title: "Start solving",
-    body: "Work on your assigned problems. Team questions are shared by everyone on the team.",
+    title: "Solve your problems",
+    body: "You get one easy problem and two medium ones. After the first half hour, the team problems open and you can work on them together.",
   },
   {
     n: "4",
-    title: "Check the results",
-    body: "Submit from the editor and watch the standings update as results come in.",
+    title: "Watch the board",
+    body: "The judge checks your code in a few seconds, and your team's score goes up on the projector.",
   },
 ] as const;
 
@@ -39,25 +39,25 @@ const HOW = [
  */
 const NIGHT = [
   {
-    title: "Divisions, so the race is fair",
-    body: "Organizers set up divisions and name them. A student in their first year is not ranked against a fourth-year competitor.",
+    title: "Teams of up to four",
+    body: "Everyone on a team gets different problems, so you each have your own to work on. Your team's score is the average of everyone's points.",
   },
   {
-    title: "Team questions",
-    body: "Some problems belong to the whole team. You talk them through at one table and anybody on the team can submit.",
+    title: "A puzzle for each of you",
+    body: "Each person also gets a puzzle you don't need code for, like decoding binary or cracking a cipher. Solving it adds points for your team.",
   },
   {
-    title: "Points without a compiler",
-    body: "Decode binary, break a cipher, finish a sudoku, or take apart the metal puzzle. Every one of them scores for your team.",
+    title: "Kahoot at the end",
+    body: "When the coding is over there's a quick Kahoot, and how your team does in it counts toward the final score.",
   },
   {
-    title: "The board on the wall",
-    body: "Standings go up on the projector all evening and freeze near the end, so the last stretch is played without knowing.",
+    title: "The last fifteen minutes are hidden",
+    body: "The scoreboard freezes at 8:00, so nobody knows who won until it's revealed at the awards.",
   },
 ] as const;
 
 /**
- * The two students behind the night.
+ * The students behind the night.
  *
  * Real people with real photographs, so this section is held to the same rules as everything else:
  * a name is a heading rather than a caption, the role is stated plainly, and the images carry
@@ -69,13 +69,20 @@ const PEOPLE = [
     name: "Sameer Zaidi",
     role: "President, Computer Science Club",
     photo: "/people/sameer-zaidi.jpg",
-    body: "Sameer organizes Coding Night. He builds the divisions and the teams, picks the questions, and runs the room while it happens.",
+    body: "Sameer organizes Coding Night. He sets up the teams, picks the problems, and runs the room.",
+  },
+  {
+    // First name only for now. The full name is pending from the organizer.
+    name: "Navraj",
+    role: "President, Computer Science Club",
+    photo: "/people/navraj.jpg",
+    body: "Navraj leads the Computer Science Club with Sameer and helps run Coding Night.",
   },
   {
     name: "Aryav Das",
     role: "Officer, Computer Science Club",
-    photo: "/people/aryav-das.jpg",
-    body: "Aryav built this site for the club, from the judge that runs your code in a sandbox to the board the projector shows.",
+    photo: "/people/aryav-das-2026.jpg",
+    body: "Aryav built this website, including the judge that runs your code and the scoreboard on the projector.",
   },
 ] as const;
 
@@ -232,9 +239,9 @@ export default async function Home() {
     THE FRONT DOOR KNOWS WHO IS STANDING AT IT, which it did not for one full audit cycle.
 
     A signed-in student who wandered back to `/` was shown the stranger's page: "Log in",
-    "Create your account", "Sign in to compete" - and `/sign-in` does not bounce a live session,
-    so the loop was `/` -> Log in -> sign-in form -> "Back to the home page" -> `/`. The only way
-    into the contest was typing `/contest` by hand. Found once, reported fixed, and found open
+    "Create your account", "Sign in to compete" - and the sign-in page does not bounce a live
+    session, so the loop was `/` -> Log in -> sign-in form -> "Back to the home page" -> `/`. The
+    only way into the contest was typing `/contest` by hand. Found once, reported fixed, and found open
     again by the navigation audit, because the fix had gone into the header and not the hero.
 
     One read of the session cookie decides every call to action on the page at once. The
@@ -270,18 +277,18 @@ export default async function Home() {
               className="font-display font-bold whitespace-nowrap"
               style={{ fontSize: "var(--text-sm)" }}
             >
-              Coding Night
+              Park Tudor Coding Night
             </span>
           </span>
 
           {/*
             One quiet text link and one filled button, which is the pair HackerRank puts here. The
-            filled one is the join code, because the organizer's decision for the night is "the
-            join code system, not login": every student arrives with a printed slip, and the slip
-            is the whole sign-in. Accounts still exist for organizers and for the practice arena,
-            so account sign-in stays on the bar as the quiet link beside it. The old pair here was
-            "Log in" and "Create your account", which sent a student holding a slip off to make an
-            account they did not need.
+            filled one is the join code: every student arrives with a printed slip, and the slip
+            is the whole sign-in. There is no account link on the bar. Students have no accounts
+            (the organizer's instruction, 2026-11-15), and the organizer passcode page is linked
+            once, from the footer, where it does not compete with the door the room uses. The old
+            pair here was "Log in" and "Create your account", which sent a student holding a slip
+            off to make an account they did not need.
           */}
           {/*
             `flex-wrap` and `justify-end`: the bar once reached four items and 358px at 360, which
@@ -309,26 +316,17 @@ export default async function Home() {
                 {enterLabel}
               </Link>
             ) : (
-              <>
-                <Link
-                  href="/sign-in"
-                  className="rounded-chip px-2 py-1.5 whitespace-nowrap text-ink/75 hover:text-ink sm:px-3"
-                  style={{ fontSize: "var(--text-xs)" }}
-                >
-                  Sign in
-                </Link>
-                {/*
-                  The same label as the hero and the closing band, so the action keeps one name
-                  from the first thing a student reads to the heading on `/join`.
-                */}
-                <Link
-                  href="/join"
-                  className="rounded-chip bg-panther px-3 py-1.5 font-semibold whitespace-nowrap text-paper hover:bg-panther-deep"
-                  style={{ fontSize: "var(--text-xs)" }}
-                >
-                  Enter your join code
-                </Link>
-              </>
+              /*
+                The same label as the hero and the closing band, so the action keeps one name
+                from the first thing a student reads to the heading on `/join`.
+              */
+              <Link
+                href="/join"
+                className="rounded-chip bg-panther px-3 py-1.5 font-semibold whitespace-nowrap text-paper hover:bg-panther-deep"
+                style={{ fontSize: "var(--text-xs)" }}
+              >
+                Enter your join code
+              </Link>
             )}
           </nav>
         </div>
@@ -375,33 +373,45 @@ export default async function Home() {
         */}
         <div className="motion-stagger relative mx-auto grid w-full max-w-6xl items-center gap-10 px-4 py-14 sm:py-20 lg:grid-cols-[minmax(0,1fr)_minmax(0,26rem)]">
           <div className="motion-swap-in">
-            <p
-              className="text-ink/60 uppercase"
-              style={{ fontSize: "var(--text-xs)", letterSpacing: "0.14em" }}
-            >
-              Park Tudor School <span className="text-ink/40">&middot;</span> Computer Science Club
-            </p>
+            {/*
+              The panther at full strength, beside the school's name. The teacher's ask was that the
+              page make Park Tudor the point, so the mark is a logo here and not only the faint
+              watermark behind the hero.
+            */}
+            <div className="flex items-center gap-3">
+              <Image
+                src="/brand/pt-panther.png"
+                alt="Park Tudor Panthers logo"
+                width={275}
+                height={235}
+                priority
+                className="h-14 w-auto"
+              />
+              <p
+                className="text-ink/70 uppercase"
+                style={{ fontSize: "var(--text-xs)", letterSpacing: "0.14em" }}
+              >
+                Park Tudor Computer Science Club
+              </p>
+            </div>
 
             <h1
-              className="mt-4 font-display font-bold"
+              className="mt-5 font-display font-bold"
               style={{
                 fontSize: "clamp(2.2rem, 5.5vw, 3.4rem)",
                 lineHeight: 1.08,
                 textWrap: "balance",
               }}
             >
-              Code with your team.
-              <br />
-              <span className="text-panther">Climb the standings.</span>
+              Park Tudor <span className="text-panther">Coding Night</span>
             </h1>
 
             <p
               className="mt-5 max-w-xl text-ink/75"
               style={{ fontSize: "var(--text-md)", textWrap: "pretty" }}
             >
-              Coding Night is the Computer Science Club&rsquo;s team programming contest. Solve your
-              assigned questions, work together on the team problems, and follow every result on the
-              board at the front of the room.
+              The CS Club&rsquo;s team programming contest, on a website Park Tudor students built
+              for it. Bring a laptop and your join code.
             </p>
 
             {/* Two actions, one obviously primary. */}
@@ -418,28 +428,35 @@ export default async function Home() {
                 className="rounded-chip border border-rule-edge px-5 py-2.5 font-semibold hover:border-rule-firm hover:bg-ink/[0.03]"
                 style={{ fontSize: "var(--text-sm)" }}
               >
-                Watch the board
+                See the standings
               </Link>
             </div>
 
-            {/*
-              Account sign-in, demoted to one quiet line. It is for the two kinds of people who
-              are not holding a slip: organizers, and anyone using the practice arena.
-            */}
-            {!signedIn && (
-              <p className="mt-4 text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
-                Organizer or practice account?{" "}
-                <Link
-                  href="/sign-in"
-                  className="font-semibold text-ink/75 underline underline-offset-2 hover:text-ink"
-                >
-                  Sign in
-                </Link>
-              </p>
-            )}
           </div>
 
           <BoardPreview />
+        </div>
+      </section>
+
+      {/* --- built here ------------------------------------------------------ */}
+      {/*
+        The teacher wanted it central that Park Tudor students built this, so it gets its own band
+        straight after the hero, in the school's red, rather than a line in the footer.
+      */}
+      <section className="bg-panther text-paper">
+        <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center gap-x-10 gap-y-4 px-4 py-10">
+          <h2
+            className="font-display font-bold"
+            style={{ fontSize: "var(--text-lg)", maxWidth: "18ch" }}
+          >
+            Built by Park Tudor students
+          </h2>
+          <p className="max-w-2xl" style={{ fontSize: "var(--text-sm)" }}>
+            Coding Night used to run on HackerRank, with team scores worked out in a spreadsheet
+            afterwards. This year the CS Club wrote its own site. Students built the part that runs
+            and checks your code, the team scoring, the puzzles, and the scoreboard on the projector,
+            and wrote the problems you&rsquo;ll be solving.
+          </p>
         </div>
       </section>
 
@@ -505,11 +522,11 @@ export default async function Home() {
         />
         <div className="relative mx-auto w-full max-w-6xl px-4 py-14">
           <h2 className="font-display font-bold" style={{ fontSize: "var(--text-lg)" }}>
-            One evening at Park Tudor
+            What the night looks like
           </h2>
           <p className="mt-2 max-w-2xl text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
-            Coding Night is the Computer Science Club&rsquo;s own contest. Teams sit together, the
-            board is on the wall, and the questions are written for this room.
+            Pizza at 6:30, coding from 7:00 to 8:15, then the Kahoot and awards. You&rsquo;re out by
+            8:45.
           </p>
 
           <ul className="motion-stagger mt-8 grid gap-x-8 gap-y-7 sm:grid-cols-2">
@@ -542,11 +559,10 @@ export default async function Home() {
           Who runs Coding Night
         </h2>
         <p className="mt-2 max-w-2xl text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
-          Two students, one club. Find either of us in the room if something goes wrong on the
-          night.
+          If something goes wrong during the contest, find one of us.
         </p>
 
-        <ul className="motion-stagger mt-8 grid gap-4 sm:grid-cols-2">
+        <ul className="motion-stagger mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {PEOPLE.map((person) => (
             <li
               key={person.name}
@@ -596,12 +612,12 @@ export default async function Home() {
         <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-6 px-4 py-12">
           <div>
             <h2 className="font-display font-bold" style={{ fontSize: "var(--text-lg)" }}>
-              Ready for Coding Night?
+              Got your slip?
             </h2>
             <p className="mt-1.5 text-paper/80" style={{ fontSize: "var(--text-sm)" }}>
               {signedIn
                 ? "Open the contest to see your team and assigned problems."
-                : "Type the code on your slip to see your team, your problems, and the board."}
+                : "Type in the code on it to get started."}
             </p>
           </div>
           <Link
@@ -626,7 +642,7 @@ export default async function Home() {
               height={235}
               className="h-5 w-auto opacity-70"
             />
-            Run by the Computer Science Club at Park Tudor School
+            Built and run by the Park Tudor Computer Science Club
           </span>
           {/* `py-1.5` lifts both targets from 19px to 31px, matching the header links (2.5.8). */}
           <Link
@@ -636,8 +652,14 @@ export default async function Home() {
           >
             Live standings
           </Link>
+          {/*
+            The only link to the organizer passcode page on the whole site. In the footer, quiet,
+            so it exists without competing with the join code. Straight to `/sign-in` rather than
+            `/admin`, which would bounce a signed-out organizer to the same page with an error
+            banner on it about a session they never had.
+          */}
           <Link
-            href="/admin"
+            href="/sign-in"
             className="ml-auto py-1.5 text-ink/70 hover:text-ink"
             style={{ fontSize: "var(--text-xs)" }}
           >

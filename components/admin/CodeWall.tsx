@@ -151,7 +151,7 @@ export function CodeWall({ contestId }: { readonly contestId: string }) {
           <p className={styles.instruction}>ptcodingnight.com/join</p>
         </div>
         <p className={styles.meta}>
-          {range === "" ? "" : `${range} · `}
+          {range === "" ? "" : `${range}, `}
           {arrived} of {total} signed in
         </p>
       </header>
@@ -189,7 +189,7 @@ export function CodeWall({ contestId }: { readonly contestId: string }) {
               )}
               <p className={styles.team}>
                 {seat.teamName ?? "No team yet"}
-                {seat.divisionName === null ? "" : ` · ${seat.divisionName}`}
+                {seat.divisionName === null ? "" : `, ${seat.divisionName}`}
               </p>
             </li>
           ))}
@@ -199,7 +199,7 @@ export function CodeWall({ contestId }: { readonly contestId: string }) {
       <footer className={styles.foot}>
         <span className={styles.pageDots}>
           Page {current + 1} of {pageCount}
-          {paused ? " · paused" : ""}
+          {paused ? ", paused" : ""}
         </span>
         <span className={styles.controls}>
           <button

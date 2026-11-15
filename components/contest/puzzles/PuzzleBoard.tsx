@@ -187,7 +187,7 @@ function PuzzleCard({
             {puzzle.forSetLabel === null ? "Open to everyone" : "Your puzzle"}
           </span>
           <span className="text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
-            {puzzle.topic} · <span className="numeric">{puzzle.points}</span> points
+            {puzzle.topic}, <span className="numeric">{puzzle.points}</span> points
           </span>
         </span>
       </header>

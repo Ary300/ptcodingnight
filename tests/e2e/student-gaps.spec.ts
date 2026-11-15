@@ -209,15 +209,16 @@ test.describe("the signed-out state is a way in, not a stale error", () => {
 
       /*
         "Join the contest first" is a `ForbiddenError` message from the route layer that used to be
-        rendered verbatim, in alert red, with nothing to click. The way in is a link, and on the
-        night it is the join code on the student's slip; account sign-in follows as the quiet
-        second option for organizers and the practice arena.
+        rendered verbatim, in alert red, with nothing to click. The way in is a link, and it is the
+        join code on the student's slip. Nothing else: students have no accounts (the organizer's
+        instruction, 2026-11-15), so no account sign-in is offered beside it.
       */
       await expect(page.getByText(/Join the contest first/i)).toHaveCount(0, { timeout: 30_000 });
       await expect(page.getByRole("link", { name: "Enter your join code" })).toBeVisible({
         timeout: 30_000,
       });
-      await expect(page.getByRole("link", { name: "Sign in", exact: true })).toBeVisible();
+      await expect(page.getByRole("link", { name: /Sign in/ })).toHaveCount(0);
+      await expect(page.locator('main a[href="/sign-in"]')).toHaveCount(0);
     });
   }
 });

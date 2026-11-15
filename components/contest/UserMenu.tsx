@@ -386,7 +386,7 @@ export function UserMenu({
               style={{ fontSize: "var(--text-xs)" }}
             >
               Signed in with a join code. Your name and team come from the organizer&rsquo;s roster,
-              so there are no account settings to change.
+              so there is nothing to change here.
             </p>
           )}
         </div>

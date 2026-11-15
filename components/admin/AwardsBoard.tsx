@@ -234,7 +234,7 @@ function Podium({ rows }: { rows: StandingsResponse["divisions"][number]["rows"]
             </p>
             {/* `text-paper/80`, not `opacity-80`: a wrapper opacity multiplies with child alpha. */}
             <p className="numeric mt-tight text-paper/80" style={{ fontSize: "var(--text-sm)" }}>
-              {row.score} pts · {row.penaltyMinutes} min penalty
+              {row.score} pts, {row.penaltyMinutes} min penalty
             </p>
           </li>
         );

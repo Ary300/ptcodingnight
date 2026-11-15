@@ -13,10 +13,9 @@ import Link from "next/link";
  * way to do it, in the styling reserved for errors.
  *
  * A signed-out visitor is not an error. It is the ordinary state of someone who has not signed in
- * yet, and the only useful thing to put on the screen is the way in. On the night that way is the
- * join code on the student's slip (the organizer's decision: "the join code system, not login"),
- * so the button goes to `/join`, and account sign-in follows as one quiet line for organizers and
- * the practice arena.
+ * yet, and the only useful thing to put on the screen is the way in. That way is the join code on
+ * the student's slip, and it is the only one: students have no accounts (the organizer's
+ * instruction, 2026-11-15), so the button goes to `/join` and nothing follows it.
  *
  * ## Why it lives under `lobby/`
  *
@@ -61,12 +60,6 @@ export function SignInRequired({ what, level = 2 }: SignInRequiredProps) {
       >
         Enter your join code
       </Link>
-      <p className="mt-3 text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
-        Organizer or practice account?{" "}
-        <Link href="/sign-in" className="font-semibold text-panther underline underline-offset-2">
-          Sign in
-        </Link>
-      </p>
     </div>
   );
 }
