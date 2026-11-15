@@ -19,6 +19,12 @@ function format(remainingMs: number): string {
 export interface CountdownProps {
   /** ISO instant the contest ends, from `StandingsResponse.endsAt`. */
   endsAt: string;
+  /**
+   * ISO instant the contest opens. Before it the wall reads "Starts in" and counts to the start;
+   * it used to count to the END and call that time remaining, so a projector switched on at 6:30
+   * showed 1:45:00 remaining for a contest that had not begun.
+   */
+  startsAt?: string;
 }
 
 /**
@@ -32,7 +38,7 @@ export interface CountdownProps {
  * Inside the last five minutes it turns `--gold` — 13.44:1 on `--ink`, and the same colour
  * the frozen plate uses, so gold consistently means "pay attention to this".
  */
-export function Countdown({ endsAt }: CountdownProps) {
+export function Countdown({ endsAt, startsAt }: CountdownProps) {
   const [now, setNow] = useState<number | null>(null);
 
   useEffect(() => {
@@ -48,15 +54,20 @@ export function Countdown({ endsAt }: CountdownProps) {
   }, []);
 
   const endsAtMs = Date.parse(endsAt);
+  const startsAtMs = startsAt === undefined ? Number.NaN : Date.parse(startsAt);
+  const beforeStart = now !== null && !Number.isNaN(startsAtMs) && now < startsAtMs;
+  const targetMs = beforeStart ? startsAtMs : endsAtMs;
   const remainingMs =
-    now === null || Number.isNaN(endsAtMs) ? null : endsAtMs - now;
+    now === null || Number.isNaN(targetMs) ? null : targetMs - now;
 
-  const urgent = remainingMs !== null && remainingMs <= COUNTDOWN_URGENT_MS;
-  const ended = remainingMs !== null && remainingMs <= 0;
+  const urgent = !beforeStart && remainingMs !== null && remainingMs <= COUNTDOWN_URGENT_MS;
+  const ended = !beforeStart && remainingMs !== null && remainingMs <= 0;
 
   return (
     <div>
-      <div className={styles.clockLabel}>{ended ? "Time" : "Time remaining"}</div>
+      <div className={styles.clockLabel}>
+        {beforeStart ? "Starts in" : ended ? "Time" : "Time remaining"}
+      </div>
       <div className={`numeric ${styles.clock} ${urgent ? styles.clockUrgent : ""}`}>
         {remainingMs === null ? PLACEHOLDER : format(remainingMs)}
       </div>

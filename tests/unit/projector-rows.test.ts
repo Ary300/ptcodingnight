@@ -119,13 +119,15 @@ describe("memberBlockBudget", () => {
   const WALL = 7;
 
   it("gives a lone open team the full measured block", () => {
-    // 1 open on a 9-team field: cap 5 drawn, (7-5)*2 = 4 spare member rows for one team.
-    expect(memberBlockBudget(WALL, 5, 1)).toBe(MEMBER_ROWS_FULL_BLOCK);
+    // 1 open on a 9-team field: cost 3 leaves cap 4 drawn, (7-4)*2 = 6 spare member rows, and the
+    // full block (four players plus the pool) is 5.
+    expect(memberBlockBudget(WALL, 4, 1)).toBe(MEMBER_ROWS_FULL_BLOCK);
   });
 
-  it("still affords full blocks at two open, which is where the two-row cost balances", () => {
-    // 2 open: cap 3 drawn, (7-3)*2 = 8 spare, 4 each.
-    expect(memberBlockBudget(WALL, 3, 2)).toBe(MEMBER_ROWS_FULL_BLOCK);
+  it("still affords full blocks at two open, which is where the three-row cost balances", () => {
+    // 2 open: cost 3 each leaves cap 1, so only the two open teams are drawn; (7-2)*2 = 10
+    // spare, 5 each, a whole team of four plus the pool.
+    expect(memberBlockBudget(WALL, 2, 2)).toBe(MEMBER_ROWS_FULL_BLOCK);
   });
 
   it("shrinks every block at three open instead of letting the wall scroll", () => {

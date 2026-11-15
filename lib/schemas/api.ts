@@ -1247,6 +1247,8 @@ export const TeamStandingsResponseSchema = z.object({
   contestId: z.string(),
   frozen: z.boolean(),
   asOf: z.string(),
+  /** When the contest opens. Optional for older builds; the wall clock counts to it before the start. */
+  startsAt: z.string().optional(),
   endsAt: z.string(),
   /**
    * True for the permanent practice arena. The wall reads it to NOT render a countdown: the

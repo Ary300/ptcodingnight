@@ -92,7 +92,9 @@ export const TEAM_VISIBLE_ROWS = 7;
  *
  * The footnote states the real drawn count and the real total, so the cost is never silent.
  */
-export const TEAM_EXPANDED_ROW_COST = 2;
+// Three since 2026-11-15, when the full block grew to five rows so a team of four shows every
+// player: five card rows measure ~206px at 1080, and three team rows buy ~279px.
+export const TEAM_EXPANDED_ROW_COST = 3;
 
 /** Auto-advance through divisions while the board is live and unattended. */
 export const DIVISION_ROTATE_MS = 20_000;

@@ -43,8 +43,15 @@ export interface DrawnRows {
  */
 export const MEMBER_ROWS_PER_TEAM_ROW = 2;
 
-/** The measured full-size block: `TEAM_EXPANDED_ROW_COST` team rows' worth of member rows. */
-export const MEMBER_ROWS_FULL_BLOCK = 4;
+/**
+ * The full-size block: a whole team of four plus the pool row.
+ *
+ * It was 4, which on a four-person team drew two names, an "N more players" row and the pool,
+ * with half the wall empty underneath (2026-11-15). Teams are capped at four this year, so five
+ * rows always shows every player. Five rows measure about 206px at 1920x1080 (41.1px each), more
+ * than the 186px two team rows buy, which is why `TEAM_EXPANDED_ROW_COST` went to 3 with it.
+ */
+export const MEMBER_ROWS_FULL_BLOCK = 5;
 
 /** The remainder row plus the pool row — the smallest block that still reconciles. */
 export const MEMBER_ROWS_MIN_BLOCK = 2;

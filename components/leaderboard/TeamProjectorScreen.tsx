@@ -298,7 +298,7 @@ export function TeamProjectorScreen({
               (standings.isPractice ? (
                 <span className={styles.teamSubtitle}>Practice</span>
               ) : (
-                <Countdown endsAt={standings.endsAt} />
+                <Countdown endsAt={standings.endsAt} startsAt={standings.startsAt} />
               ))}
           </div>
         </header>

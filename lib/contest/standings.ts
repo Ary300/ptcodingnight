@@ -601,6 +601,7 @@ export async function getTeamStandings(
     contestId,
     frozen: !admin && isPublicBoardFrozen(input.contest, now),
     asOf: (upTo ?? now).toISOString(),
+    startsAt: input.contest.startsAt.toISOString(),
     endsAt: input.contest.endsAt.toISOString(),
     isPractice: input.contest.isPractice,
     // Sorted by the organizer's own order, already the shape the scoring input carries. The

@@ -166,7 +166,7 @@ export function ProjectorScreen({ contestId }: ProjectorScreenProps) {
         </main>
 
         <aside className={styles.aside}>
-          <Countdown endsAt={standings.endsAt} />
+          <Countdown endsAt={standings.endsAt} startsAt={standings.startsAt} />
 
           <DivisionTabs
             divisions={standings.divisions}
