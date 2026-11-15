@@ -9,22 +9,22 @@ const HOW = [
   {
     n: "1",
     title: "Enter your join code",
-    body: "It’s on the slip you get at the door. Type it in and you’re signed in, already on your team.",
+    body: "You get a slip at the door with a code on it, just type it in and you’re signed in and already on your team.",
   },
   {
     n: "2",
     title: "Find your team",
-    body: "Your slip has your team and your problem letter on it too. Go sit with your team.",
+    body: "Your slip also says your team and your problem letter, so go find your team and sit with them.",
   },
   {
     n: "3",
     title: "Solve your problems",
-    body: "You get one easy problem and two medium ones. At 7:30 the team problems open, and you can work on those together.",
+    body: "Everyone gets one easy problem and two medium ones, and then at 7:30 the team problems open up so you can work on those together.",
   },
   {
     n: "4",
     title: "Watch the scoreboard",
-    body: "Your code gets checked a few seconds after you submit, and your team’s score goes up on the projector.",
+    body: "When you submit, your code gets checked in a few seconds and your team’s score goes up on the projector.",
   },
 ] as const;
 
@@ -40,19 +40,19 @@ const HOW = [
 const NIGHT = [
   {
     title: "Teams of up to four",
-    body: "Everyone on your team gets different problems, so you each have your own to work on. Your team’s score is the average of everyone’s points.",
+    body: "Everyone on your team gets different problems so you all have your own thing to work on, and your team’s score is basically the average of everyone’s points.",
   },
   {
     title: "A puzzle for each person",
-    body: "You also get a puzzle that doesn’t need any code, like decoding binary. Solving it adds points for your team.",
+    body: "You also get a puzzle that has nothing to do with coding, like decoding binary, and if you solve it your team gets points for it.",
   },
   {
     title: "Kahoot at the end",
-    body: "After coding stops there’s a short Kahoot, and how your team does counts toward the final score.",
+    body: "After coding stops we do a quick Kahoot, and how your team does in it actually counts toward the final score.",
   },
   {
     title: "The scoreboard freezes at 8:00",
-    body: "Nobody sees the last fifteen minutes of scores until the awards.",
+    body: "So for the last fifteen minutes nobody knows who’s winning until we show the final scoreboard at awards.",
   },
 ] as const;
 
@@ -69,19 +69,19 @@ const PEOPLE = [
     name: "Sameer Zaidi",
     role: "President, Computer Science Club",
     photo: "/people/sameer-zaidi.jpg",
-    body: "Organizes Coding Night, puts the teams together and picks the problems.",
+    body: "He runs Coding Night and he’s the one who picks all the problems.",
   },
   {
     name: "Navraj Brar",
     role: "President, Computer Science Club",
     photo: "/people/navraj.jpg",
-    body: "Runs the CS Club with Sameer.",
+    body: "He runs the CS Club with Sameer.",
   },
   {
     name: "Aryav Das",
     role: "Officer, Computer Science Club",
     photo: "/people/aryav-das-2026.jpg",
-    body: "Built this website.",
+    body: "He built this website, so if something on here breaks it’s probably on him.",
   },
 ] as const;
 
@@ -145,7 +145,7 @@ function BoardPreview() {
         className="px-4 pt-3 text-left text-ink/60"
         style={{ fontSize: "var(--text-xs)" }}
       >
-        An example of the scoreboard. A team’s score is its players’ average, plus side points from puzzles and the Kahoot.
+        This is pretty much what the scoreboard looks like, your team’s score is everyone’s points averaged out plus anything from puzzles and the Kahoot.
       </p>
       {/*
         A labelled, FOCUSABLE region, not a bare `overflow-x-auto`.
@@ -409,8 +409,9 @@ export default async function Home() {
               className="mt-5 max-w-xl text-ink/75"
               style={{ fontSize: "var(--text-md)", textWrap: "pretty" }}
             >
-              The CS Club&rsquo;s programming contest. You&rsquo;re on a team of up to four, and
-              this whole site was built by Park Tudor students. Bring a laptop.
+              This is the CS Club&rsquo;s coding contest, you&rsquo;re on a team of up to four
+              people and honestly the whole thing is pretty chill, just bring your laptop and the
+              slip with your join code on it.
             </p>
 
             {/* Two actions, one obviously primary. */}
@@ -451,10 +452,10 @@ export default async function Home() {
             Built by Park Tudor students
           </h2>
           <p className="max-w-2xl" style={{ fontSize: "var(--text-sm)" }}>
-            Coding Night used to run on HackerRank, and someone added up the team scores in a
-            spreadsheet afterward. This year the CS Club built its own site. It checks your code
-            when you submit and works out the team scores, so nobody has to do the math by hand at
-            the end.
+            Every year Coding Night ran on HackerRank and then someone had to add up all the team
+            scores in a spreadsheet afterward, so this year we built our own site. It runs your
+            code and does all the team math by itself, so nobody is stuck in a spreadsheet at the
+            end of the night.
           </p>
         </div>
       </section>
@@ -524,8 +525,8 @@ export default async function Home() {
             What the night looks like
           </h2>
           <p className="mt-2 max-w-2xl text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
-            Pizza at 6:30, coding from 7:00 to 8:15, then the Kahoot and awards. You&rsquo;re out by
-            8:45.
+            Pizza is at 6:30, coding is from 7:00 to 8:15, and then there&rsquo;s a Kahoot and
+            awards and you&rsquo;ll be out by 8:45.
           </p>
 
           <ul className="motion-stagger mt-8 grid gap-x-8 gap-y-7 sm:grid-cols-2">
@@ -558,7 +559,7 @@ export default async function Home() {
           Who runs Coding Night
         </h2>
         <p className="mt-2 max-w-2xl text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
-          If something breaks during the contest, come find one of us.
+          If something breaks during the contest just come find one of us.
         </p>
 
         <ul className="motion-stagger mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -616,7 +617,7 @@ export default async function Home() {
             <p className="mt-1.5 text-paper/80" style={{ fontSize: "var(--text-sm)" }}>
               {signedIn
                 ? "Open the contest to see your team and assigned problems."
-                : "Type in the code on it to get started."}
+                : "Just type in the code on it and you’re in."}
             </p>
           </div>
           <Link
