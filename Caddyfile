@@ -35,7 +35,15 @@
 	# acme_ca https://acme-staging-v02.api.letsencrypt.org/directory
 }
 
-ptcodingnight.com, www.ptcodingnight.com {
+# One canonical host. www used to serve the whole site as a second origin, which splits the
+# session cookie (a student signed in on one host is signed out on the other) and doubles every
+# link anybody shares. It now redirects, keeping the path, and keeps its own certificate so the
+# redirect itself is served over HTTPS.
+www.ptcodingnight.com {
+	redir https://ptcodingnight.com{uri} permanent
+}
+
+ptcodingnight.com {
 	encode zstd gzip
 
 	# The body cap a client cannot lie about. `readJson` checks `content-length` too, but that

@@ -226,7 +226,7 @@ export function TeamProjectorScreen({
 
   return (
     /*
-      Ink ground, paper text, one fixed canvas — DESIGN.md §5, "the projector is monumental", and
+      Paper ground, ink text, one fixed canvas — DESIGN.md §5, "the projector is monumental", and
       the same `.stage` the individual board stands on.
 
       This shipped as a `bg-paper` Tailwind page, which is the COMPETITOR surface: a phone read at

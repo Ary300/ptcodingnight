@@ -10,6 +10,9 @@ const projectRoot = path.dirname(fileURLToPath(import.meta.url));
 
 const nextConfig: NextConfig = {
   reactCompiler: true,
+  // Caddy already strips its own Server header; this was the one fingerprint left on every
+  // response, found by the 2026-11-15 production sweep.
+  poweredByHeader: false,
   turbopack: {
     root: projectRoot,
   },

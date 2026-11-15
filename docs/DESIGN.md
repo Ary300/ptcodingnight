@@ -222,7 +222,9 @@ Two surfaces with opposite jobs, and one device tying them together.
 measure (65–75 characters for statements), a single accent. Students are reading and
 writing code here for two hours; anything louder becomes noise by minute twenty.
 
-**The projector is monumental.** `--ink` ground, `--paper` text, the crest as a large
+**The projector is monumental.** `--paper` ground, `--ink` text (it began on `--ink`, and the
+room rejected a dark wall in August 2026; the Codeforces-white board in
+`components/leaderboard/leaderboard.module.css` is the one that ships), the crest as a large
 low-opacity watermark bleeding off the bottom-left corner, dense typographic hierarchy, no
 chrome at all — no nav, no scrollbars, no footer, no login. Everything is either a name, a
 number, or the clock.
