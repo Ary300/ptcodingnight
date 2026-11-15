@@ -9,22 +9,22 @@ const HOW = [
   {
     n: "1",
     title: "Enter your join code",
-    body: "Type in the code from your slip and you’re on your team.",
+    body: "Each student receives a slip with a join code at check-in. Entering the code signs you in and places you on your team.",
   },
   {
     n: "2",
     title: "Find your team",
-    body: "Your slip has your team and your problem letter on it.",
+    body: "Your slip lists your team and your problem set.",
   },
   {
     n: "3",
     title: "Solve your problems",
-    body: "Everyone gets one easy and two medium problems. Team problems open at 7:30.",
+    body: "Each student receives one easy and two medium problems. Team problems open at 7:30.",
   },
   {
     n: "4",
-    title: "Watch the scoreboard",
-    body: "Submit and your team’s score shows up on the projector.",
+    title: "Follow the standings",
+    body: "Submissions are graded within seconds, and the standings are shown on the projector throughout the contest.",
   },
 ] as const;
 
@@ -39,20 +39,20 @@ const HOW = [
  */
 const NIGHT = [
   {
-    title: "Teams of up to four",
-    body: "Everyone on your team gets different problems, and your team score is the average.",
+    title: "Teams",
+    body: "Teams have up to four students, and each teammate receives different problems. A team’s score is the average of its members’ scores.",
   },
   {
-    title: "A puzzle for each person",
-    body: "Everyone also gets a puzzle you don’t need code for, like decoding binary. It’s worth points for your team.",
+    title: "Puzzles",
+    body: "Each student also receives a puzzle that does not require programming, such as decoding binary. A correct answer adds points to the team’s score.",
   },
   {
-    title: "Kahoot at the end",
-    body: "Quick Kahoot after coding, and it counts toward your score.",
+    title: "Kahoot",
+    body: "A short Kahoot follows the contest, and the results count toward the final standings.",
   },
   {
-    title: "The scoreboard freezes at 8:00",
-    body: "Nobody sees the scores from the last 15 minutes until awards.",
+    title: "Frozen standings",
+    body: "The standings are hidden for the final 15 minutes and revealed at the awards.",
   },
 ] as const;
 
@@ -75,13 +75,13 @@ const PEOPLE = [
     name: "Navraj Brar",
     role: "President, Computer Science Club",
     photo: "/people/navraj.jpg",
-    body: "Runs the CS Club with Sameer.",
+    body: "Leads the Computer Science Club with Sameer.",
   },
   {
     name: "Aryav Das",
     role: "Officer, Computer Science Club",
     photo: "/people/aryav-das-2026.jpg",
-    body: "Made this website.",
+    body: "Built the contest website.",
   },
 ] as const;
 
@@ -145,7 +145,7 @@ function BoardPreview() {
         className="px-4 pt-3 text-left text-ink/60"
         style={{ fontSize: "var(--text-xs)" }}
       >
-        What the scoreboard looks like. Your team’s score is the average of everyone’s points, plus puzzle and Kahoot points.
+        Sample standings. A team’s score is the average of its members’ points, plus points from puzzles and the Kahoot.
       </p>
       {/*
         A labelled, FOCUSABLE region, not a bare `overflow-x-auto`.
@@ -409,8 +409,9 @@ export default async function Home() {
               className="mt-5 max-w-xl text-ink/75"
               style={{ fontSize: "var(--text-md)", textWrap: "pretty" }}
             >
-              The CS Club&rsquo;s coding contest. You&rsquo;re on a team of up to four, so just
-              bring your laptop and your join code.
+              Coding Night is the Park Tudor Computer Science Club&rsquo;s annual programming
+              contest. Students compete in teams, working on their own problems first and then
+              solving team problems together.
             </p>
 
             {/* Two actions, one obviously primary. */}
@@ -451,8 +452,9 @@ export default async function Home() {
             Built by Park Tudor students
           </h2>
           <p className="max-w-2xl" style={{ fontSize: "var(--text-sm)" }}>
-            Coding Night used to be on HackerRank and someone had to do all the team scores by
-            hand after, so we made our own site this year.
+            Coding Night previously ran on HackerRank, with team scores calculated by hand
+            afterward. This year, members of the Computer Science Club built this site to judge
+            submissions and calculate team scores automatically.
           </p>
         </div>
       </section>
@@ -519,11 +521,11 @@ export default async function Home() {
         />
         <div className="relative mx-auto w-full max-w-6xl px-4 py-14">
           <h2 className="font-display font-bold" style={{ fontSize: "var(--text-lg)" }}>
-            What the night looks like
+            Format and schedule
           </h2>
           <p className="mt-2 max-w-2xl text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
-            Pizza at 6:30, coding from 7:00 to 8:15, then Kahoot and awards. You&rsquo;re out by
-            8:45.
+            Pizza is served at 6:30. The contest runs from 7:00 to 8:15, followed by a Kahoot and
+            awards, and the evening ends by 8:45.
           </p>
 
           <ul className="motion-stagger mt-8 grid gap-x-8 gap-y-7 sm:grid-cols-2">
@@ -553,10 +555,10 @@ export default async function Home() {
       {/* --- who runs it ------------------------------------------------------ */}
       <section className="mx-auto w-full max-w-6xl px-4 py-14">
         <h2 className="font-display font-bold" style={{ fontSize: "var(--text-lg)" }}>
-          Who runs Coding Night
+          Organizers
         </h2>
         <p className="mt-2 max-w-2xl text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
-          If anything breaks, come find one of us.
+          During the contest, any of the organizers below can help with questions or problems.
         </p>
 
         <ul className="motion-stagger mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -609,12 +611,12 @@ export default async function Home() {
         <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-6 px-4 py-12">
           <div>
             <h2 className="font-display font-bold" style={{ fontSize: "var(--text-lg)" }}>
-              Got your slip?
+              Have your join code?
             </h2>
             <p className="mt-1.5 text-paper/80" style={{ fontSize: "var(--text-sm)" }}>
               {signedIn
                 ? "Open the contest to see your team and assigned problems."
-                : "Type in your code and you’re in."}
+                : "Enter it to sign in and join your team."}
             </p>
           </div>
           <Link
