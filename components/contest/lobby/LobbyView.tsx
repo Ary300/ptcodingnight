@@ -164,6 +164,18 @@ export function LobbyView({ phase = null, viewerKind }: LobbyViewProps) {
         */}
         {/* Steps down to --text-lg below `sm` (the pattern ProblemWorkspace set): a flat 40px
             h1 wraps at 360 and spends 120px+ of the first screen before any content. */}
+        {/*
+          A greeting by name, so the student sees straight away that the code they typed was theirs.
+          First name only, from the roster. A practice guest ("Guest 4821") has no name to use.
+        */}
+        {joined !== null && (
+          <p
+            className="mt-2 font-display font-bold text-panther"
+            style={{ fontSize: "var(--text-md)" }}
+          >
+            {greetingFor(joined.displayName, practiceArena)}
+          </p>
+        )}
         <h1 className="mt-1 font-display font-bold text-[length:var(--text-lg)] sm:text-[length:var(--text-xl)]">
           {beforeStart && phase !== null ? phase.name : "Problems"}
         </h1>
@@ -367,6 +379,14 @@ function PracticeArenaNotice() {
   );
 }
 
+
+/** "Hi Katherine, welcome to Coding Night." Exported for its unit test. */
+export function greetingFor(displayName: string, practice: boolean): string {
+  const place = practice ? "the practice problems" : "Coding Night";
+  if (/^Guest \d+$/.test(displayName.trim())) return `Welcome to ${place}.`;
+  const first = displayName.trim().split(/\s+/)[0] ?? "";
+  return first === "" ? `Welcome to ${place}.` : `Hi ${first}, welcome to ${place}.`;
+}
 
 /**
  * What an organizer sees on /contest.
