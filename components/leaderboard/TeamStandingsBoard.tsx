@@ -255,8 +255,8 @@ function arithmeticFor(
   const side = term(
     sideHundredths,
     sideActivitiesFlat || team.teamSize === 0
-      ? "side"
-      : `side (${String(team.sideActivityPoints)} pts ÷ ${divisor})`,
+      ? "puzzle and Kahoot"
+      : `puzzle and Kahoot (${String(team.sideActivityPoints)} pts ÷ ${divisor})`,
   );
 
   return `${pool} ÷ ${divisor} = ${formatScore(meanHundredths / 100)}${group}${side}`;
@@ -409,6 +409,13 @@ export function TeamStandingsBoard({
     : resolveTabId(tabs, requestedTabId ?? homeTabId);
   /* The projector hands over teams it already filtered and budgeted; never filter them again. */
   const visibleTeams = projector ? teams : teamsForTab(teams, activeTabId);
+  /*
+    The Group column exists only when some team has group points. Coding Night 2026 has no team
+    problems (every student holds their own three), so a column of dashes on the wall would be a
+    question nobody can answer. Decided from all teams, not the visible tab, so switching divisions
+    never changes the board's shape.
+  */
+  const showGroup = teams.some((team) => team.groupPoints > 0);
   useRankSlide(rankSlideTable, activeTabId ?? "all-teams");
   /** A projector board is expandable only when somebody upstream is budgeting for it. */
   const toggleWall = projector ? onToggleTeam : undefined;
@@ -670,19 +677,26 @@ export function TeamStandingsBoard({
                 </th>
               ))}
 
+              {showGroup && (
+                <th
+                  scope="col"
+                  className={`font-body border ${grid} ${cellPad} text-center font-normal ${muted}`}
+                  style={{ fontSize: size.head, ...numericCol }}
+                >
+                  Group
+                </th>
+              )}
+              {/*
+                Side-activity points, named for what earns them on the night: the paper puzzle, and
+                the Kahoot after it. "Side" meant nothing to anyone outside this codebase.
+              */}
               <th
                 scope="col"
+                aria-label="Puzzle and Kahoot points"
                 className={`font-body border ${grid} ${cellPad} text-center font-normal ${muted}`}
                 style={{ fontSize: size.head, ...numericCol }}
               >
-                Group
-              </th>
-              <th
-                scope="col"
-                className={`font-body border ${grid} ${cellPad} text-center font-normal ${muted}`}
-                style={{ fontSize: size.head, ...numericCol }}
-              >
-                Side
+                Puzzle
               </th>
             </tr>
           </thead>
@@ -865,6 +879,7 @@ export function TeamStandingsBoard({
                       );
                     })}
 
+                    {showGroup && (
                     <td
                       className={`numeric border ${grid} ${cellPad} text-center align-top`}
                     >
@@ -881,6 +896,7 @@ export function TeamStandingsBoard({
                         </span>
                       )}
                     </td>
+                    )}
                     <td
                       className={`numeric border ${grid} ${cellPad} text-center align-top`}
                     >
@@ -888,7 +904,7 @@ export function TeamStandingsBoard({
                         <span
                           className={dim}
                           aria-label="none"
-                          title="No side-activity points yet"
+                          title="No puzzle or Kahoot points yet"
                         >
                           &ndash;
                         </span>
@@ -917,6 +933,7 @@ export function TeamStandingsBoard({
                       columns={columns}
                       mine={mine}
                       groupPointsInsideMean={groupPointsInsideMean}
+                      showGroup={showGroup}
                       blockRows={memberBlockRows}
                     />
                   ) : (
@@ -1002,9 +1019,11 @@ export function TeamStandingsBoard({
                                   </span>
                                 </td>
                               ))}
-                              <td className={styles.memberCell}>
-                                <span className={styles.cellBox} />
-                              </td>
+                              {showGroup && (
+                                <td className={styles.memberCell}>
+                                  <span className={styles.cellBox} />
+                                </td>
+                              )}
                               <td className={styles.memberCell}>
                                 <span className={styles.cellBox} />
                               </td>
@@ -1017,7 +1036,7 @@ export function TeamStandingsBoard({
                               >
                                 <td className={styles.memberCell} />
                                 <td
-                                  colSpan={4 + columns.length}
+                                  colSpan={(showGroup ? 4 : 3) + columns.length}
                                   className={styles.playerProblemCell}
                                 >
                                   {player.lastScoreIncreaseAt !== null && (
@@ -1067,13 +1086,15 @@ export function TeamStandingsBoard({
                             <span className={styles.cellBox} />
                           </td>
                         ))}
-                        <td
-                          className={`numeric ${styles.memberCell} ${styles.memberNumber}`}
-                        >
-                          <span className={styles.cellBox}>
-                            {groupInsidePool ? team.groupPoints : ""}
-                          </span>
-                        </td>
+                        {showGroup && (
+                          <td
+                            className={`numeric ${styles.memberCell} ${styles.memberNumber}`}
+                          >
+                            <span className={styles.cellBox}>
+                              {groupInsidePool ? team.groupPoints : ""}
+                            </span>
+                          </td>
+                        )}
                         <td className={styles.memberCell}>
                           <span className={styles.cellBox} />
                         </td>
@@ -1097,7 +1118,7 @@ export function TeamStandingsBoard({
           className={`mt-1.5 sm:hidden ${dim}`}
           style={{ fontSize: "var(--text-xs)" }}
         >
-          Scroll the table sideways for the set, group and side columns.
+          Scroll the table sideways for the set and puzzle columns.
         </p>
       )}
       {/* The wall gets no legend: a footnote at `--text-xs` is unreadable from a desk, and the

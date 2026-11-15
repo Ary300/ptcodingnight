@@ -194,7 +194,7 @@ function BoardPreview() {
                 </th>
               ))}
               <th scope="col" className="px-3 py-2 text-right font-semibold whitespace-nowrap">
-                Side
+                Puzzle
               </th>
             </tr>
           </thead>

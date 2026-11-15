@@ -95,6 +95,11 @@ export interface TeamRosterStripProps {
   columns: readonly SetColumn[];
   /** Authoritative scoring setting; do not infer it from a zero-point group round. */
   groupPointsInsideMean: boolean;
+  /**
+   * Whether the board draws a Group column at all. Owned by the board, which decides it once for
+   * every row, because a member row with one cell more than the header misaligns everything after.
+   */
+  showGroup?: boolean;
   /** The viewer's own team, so the rail stays lit down the whole block rather than stopping. */
   mine: boolean;
   /**
@@ -174,6 +179,7 @@ export function TeamRosterStrip({
   columns,
   mine,
   groupPointsInsideMean,
+  showGroup = true,
   blockRows = MEMBER_BLOCK_ROWS,
 }: TeamRosterStripProps) {
   const players = team.players;
@@ -248,7 +254,9 @@ export function TeamRosterStrip({
 
           {/* Group and side are team facts: empty boxes on every member row, stated on the pool
               row. The boxes stay so the card grid keeps its full shape. */}
-          <td className={styles.memberCell}><span className={styles.cellBox} /></td>
+          {showGroup && (
+            <td className={styles.memberCell}><span className={styles.cellBox} /></td>
+          )}
           <td className={styles.memberCell}><span className={styles.cellBox} /></td>
         </tr>
       ))}
@@ -282,7 +290,9 @@ export function TeamRosterStrip({
             if (inSet.length === 0) return null;
             return inSet.reduce((sum, player) => sum + player.score, 0);
           })}
-          <td className={styles.memberCell}><span className={styles.cellBox} /></td>
+          {showGroup && (
+            <td className={styles.memberCell}><span className={styles.cellBox} /></td>
+          )}
           <td className={styles.memberCell}><span className={styles.cellBox} /></td>
         </tr>
       )}
@@ -307,9 +317,11 @@ export function TeamRosterStrip({
           </span>
         </td>
         {setCells(() => null)}
-        <td className={`numeric ${styles.memberCell} ${styles.memberNumber}`}>
-          <span className={styles.cellBox}>{groupInsidePool ? team.groupPoints : ""}</span>
-        </td>
+        {showGroup && (
+          <td className={`numeric ${styles.memberCell} ${styles.memberNumber}`}>
+            <span className={styles.cellBox}>{groupInsidePool ? team.groupPoints : ""}</span>
+          </td>
+        )}
         <td className={styles.memberCell}><span className={styles.cellBox} /></td>
       </tr>
     </>
