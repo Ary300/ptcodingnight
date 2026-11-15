@@ -11,7 +11,7 @@ automated scanners within minutes, not days.
 
 ## 0. What you are deploying, and what it will not do
 
-One DigitalOcean droplet at `192.81.210.235`, serving `https://ptcodingnight.com`, running five
+One DigitalOcean droplet at `67.205.147.124`, serving `https://ptcodingnight.com`, running five
 containers: Caddy (TLS), the Next.js web app, the judge worker, Postgres and Redis.
 
 **Read this before the contest, not after.** This box is a demo and a staging host. It is
@@ -45,7 +45,7 @@ use a second machine.
 
 You need:
 
-- The droplet's IP: **192.81.210.235**
+- The droplet's IP: **67.205.147.124**
 - Root SSH access to it (DigitalOcean emails a password, or you added a key at creation)
 - DNS for `ptcodingnight.com` pointing at that IP
 - An SSH key pair on your own laptop
@@ -58,7 +58,7 @@ dig +short ptcodingnight.com
 dig +short www.ptcodingnight.com
 ```
 
-Both must print `192.81.210.235`. If they do not, fix the A records at your registrar and wait.
+Both must print `67.205.147.124`. If they do not, fix the A records at your registrar and wait.
 Everything below assumes they resolve.
 
 If you do not have an SSH key on your laptop yet:
@@ -73,7 +73,7 @@ cat ~/.ssh/id_ed25519.pub                      # this is the PUBLIC half; it is 
 ## 2. First login
 
 ```bash
-ssh root@192.81.210.235
+ssh root@67.205.147.124
 ```
 
 Everything from here to §5 runs **on the server**.
@@ -102,7 +102,7 @@ rsync --archive --chown=ptcn:ptcn ~/.ssh /home/ptcn/
 **Open a SECOND terminal and confirm it works before closing this one:**
 
 ```bash
-ssh ptcn@192.81.210.235
+ssh ptcn@67.205.147.124
 ```
 
 If that fails, fix it now. Once password auth is off in §3.2, a broken key means the DigitalOcean
@@ -131,7 +131,7 @@ sudo systemctl restart ssh
 **Keep your current session open.** In another terminal, prove you can still get in:
 
 ```bash
-ssh ptcn@192.81.210.235
+ssh ptcn@67.205.147.124
 ```
 
 ### 3.3 Firewall
@@ -483,7 +483,7 @@ an hour before — a resize needs a power-off, and you want time to re-run the c
 2. Resize to at least **4 vCPU / 8 GB**; 8 vCPU / 16 GB matches the HOSTING.md recommendation.
    Choose the CPU-optimised class if offered — this workload is container creation, which is
    almost entirely CPU and I/O.
-3. Power on, then `ssh ptcn@192.81.210.235`.
+3. Power on, then `ssh ptcn@67.205.147.124`.
 
 Raise the two limits that were sized for the small box:
 
@@ -564,7 +564,7 @@ Copy one off the box as well — a backup on the same droplet does not survive l
 
 ```bash
 # From your laptop
-scp ptcn@192.81.210.235:/srv/ptcn/app/backups/ptcn-*.dump ~/ptcn-backups/
+scp ptcn@67.205.147.124:/srv/ptcn/app/backups/ptcn-*.dump ~/ptcn-backups/
 ```
 
 ---
