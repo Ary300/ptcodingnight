@@ -72,6 +72,13 @@ COPY --from=build /app/content ./content
 # permission problem three steps upstream. See docs/DEPLOY.md §8.3.
 RUN chown -R nextjs:nodejs /app/node_modules/@prisma /app/node_modules/.prisma
 
+# The image optimizer writes resized photos to .next/cache/images at RUNTIME, and .next arrives
+# from the build stage owned by root. As `nextjs` every optimized image then failed to cache with
+# EACCES and an unhandled rejection in the log, and was resized again on the next request
+# (2026-11-15, found reading production logs after the homepage photos went up). Only the cache
+# directory is handed over; the built output stays root-owned and read-only to the server.
+RUN mkdir -p /app/.next/cache && chown -R nextjs:nodejs /app/.next/cache
+
 USER nextjs
 EXPOSE 3000
 CMD ["npm", "run", "start"]
