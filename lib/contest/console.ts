@@ -57,10 +57,16 @@ export async function adminConsole(contestId: string): Promise<AdminConsoleView>
     where: { contestProblem: { contestId }, verdict: null },
     select: { id: true },
     // Bounded. A contest with hundreds of queued submissions during the burst must not turn one
-    // console poll into hundreds of queue reads; the rest reconcile on the next tick, three
-    // seconds later, or when the student's own stream picks them up.
+    // console poll into hundreds of queue reads; the rest reconcile on a later tick, or when the
+    // student's own stream picks them up.
+    //
+    // OLDEST FIRST, because the judge queue is FIFO and the oldest unjudged rows are the ones it
+    // finishes first. Newest-first filled all forty slots with jobs still waiting in the queue
+    // during the end-of-night burst, so a finished verdict behind them (a student who submitted
+    // and closed the laptop) stayed unrecorded until the backlog fell under forty. `id` breaks
+    // millisecond ties so the window is stable between polls.
     take: 40,
-    orderBy: { submittedAt: "desc" },
+    orderBy: [{ submittedAt: "asc" }, { id: "asc" }],
   });
   const now = new Date();
   for (const row of unjudged) {

@@ -5,7 +5,7 @@ import { z } from "zod";
 import { DomainError, NotFoundError } from "@/lib/errors";
 import { prisma } from "@/lib/db";
 import type { SubmissionView } from "@/lib/schemas/api";
-import type { Verdict } from "@/lib/schemas/judge";
+import { ComparatorSchema, type Verdict } from "@/lib/schemas/judge";
 import { AUDIT_ACTIONS, writeAudit } from "@/lib/contest/audit";
 import { lockContestMutations } from "@/lib/contest/locks";
 import { standingsToCsv, exportFilename } from "@/lib/contest/csv";
@@ -671,6 +671,7 @@ export async function rejudgeSubmission(
             select: {
               timeLimitMs: true,
               memoryLimitMb: true,
+              comparator: true,
               testCases: {
                 select: {
                   id: true,
@@ -691,6 +692,10 @@ export async function rejudgeSubmission(
   });
   if (submission === null) throw new NotFoundError("Submission");
 
+  // The problem's own comparison rule, exactly as `createSubmission` reads it. This was missing,
+  // so a rejudge fell back to the whitespace default and could turn an AC on a float problem
+  // (plus-minus) into a WA. Parsed rather than cast: the column is Json.
+  const storedComparator = ComparatorSchema.safeParse(submission.contestProblem.problem.comparator);
   const job = buildJudgeJob({
     submissionId: submission.id,
     language: submission.language,
@@ -698,6 +703,7 @@ export async function rejudgeSubmission(
     problem: submission.contestProblem.problem,
     testCases: submission.contestProblem.problem.testCases,
     host: hostLimits(),
+    comparator: storedComparator.success ? storedComparator.data : undefined,
   });
 
   await prisma.$transaction(async (tx) => {

@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest";
 
 import { DomainError } from "@/lib/errors";
-import { RateLimiter, clientKey, hasTrustedProxy } from "@/lib/contest/rate-limit";
+import {
+  CredentialBackoff,
+  RUN_SAMPLES_RULE,
+  RateLimiter,
+  SUBMIT_RULE,
+  clientKey,
+  hasTrustedProxy,
+} from "@/lib/contest/rate-limit";
 
 const START = new Date("2026-07-29T19:00:00.000Z");
 
@@ -94,5 +101,47 @@ describe("hasTrustedProxy", () => {
     expect(hasTrustedProxy(behindCaddy)).toBe(true);
     expect(clientKey(request, behindCaddy)).toBe(APPENDED_BY_CADDY);
     expect(clientKey(request, behindCaddy)).not.toBe(SPOOFED_BY_CLIENT);
+  });
+});
+
+/*
+  Coding Night: up to fifty students behind ONE school address, all submitting in the last ten
+  seconds. The student-path limiters are keyed by participant, never by client address, so the
+  shared NAT is invisible to them. If a future change re-keys one of them by `clientKey`, this is
+  the arithmetic it has to survive.
+*/
+describe("fifty students behind one NAT", () => {
+  const STUDENTS = Array.from({ length: 50 }, (_, index) => `participant-${String(index)}`);
+
+  it("lets every student submit inside ten seconds", () => {
+    const limiter = new RateLimiter(SUBMIT_RULE);
+    const allowed = STUDENTS.map((id, index) => limiter.tryConsume(id, at(index * 200)));
+    expect(allowed.every(Boolean)).toBe(true);
+  });
+
+  it("lets every student run samples twice and then submit twice in the last minute", () => {
+    const samples = new RateLimiter(RUN_SAMPLES_RULE);
+    const submits = new RateLimiter(SUBMIT_RULE);
+    for (const id of STUDENTS) {
+      expect([samples.tryConsume(id, at(0)), samples.tryConsume(id, at(1_000))]).toEqual([true, true]);
+      expect([submits.tryConsume(id, at(2_000)), submits.tryConsume(id, at(50_000))]).toEqual([
+        true,
+        true,
+      ]);
+    }
+  });
+
+  it("would refuse a single shared bucket, which is why nothing on the student path uses one", () => {
+    const shared = new RateLimiter(SUBMIT_RULE);
+    const allowed = STUDENTS.filter((_, index) => shared.tryConsume("203.0.113.7", at(index * 200)));
+    expect(allowed.length).toBe(SUBMIT_RULE.limit);
+  });
+
+  it("delays wrong join codes but never refuses one, and a right code clears the delay", () => {
+    const backoff = new CredentialBackoff();
+    for (let typo = 0; typo < 50; typo += 1) backoff.recordFailure();
+    expect(backoff.delayMs()).toBe(5_000);
+    backoff.recordSuccess();
+    expect(backoff.delayMs()).toBe(0);
   });
 });

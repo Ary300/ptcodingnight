@@ -94,6 +94,30 @@ describe("assertCanSubmit", () => {
       DomainError,
     );
   });
+
+  it("accepts at the end instant to the millisecond and refuses one millisecond after", () => {
+    expect(() => assertCanSubmit(contest(), new Date(ENDS.getTime() - 100))).not.toThrow();
+    expect(() => assertCanSubmit(contest(), ENDS)).not.toThrow();
+    expect(() => assertCanSubmit(contest(), new Date(ENDS.getTime() + 100))).toThrow(
+      "This contest is over",
+    );
+  });
+
+  /*
+    Coding Night's own shape: the scheduled freeze fired at 8:00, so `clockShouldEnd` leaves the
+    contest RUNNING past 8:15 for the organizer's reveal. The window check must refuse on its own,
+    with the message a student can act on, whatever the state column says.
+  */
+  it("refuses after the end while a scheduled freeze keeps the contest RUNNING", () => {
+    const night = contest({ state: "RUNNING", freezeAt: FREEZE });
+    const afterEnd = new Date(ENDS.getTime() + 100);
+
+    expect(clockShouldEnd(night, afterEnd), "the premise: the clock leaves it running").toBe(false);
+    expect(() => assertCanSubmit(night, afterEnd)).toThrow("This contest is over");
+    expect(() => assertCanSubmit(contest({ state: "FROZEN", freezeAt: FREEZE }), afterEnd)).toThrow(
+      "This contest is over",
+    );
+  });
 });
 
 describe("the DRAFT gate", () => {

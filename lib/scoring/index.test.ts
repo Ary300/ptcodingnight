@@ -461,3 +461,38 @@ describe("edge cases", () => {
     expect(forward[0]?.penaltyMinutes).toBe(backward[0]?.penaltyMinutes);
   });
 });
+
+/*
+  The last seconds of the night. Coding Night ends at 8:15 with the board frozen at 8:00, and the
+  judge queue is deep at the end, so a correct answer submitted at 8:14:59.9 is commonly not judged
+  until well after 8:15. Its `effectiveAt` is the moment the verdict was written.
+*/
+describe("a submission accepted before the end and judged after it", () => {
+  const freeze = at(105);
+  const end = at(120);
+  const lastSecond = new Date(end.getTime() - 100);
+  const judgedLate = new Date(end.getTime() + 40_000);
+  const night = config({ endsAt: end, freezeAt: freeze });
+
+  it("counts on the organizer's board and the final board", () => {
+    const standing = only(
+      [sub({ submittedAt: lastSecond, effectiveAt: judgedLate, verdict: "AC", score: 100 })],
+      [],
+      night,
+      { upTo: null },
+    );
+    expect(standing?.score).toBe(100);
+    // The tie-break clock is when it was SUBMITTED, never when the judge got round to it.
+    expect(standing?.lastScoreIncreaseAt).toEqual(lastSecond);
+  });
+
+  it("is absent from the frozen public board", () => {
+    const standing = only(
+      [sub({ submittedAt: lastSecond, effectiveAt: judgedLate, verdict: "AC", score: 100 })],
+      [],
+      night,
+      { upTo: freeze },
+    );
+    expect(standing?.score).toBe(0);
+  });
+});
