@@ -9,22 +9,22 @@ const HOW = [
   {
     n: "1",
     title: "Enter your join code",
-    body: "You get a slip at the door with a code on it, just type it in and you’re signed in and already on your team.",
+    body: "Type in the code from your slip and you’re on your team.",
   },
   {
     n: "2",
     title: "Find your team",
-    body: "Your slip also says your team and your problem letter, so go find your team and sit with them.",
+    body: "Your slip has your team and your problem letter on it.",
   },
   {
     n: "3",
     title: "Solve your problems",
-    body: "Everyone gets one easy problem and two medium ones, and then at 7:30 the team problems open up so you can work on those together.",
+    body: "Everyone gets one easy and two medium problems. Team problems open at 7:30.",
   },
   {
     n: "4",
     title: "Watch the scoreboard",
-    body: "When you submit, your code gets checked in a few seconds and your team’s score goes up on the projector.",
+    body: "Submit and your team’s score shows up on the projector.",
   },
 ] as const;
 
@@ -40,19 +40,19 @@ const HOW = [
 const NIGHT = [
   {
     title: "Teams of up to four",
-    body: "Everyone on your team gets different problems so you all have your own thing to work on, and your team’s score is basically the average of everyone’s points.",
+    body: "Everyone on your team gets different problems, and your team score is the average.",
   },
   {
     title: "A puzzle for each person",
-    body: "You also get a puzzle that has nothing to do with coding, like decoding binary, and if you solve it your team gets points for it.",
+    body: "Everyone also gets a puzzle you don’t need code for, like decoding binary. It’s worth points for your team.",
   },
   {
     title: "Kahoot at the end",
-    body: "After coding stops we do a quick Kahoot, and how your team does in it actually counts toward the final score.",
+    body: "Quick Kahoot after coding, and it counts toward your score.",
   },
   {
     title: "The scoreboard freezes at 8:00",
-    body: "So for the last fifteen minutes nobody knows who’s winning until we show the final scoreboard at awards.",
+    body: "Nobody sees the scores from the last 15 minutes until awards.",
   },
 ] as const;
 
@@ -69,19 +69,19 @@ const PEOPLE = [
     name: "Sameer Zaidi",
     role: "President, Computer Science Club",
     photo: "/people/sameer-zaidi.jpg",
-    body: "He runs Coding Night and he’s the one who picks all the problems.",
+    body: "Organizes Coding Night.",
   },
   {
     name: "Navraj Brar",
     role: "President, Computer Science Club",
     photo: "/people/navraj.jpg",
-    body: "He runs the CS Club with Sameer.",
+    body: "Runs the CS Club with Sameer.",
   },
   {
     name: "Aryav Das",
     role: "Officer, Computer Science Club",
     photo: "/people/aryav-das-2026.jpg",
-    body: "He built this website, so if something on here breaks it’s probably on him.",
+    body: "Made this website.",
   },
 ] as const;
 
@@ -145,7 +145,7 @@ function BoardPreview() {
         className="px-4 pt-3 text-left text-ink/60"
         style={{ fontSize: "var(--text-xs)" }}
       >
-        This is pretty much what the scoreboard looks like, your team’s score is everyone’s points averaged out plus anything from puzzles and the Kahoot.
+        What the scoreboard looks like. Your team’s score is the average of everyone’s points, plus puzzle and Kahoot points.
       </p>
       {/*
         A labelled, FOCUSABLE region, not a bare `overflow-x-auto`.
@@ -409,9 +409,8 @@ export default async function Home() {
               className="mt-5 max-w-xl text-ink/75"
               style={{ fontSize: "var(--text-md)", textWrap: "pretty" }}
             >
-              This is the CS Club&rsquo;s coding contest, you&rsquo;re on a team of up to four
-              people and honestly the whole thing is pretty chill, just bring your laptop and the
-              slip with your join code on it.
+              The CS Club&rsquo;s coding contest. You&rsquo;re on a team of up to four, so just
+              bring your laptop and your join code.
             </p>
 
             {/* Two actions, one obviously primary. */}
@@ -452,10 +451,8 @@ export default async function Home() {
             Built by Park Tudor students
           </h2>
           <p className="max-w-2xl" style={{ fontSize: "var(--text-sm)" }}>
-            Every year Coding Night ran on HackerRank and then someone had to add up all the team
-            scores in a spreadsheet afterward, so this year we built our own site. It runs your
-            code and does all the team math by itself, so nobody is stuck in a spreadsheet at the
-            end of the night.
+            Coding Night used to be on HackerRank and someone had to do all the team scores by
+            hand after, so we made our own site this year.
           </p>
         </div>
       </section>
@@ -525,8 +522,8 @@ export default async function Home() {
             What the night looks like
           </h2>
           <p className="mt-2 max-w-2xl text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
-            Pizza is at 6:30, coding is from 7:00 to 8:15, and then there&rsquo;s a Kahoot and
-            awards and you&rsquo;ll be out by 8:45.
+            Pizza at 6:30, coding from 7:00 to 8:15, then Kahoot and awards. You&rsquo;re out by
+            8:45.
           </p>
 
           <ul className="motion-stagger mt-8 grid gap-x-8 gap-y-7 sm:grid-cols-2">
@@ -559,7 +556,7 @@ export default async function Home() {
           Who runs Coding Night
         </h2>
         <p className="mt-2 max-w-2xl text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
-          If something breaks during the contest just come find one of us.
+          If anything breaks, come find one of us.
         </p>
 
         <ul className="motion-stagger mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -617,7 +614,7 @@ export default async function Home() {
             <p className="mt-1.5 text-paper/80" style={{ fontSize: "var(--text-sm)" }}>
               {signedIn
                 ? "Open the contest to see your team and assigned problems."
-                : "Just type in the code on it and you’re in."}
+                : "Type in your code and you’re in."}
             </p>
           </div>
           <Link
