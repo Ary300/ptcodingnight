@@ -29,7 +29,7 @@ Otherwise print `-1`.
 ## Constraints
 
 - $3 \le n \le 100$
-- $1 \le L_i \le 10^9$
+- $1 \le L_i \le 7 \cdot 10^8$
 
 ## Example
 

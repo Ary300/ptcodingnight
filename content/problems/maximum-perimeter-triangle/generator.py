@@ -12,13 +12,18 @@ adversarial structures, not just uniform noise:
   3: needle: Fibonacci giants hiding one small valid triple deep in the sort
   4: duplicate-heavy, values drawn from a tiny pool
   5: near-degenerate: many rods sitting exactly at or one off a + b = c
+
+Lengths stop at 7 * 10^8 so that three of them, the largest perimeter, still fit
+in a signed 32-bit int (2.1 * 10^9 < 2^31 - 1), and adding a + b + c in an int is
+never wrong. Which seed made which test: 15 = 10, 16 = 17, 17 = 28, 18 = 45,
+19 = 64, 20 = 83, 22 = 102. The rest are written by hand.
 """
 
 import random
 import sys
 
 MAX_N = 100
-MAX_L = 10**9
+MAX_L = 7 * 10**8
 
 
 def choose_n(seed: int) -> int:
