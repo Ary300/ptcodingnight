@@ -307,8 +307,8 @@ test("the organizer console reconciles the oldest unjudged submissions first", a
   await waitForJobCompleted(created.submissionId, VERDICT_BUDGET_MS);
 
   // The end-of-night burst: forty newer submissions still waiting behind it. Rows only, no jobs,
-  // so they stay unjudged (inside the orphan grace) and fill the sweep's window if it reads
-  // newest first.
+  // so they stay unjudged for the poll below (inside LOST_JOB_GRACE_MS, after which the sweep
+  // builds their jobs again) and fill the console's window if it reads newest first.
   const base = Date.now();
   await testDb().submission.createMany({
     data: Array.from({ length: 40 }, (_, index) => ({
