@@ -265,7 +265,7 @@ export function VerdictPanel({
           <span className="text-paper/60" style={{ fontSize: "var(--text-xs)" }}>
             {mode === "samples"
               ? "Running the samples…"
-              : judgingProgressLabel(safeResults.length, totalCases)}
+              : judgingProgressLabel(safeResults.length, totalCases, queuePosition?.state ?? null)}
           </span>
         )}
       </header>

@@ -98,11 +98,21 @@ export function queuePositionLabel(position: QueuePosition): string {
  *
  * `completedCases` is the number of results already returned; the case executing now is the
  * next one after those.
+ *
+ * 3. **Nothing is "running" until the judge has it.** A queued submission read "Judging: running
+ *    the first test…" above "3 submissions ahead of yours in the queue", two claims that cannot
+ *    both be true. Before the first result comes back, "running" needs the queue to say the job
+ *    is `active`; a `waiting` job is waiting in line, and an unknown state says only that it is
+ *    waiting for the judge.
  */
 export function judgingProgressLabel(
   completedCases: number,
   totalCases: number | null,
+  queueState: QueuePosition["state"] | null = null,
 ): string {
+  if (completedCases === 0 && queueState !== "active") {
+    return queueState === "waiting" ? "Waiting in line to be judged…" : "Waiting for the judge…";
+  }
   if (totalCases !== null && completedCases >= totalCases) {
     return "All tests have run. Working out the verdict…";
   }
