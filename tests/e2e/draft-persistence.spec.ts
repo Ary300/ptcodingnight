@@ -143,3 +143,50 @@ test("another student on the same browser sees neither the draft nor the submiss
   expect(response.status()).toBe(404);
   expect(await response.text()).not.toContain("what I sent");
 });
+
+/** Every draft key on this origin, read straight from storage. */
+async function draftKeys(page: Page): Promise<string[]> {
+  return page.evaluate(() =>
+    Object.keys(window.localStorage).filter((key) => key.startsWith("ptcn.draft.")),
+  );
+}
+
+test("swapping the session to another student deletes the first student's drafts from storage", async ({
+  page,
+}) => {
+  const first = await signInAsCompetitor(page, contestId);
+  await page.goto(`/contest/${slug}`);
+  await expect(editorOf(page)).toBeVisible({ timeout: 30_000 });
+  await editorOf(page).fill(TYPED);
+  await expect.poll(() => draftKeys(page)).toEqual([
+    expect.stringContaining(first.participantId),
+  ]);
+
+  // B takes the seat without A signing out: only the cookie changes.
+  await page.context().clearCookies();
+  const second = await signInAsCompetitor(page, contestId);
+  await page.goto("/contest");
+  await expect.poll(() => draftKeys(page), { timeout: 30_000 }).toEqual([]);
+  const stored = await page.evaluate(() => JSON.stringify(window.localStorage));
+  expect(stored).not.toContain("typed, never submitted");
+
+  // B's own draft is kept, across a reload.
+  await page.goto(`/contest/${slug}`);
+  await expect(editorOf(page)).toBeVisible({ timeout: 30_000 });
+  await editorOf(page).fill("print('B')\n");
+  await page.reload();
+  await expect(editorOf(page)).toHaveValue("print('B')\n", { timeout: 30_000 });
+  expect(await draftKeys(page)).toEqual([expect.stringContaining(second.participantId)]);
+});
+
+test("a competitor page with nobody signed in deletes every draft", async ({ page }) => {
+  await signInAsCompetitor(page, contestId);
+  await page.goto(`/contest/${slug}`);
+  await expect(editorOf(page)).toBeVisible({ timeout: 30_000 });
+  await editorOf(page).fill(TYPED);
+  await expect.poll(() => draftKeys(page)).toHaveLength(1);
+
+  await page.context().clearCookies();
+  await page.goto("/contest");
+  await expect.poll(() => draftKeys(page), { timeout: 30_000 }).toEqual([]);
+});

@@ -11,7 +11,7 @@ import type { StandingsResponse } from "@/lib/schemas/api";
 import { contestApi, isStubBackend } from "./data/backend";
 import { clearParticipant, fetchParticipant, useParticipant } from "./data/participant";
 import { useResource } from "./data/useResource";
-import { forgetDrafts } from "./problem/useDraft";
+import { forgetDrafts, keepOnlyDraftsOf } from "./data/draft-storage";
 
 /**
  * The frame every competitor screen sits in.
@@ -80,6 +80,21 @@ export function CompetitorChrome({ children }: { children: ReactNode }) {
   const joined = participant.status === "joined";
   const participantId = joined ? participant.participant.participantId : null;
   const scopeKey = joined ? participant.scopeKey : participant.status;
+  const contestId = joined ? participant.participant.contestId : null;
+
+  /*
+    Drafts are plaintext code in localStorage, and lab laptops are shared and teammates swap
+    seats. The moment the page knows who is signed in, every other student's drafts go; when it
+    knows nobody is, they all go. "loading" and "error" decide nothing, so they delete nothing.
+    See data/draft-storage.ts.
+  */
+  useEffect(() => {
+    if (participantId !== null && contestId !== null) {
+      keepOnlyDraftsOf({ contestId, participantId });
+    } else if (participant.status === "anonymous") {
+      keepOnlyDraftsOf(null);
+    }
+  }, [participant.status, participantId, contestId]);
 
   // Identity and roster scope can change while the student is on ANY competitor page: an
   // organizer may move them while they are reading a statement, their team, or submission
