@@ -4,6 +4,9 @@ import Link from "next/link";
 import { BrandPanel } from "@/components/contest/join/BrandPanel";
 import { JoinCodeForm } from "@/components/contest/join/JoinCodeForm";
 import { PracticeStartButton } from "@/components/contest/join/PracticeStartButton";
+import { SignedInNotice } from "@/components/contest/join/SignedInNotice";
+import { contestNameFor } from "@/lib/contest/contests";
+import { viewerFromCookies } from "@/lib/contest/viewer";
 
 export const metadata: Metadata = {
   title: "Join with a code | Coding Night",
@@ -22,7 +25,14 @@ export const metadata: Metadata = {
  * Same split screen and the same route-group decision as `/sign-in`: outside `(competitor)`, so
  * no contest chrome wraps a page reached before any session exists.
  */
-export default function JoinPage() {
+export default async function JoinPage() {
+  // A student who is already in a contest is told so above the form, with a way in and a way out.
+  const viewer = await viewerFromCookies();
+  const signedIn =
+    viewer.kind === "competitor"
+      ? { displayName: viewer.displayName, contestName: await contestNameFor(viewer.contestId) }
+      : null;
+
   /*
     Arrival motion via a class on the page root, matching the two sibling doors exactly: this
     page is outside both route groups, always a fresh mount, and a root template would double
@@ -49,6 +59,12 @@ export default function JoinPage() {
       */}
       <main className="motion-swap-in flex min-w-0 items-center justify-center px-4 py-10">
         <div className="w-full min-w-0 max-w-md">
+          {signedIn !== null && (
+            <SignedInNotice
+              displayName={signedIn.displayName}
+              contestName={signedIn.contestName}
+            />
+          )}
           {/* Practice above the code form, out of it, by the organizers' call. */}
           <div className="flex flex-wrap items-center justify-between gap-3">
             <Link
