@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui";
 import type { PublicTestResult, SubmissionView } from "@/lib/schemas/api";
@@ -103,9 +103,28 @@ export function ProblemWorkspace({ slug }: ProblemWorkspaceProps) {
   const [actionError, setActionError] = useState<string | null>(null);
   const [seed, setSeed] = useState<SubmissionView | null>(null);
 
-  const stream = useVerdictStream(seed);
-
   const detail = problem.data;
+
+  /*
+    The last submission on this problem, read once when the page opens.
+
+    The verdict panel used to exist only in memory. A student who refreshed while "judging", whose
+    laptop slept, or who came back from a teammate's desk found an empty panel and no sign the
+    submission had happened; the verdict was on the Submissions page, which they did not know to
+    open. The newest submission for this problem now seeds the panel, so a pending one resumes
+    waiting (and the stream picks it up) and a finished one shows its verdict.
+  */
+  const loadHistory = useCallback(() => contestApi.listSubmissions(), []);
+  const history = useResource(loadHistory, scopeKey);
+  const restored = useMemo(() => {
+    if (detail === null || history.data === null) return null;
+    return (
+      history.data.find((entry) => entry.contestProblemId === detail.contestProblemId) ?? null
+    );
+  }, [detail, history.data]);
+
+  const stream = useVerdictStream(seed ?? restored);
+  const shownAction = lastAction ?? (restored !== null ? "judged" : null);
 
   const runSamples = useCallback(async () => {
     if (detail === null) return;
@@ -417,7 +436,7 @@ export function ProblemWorkspace({ slug }: ProblemWorkspaceProps) {
             </p>
           )}
 
-          {lastAction === "samples" && (
+          {shownAction === "samples" && (
             <VerdictPanel
               mode="samples"
               verdict={null}
@@ -428,7 +447,7 @@ export function ProblemWorkspace({ slug }: ProblemWorkspaceProps) {
             />
           )}
 
-          {lastAction === "judged" && (
+          {shownAction === "judged" && (
             <VerdictPanel
               mode="judged"
               verdict={stream.submission?.verdict ?? null}
