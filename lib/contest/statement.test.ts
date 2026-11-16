@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { statementWithoutRepeatedTitle } from "./statement";
+import { statementWithoutConstraints, statementWithoutRepeatedTitle } from "./statement";
 
 /**
  * The rule is "drop the heading only when it is the SAME heading" — a blanket strip of the first
@@ -42,5 +42,82 @@ describe("statementWithoutRepeatedTitle", () => {
 
   it("survives an empty statement rather than throwing on the missing first line", () => {
     expect(statementWithoutRepeatedTitle("", "A Very Big Sum")).toBe("");
+  });
+});
+
+/**
+ * Students are not shown a Constraints section. The section runs from its heading to the next
+ * heading of the same or higher rank; anything else in the statement is left byte-for-byte.
+ */
+describe("statementWithoutConstraints", () => {
+  it("drops a Constraints section in the middle, up to the next heading", () => {
+    const md = [
+      "Intro.",
+      "",
+      "## Output",
+      "",
+      "One number.",
+      "",
+      "## Constraints",
+      "",
+      "- $1 \\le n \\le 10^5$",
+      "",
+      "## Example",
+      "",
+      "```",
+      "5",
+      "```",
+      "",
+    ].join("\n");
+    expect(statementWithoutConstraints(md)).toBe(
+      ["Intro.", "", "## Output", "", "One number.", "", "## Example", "", "```", "5", "```", ""].join("\n"),
+    );
+  });
+
+  it("drops a Constraints section that is the last thing in the statement", () => {
+    const md = "## Input\n\nOne line.\n\n## Constraints\n\n- $n \\le 10$\n- Every value is positive.\n";
+    expect(statementWithoutConstraints(md)).toBe("## Input\n\nOne line.\n");
+  });
+
+  it("returns a statement without a Constraints section unchanged", () => {
+    const md = "## Input\n\nOne line.\n\n## Output\n\nOne number.\n";
+    expect(statementWithoutConstraints(md)).toBe(md);
+    expect(statementWithoutConstraints("")).toBe("");
+  });
+
+  it("keeps a lower-rank heading inside the dropped section out too", () => {
+    const md = "## Constraints\n\n### Subtask 1\n\n$n \\le 10$\n\n## Output\n\nA number.";
+    expect(statementWithoutConstraints(md)).toBe("## Output\n\nA number.");
+  });
+
+  it("matches the heading in any case and with a colon or bold", () => {
+    expect(statementWithoutConstraints("Body.\n\n### **constraints:**\n\nx\n")).toBe("Body.\n");
+    expect(statementWithoutConstraints("Body.\n\n## CONSTRAINTS\n\nx\n")).toBe("Body.\n");
+  });
+
+  it("leaves a heading that only mentions constraints", () => {
+    const md = "## Constraints and notes\n\nKeep this.\n";
+    expect(statementWithoutConstraints(md)).toBe(md);
+  });
+
+  it("does not read a # line inside a code block as a heading", () => {
+    const md = "## Constraints\n\n```\n## Example\n```\n\nstill constraints\n\n## Example\n\nshown";
+    expect(statementWithoutConstraints(md)).toBe("## Example\n\nshown");
+  });
+
+  it("keeps blank lines inside the sections that remain", () => {
+    const md = "## Example\n\n```\n1\n\n\n2\n```\n\n## Constraints\n\nx";
+    expect(statementWithoutConstraints(md)).toBe("## Example\n\n```\n1\n\n\n2\n```");
+  });
+
+  it("strips the real a-very-big-sum statement's Constraints and nothing else", async () => {
+    const { readFile } = await import("node:fs/promises");
+    const md = await readFile("content/problems/a-very-big-sum/statement.md", "utf8");
+    const out = statementWithoutConstraints(md);
+    expect(out).not.toMatch(/constraints/i);
+    expect(out).toContain("## Input");
+    expect(out).toContain("## Output");
+    expect(out).toContain("## Example");
+    expect(out).toContain("25000000000");
   });
 });

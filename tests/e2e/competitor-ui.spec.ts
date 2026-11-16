@@ -124,7 +124,8 @@ test.describe("the competitor journey in a browser", () => {
     const title = page.getByRole("heading", { level: 1 });
     await expect(title).toBeVisible();
     await expect(page.getByRole("heading", { name: "Samples", level: 2 })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Constraints", level: 2 })).toBeVisible();
+    // Students are not shown a Constraints section, from either the column or the statement.
+    await expect(page.getByRole("heading", { name: /constraints/i })).toHaveCount(0);
 
     const editor = page.getByRole("textbox", { name: /^Solution for / });
     await expect(editor).toBeVisible();

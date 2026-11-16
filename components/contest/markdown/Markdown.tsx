@@ -80,7 +80,7 @@ function renderBlock(block: Block, key: string): ReactNode {
           className: "mt-8 mb-3 font-display font-bold text-ink first:mt-0",
           // `--text-md`, not `--text-lg`: a statement's headings are section labels inside a
           // document whose title already used the display sizes. The schema-driven sections
-          // (Input/Output/Constraints in ProblemWorkspace) set their h2s at `--text-md`, and an
+          // (Input/Output in ProblemWorkspace) set their h2s at `--text-md`, and an
           // authored `## Input` must not outrank the same heading arriving through the other
           // channel — 28px vs 20px for the same rank on one page was the measured drift.
           style: { fontSize: block.level <= 3 ? "var(--text-md)" : "var(--text-sm)" },

@@ -5,7 +5,7 @@ import { useCallback, useMemo, useRef, useState, useSyncExternalStore } from "re
 
 import { Button } from "@/components/ui";
 import type { PublicTestResult, SubmissionView } from "@/lib/schemas/api";
-import { statementWithoutRepeatedTitle } from "@/lib/contest/statement";
+import { statementWithoutConstraints, statementWithoutRepeatedTitle } from "@/lib/contest/statement";
 import type { Language } from "@/lib/schemas/judge";
 
 import { contestApi, errorMessageOf } from "../data/backend";
@@ -27,7 +27,7 @@ import { useDraft } from "./useDraft";
 import { initialLanguageFor, rememberLanguage, rememberedLanguageStore } from "./default-language";
 
 /**
- * The problem view: statement, constraints, samples, editor, run and submit (PRD §9.1).
+ * The problem view: statement, samples, editor, run and submit (PRD §9.1).
  *
  * ## The two buttons are not the same button
  *
@@ -344,21 +344,27 @@ export function ProblemWorkspace({ slug }: ProblemWorkspaceProps) {
             runs its statement to the column edge. Every other Markdown call site keeps the 70ch
             default, because nothing else gives it a column that is already a measure.
           */}
+          {/*
+            Students are not shown a Constraints section, at the organizers' request: the
+            statement's own `## Constraints` is cut here, and the separate `constraints` column
+            is not rendered at all. The content files and the organizer's editor keep both.
+          */}
           <Markdown
-            source={statementWithoutRepeatedTitle(detail.statementMd, detail.title)}
+            source={statementWithoutConstraints(
+              statementWithoutRepeatedTitle(detail.statementMd, detail.title),
+            )}
             className="mt-5 max-w-none"
             collapseExamples
           />
 
           {/*
-            Input, Output and Constraints are separate columns on `Problem`, and an author who has
-            already written them into the statement leaves them empty. Rendering the heading anyway
-            printed three bold words with nothing under them — which reads as content that failed
-            to load rather than as content that was never there.
+            Input and Output are separate columns on `Problem`, and an author who has already
+            written them into the statement leaves them empty. Rendering the heading anyway
+            printed bold words with nothing under them, which reads as content that failed to load
+            rather than as content that was never there.
           */}
           <StatementSection title="Input" source={detail.inputSpec} />
           <StatementSection title="Output" source={detail.outputSpec} />
-          <StatementSection title="Constraints" source={detail.constraints} />
 
           <section className="mt-8">
             <h2 className="mb-3 font-display font-bold" style={{ fontSize: "var(--text-md)" }}>
