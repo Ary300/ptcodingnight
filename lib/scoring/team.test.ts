@@ -3,7 +3,7 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { computeTeamStandings } from "@/lib/scoring/team";
+import { computeTeamStandings, rankTeamsWithinDivision } from "@/lib/scoring/team";
 import {
   POINT_SCALE,
   divideRoundHalfAway,
@@ -11,6 +11,7 @@ import {
   type ParticipantRecord,
   type SubmissionRecord,
   type TeamRecord,
+  type TeamStanding,
 } from "@/lib/types/scoring";
 
 import { loadGoldenTeamContest } from "@/fixtures/scoring/load";
@@ -409,5 +410,62 @@ describe("a team with no members", () => {
     const empty = standings.find((t) => t.teamId === "empty");
     expect(empty?.teamSize).toBe(0);
     expect(empty?.scoreHundredths).toBe(0);
+  });
+});
+
+describe("rankTeamsWithinDivision follows the global tie-breaks", () => {
+  function standing(teamId: string, divisionId: string, scoreHundredths: number, rank: number): TeamStanding {
+    return {
+      teamId,
+      name: teamId,
+      divisionId,
+      teamSize: 4,
+      scoreHundredths,
+      score: scoreHundredths / 100,
+      playerPoolPoints: 0,
+      groupPoints: 0,
+      sideActivityPoints: 0,
+      penaltyMinutes: 5,
+      lastScoreIncreaseAt: null,
+      rank,
+      isTied: false,
+      players: [],
+    };
+  }
+
+  it("keeps two equal scores apart when the global ranking broke the tie", () => {
+    // From the 2026-11-15 stress test: 256.25 each, separated globally by last-score time.
+    const ranked = [
+      standing("leader", "int", 30000, 1),
+      standing("team-3", "int", 25625, 2),
+      standing("team-6", "int", 25625, 3),
+    ];
+    const tab = rankTeamsWithinDivision(ranked, "int");
+    expect(tab.map((team) => team.rank)).toEqual([1, 2, 3]);
+    expect(tab.some((team) => team.isTied)).toBe(false);
+  });
+
+  it("shows a genuine tie as a tie", () => {
+    const ranked = [
+      standing("a", "int", 25625, 1),
+      standing("b", "int", 25625, 1),
+      standing("c", "int", 20000, 3),
+    ];
+    const tab = rankTeamsWithinDivision(ranked, "int");
+    expect(tab.map((team) => team.rank)).toEqual([1, 1, 3]);
+    expect(tab.map((team) => team.isTied)).toEqual([true, true, false]);
+  });
+
+  it("re-ranks densely inside the division, skipping other divisions' teams", () => {
+    const ranked = [
+      standing("adv-1", "adv", 40000, 1),
+      standing("int-1", "int", 30000, 2),
+      standing("adv-2", "adv", 20000, 3),
+      standing("int-2", "int", 10000, 4),
+    ];
+    expect(rankTeamsWithinDivision(ranked, "int").map((team) => [team.teamId, team.rank])).toEqual([
+      ["int-1", 1],
+      ["int-2", 2],
+    ]);
   });
 });

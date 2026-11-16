@@ -323,9 +323,13 @@ export function computeTeamStandings(
  * tab shows only that division's teams, and showing the global ranks there would read as gaps
  * ("1, 4, 5"). Within a division the order is the ordered sublist of the global order, so the
  * derivation is pure: walk the filtered list in its given order, start at 1, and two adjacent
- * teams share a rank exactly when they compare equal on the authoritative key
- * (`scoreHundredths`) - the same key the global ranking used, so the two views can never
- * disagree about who beat whom.
+ * teams share a rank exactly when the GLOBAL ranking tied them (equal global rank).
+ *
+ * It used to compare `scoreHundredths` alone, which ignored the global tie-breaks (penalty, then
+ * the time of the last score increase, docs/SCORING.md §5). The 2026-11-15 production stress test
+ * caught two teams on 256.25 that the board ranked 4 and 5 and the division tab showed as "2=", so
+ * the wall would have shown a tie the Awards tab breaks. Comparing global ranks makes the division
+ * tab inherit every tie-break, and the two views now cannot disagree.
  *
  * Lives here rather than in a component because it IS scoring output (a division winner is a
  * scored fact), and scoring lives in exactly one place.
@@ -335,11 +339,11 @@ export function rankTeamsWithinDivision(
   divisionId: string | null,
 ): TeamStanding[] {
   const subset = ranked.filter((team) => team.divisionId === divisionId);
-  let lastScore: number | null = null;
+  let lastGlobalRank: number | null = null;
   let lastRank = 0;
   const reRanked = subset.map((team, index) => {
-    const rank = team.scoreHundredths === lastScore ? lastRank : index + 1;
-    lastScore = team.scoreHundredths;
+    const rank = team.rank === lastGlobalRank ? lastRank : index + 1;
+    lastGlobalRank = team.rank;
     lastRank = rank;
     return { team, rank };
   });

@@ -79,6 +79,13 @@ RUN chown -R nextjs:nodejs /app/node_modules/@prisma /app/node_modules/.prisma
 # directory is handed over; the built output stays root-owned and read-only to the server.
 RUN mkdir -p /app/.next/cache && chown -R nextjs:nodejs /app/.next/cache
 
+# The per-submission judge log, written by this process to .judge-tmp/logs (lib/contest/judge-log.ts).
+# It is the record kept for a disputed verdict, and it is where a student's COMPILER MESSAGE is read
+# back from. /app is root-owned, so as `nextjs` every write failed with EACCES and a student who got
+# CE saw no compiler output at all: found by the 2026-11-15 production stress test, 102 of 102
+# submissions. The directory now exists and belongs to the runtime user.
+RUN mkdir -p /app/.judge-tmp/logs && chown -R nextjs:nodejs /app/.judge-tmp
+
 USER nextjs
 EXPOSE 3000
 CMD ["npm", "run", "start"]
