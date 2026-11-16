@@ -730,13 +730,22 @@ export async function reconcileContestClockById(
  * means there is nothing to do, true means read the row fresh and let the real check decide.
  */
 export function clockMayMove(
-  contest: { readonly state: string; readonly startsAt: Date; readonly endsAt: Date },
+  contest: {
+    readonly state: string;
+    readonly startsAt: Date;
+    readonly endsAt: Date;
+    readonly freezeAt: Date | null;
+  },
   now: Date,
 ): boolean {
   const nowMs = now.getTime();
   if (contest.state === "SCHEDULED") return contest.startsAt.getTime() <= nowMs;
+  // The same rule the clock applies, not just "past the end": a frozen board past endsAt waits for
+  // the organizer's reveal, so between 8:15 and the reveal every poll used to take the fresh-read
+  // branch and find nothing to do, which put a contest select back on every poll at the busiest
+  // moment of the night.
   if (contest.state === "RUNNING" || contest.state === "FROZEN") {
-    return contest.endsAt.getTime() <= nowMs;
+    return clockShouldEnd({ ...contest, state: contest.state }, now);
   }
   return false;
 }

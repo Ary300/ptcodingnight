@@ -103,12 +103,20 @@ describe("clockMayMove is a superset of the clock's real conditions", () => {
     }
   });
 
+  it("is false for a frozen board past its end, which waits for the organizer's reveal", () => {
+    const afterEnd = new Date(endsAt.getTime() + 20 * 60_000);
+    const freezeAt = new Date(endsAt.getTime() - 15 * 60_000);
+    expect(clockMayMove({ state: "FROZEN", startsAt, endsAt, freezeAt }, afterEnd)).toBe(false);
+    expect(clockMayMove({ state: "RUNNING", startsAt, endsAt, freezeAt }, afterEnd)).toBe(false);
+    expect(clockMayMove({ state: "RUNNING", startsAt, endsAt, freezeAt: null }, afterEnd)).toBe(true);
+  });
+
   it("is false in the middle of a running contest, which is where every poll of the night lands", () => {
     expect(
-      clockMayMove({ state: "RUNNING", startsAt, endsAt }, new Date("2026-11-13T19:30:00Z")),
+      clockMayMove({ state: "RUNNING", startsAt, endsAt, freezeAt: null }, new Date("2026-11-13T19:30:00Z")),
     ).toBe(false);
     expect(
-      clockMayMove({ state: "FROZEN", startsAt, endsAt }, new Date("2026-11-13T20:00:00Z")),
+      clockMayMove({ state: "FROZEN", startsAt, endsAt, freezeAt: null }, new Date("2026-11-13T20:00:00Z")),
     ).toBe(false);
   });
 });
