@@ -217,6 +217,8 @@ services:
       # back to the per-container path that every gate also covers.
       JUDGE_JAVAC_SERVICE: ${JUDGE_JAVAC_SERVICE:-on}
       JUDGE_JVM_HARNESS: ${JUDGE_JVM_HARNESS:-on}
+      # A test past its time limit is TLE and is killed there, instead of at 3x the limit.
+      JUDGE_TLE_AT_THRESHOLD: ${JUDGE_TLE_AT_THRESHOLD:-on}
       JUDGE_IMAGE_JAVA: ${JUDGE_IMAGE_JAVA:-ptcn-jdk:21}
     volumes:
       # Effective root on the host. PRD §14 says the judge belongs on a machine with nothing
