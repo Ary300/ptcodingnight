@@ -483,6 +483,13 @@ export class ContestApi {
   }
 
   /** Set or clear the freeze CLOCK, in minutes before the contest's end. */
+  /** Move the end of this contest, or reopen it once ended. */
+  endTimeRaw(endsAt: string, reason: string): Promise<APIResponse> {
+    return this.req().post(`/api/admin/contests/${this.contestId}/end-time`, {
+      data: { endsAt, reason },
+    });
+  }
+
   freezeScheduleRaw(minutesBeforeEnd: number | null): Promise<APIResponse> {
     return this.req().post(`/api/admin/contests/${this.contestId}/freeze-schedule`, {
       data: { minutesBeforeEnd },

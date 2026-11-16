@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 
 import { ContestStateActions } from "@/components/admin/ContestStateActions";
+import { EndTimeControl } from "@/components/admin/EndTimeControl";
 import { FreezeSchedule } from "@/components/admin/FreezeSchedule";
 import { GroupUnlock } from "@/components/admin/GroupUnlock";
 import { AlertPlate, Panel } from "@/components/admin/Panel";
@@ -193,6 +194,23 @@ export default async function ContestSetupPage({
             value={setup.freezeAt === null ? "No freeze" : formatWhen(setup.freezeAt)}
           />
         </dl>
+
+        {/*
+          The end could only be set by the create form. An early Open now, a judge outage that
+          deserves ten more minutes, and an End contest pressed by mistake each needed psql.
+        */}
+        <div className="mt-5 border-t border-rule-edge pt-5">
+          <h3 className="font-display font-bold" style={{ fontSize: "var(--text-sm)" }}>
+            {setup.state === "ENDED" ? "Reopen the contest" : "Change the end time"}
+          </h3>
+          <div className="mt-2">
+            <EndTimeControl
+              contestId={setup.contestId}
+              endsAt={setup.endsAt.toISOString()}
+              state={setup.state}
+            />
+          </div>
+        </div>
 
         {/*
           The night opens with an individual stretch. This is the clock that ends it, set in the

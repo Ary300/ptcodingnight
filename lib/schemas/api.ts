@@ -148,6 +148,9 @@ export const API_ROUTES = {
   /** When the public board should stop updating, as minutes before the end. */
   adminFreezeSchedule: (contestId: string) =>
     `/api/admin/contests/${encodeURIComponent(contestId)}/freeze-schedule`,
+  /** Move the end of a contest that exists, including resuming one ended by mistake. */
+  adminEndTime: (contestId: string) =>
+    `/api/admin/contests/${encodeURIComponent(contestId)}/end-time`,
   /** When the whole-team questions open, as minutes after the start. */
   adminGroupUnlock: (contestId: string) =>
     `/api/admin/contests/${encodeURIComponent(contestId)}/group-unlock`,
@@ -1383,6 +1386,22 @@ export const AdminFreezeScheduleResponseSchema = z.object({
   activeNow: z.boolean(),
 });
 export type AdminFreezeScheduleResponse = z.infer<typeof AdminFreezeScheduleResponseSchema>;
+
+export const AdminEndTimeRequestSchema = z.object({
+  /** An instant. The Setup tab converts the organizer's wall-clock time in the event's zone. */
+  endsAt: z.iso.datetime({ offset: true }),
+  reason: z.string().trim().min(1, "Say why").max(300),
+});
+
+export const AdminEndTimeResponseSchema = z.object({
+  contestId: z.string(),
+  state: z.string(),
+  endsAt: z.string(),
+  freezeAt: z.string().nullable(),
+  /** The contest had ended and is running again. */
+  resumed: z.boolean(),
+});
+export type AdminEndTimeResponse = z.infer<typeof AdminEndTimeResponseSchema>;
 
 /**
  * The GROUP-question clock, as minutes after the start.

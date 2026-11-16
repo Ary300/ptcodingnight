@@ -63,3 +63,61 @@ export function formatEventStamp(value: string | Date): string {
   const parts = formatEventDateParts(date);
   return `${parts.date} ${parts.time} ET`;
 }
+
+/*
+  The other direction: an organizer types "7:00 PM" and means 7:00 PM in Indianapolis.
+
+  `new Date("2026-11-18T19:00")` resolves the text in the BROWSER's zone. That is right only on a
+  laptop set to Eastern, and Indiana is a state where a laptop set to Central is ordinary, so the
+  same form on two organizers' machines created contests an hour apart. These convert in the event
+  zone whatever the browser says.
+*/
+
+/** The zone's offset from UTC at `instant`, in ms (negative west of Greenwich). */
+function eventZoneOffsetMs(instant: number): number {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: EVENT_TIME_ZONE,
+    hourCycle: "h23",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).formatToParts(new Date(instant));
+  const get = (type: string): number => Number(parts.find((part) => part.type === type)?.value);
+  const asUtc = Date.UTC(
+    get("year"),
+    get("month") - 1,
+    get("day"),
+    get("hour"),
+    get("minute"),
+    get("second"),
+  );
+  return asUtc - Math.floor(instant / 1000) * 1000;
+}
+
+const WALL_CLOCK = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/;
+
+/**
+ * "2026-11-18T19:00" read as wall-clock time in the event zone, as an instant. Null when the text
+ * is not that shape. A time that does not exist (the spring-forward hour) lands an hour later, the
+ * way a wall clock would.
+ */
+export function eventWallClockToInstant(local: string): Date | null {
+  const match = WALL_CLOCK.exec(local);
+  if (match === null) return null;
+  const [y, mo, d, h, mi] = match.slice(1).map(Number) as [number, number, number, number, number];
+  const guess = Date.UTC(y, mo - 1, d, h, mi);
+  const first = guess - eventZoneOffsetMs(guess);
+  // Read the offset again at the candidate: it differs only when the guess straddled a DST change.
+  return new Date(guess - eventZoneOffsetMs(first));
+}
+
+/** The inverse, for prefilling a `datetime-local` field: "2026-11-18T19:00". */
+export function instantToEventWallClock(value: string | Date): string {
+  const date = parse(value);
+  if (date === null) return "";
+  const shifted = new Date(date.getTime() + eventZoneOffsetMs(date.getTime()));
+  return shifted.toISOString().slice(0, 16);
+}

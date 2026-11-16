@@ -43,6 +43,9 @@ export const AUDIT_ACTIONS = {
   /// decision made before the night ("stop the board 30 minutes before the end") and it fires
   /// later on its own; the two above are an organizer pressing a button while the room watches.
   contestFreezeScheduled: "contest.freeze_scheduled",
+  /// The end time moved on a contest that already existed: extended, pulled in, or set again to
+  /// resume one that was ended by mistake. Records both ends and the freeze that moved with them.
+  contestEndTimeSet: "contest.end_time_set",
   /// The GROUP-question clock was set or cleared: "team questions open thirty minutes in". Same
   /// shape as the freeze clock, decided before the night and fired on its own.
   contestGroupUnlockScheduled: "contest.group_unlock_scheduled",
