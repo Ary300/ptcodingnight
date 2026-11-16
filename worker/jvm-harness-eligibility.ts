@@ -1,7 +1,7 @@
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 
-import { canRecurse, parseClass } from "./jvm-classfile";
+import { parseClass } from "./jvm-classfile";
 
 /**
  * Which compiled Java submissions the in-JVM harness may judge, decided on the HOST from the class
@@ -98,9 +98,10 @@ export async function harnessDeclineReason(buildDir: string): Promise<string | n
     const contents = await Promise.all(files.map((file) => readFile(file)));
     const byName = declineReason(contents);
     if (byName !== null) return byName;
-    // How deep a program can recurse depends on JIT timing that a reused JVM does not reproduce;
-    // see worker/jvm-classfile.ts for the measurement.
-    if (canRecurse(contents.map((bytes) => parseClass(bytes)))) return "can recurse";
+    // Every file must be a well-formed class file; a parse failure lands in the catch below.
+    // Recursion is no reason to decline: the student's main runs on a thread with eight times the
+    // JVM's default stack (worker/jvm-harness/ptcn/harness/Harness.java).
+    for (const bytes of contents) parseClass(bytes);
     return null;
   } catch (error) {
     return `class files unreadable: ${error instanceof Error ? error.message : String(error)}`;

@@ -3,7 +3,7 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { canRecurse, ClassFormatError, parseClass } from "./jvm-classfile";
+import { ClassFormatError, parseClass } from "./jvm-classfile";
 
 /**
  * Real class files, compiled by the judge's own javac flags (fixtures/judge/classfiles/compile.sh),
@@ -18,25 +18,6 @@ function classesOf(name: string) {
     .filter((f) => f.endsWith(".class"))
     .map((f) => parseClass(readFileSync(path.join(dir, f))));
 }
-
-describe("canRecurse", () => {
-  it.each([
-    ["plain", false],
-    ["comparator", false],
-    // The editor starter every student begins from: a static nextToken() helper beside
-    // StringTokenizer.nextToken() must not read as recursion, or no starter-based submission
-    // would ever use the harness.
-    ["starter", false],
-    ["direct", true],
-    ["mutual", true],
-    ["lambda-field", true],
-    ["foreach-dfs", true],
-    ["tostring-chain", true],
-    ["student-interface", true],
-  ])("%s -> %s", (name, expected) => {
-    expect(canRecurse(classesOf(name))).toBe(expected);
-  });
-});
 
 describe("parseClass", () => {
   it("reads the methods and the calls they make", () => {

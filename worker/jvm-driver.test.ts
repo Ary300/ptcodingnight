@@ -211,10 +211,15 @@ describe("the harness traps exit without granting anything away", () => {
     }
   });
 
-  it("invokes the student's main inline in Harness.main, so exactly one frame sits beneath it", () => {
+  it("runs the student's main on a fresh 'main' thread with a stack larger than the default", () => {
+    const student = harnessSource("StudentMain.java");
+    const run = student.slice(student.indexOf("public void run()"));
+    expect(run).toContain("run.entry.invokeExact(new String[0]);");
     const harness = harnessSource("Harness.java");
-    const main = harness.slice(harness.indexOf("public static void main"), harness.indexOf("private static void watch"));
-    expect(main).toContain("run.entry.invokeExact(new String[0]);");
+    expect(harness).toContain('new ThreadGroup(systemGroup, "main")');
+    expect(harness).toContain('new Thread(group, body, "main", stackBytes)');
+    const multiple = /static final long STACK_MULTIPLE = (\d+);/.exec(harness);
+    expect(Number(multiple?.[1])).toBeGreaterThanOrEqual(8);
   });
 
   it("loads student classes through a fresh loader whose parent is the platform loader", () => {

@@ -21,13 +21,9 @@ import java.security.Permission;
  */
 final class Guard extends SecurityManager {
   private final State state;
-  private final Thread mainThread;
-  private final ThreadGroup mainGroup;
 
-  Guard(State state, Thread mainThread) {
+  Guard(State state) {
     this.state = state;
-    this.mainThread = mainThread;
-    this.mainGroup = mainThread.getThreadGroup();
   }
 
   @Override
@@ -45,19 +41,18 @@ final class Guard extends SecurityManager {
    * non-daemon threads exactly as the JVM's exit does — but the tests after it go back to the
    * per-process path, so thread numbering, lingering daemons and pool workers never carry over.
    *
-   * Only threads created from the student's side count. JIT compiler threads are created by the
-   * VM in the system group and are not the student's doing.
+   * Only threads created from the student's side count: the test's own "main" thread or any thread
+   * in its group. The harness creating that thread, and the VM creating its compiler threads in the
+   * system group, are not the student's doing.
    */
   @Override
   public void checkAccess(ThreadGroup g) {
     Thread current = Thread.currentThread();
-    if (current == mainThread || isStudentGroup(current.getThreadGroup())) {
+    ThreadGroup group = state.studentGroup();
+    if (current == state.studentThread()
+        || (group != null && current.getThreadGroup() != null && group.parentOf(current.getThreadGroup()))) {
       state.onThreadCreated();
     }
-  }
-
-  private boolean isStudentGroup(ThreadGroup group) {
-    return group != null && (group == mainGroup || mainGroup.parentOf(group));
   }
 
   @Override

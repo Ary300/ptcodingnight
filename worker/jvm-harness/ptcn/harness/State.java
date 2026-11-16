@@ -15,7 +15,9 @@ package ptcn.harness;
 final class State {
   private final Object lock = new Object();
   private final Control control;
-  private final Thread mainThread;
+  /** The current test's "main" thread and group, set by the harness before the thread starts. */
+  private volatile Thread studentThread;
+  private volatile ThreadGroup studentGroup;
 
   /** Ordinal handed to the main thread and not yet picked up. 0 none, -1 quit. */
   private int pending;
@@ -33,9 +35,21 @@ final class State {
   /** Only the harness itself may exit, and only once it has said so here. */
   private volatile boolean harnessExiting;
 
-  State(Control control, Thread mainThread) {
+  State(Control control) {
     this.control = control;
-    this.mainThread = mainThread;
+  }
+
+  void student(Thread thread, ThreadGroup group) {
+    studentThread = thread;
+    studentGroup = group;
+  }
+
+  Thread studentThread() {
+    return studentThread;
+  }
+
+  ThreadGroup studentGroup() {
+    return studentGroup;
   }
 
   /* ---------------- driver side (watchdog thread) ---------------- */
@@ -159,7 +173,7 @@ final class State {
     }
     if (claimFinish(ordinal)) {
       control.send(Control.DONE, ordinal, status & 0xFF);
-      if (Thread.currentThread() != mainThread) {
+      if (Thread.currentThread() != studentThread) {
         // The student's main may still be running, and a real exit would have ended it. This JVM
         // cannot be used again, and there is no reason to make the driver wait to find that out.
         control.send(Control.DIRTY, ordinal, -1);

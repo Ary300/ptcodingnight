@@ -78,7 +78,7 @@ final class TestRun {
     PrintStream err =
         new PrintStream(new BufferedOutputStream(errFilter, 128), true, globals.errCharset());
 
-    globals.enter(in, out, err, loader);
+    globals.enter(in, out, err);
     return new TestRun(ordinal, entry, outFilter, errFilter, cfg.errPath, loader);
   }
 
@@ -113,6 +113,10 @@ final class TestRun {
     } catch (IOException e) {
       return true;
     }
+  }
+
+  ClassLoader loader() {
+    return loader;
   }
 
   /** Let go of the student's classes so the next GC can unload them. */

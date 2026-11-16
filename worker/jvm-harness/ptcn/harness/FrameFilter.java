@@ -11,9 +11,9 @@ import java.util.Arrays;
  * The uncaught case is trimmed structurally on the Throwable (Frames#trim). This handles the traces
  * a program prints itself — `e.printStackTrace()` in a catch block is common, and stderr is what a
  * student sees for a runtime error on a sample. Per process, the bottom frame of such a trace is the
- * student's own; here `Harness.main` sits beneath it, and beneath a static initializer the
- * method-handle machinery that ran it as well. Same rule as Frames: the trailing run of frames from
- * NAMED modules is dropped when it ends in the harness frame. Student frames never name a module.
+ * student's own; here the harness's StudentMain.run and Thread.run sit beneath it, and beneath a
+ * static initializer the method-handle machinery too. Same rule as Frames: the trailing run of frames from
+ * NAMED modules is dropped when the harness frame is in it. Student frames never name a module.
  *
  * It also corrects the "... N more" line: N counts the frames a cause shares with the trace that
  * encloses it, and the dropped run is part of that shared suffix. Throwable#printStackTrace writes a
@@ -46,7 +46,7 @@ final class FrameFilter extends OutputStream {
   private int heldLen;
   private int heldCount;
   private int heldTabs;
-  private boolean heldEndsInHarness;
+  private boolean heldHasHarness;
 
   /** Per caption depth: frames dropped from the bottom of the most recent block at that depth. */
   private final int[] dropped = new int[MAX_DEPTH];
@@ -239,7 +239,7 @@ final class FrameFilter extends OutputStream {
     System.arraycopy(line, 0, held, heldLen, len);
     heldLen += len;
     heldCount++;
-    heldEndsInHarness = startsWith(tabs, HARNESS) && isHarnessEnd(tabs + HARNESS.length);
+    heldHasHarness |= startsWith(tabs, HARNESS) && isHarnessEnd(tabs + HARNESS.length);
   }
 
   /** The run of module frames is over. Drop it if it was the harness's, otherwise print it. */
@@ -247,7 +247,7 @@ final class FrameFilter extends OutputStream {
     if (heldCount == 0) {
       return;
     }
-    if (heldEndsInHarness) {
+    if (heldHasHarness) {
       dropped[heldTabs - 1] = heldCount;
       anyDropped = true;
     } else {
@@ -255,7 +255,7 @@ final class FrameFilter extends OutputStream {
     }
     heldLen = 0;
     heldCount = 0;
-    heldEndsInHarness = false;
+    heldHasHarness = false;
   }
 
   private void releaseHeld() throws IOException {
@@ -264,7 +264,7 @@ final class FrameFilter extends OutputStream {
     }
     heldLen = 0;
     heldCount = 0;
-    heldEndsInHarness = false;
+    heldHasHarness = false;
   }
 
   private boolean isHarnessEnd(int at) {

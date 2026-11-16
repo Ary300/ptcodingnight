@@ -32,12 +32,15 @@ final class Frames {
       return;
     }
     StackTraceElement[] frames = t.getStackTrace();
-    int keep = frames.length;
-    if (keep > 0 && isHarness(frames[keep - 1])) {
-      while (keep > 0 && frames[keep - 1].getModuleName() != null) {
-        keep--;
-      }
+    // The trailing run of named-module frames — StudentMain.run, the method-handle machinery,
+    // Thread.run — is the harness's beneath the student's code if the harness frame is in it.
+    int start = frames.length;
+    boolean harness = false;
+    while (start > 0 && frames[start - 1].getModuleName() != null) {
+      harness |= isHarness(frames[start - 1]);
+      start--;
     }
+    int keep = harness ? start : frames.length;
     if (keep != frames.length) {
       StackTraceElement[] trimmed = new StackTraceElement[keep];
       System.arraycopy(frames, 0, trimmed, 0, keep);

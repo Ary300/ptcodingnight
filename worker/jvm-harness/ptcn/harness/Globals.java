@@ -71,10 +71,9 @@ final class Globals {
     return errCharset;
   }
 
-  /** Install one test's streams and loader, on a main thread that looks freshly started. */
-  void enter(InputStream in, PrintStream out, PrintStream err, ClassLoader loader) {
+  /** Install one test's streams. The student's own thread carries its context class loader. */
+  void enter(InputStream in, PrintStream out, PrintStream err) {
     resetMainThread();
-    mainThread.setContextClassLoader(loader);
     System.setIn(in);
     System.setOut(out);
     System.setErr(err);

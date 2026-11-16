@@ -1,5 +1,7 @@
 package ptcn.harness;
 
+import com.sun.management.HotSpotDiagnosticMXBean;
+import java.lang.management.ManagementFactory;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Collections;
@@ -16,21 +18,30 @@ import java.util.concurrent.locks.LockSupport;
  * harness cannot reproduce faithfully is not attempted: it reports `abort` or `dirty`, and the
  * driver (worker/jvm-driver.ts) runs the affected tests as ordinary processes instead.
  *
- * The student's `main` runs on THIS thread — the JVM's own main thread, which the java launcher
- * created exactly as it does for a per-process run — so the thread's name, group, id and stack size
- * are the ones a student's program has always seen. The only extra frame beneath the student's is
- * this method's, which is why the invocation is written inline below and nowhere else.
+ * The student's `main` runs on a fresh thread for each test (StudentMain): named "main", in a fresh
+ * "main" thread group, with a stack several times the JVM's default so that recursion reaches at
+ * least as deep as in a fresh JVM. This thread waits for it.
  */
 public final class Harness {
   /** Bumped whenever the driver protocol changes; the driver refuses a harness that disagrees. */
   static final int PROTOCOL = 2;
+
+  /**
+   * The student's thread's stack, as a multiple of the JVM's default thread stack (the size the
+   * java launcher gives `main`). Measured on eclipse-temurin:21 for a two-argument recursive
+   * method: a fresh JVM reaches 20,372 to 26,946 frames on the default stack, and 82,628 once C2 has
+   * compiled the method; the all-interpreted floor is 15,490. Eight times the default puts this
+   * harness's floor near 124,000 frames, above every fresh-JVM measurement. See the commit that
+   * introduced it for the per-shape measurements.
+   */
+  static final long STACK_MULTIPLE = 8;
 
   private Harness() {}
 
   public static void main(String[] args) throws Exception {
     Config cfg = Config.parse(args);
     Control control = Control.open();
-    State state = new State(control, Thread.currentThread());
+    State state = new State(control);
     Thread main = Thread.currentThread();
     Globals globals = Globals.capture(main);
 
@@ -41,7 +52,9 @@ public final class Harness {
     Set<Thread> baseline = Collections.newSetFromMap(new IdentityHashMap<>());
     baseline.addAll(Thread.getAllStackTraces().keySet());
 
-    System.setSecurityManager(new Guard(state, main));
+    long stackBytes = studentStackBytes();
+    ThreadGroup systemGroup = main.getThreadGroup().getParent();
+    System.setSecurityManager(new Guard(state));
     // The kernel's id for this thread, which runs every test. The driver watches it in /proc to
     // confirm a test has really ended, so it is sent now, before any student code can exist.
     control.send(Control.READY, PROTOCOL, mainThreadTid());
@@ -59,13 +72,15 @@ public final class Harness {
       }
       state.attach(run);
 
-      Throwable thrown = null;
-      try {
-        run.entry.invokeExact(new String[0]);
-      } catch (Throwable t) {
-        thrown = t;
-      }
+      ThreadGroup group = new ThreadGroup(systemGroup, "main");
+      StudentMain body = new StudentMain(run, state);
+      Thread student = new Thread(group, body, "main", stackBytes);
+      student.setContextClassLoader(run.loader());
+      state.student(student, group);
+      student.start();
+      joinUninterruptibly(student);
 
+      Throwable thrown = body.thrown();
       Ending.finish(run, thrown, state, control, baseline);
       boolean clean = Ending.clean(run, state, baseline);
       run.release();
@@ -128,6 +143,23 @@ public final class Harness {
   /** This thread's id in /proc: `/proc/thread-self` links to `<pid>/task/<tid>`. */
   private static int mainThreadTid() throws java.io.IOException {
     return Integer.parseInt(Files.readSymbolicLink(Path.of("/proc/thread-self")).getFileName().toString());
+  }
+
+  private static void joinUninterruptibly(Thread thread) {
+    while (thread.isAlive()) {
+      try {
+        thread.join();
+      } catch (InterruptedException e) {
+        Thread.interrupted();
+      }
+    }
+  }
+
+  /** The JVM's default thread stack (`-XX:ThreadStackSize`, in KB) times STACK_MULTIPLE. */
+  private static long studentStackBytes() {
+    HotSpotDiagnosticMXBean vm = ManagementFactory.getPlatformMXBean(HotSpotDiagnosticMXBean.class);
+    long defaultKb = Long.parseLong(vm.getVMOption("ThreadStackSize").getValue());
+    return defaultKb * 1024L * STACK_MULTIPLE;
   }
 
   static void parkForever() {

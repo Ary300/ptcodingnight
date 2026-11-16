@@ -10,4 +10,6 @@
  * the harness being tamper-proof (sun.misc.Unsafe exists); see worker/jvm-driver.ts.
  */
 module ptcn.harness {
+  // The JVM's default thread stack size, from which the student's thread's stack is sized.
+  requires jdk.management;
 }

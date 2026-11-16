@@ -84,10 +84,10 @@ describe("harnessDeclineReason", () => {
     expect(await harnessDeclineReason(dir)).toBeNull();
   });
 
-  it("declines a program that can recurse", async () => {
+  it("lets a program that recurses through: the harness gives main a large stack", async () => {
     dir = mkdtempSync(path.join(os.tmpdir(), "elig-"));
     writeFileSync(path.join(dir, "Main.class"), real("direct"));
-    expect(await harnessDeclineReason(dir)).toBe("can recurse");
+    expect(await harnessDeclineReason(dir)).toBeNull();
   });
 
   it("declines when there is nothing to read, or it cannot be parsed, rather than guessing", async () => {

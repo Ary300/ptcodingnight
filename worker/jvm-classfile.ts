@@ -1,29 +1,13 @@
 /**
- * Just enough of the JVM class-file format to answer one question: can this submission recurse?
+ * Just enough of the JVM class-file format to read a submission's methods and the calls they make.
  *
- * ## Why the harness cares
- *
- * How deep a Java program can recurse before StackOverflowError depends on how soon the JIT
- * compiles the recursive method — an interpreted frame is several times larger than a compiled
- * one. In a fresh JVM the compiler is idle when `main` starts, so it compiles the method almost at
- * once. In a JVM that has already run tests it is often busy recompiling the JDK code those tests
- * warmed up, and the same program overflows earlier. Measured on eclipse-temurin:21 with no harness
- * at all, loading the same class afresh in one JVM: 26,516 frames on the first run, then as few as
- * 15,489 (the all-interpreted floor) on later ones, against 20,372-26,946 in fresh JVMs. That is a
- * verdict difference for a solution that recurses ~20,000 deep, so a submission that CAN recurse is
- * judged one process per test, as before.
- *
- * ## What counts as "can recurse"
- *
- * A cycle in the call graph among the submission's own methods, built conservatively:
- *   - a call to name+descriptor N reaches EVERY submission method named N with that descriptor,
- *     whatever its class (virtual dispatch, overriding and interfaces are all covered that way);
- *   - a method that creates a lambda or method reference reaches its target (it may call it,
- *     directly or through any JDK method it hands it to);
- *   - a call to an abstract submission method, or to a functional-interface method of the JDK,
- *     reaches every lambda and method-reference target in the submission.
- * A false "yes" costs only speed. Recursion that happens entirely inside the JDK (a regex with a
- * repeated group on a very long input) is not visible here; see the report that introduced this.
+ * The harness's eligibility check (worker/jvm-harness-eligibility.ts) parses every class file
+ * javac produced, so a build directory holding anything that is not a well-formed class file is
+ * declined rather than handed to the harness. It used to answer a second question as well — can
+ * this submission recurse? — and decline those too, because a JVM that had already run tests
+ * overflowed earlier than a fresh one. The harness now runs every test's main on a thread whose
+ * stack is eight times the JVM's default, measured deeper than a fresh JVM for every shape tried,
+ * so that analysis and its decline are gone.
  */
 
 const ACC_ABSTRACT = 0x0400;
@@ -354,150 +338,4 @@ export function parseClass(bytes: Buffer): ParsedClass {
     indyDescriptors: m.sites.map((site) => site.descriptor),
   }));
   return { name: self, supertypes, methods };
-}
-
-/**
- * A JDK call that may run code the submission handed it: a method OF a functional interface
- * (`f.apply(x)`, `cmp.compare(a, b)`), or any method that TAKES one (`list.forEach(...)`,
- * `map.computeIfAbsent(k, ...)`, `Arrays.sort(a, cmp)`). Such a call reaches every lambda and
- * method reference the submission defines. `map.get(k)` inside a comparator does not.
- */
-const FUNCTIONAL_OWNER = /^java\/util\/function\/|^java\/lang\/Runnable$|^java\/util\/concurrent\/Callable$|^java\/util\/Comparator$/;
-const FUNCTIONAL_PARAMETER = /Ljava\/util\/function\/|Ljava\/util\/Comparator;|Ljava\/lang\/Runnable;|Ljava\/util\/concurrent\/Callable;/;
-
-/**
- * Methods the JDK calls on objects it is given: printing calls toString, a HashMap calls hashCode
- * and equals, a sort calls compareTo or compare. Any JDK call, or a string concatenation, may
- * reach a submission's overrides of these — which is how a linked list's recursive toString
- * recurses without ever calling itself by name.
- */
-const OBJECT_PROTOCOL = /^(toString\(\)Ljava\/lang\/String;|hashCode\(\)I|equals\(Ljava\/lang\/Object;\)Z|compareTo\(.*\)I|compare\(.*\)I)$/;
-
-/**
- * Whether a JDK call can be handed one of the submission's objects: a reference parameter of a type
- * the submission could have created. `Integer.compare(int, int)` and `sb.append(String)` cannot, so
- * a compareTo built from them is not mistaken for recursion; `list.add(Object)` can.
- */
-const VALUE_TYPE = /^L(java\/lang\/(String|Integer|Long|Short|Byte|Character|Boolean|Double|Float|CharSequence)|java\/math\/(BigInteger|BigDecimal));$/;
-
-function takesSubmissionObject(descriptor: string): boolean {
-  const params = descriptor.slice(1, descriptor.indexOf(")"));
-  const refs = params.match(/\[*L[^;]+;/g) ?? [];
-  return refs.some((ref) => !VALUE_TYPE.test(ref.replace(/^\[+/, "")));
-}
-
-/** A dispatching call on a JDK collection or map, whose methods hash, compare and print elements. */
-function isCollectionCall(call: MethodRef): boolean {
-  return /^java\/util\/(?!function\/)/.test(call.owner) && call.dispatches;
-}
-
-function callsBackIntoJdk(call: MethodRef): boolean {
-  return FUNCTIONAL_OWNER.test(call.owner) || FUNCTIONAL_PARAMETER.test(call.descriptor);
-}
-
-/** Whether the submission's own methods can call themselves, directly or through each other. */
-export function canRecurse(classes: readonly ParsedClass[]): boolean {
-  const methods = classes.flatMap((c) => c.methods);
-  const key = (name: string, descriptor: string): string => `${name}${descriptor}`;
-  const own = new Set(classes.map((c) => c.name));
-  // Transitively: a class extending a submission class that extends ArrayList is an ArrayList.
-  const jdkSubtypes = new Set(
-    classes
-      .filter((c) => c.supertypes.some((t) => !own.has(t) && t !== "java/lang/Object"))
-      .map((c) => c.name),
-  );
-  for (let grew = true; grew; ) {
-    grew = false;
-    for (const c of classes) {
-      if (!jdkSubtypes.has(c.name) && c.supertypes.some((t) => jdkSubtypes.has(t))) {
-        jdkSubtypes.add(c.name);
-        grew = true;
-      }
-    }
-  }
-  const byKey = new Map<string, number[]>();
-  methods.forEach((m, i) => {
-    const k = key(m.name, m.descriptor);
-    byKey.set(k, [...(byKey.get(k) ?? []), i]);
-  });
-  const abstractKeys = new Set(methods.filter((m) => !m.hasCode).map((m) => key(m.name, m.descriptor)));
-  const protocolTargets = methods.flatMap((m, i) => (OBJECT_PROTOCOL.test(key(m.name, m.descriptor)) ? [i] : []));
-  const lambdaTargets = new Set(
-    methods.flatMap((m) => m.creates).flatMap((t) => (own.has(t.owner) ? (byKey.get(key(t.name, t.descriptor)) ?? []) : [])),
-  );
-
-  const edges: number[][] = methods.map((m) => {
-    const out = new Set<number>();
-    for (const call of m.calls) {
-      const k = key(call.name, call.descriptor);
-      // A static, private, super or constructor call reaches exactly the method it names; only a
-      // dispatching call may land in any class's override.
-      // (An inherited static method is named through the subclass, so a call to one of the
-      // submission's classes that matches no method of that exact class reaches them all.)
-      const candidates = byKey.get(k) ?? [];
-      const exact = candidates.filter((i) => methods[i]?.owner === call.owner);
-      // A dispatching call on a JDK type lands in the submission only in a class that extends or
-      // implements some JDK type other than Object: `tok.nextToken()` cannot reach a student's own
-      // static `nextToken()` helper, but `list.add(x)` can reach an override in a student's
-      // ArrayList subclass.
-      const dispatchTargets = own.has(call.owner)
-        ? candidates
-        : candidates.filter((i) => jdkSubtypes.has(methods[i]?.owner ?? ""));
-      const reached = call.dispatches
-        ? dispatchTargets
-        : exact.length === 0 && own.has(call.owner)
-          ? candidates
-          : exact;
-      for (const i of reached) out.add(i);
-      const callsBack =
-        (own.has(call.owner) && abstractKeys.has(k)) || (!own.has(call.owner) && callsBackIntoJdk(call));
-      if (callsBack) for (const i of lambdaTargets) out.add(i);
-    }
-    // A JDK method handed one of the submission's objects may call its toString, hashCode,
-    // equals, compareTo or compare; so may a call on a JDK collection holding them, and a string
-    // concatenation.
-    if (
-      m.indyDescriptors.some(takesSubmissionObject) ||
-      m.calls.some(
-        (call) =>
-          !own.has(call.owner) && (takesSubmissionObject(call.descriptor) || isCollectionCall(call)),
-      )
-    ) {
-      for (const i of protocolTargets) out.add(i);
-    }
-    for (const t of m.creates) {
-      if (own.has(t.owner)) for (const i of byKey.get(key(t.name, t.descriptor)) ?? []) out.add(i);
-    }
-    return [...out];
-  });
-
-  return hasCycle(edges);
-}
-
-function hasCycle(edges: readonly (readonly number[])[]): boolean {
-  const state = new Array<0 | 1 | 2>(edges.length).fill(0);
-  for (let start = 0; start < edges.length; start += 1) {
-    if (state[start] !== 0) continue;
-    const stack: [number, number][] = [[start, 0]];
-    state[start] = 1;
-    while (stack.length > 0) {
-      const top = stack[stack.length - 1];
-      if (top === undefined) break;
-      const [node, next] = top;
-      const targets = edges[node] ?? [];
-      if (next < targets.length) {
-        top[1] = next + 1;
-        const t = targets[next] ?? 0;
-        if (state[t] === 1) return true;
-        if (state[t] === 0) {
-          state[t] = 1;
-          stack.push([t, 0]);
-        }
-      } else {
-        state[node] = 2;
-        stack.pop();
-      }
-    }
-  }
-  return false;
 }

@@ -16,17 +16,9 @@ import java.util.Set;
 final class Ending {
   private Ending() {}
 
+  /** The uncaught exception, if any, was already reported on the student's thread (StudentMain). */
   static void finish(TestRun run, Throwable thrown, State state, Control control, Set<Thread> baseline) {
     boolean threw = thrown != null && !(thrown instanceof ExitTrap);
-    if (threw && !state.exitRequested()) {
-      Frames.trim(thrown);
-      Thread current = Thread.currentThread();
-      try {
-        current.getUncaughtExceptionHandler().uncaughtException(current, thrown);
-      } catch (Throwable ignored) {
-        // The JVM ignores a failing handler too.
-      }
-    }
 
     joinNonDaemon(state, baseline);
 
