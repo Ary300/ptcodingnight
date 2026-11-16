@@ -21,7 +21,7 @@ import { problemStatusLabel } from "../verdict/verdict-display";
  * ## Why the metadata is a second line
  *
  * It used to be four columns that collapsed to four stacked lines on a phone, so every row was
- * six lines tall. Title first, then one quiet run of `Easy · 100 pts · group`, is HackerRank's
+ * six lines tall. Title first, then one quiet run of `Easy  100 pts  group`, is HackerRank's
  * density and it survives the narrow viewport without a separate mobile layout.
  *
  * Two things kept from the first version, both deliberate:
@@ -69,15 +69,6 @@ export function lockedLabel(unlockAt: string | null | undefined): string {
   return `Opens ${formatEventTime(at)}`;
 }
 
-/** The separator between metadata items. U+00B7 is inside the vendored Latin subset. */
-function Dot() {
-  return (
-    <span aria-hidden="true" className="text-ink/40">
-      &#183;
-    </span>
-  );
-}
-
 function ProblemCard({ problem }: { problem: ProblemSummary }) {
   const status = problemStatusLabel(problem.solved, problem.bestScore);
   const partial = !problem.solved && problem.bestScore !== null && problem.bestScore > 0;
@@ -114,29 +105,26 @@ function ProblemCard({ problem }: { problem: ProblemSummary }) {
           {problem.title}
         </span>
         {/*
-          One quiet run of metadata under the title. `text-ink/60` is the floor from DESIGN.md §7
+          One quiet run of metadata under the title, each item its own element separated by the
+          gap alone. It used to be joined by middle dots, which the organizers asked to have gone
+          from everything a student reads. `text-ink/60` is the floor from DESIGN.md §7
           and is applied exactly once — never stacked, and never a wrapper `opacity`, which would
           multiply with it and land at 2.84:1.
         */}
         <span
-          className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-ink/60"
+          data-problem-meta
+          className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-ink/60"
           style={{ fontSize: "var(--text-xs)" }}
         >
           <span>
             {problem.difficulty === null ? "Unrated" : DIFFICULTY_LABEL[problem.difficulty]}
           </span>
-          <Dot />
           <span className="numeric">{problem.basePoints} pts</span>
-          {problem.isGroupProblem && (
-            <>
-              <Dot />
-              {/*
-                Not styling alone: a group problem is the one thing a student with no team CAN
-                open, so the list has to say which rows those are in words.
-              */}
-              <span>group</span>
-            </>
-          )}
+          {/*
+            Not styling alone: a group problem is the one thing a student with no team CAN
+            open, so the list has to say which rows those are in words.
+          */}
+          {problem.isGroupProblem && <span>group</span>}
         </span>
       </span>
 

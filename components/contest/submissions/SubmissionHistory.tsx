@@ -125,12 +125,9 @@ function SubmissionDetail({ submission }: { submission: SubmissionView }) {
 
   return (
     <>
-      <p className="text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
+      <p className="flex flex-wrap gap-x-3 text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
         <span className="numeric">
           {results.length === 0 ? "no tests reported" : `${passed}/${results.length} tests`}
-        </span>
-        <span aria-hidden="true" className="px-2 text-ink/40">
-          &#183;
         </span>
         <span className="numeric">
           {submission.runtimeMs === null ? "no timing" : `${submission.runtimeMs} ms`}
@@ -334,26 +331,14 @@ function Card({ submission, title, open, onToggle }: RowProps) {
           </span>
         </span>
         <span
-          className="mt-1 flex flex-wrap items-center gap-x-2 pl-[18px] text-ink/60"
+          className="mt-1 flex flex-wrap items-center gap-x-3 pl-[18px] text-ink/60"
           style={{ fontSize: "var(--text-xs)" }}
         >
+          {/* Separated by the gap alone: no middle dots in anything a student reads. */}
           <span>{LANGUAGE_LABEL[submission.language]}</span>
-          <span aria-hidden="true" className="text-ink/40">
-            &#183;
-          </span>
           {/* The word rides here so the verdict is never the coloured chip alone. */}
-          {submission.verdict !== null && (
-            <>
-              <span>{VERDICT_DISPLAY[submission.verdict].label}</span>
-              <span aria-hidden="true" className="text-ink/40">
-                &#183;
-              </span>
-            </>
-          )}
+          {submission.verdict !== null && <span>{VERDICT_DISPLAY[submission.verdict].label}</span>}
           <span className="numeric">score {submission.score}</span>
-          <span aria-hidden="true" className="text-ink/40">
-            &#183;
-          </span>
           <span className="numeric">{formatTime(submission.submittedAt)}</span>
         </span>
       </button>

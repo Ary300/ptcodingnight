@@ -14,7 +14,7 @@ const SWATCHES = [
   { name: "ink", hex: "#1A0606", note: "brand near-black", onInk: null, onPaper: "18.65 AAA*" },
   { name: "paper", hex: "#FBF9F8", note: "derived warm white", onInk: "18.65 AAA", onPaper: null },
   { name: "panther", hex: "#C63527", note: "brand primary", onInk: "3.67 large", onPaper: "5.08 AA" },
-  { name: "gold", hex: "#FED141", note: "frozen · champion", onInk: "13.44 AAA", onPaper: "1.39 ✗" },
+  { name: "gold", hex: "#FED141", note: "frozen, champion", onInk: "13.44 AAA", onPaper: "1.39 ✗" },
   { name: "rise", hex: "#49C5B1", note: "rank gained", onInk: "9.23 AAA", onPaper: "2.02 ✗" },
   { name: "fall", hex: "#FF9D6E", note: "rank lost", onInk: "9.60 AAA", onPaper: "1.94 ✗" },
 ] as const;

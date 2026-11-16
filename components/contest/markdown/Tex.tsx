@@ -14,7 +14,8 @@ import type { ReactNode } from "react";
  *  1. **Every substitution stays inside Latin-1.** docs/DESIGN.md §3 is explicit that
  *     glyphs outside the vendored woff2 subsets silently fall back to whatever font the
  *     machine has. `\le` therefore becomes `<=`, not `≤` (U+2264, outside the subset).
- *     `×` and `·` are U+00D7 and U+00B7 and are safe.
+ *     `×` is U+00D7 and safe. `\cdot` maps to it as well: every statement in the bank uses
+ *     `\cdot` for multiplication, and the middle dot is kept out of everything a student reads.
  *  2. **The original TeX is preserved as the accessible name.** A screen reader gets the
  *     source, not this approximation.
  */
@@ -30,7 +31,7 @@ const COMMANDS: Readonly<Record<string, string>> = {
   "\\lt": "<",
   "\\gt": ">",
   "\\times": "×",
-  "\\cdot": "·",
+  "\\cdot": "×",
   "\\pm": "±",
   "\\div": "÷",
   "\\ldots": "...",
