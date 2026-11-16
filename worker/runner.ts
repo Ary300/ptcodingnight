@@ -40,6 +40,7 @@ import {
 } from "@/worker/jvm-driver";
 import { harnessDeclineReason } from "@/worker/jvm-harness-eligibility";
 import type { ContainerPool } from "@/worker/container-pool";
+import { javacArguments, type JavacService } from "@/worker/javac-service";
 import { specsFor, startScript, type SlotNames, type SlotProfile } from "@/worker/slot-profile";
 import { createWorkspace, removeWorkspace, SCRATCH_ROOT } from "@/worker/workspace";
 
@@ -88,6 +89,11 @@ export interface JudgeOptions {
    * ready slot uses it; otherwise its containers are created on demand, exactly as without a pool.
    */
   readonly pool?: ContainerPool;
+  /**
+   * The warm compiler (worker/javac-service.ts), for a variant whose registry entry names it.
+   * Whatever it cannot answer is compiled in a fresh container, exactly as without it.
+   */
+  readonly javacService?: JavacService;
 }
 
 /**
@@ -101,18 +107,35 @@ export interface JudgeOptions {
  * fills the pool ahead of a job (the worker's warm-up, the gates, the benchmark). `judge` itself
  * computes the same value from the bytes it reads.
  */
-export async function slotProfileForJob(job: JudgeJob, images?: ImageOverrides): Promise<SlotProfile> {
+export async function slotProfileForJob(
+  job: JudgeJob,
+  images?: ImageOverrides,
+  serviceAvailable = false,
+): Promise<SlotProfile> {
   let largestCap = OUTPUT_CAP_FLOOR_BYTES;
   for (const testCase of job.testCases) {
     const { size } = await stat(testCase.expectedOutputPath);
     largestCap = Math.max(largestCap, outputCapFor(size));
   }
-  return slotProfileFor(job, images, largestCap);
+  return slotProfileFor(job, images, largestCap, serviceAvailable);
 }
 
-export function slotProfileFor(job: JudgeJob, images: ImageOverrides | undefined, largestCap: number): SlotProfile {
+/**
+ * `serviceAvailable`: a warm javac service is running. A submission whose variant names it is
+ * compiled there, so its slot needs no build container — only the run container, which still
+ * mounts /build read-only. Every other variant builds in a container whether or not the service is
+ * up, exactly as `judge` decides; deciding it here per variant is what keeps a C++ slot filled
+ * "with the service on" from being a slot no C++ submission can use.
+ */
+export function slotProfileFor(
+  job: JudgeJob,
+  images: ImageOverrides | undefined,
+  largestCap: number,
+  serviceAvailable = false,
+): SlotProfile {
   const variant = variantFor(job.language);
   const runtime = runtimeFor(job.language);
+  const compileInService = serviceAvailable && variant.compileService === "javac";
   const base = { ...containerLimits(job), wallClockKillMs: 0 };
   // Widened for a large expected output; fsize tracks it, so a per-file cap below the tmpfs cannot
   // fail a legitimate answer the tmpfs was sized to hold.
@@ -120,7 +143,7 @@ export function slotProfileFor(job: JudgeJob, images: ImageOverrides | undefined
   return {
     image: images?.[runtime.id] ?? runtime.image,
     compile:
-      variant.compileCommand !== undefined && variant.producesArtifacts
+      variant.compileCommand !== undefined && variant.producesArtifacts && !compileInService
         ? {
             argv: [
               "timeout",
@@ -775,15 +798,21 @@ export async function judge(
     largestCap = Math.max(largestCap, outputCapFor(Buffer.byteLength(expected, "utf8")));
   }
 
-  const profile = slotProfileFor(job, images, largestCap);
+  const javacService = variant.compileService === "javac" ? options?.javacService : undefined;
+  // The full profile is what an on-demand submission gets; with the javac service, the slot's
+  // profile has no build container, because the service does the build.
+  const fullProfile = slotProfileFor(job, images, largestCap);
+  const profile = slotProfileFor(job, images, largestCap, javacService !== undefined);
   const pool = options?.pool;
   const slot = pool?.take(profile) ?? null;
   const ws = slot?.workspace ?? (await createWorkspace("job-"));
   const freshNames: SlotNames = {
-    build: profile.compile === null ? null : containerName(job, "build"),
+    build: fullProfile.compile === null ? null : containerName(job, "build"),
     run: containerName(job, "run"),
   };
-  const specs = specsFor(profile, ws, slot?.names ?? freshNames);
+  const specs = specsFor(profile, ws, slot?.names ?? { build: profile.compile === null ? null : freshNames.build, run: freshNames.run });
+  // A build in a fresh container: the service declined, or there is no service.
+  const freshCompileSpec = specsFor(fullProfile, ws, freshNames).compile;
   const { sourceDir, buildDir, inputDir, resultDir } = ws;
   // A pooled container is started rather than created, and queued for removal rather than removed.
   const pooled =
@@ -807,7 +836,7 @@ export async function judge(
     // program to the problem's 256 MB — and MLE detection depends on that cap being the
     // problem's. Compiled languages therefore build separately, at the runtime's compile
     // memory limit, and hand /build to the run container read-only.
-    if (variant.compileCommand !== undefined && specs.compile !== null && freshNames.build !== null) {
+    if (variant.compileCommand !== undefined && freshCompileSpec !== null && freshNames.build !== null) {
       await writeFile(path.join(inputDir, "compile.sh"), `${withHostMaxProcs(variant.compileCommand)}\n`, "utf8");
 
       const compileOptions = {
@@ -822,11 +851,31 @@ export async function judge(
         // tight bound.
         outputDirMaxFiles: 4096,
       };
-      let compile = await runInContainer({ ...specs.compile, ...compileOptions, ...pooled });
-      if (compile.neverStarted === true) {
-        // The pre-created container could not be started, so nothing ran: build in a fresh one.
-        noteFreshFallback("build");
-        compile = await runInContainer({ ...specs.compile, ...compileOptions, name: freshNames.build });
+      // The warm javac first, when the registry names it: javac's own answer from a warm JVM, with
+      // the same arguments, source path and output directory (worker/javac-service.ts). Null
+      // means it could not answer, and the build runs in a container exactly as before.
+      const fromService =
+        javacService === undefined
+          ? null
+          : await javacService.compile(
+              job.sourceCode,
+              javacArguments(variant.compileCommand),
+              runtime.compileTimeoutMs,
+              buildDir,
+            );
+      let compile: { readonly exitCode: number | null; readonly stderr: string; readonly durationMs: number };
+      if (fromService !== null) {
+        compile = { exitCode: fromService.status, stderr: fromService.stderr, durationMs: fromService.durationMs };
+      } else if (specs.compile !== null && slot !== null) {
+        let pooledCompile = await runInContainer({ ...specs.compile, ...compileOptions, ...pooled });
+        if (pooledCompile.neverStarted === true) {
+          // The pre-created container could not be started, so nothing ran: build in a fresh one.
+          noteFreshFallback("build");
+          pooledCompile = await runInContainer({ ...freshCompileSpec, ...compileOptions });
+        }
+        compile = pooledCompile;
+      } else {
+        compile = await runInContainer({ ...freshCompileSpec, ...compileOptions });
       }
 
       // The daemon's execution span ends at (roughly) this instant, so subtracting it recovers

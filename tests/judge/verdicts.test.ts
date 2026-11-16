@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
-import { beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import type { JudgeJob, Verdict } from "@/lib/schemas/judge";
 import {
@@ -12,7 +12,20 @@ import {
   type RuntimeId,
 } from "@/lib/judge/runtimes";
 import { isDockerAvailable, sweepJudgeContainers } from "@/worker/docker";
+import { JavacService } from "@/worker/javac-service";
 import { judge } from "@/worker/runner";
+
+/**
+ * Java 21 compiles through the warm javac service, as it does in production (worker/index.ts).
+ * Two lanes, because the variant pairs below judge two submissions at once. Whatever the service
+ * cannot answer falls back to a compile container, so this gate checks the verdicts either way;
+ * scripts/ab-javac-service.ts is what proves the two compiles are identical.
+ */
+const javacService = new JavacService({
+  lanes: 2,
+  image: process.env.JUDGE_IMAGE_JDK21 ?? RUNTIMES.jdk21.image,
+  runtime: RUNTIMES.jdk21,
+});
 
 /**
  * G4 — judge verdict fixtures.
@@ -129,6 +142,11 @@ describe("G4 judge fixtures", () => {
       );
     }
     await sweepJudgeContainers();
+    await javacService.start();
+  }, 120_000);
+
+  afterAll(async () => {
+    await javacService.close();
   }, 120_000);
 
   it("covers every student-reachable verdict", () => {
@@ -165,7 +183,7 @@ describe("G4 judge fixtures", () => {
 
   for (const entry of manifest.cases) {
     it(`${entry.id} → ${entry.expectedVerdict}`, async () => {
-      const result = await judge(jobFor(entry), IMAGES);
+      const result = await judge(jobFor(entry), IMAGES, undefined, { javacService });
 
       expect(result.verdict).toBe(entry.expectedVerdict);
 
@@ -231,7 +249,7 @@ describe("G4 judge fixtures", () => {
         expect(sourceOf(ok)).toBe(sourceOf(rejected));
         expect(ok.language).not.toBe(rejected.language);
 
-        const [passed, failed] = await Promise.all([judge(jobFor(ok), IMAGES), judge(jobFor(rejected), IMAGES)]);
+        const [passed, failed] = await Promise.all([judge(jobFor(ok), IMAGES, undefined, { javacService }), judge(jobFor(rejected), IMAGES, undefined, { javacService })]);
 
         expect(passed.verdict, `${pair.ok} should compile at its own level`).toBe("AC");
         expect(failed.verdict, `${pair.rejected} should not compile under ${pair.flag}`).toBe("CE");
@@ -252,7 +270,7 @@ describe("G4 judge fixtures", () => {
     expect(wrong).toBeDefined();
     if (wrong === undefined) return;
 
-    const result = await judge(jobFor(wrong), IMAGES);
+    const result = await judge(jobFor(wrong), IMAGES, undefined, { javacService });
     const hidden = result.testResults.filter((r) => r.testCaseId !== "t1");
 
     expect(hidden.length).toBeGreaterThan(0);

@@ -12,10 +12,11 @@ import { JUDGE_QUEUE_NAME, MAX_JOB_ATTEMPTS, STALLED_JOB_GRACE_MS } from "@/lib/
 import { parseServerEnv } from "@/lib/schemas/env";
 import { isDockerAvailable, OUTPUT_CAP_FLOOR_BYTES, sweepJudgeContainers } from "@/worker/docker";
 import { defaultJudgeConcurrency, hostCpuCount, hostMemoryMb } from "./host";
-import { RUNTIMES, type RuntimeId } from "@/lib/judge/runtimes";
+import { RUNTIMES, VARIANTS, type RuntimeId } from "@/lib/judge/runtimes";
 import { describeMissingImages, findMissingImages, requiredImages } from "@/worker/preflight";
 import { judge, slotProfileFor, type ImageOverrides } from "@/worker/runner";
 import { ContainerPool } from "@/worker/container-pool";
+import { JavacService } from "@/worker/javac-service";
 import { removeStaleWorkspaces } from "@/worker/workspace";
 import { hostLimits } from "@/lib/contest/host";
 import type { JudgeJob } from "@/lib/schemas/judge";
@@ -34,6 +35,12 @@ import type { JudgeJob } from "@/lib/schemas/judge";
  * the pool off and every container is created on demand, as before.
  */
 const POOL_SLOTS = Number.parseInt(process.env.JUDGE_POOL_SLOTS ?? "60", 10);
+
+/**
+ * The warm javac (worker/javac-service.ts): on unless JUDGE_JAVAC_SERVICE=off, the switch an
+ * organizer flips without a deploy. Off, every Java submission compiles in its own container.
+ */
+const JAVAC_SERVICE_ON = (process.env.JUDGE_JAVAC_SERVICE ?? "on").toLowerCase() !== "off";
 
 /** Finished containers allowed to wait for removal while judging continues. */
 const POOL_REMOVAL_BACKLOG = Number.parseInt(process.env.JUDGE_POOL_REMOVAL_BACKLOG ?? "120", 10);
@@ -54,7 +61,7 @@ function judgeIsBusy(): boolean {
  * whose answers fit the default output cap, which is most of the bank — so the pool is useful
  * before the first submission arrives. Every other profile is learned from demand.
  */
-function expectedProfile(images: ImageOverrides) {
+function expectedProfile(images: ImageOverrides, compileInService: boolean) {
   const host = hostLimits();
   const seed: JudgeJob = {
     submissionId: "pool-seed",
@@ -73,13 +80,14 @@ function expectedProfile(images: ImageOverrides) {
     attempt: 1,
     captureOutput: false,
   };
-  return slotProfileFor(seed, images, OUTPUT_CAP_FLOOR_BYTES);
+  return slotProfileFor(seed, images, OUTPUT_CAP_FLOOR_BYTES, compileInService);
 }
 
 async function processJob(
   job: Job,
   images: ImageOverrides,
   pool: ContainerPool | null,
+  javacService: JavacService | null,
 ): Promise<JudgeResult> {
   // Parsed, not cast. A malformed job means the enqueuer and this worker disagree about the
   // contract, and guessing at the difference is how a submission gets judged against the
@@ -108,7 +116,10 @@ async function processJob(
         dequeuedAtMs: job.processedOn ?? Date.now(),
         attempt: job.attemptsMade + 1,
       },
-      pool === null ? {} : { pool },
+      {
+        ...(pool === null ? {} : { pool }),
+        ...(javacService === null ? {} : { javacService }),
+      },
     );
   } finally {
     activeJobs -= 1;
@@ -182,10 +193,6 @@ async function main(): Promise<void> {
           isBusy: judgeIsBusy,
         })
       : null;
-  if (pool !== null) {
-    pool.expect(expectedProfile(images));
-    void pool.maintain();
-  }
 
   const connection = new IORedis(env.REDIS_URL, { maxRetriesPerRequest: null });
 
@@ -202,7 +209,28 @@ async function main(): Promise<void> {
       ? defaultJudgeConcurrency()
       : env.JUDGE_CONCURRENCY;
 
-  const worker = new Worker(JUDGE_QUEUE_NAME, (job) => processJob(job, images, pool), {
+  // One compile lane per concurrent judge, so a lane is always free for a submission that wants
+  // one. A lane that is busy, restarting or missing sends its submission to a container.
+  const javacService = JAVAC_SERVICE_ON
+    ? new JavacService({
+        lanes: concurrency,
+        image: images.jdk21 ?? RUNTIMES.jdk21.image,
+        runtime: RUNTIMES.jdk21,
+      })
+    : null;
+  // Started and warmed while nothing is queued; until a lane is ready, Java compiles in containers.
+  if (javacService !== null) {
+    const compileCommand = VARIANTS.JAVA_21.compileCommand;
+    void javacService.start().then(async () => {
+      if (compileCommand !== undefined) await javacService.warmUp(compileCommand, RUNTIMES.jdk21.compileTimeoutMs);
+    });
+  }
+  if (pool !== null) {
+    pool.expect(expectedProfile(images, javacService !== null));
+    void pool.maintain();
+  }
+
+  const worker = new Worker(JUDGE_QUEUE_NAME, (job) => processJob(job, images, pool, javacService), {
     connection,
     concurrency,
     stalledInterval: STALLED_JOB_GRACE_MS,
@@ -243,6 +271,7 @@ async function main(): Promise<void> {
     console.warn(`${signal} received; draining judge worker`);
     await worker.close();
     await pool?.close();
+    await javacService?.close();
     await sweepJudgeContainers();
     // Before the connection closes, because the stop DELETES the heartbeat key — an orderly
     // shutdown reads as "no worker" immediately rather than after a 30 s TTL of doubt.
@@ -261,6 +290,7 @@ async function main(): Promise<void> {
       queue: JUDGE_QUEUE_NAME,
       concurrency,
       poolSlots: pool === null ? 0 : POOL_SLOTS,
+      javacLanes: javacService === null ? 0 : concurrency,
       concurrencySource: process.env.JUDGE_CONCURRENCY === undefined ? "derived from cpu count" : "JUDGE_CONCURRENCY",
       /*
         The box, in the first line of the log.

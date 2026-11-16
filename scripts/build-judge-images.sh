@@ -127,13 +127,13 @@ else
   exit 1
 fi
 
-# The SHA-256 of the in-JVM harness source, over every .java file's path and bytes in a fixed
-# order. Baked into ptcn-jdk:21 so --verify can tell an image built from TODAY's harness from one
-# built before somebody edited it.
+# The SHA-256 of the Java programs baked into ptcn-jdk:21 — the in-JVM harness and the warm javac
+# service — over every .java file's path and bytes in a fixed order. Baked into the image so
+# --verify can tell an image built from TODAY's source from one built before somebody edited it.
 harness_source_sha256() {
   (
-    cd worker/jvm-harness
-    find . -type f -name '*.java' | LC_ALL=C sort | while IFS= read -r f; do
+    cd worker
+    find jvm-harness javac-service -type f -name '*.java' | LC_ALL=C sort | while IFS= read -r f; do
       printf '%s\n' "$f"
       cat "$f"
     done
@@ -142,9 +142,9 @@ harness_source_sha256() {
 HARNESS_SHA="$(harness_source_sha256)"
 
 echo
-echo "==> building ptcn-jdk:21 (eclipse-temurin:21-jdk + the in-JVM test harness)"
+echo "==> building ptcn-jdk:21 (eclipse-temurin:21-jdk + the in-JVM test harness + the warm javac)"
 if docker build -q --build-arg "HARNESS_SOURCE_SHA256=${HARNESS_SHA}" -t ptcn-jdk:21 \
-     -f docker/jdk/Dockerfile worker/jvm-harness >/dev/null; then
+     -f docker/jdk/Dockerfile worker >/dev/null; then
   echo "    ptcn-jdk:21                built, harness source ${HARNESS_SHA:0:12}"
 else
   echo "FAIL  could not build ptcn-jdk:21" >&2
@@ -322,6 +322,36 @@ case "$hello" in
     exit 1
     ;;
 esac
+
+# The warm javac (worker/javac-service.ts): its module is in the image, and it says `ready` under
+# the compile container's isolation flags with /work and /build as tmpfs, as the worker runs it.
+# A missing or broken service is never a wrong verdict — every Java compile falls back to its own
+# container — but it is every Java submission back at the old cost, so it is made loud here.
+printf '    %-26s ' "jdk21 javac service"
+svc_module=$(docker run --rm --entrypoint sh ptcn-jdk:21 -c \
+  'jar --describe-module --file /opt/ptcn/javac-service.jar 2>/dev/null | head -n 1' 2>/dev/null || true)
+case "$svc_module" in
+  "ptcn.javacsvc "*) ;;
+  *)
+    echo "FAILED"
+    echo "FAIL  /opt/ptcn/javac-service.jar is not the ptcn.javacsvc module (got: ${svc_module:-nothing})" >&2
+    exit 1
+    ;;
+esac
+svc_hello=$(docker run --rm -i --network=none --read-only \
+  --tmpfs=/tmp:rw,noexec,nosuid,size=64m --tmpfs=/work:rw,noexec,nosuid,mode=1777,size=64m \
+  --tmpfs=/build:rw,noexec,nosuid,mode=1777,size=64m --user=65534:65534 --cap-drop=ALL \
+  --security-opt=no-new-privileges --pids-limit=256 --memory=1024m --memory-swap=1024m \
+  --workdir=/work --env=HOME=/tmp --env=TMPDIR=/tmp \
+  ptcn-jdk:21 java -XX:+UseSerialGC -XX:-UsePerfData -p /opt/ptcn/javac-service.jar \
+  -m ptcn.javacsvc/ptcn.javac.Service </dev/null 2>/dev/null | head -n 1 || true)
+if [ "$svc_hello" = "ready" ]; then
+  echo "says \"ready\" under the compile container's flags"
+else
+  echo "FAILED"
+  echo "FAIL  the javac service did not start (said: ${svc_hello:-nothing})" >&2
+  exit 1
+fi
 
 # The stock runtimes need no equivalent, and this was checked rather than assumed: none of
 # python:3.12-slim, eclipse-temurin:21-jdk or node:22-slim ships a cache directory or sets a cache

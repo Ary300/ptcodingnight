@@ -202,6 +202,13 @@ export interface Variant {
    */
   readonly harnessCommand?: string;
   /**
+   * Optional: compile in the worker's warm compile service instead of a fresh container
+   * (worker/javac-service.ts) — the same javac, the same arguments (`compileCommand`, launcher `-J`
+   * options aside), the same source and output paths. Anything the service cannot answer is
+   * compiled in a container exactly as without it. Java 21 only, like the harness.
+   */
+  readonly compileService?: "javac";
+  /**
    * Starter file shown in the editor, so the first thing a student sees is not an empty box.
    *
    * Lives here rather than in the UI for the same reason everything else does: adding a
@@ -561,6 +568,7 @@ public class Main {
     producesArtifacts: true,
     runCommand: `exec java ${JVM_RUN_FLAGS} -cp /build Main`,
     harnessCommand: JAVA_HARNESS_COMMAND,
+    compileService: "javac",
     starter: `import java.util.*;
 import java.io.*;
 

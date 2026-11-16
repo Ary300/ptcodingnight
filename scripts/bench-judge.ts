@@ -9,6 +9,8 @@ import type { LanguageId } from "@/lib/judge/runtimes";
 import type { JudgeJob, JudgeResult } from "@/lib/schemas/judge";
 import { isDockerAvailable, sweepJudgeContainers } from "@/worker/docker";
 import { ContainerPool } from "@/worker/container-pool";
+import { JavacService } from "@/worker/javac-service";
+import { RUNTIMES, VARIANTS } from "@/lib/judge/runtimes";
 import { judge, slotProfileForJob } from "@/worker/runner";
 
 /**
@@ -63,6 +65,8 @@ interface Args {
    * DURING a burst.
    */
   readonly pool: boolean;
+  /** `--javac-service`: compile Java in a warm javac service started before the measurement. */
+  readonly javacService: boolean;
 }
 
 function parseArgs(argv: readonly string[]): Args {
@@ -71,6 +75,7 @@ function parseArgs(argv: readonly string[]): Args {
   let out: string | null = null;
   let languages: LanguageId[] = ["PYTHON_312", "JAVA_21", "CPP_17"];
   let pool = false;
+  let javacService = false;
   const slugs: string[] = [];
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i] ?? "";
@@ -79,9 +84,10 @@ function parseArgs(argv: readonly string[]): Args {
     else if (arg === "--out") out = argv[++i] ?? null;
     else if (arg === "--lang") languages = (argv[++i] ?? "").split(",") as LanguageId[];
     else if (arg === "--pool") pool = true;
+    else if (arg === "--javac-service") javacService = true;
     else slugs.push(arg);
   }
-  return { solDir, reps, out, slugs: slugs.length > 0 ? slugs : DEFAULT_SLUGS, languages, pool };
+  return { solDir, reps, out, slugs: slugs.length > 0 ? slugs : DEFAULT_SLUGS, languages, pool, javacService };
 }
 
 /* ------------------------------------------------------------------------------------------ */
@@ -221,9 +227,10 @@ async function benchOne(
   rep: number,
   backgroundCoresBusy: number,
   pool: ContainerPool | null,
+  service: JavacService | null,
 ): Promise<Sample> {
   const job = jobFor(slug, language, source, rep);
-  if (pool !== null) await pool.prefill(await slotProfileForJob(job), 1);
+  if (pool !== null) await pool.prefill(await slotProfileForJob(job, undefined, service !== null), 1);
   calls.length = 0;
 
   const busy0 = hostBusyTicks();
@@ -234,7 +241,7 @@ async function benchOne(
     job,
     undefined,
     { enqueuedAtMs: epoch0, dequeuedAtMs: epoch0, attempt: 1 },
-    pool === null ? {} : { pool },
+    { ...(pool === null ? {} : { pool }), ...(service === null ? {} : { javacService: service }) },
   );
   const t1 = performance.now();
   const cpu1 = process.cpuUsage(cpu0);
@@ -309,6 +316,14 @@ async function main(): Promise<void> {
   const pool = args.pool
     ? new ContainerPool({ target: 0, removalBacklog: 10_000, isBusy: () => false })
     : null;
+  const service = args.javacService
+    ? new JavacService({ lanes: 1, image: RUNTIMES.jdk21.image, runtime: RUNTIMES.jdk21 })
+    : null;
+  if (service !== null) {
+    if ((await service.start()) === 0) throw new Error("the javac service did not start");
+    // Warmed before the measurement, as the worker warms it at start.
+    await service.warmUp(VARIANTS.JAVA_21.compileCommand ?? "", RUNTIMES.jdk21.compileTimeoutMs);
+  }
   try {
     const background = await measureBackgroundRate(5);
     console.log(`host background: ${background.toFixed(2)} cores busy while idle`);
@@ -318,9 +333,9 @@ async function main(): Promise<void> {
         const source = sourceFor(slug, language, args.solDir);
         if (source === null) continue;
         // One unmeasured warm-up, so the first sample does not carry the page cache filling.
-        await benchOne(slug, language, source, 0, background, pool);
+        await benchOne(slug, language, source, 0, background, pool, service);
         for (let rep = 1; rep <= args.reps; rep += 1) {
-          const s = await benchOne(slug, language, source, rep, background, pool);
+          const s = await benchOne(slug, language, source, rep, background, pool, service);
           samples.push(s);
           const ok = s.verdict === "AC" && s.score === s.maxScore;
           if (!ok) failures += 1;
@@ -336,6 +351,7 @@ async function main(): Promise<void> {
     }
   } finally {
     await pool?.close();
+    await service?.close();
     execFileSync("docker", ["rm", "-f", PROBE], { stdio: "ignore" });
     await sweepJudgeContainers();
   }

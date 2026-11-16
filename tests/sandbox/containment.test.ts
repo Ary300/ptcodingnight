@@ -9,6 +9,8 @@ import type { JudgeJob, JudgeResult, Verdict } from "@/lib/schemas/judge";
 import { isDockerAvailable, sweepJudgeContainers } from "@/worker/docker";
 import { VARIANTS } from "@/lib/judge/runtimes";
 import { ContainerPool } from "@/worker/container-pool";
+import { JavacService } from "@/worker/javac-service";
+import { RUNTIMES } from "@/lib/judge/runtimes";
 import { judge, slotProfileForJob } from "@/worker/runner";
 
 /**
@@ -201,15 +203,21 @@ describe("G5 hostile submission containment", () => {
    * one argument builder); this proves the containment is too.
    */
   const pool = new ContainerPool({ target: 0, removalBacklog: 10_000, isBusy: () => false });
+  // Java compiles through the warm javac service in both modes, as in production.
+  const javacService = new JavacService({ lanes: 1, image: RUNTIMES.jdk21.image, runtime: RUNTIMES.jdk21 });
+  beforeAll(async () => {
+    await javacService.start();
+  }, 180_000);
   const pooledUse: boolean[] = [];
 
   for (const [mode, label] of [["fresh", ""], ["pooled", " (pre-created container)"]] as const) {
     for (const entry of manifest.cases) {
       it(`contains ${entry.id} → ${entry.expectedVerdict}${label}`, async () => {
         const job = jobFor(entry);
-        if (mode === "pooled") await pool.prefill(await slotProfileForJob(job, IMAGES), 1);
+        if (mode === "pooled") await pool.prefill(await slotProfileForJob(job, IMAGES, true), 1);
         const result = await judge(job, IMAGES, undefined, {
           ...(mode === "pooled" ? { pool } : {}),
+          javacService,
           onReport: (report) => {
             if (mode === "pooled") pooledUse.push(report.pooled);
           },
@@ -242,6 +250,7 @@ describe("G5 hostile submission containment", () => {
     expect(pool.stats().pendingRemoval).toBe(0);
     expect(containerCount()).toBe(baseline);
     await pool.close();
+    await javacService.close();
   }, 180_000);
 
   it("never exposes the host filesystem through /etc/passwd", () => {

@@ -19,6 +19,8 @@ import type { JudgeJob } from "@/lib/schemas/judge";
 import { parseProblemManifest, type ProblemManifest } from "@/lib/schemas/seed";
 import { isDockerAvailable, sweepJudgeContainers } from "@/worker/docker";
 import { judge, type ImageOverrides } from "@/worker/runner";
+import { JavacService } from "@/worker/javac-service";
+import { RUNTIMES } from "@/lib/judge/runtimes";
 
 /**
  * G13 — reference solutions must survive the real judge.
@@ -77,6 +79,13 @@ const IMAGES: ImageOverrides = {
 };
 
 const REQUIRED_FILES = ["problem.json", "statement.md", "reference.py", "generator.py"] as const;
+
+/** The warm javac, as worker/index.ts runs it. Whatever it cannot answer compiles in a container. */
+const javacService = new JavacService({
+  lanes: 1,
+  image: IMAGES.jdk21 ?? RUNTIMES.jdk21.image,
+  runtime: RUNTIMES.jdk21,
+});
 
 interface ProblemMeta {
   slug: string;
@@ -392,6 +401,9 @@ async function probeProblem(
         captureOutput: false,
       },
       IMAGES,
+      undefined,
+      // Java probes compile through the warm javac service, as production does.
+      { javacService },
     );
 
     if (result.verdict === "AC") continue;
@@ -449,6 +461,7 @@ async function main(): Promise<void> {
 
   const { problems, incomplete } = discover();
   await sweepJudgeContainers();
+  await javacService.start();
 
   let failures = incomplete.length;
 
@@ -574,6 +587,7 @@ async function main(): Promise<void> {
     console.log("\nevery non-DRAFT problem has a statement and test cases");
   }
 
+  await javacService.close();
   const swept = await sweepJudgeContainers();
   /*
     Counted from the reference pass's OWN failures, not by subtracting everything else out of a
