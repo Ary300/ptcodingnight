@@ -23,6 +23,22 @@ import { auditPage } from "./helpers/audit";
 const BOARD_TIMEOUT_MS = 45_000;
 
 /**
+ * Every probe this file puts on a team, taken off again afterwards.
+ *
+ * The probe joins whichever running team has a judged submission, and team size is the divisor
+ * in every team score. Left behind, it silently changed a real team's score: on a rehearsal
+ * contest sharing this database, two runs turned a team of five into a team of seven and its
+ * score from 190.00 into 167.14, with nothing on any screen to say why.
+ */
+const probes: string[] = [];
+
+test.afterAll(async () => {
+  if (probes.length > 0) {
+    await testDb().participant.deleteMany({ where: { id: { in: probes } } });
+  }
+});
+
+/**
  * Sign the page in as a member of a team that already has scored submissions, and open `/team`.
  *
  * Deliberately NOT `joinContest`. That helper resolves "the running contest" through
@@ -58,6 +74,7 @@ async function openMyTeamAsATeamMember(page: Page): Promise<void> {
   const session = await signInAsCompetitor(page, scoring.contestId, {
     displayName: `A11y Detail ${String(Date.now())}`,
   });
+  probes.push(session.participantId);
 
   await db.participant.update({
     where: { id: session.participantId },
