@@ -2,6 +2,12 @@ import { spawn } from "node:child_process";
 import { readdir, rm, stat } from "node:fs/promises";
 import path from "node:path";
 
+import {
+  inspectExitState,
+  killContainerViaApi,
+  removeContainerViaApi,
+  type ContainerExitState,
+} from "./docker-api";
 import { clampCpus } from "./host";
 
 /**
@@ -141,7 +147,37 @@ export interface ContainerRunOptions {
    * `<n>.meta` per test plus four fixed files — so this bound is generous rather than a guess.
    */
   readonly outputDirMaxFiles?: number;
+  /**
+   * A line-oriented control channel on the container's own stdio — the batch driver's doorbell.
+   *
+   * When set, stdin stays OPEN for the container's lifetime instead of being closed after `stdin`
+   * is written, `onLine` sees every complete line the container prints on stdout, and `send`
+   * writes to its stdin. Stdout is still captured and still capped exactly as without it; this
+   * only adds a reader beside the capture.
+   *
+   * Lines longer than `CONTROL_LINE_MAX` are dropped rather than buffered, so a program that
+   * floods the channel through `/proc/1/fd/1` cannot grow the worker's memory with it.
+   */
+  readonly control?: ContainerControl;
 }
+
+/** See `ContainerRunOptions.control`. */
+export interface ContainerControl {
+  /** Written to stdin as soon as the container is spawned. */
+  readonly initial?: string;
+  /** Called once per complete stdout line, with the container's stdin. */
+  readonly onLine: (line: string, stdin: ControlStdin) => void;
+}
+
+/** The container's stdin as a control channel: write a line, or close it. */
+export interface ControlStdin {
+  readonly send: (text: string) => void;
+  /** End of input. A driver blocked on `read` sees EOF and stops. */
+  readonly end: () => void;
+}
+
+/** The longest control line worth reading. The driver's lines are a dozen bytes. */
+const CONTROL_LINE_MAX = 256;
 
 export interface ContainerRunResult {
   readonly stdout: string;
@@ -257,6 +293,8 @@ function runDocker(args: readonly string[]): Promise<{ stdout: string; code: num
 
 /** Force-remove a container, ignoring "no such container". */
 export async function removeContainer(name: string): Promise<void> {
+  // The Engine API when it can answer, the CLI when it cannot (worker/docker-api.ts).
+  if ((await removeContainerViaApi(name)) === true) return;
   await runDocker(["rm", "-f", name]);
 }
 
@@ -354,7 +392,9 @@ export async function runInContainer(options: ContainerRunOptions): Promise<Cont
     const killContainer = () => {
       // Kill the container, not just the CLI process. Killing `docker run` alone can leave
       // the container running and detached.
-      void runDocker(["kill", name]);
+      void killContainerViaApi(name).then((done) => {
+        if (done !== true) void runDocker(["kill", name]);
+      });
     };
 
     // Backstop only. The authoritative wall-clock kill runs as `timeout` inside the
@@ -404,7 +444,32 @@ export async function runInContainer(options: ContainerRunOptions): Promise<Cont
       }
     };
 
-    child.stdout.on("data", (c: Buffer) => capture(c, "out"));
+    const control = options.control;
+    const controlStdin: ControlStdin = {
+      send: (text: string) => {
+        if (settled || child.stdin.destroyed || child.stdin.writableEnded) return;
+        child.stdin.write(text);
+      },
+      end: () => {
+        if (!child.stdin.destroyed && !child.stdin.writableEnded) child.stdin.end();
+      },
+    };
+    let pendingLine = "";
+    const readControlLines = (chunk: Buffer) => {
+      if (control === undefined) return;
+      const parts = (pendingLine + chunk.toString()).split("\n");
+      pendingLine = parts.pop() ?? "";
+      // An unterminated line this long is not the driver talking. Drop it rather than keep it.
+      if (pendingLine.length > CONTROL_LINE_MAX) pendingLine = "";
+      for (const line of parts) {
+        if (line.length <= CONTROL_LINE_MAX) control.onLine(line, controlStdin);
+      }
+    };
+
+    child.stdout.on("data", (c: Buffer) => {
+      capture(c, "out");
+      readControlLines(c);
+    });
     child.stderr.on("data", (c: Buffer) => capture(c, "err"));
 
     child.stdin.on("error", () => {
@@ -412,13 +477,18 @@ export async function runInContainer(options: ContainerRunOptions): Promise<Cont
       // judging failure.
     });
     if (stdin !== undefined) child.stdin.write(stdin);
-    child.stdin.end();
+    if (control === undefined) {
+      child.stdin.end();
+    } else if (control.initial !== undefined) {
+      child.stdin.write(control.initial);
+    }
 
     const settle = (code: number | null) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
       if (watchdog !== null) clearInterval(watchdog);
+      if (!child.stdin.writableEnded) child.stdin.end();
       resolve({ stdout, stderr, code, timedOut, truncated, diskExceeded });
     };
 
@@ -433,19 +503,13 @@ export async function runInContainer(options: ContainerRunOptions): Promise<Cont
   let oomKilled = false;
   let durationMs = wallMs;
 
-  const inspect = await runDocker([
-    "inspect",
-    name,
-    "--format",
-    "{{.State.OOMKilled}}|{{.State.StartedAt}}|{{.State.FinishedAt}}",
-  ]);
+  const exit = await readExitState(name);
 
-  if (inspect.code === 0) {
-    const [oom, started, finished] = inspect.stdout.trim().split("|");
-    oomKilled = oom === "true";
+  if (exit !== null) {
+    oomKilled = exit.oomKilled;
 
-    const startedMs = Date.parse(started ?? "");
-    const finishedMs = Date.parse(finished ?? "");
+    const startedMs = Date.parse(exit.startedAt);
+    const finishedMs = Date.parse(exit.finishedAt);
     if (Number.isFinite(startedMs) && Number.isFinite(finishedMs) && finishedMs >= startedMs) {
       durationMs = finishedMs - startedMs;
     }
@@ -464,6 +528,25 @@ export async function runInContainer(options: ContainerRunOptions): Promise<Cont
     wallMs,
     diskExceeded: result.diskExceeded,
   };
+}
+
+/**
+ * The daemon's record of how the container ended: the Engine API first, the CLI if the API
+ * cannot answer. Both read the same three fields of the same inspect document.
+ */
+async function readExitState(name: string): Promise<ContainerExitState | null> {
+  const viaApi = await inspectExitState(name);
+  if (viaApi !== null) return viaApi;
+
+  const inspect = await runDocker([
+    "inspect",
+    name,
+    "--format",
+    "{{.State.OOMKilled}}|{{.State.StartedAt}}|{{.State.FinishedAt}}",
+  ]);
+  if (inspect.code !== 0) return null;
+  const [oom, started, finished] = inspect.stdout.trim().split("|");
+  return { oomKilled: oom === "true", startedAt: started ?? "", finishedAt: finished ?? "" };
 }
 
 /**

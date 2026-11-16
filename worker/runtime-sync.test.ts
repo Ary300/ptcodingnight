@@ -174,3 +174,99 @@ describe("test inputs are placed atomically", () => {
     expect(driver).toContain('[ ! -f "/in/$i.in" ]');
   });
 });
+
+/*
+  The doorbell handshake (worker/batch-driver.ts, feedInputs in worker/runner.ts), pinned
+  STRUCTURALLY for the same reason as the atomic rename above: every property here is about
+  ordering under a race, and a behavioural test of a race passes on a quiet machine.
+*/
+describe("the doorbell handshake", () => {
+  const driverSource = readFileSync(path.join(process.cwd(), "worker", "batch-driver.ts"), "utf8");
+  const runnerSource = readFileSync(path.join(process.cwd(), "worker", "runner.ts"), "utf8");
+  const driver = driverSource.slice(
+    driverSource.indexOf("export const BATCH_DRIVER"),
+    driverSource.indexOf("export function parseDoneLine"),
+  );
+
+  it("waits for the bell naming THIS test, and stops on any other", () => {
+    expect(driver).toContain("if ! read -r bell; then break; fi");
+    expect(driver).toContain('if [ "$bell" != "go $i" ]; then break; fi');
+    // The bell is read before the test's input is opened.
+    expect(driver.indexOf("read -r bell")).toBeLessThan(driver.indexOf('< "/in/$i.in"'));
+  });
+
+  it("kills everything the program left behind BEFORE writing the results the host trusts", () => {
+    const run = driver.indexOf('sh /in/run.sh < "/in/$i.in"');
+    const sweep = driver.indexOf("kill -9 -1");
+    const meta = driver.indexOf('> "/out/$i.meta"');
+    const done = driver.indexOf("printf 'ptcn-done %s");
+    expect(run).toBeGreaterThan(-1);
+    expect(sweep).toBeGreaterThan(run);
+    expect(meta).toBeGreaterThan(sweep);
+    // The done line goes out only once the results are on disk.
+    expect(done).toBeGreaterThan(meta);
+  });
+
+  it("keeps the compile step off the doorbell", () => {
+    expect(driver).toContain("sh /in/compile.sh < /dev/null");
+  });
+
+  it("rings the next bell only after the input has been renamed into place", () => {
+    const handOver = runnerSource.slice(
+      runnerSource.indexOf("const handOver = async"),
+      runnerSource.indexOf("const control: ContainerControl"),
+    );
+    const placed = handOver.indexOf("await placeInput(inputDir, ordinal + 1, next)");
+    const rung = handOver.indexOf("stdin.send(doorbellFor(ordinal + 1))");
+    expect(placed).toBeGreaterThan(-1);
+    expect(rung).toBeGreaterThan(placed);
+    // Results are frozen BEFORE the next input exists.
+    expect(handOver.indexOf("frozen.set(ordinal, outcome)")).toBeLessThan(placed);
+  });
+
+  it("clears every leftover input before any single-test retry runs", () => {
+    const drained = runnerSource.indexOf("await feed.drained();");
+    const cleared = runnerSource.indexOf("`${String(index + 1)}.in`), { force: true }", drained);
+    const firstRetry = runnerSource.indexOf("await runSingleTest(", drained);
+    expect(drained).toBeGreaterThan(-1);
+    expect(cleared).toBeGreaterThan(drained);
+    expect(firstRetry).toBeGreaterThan(cleared);
+  });
+
+  it("never re-reads a handed-over test's files once the container has exited", () => {
+    expect(runnerSource).toContain(
+      "if (feed.acknowledged.has(ordinal)) return feed.frozen.get(ordinal) ?? null;",
+    );
+  });
+});
+
+/*
+  ptcn-gcc:14's precompiled header is ignored SILENTLY when its flags differ from the compile's.
+  So the flags must come from the registry, through the same helper the Go check uses.
+*/
+describe("the C++ precompiled header follows the registry", () => {
+  const dockerfile = readFileSync(path.join(process.cwd(), "docker", "gcc", "Dockerfile"), "utf8");
+
+  it("is built from the registry's CPP_17 command, read by the build script", () => {
+    expect(SCRIPT).toContain("print-compile-command.ts CPP_17");
+    expect(SCRIPT).toContain('--build-arg "CXX17_FLAGS=${CXX17_FLAGS}"');
+  });
+
+  it("never restates a -std or -O flag in the Dockerfile's instructions", () => {
+    const instructions = dockerfile
+      .split("\n")
+      .filter((line) => !line.trimStart().startsWith("#"))
+      .join("\n");
+    expect(instructions).not.toMatch(/-std=|\s-O\d/);
+    expect(instructions).toContain("$CXX17_FLAGS");
+  });
+
+  it("is verified as USED by the judge's own command, not merely present", () => {
+    expect(SCRIPT).toContain('sh -c "${CPP17_COMPILE} -H"');
+    expect(SCRIPT).toContain("bits/stdc++\\.h\\.gch$");
+  });
+
+  it("matches the shape the build script strips the flags out of", () => {
+    expect(VARIANTS.CPP_17.compileCommand).toMatch(/^g\+\+ .* -o \/build\/prog \/work\/main\.cpp$/);
+  });
+});

@@ -276,7 +276,12 @@ export const RUNTIMES: Readonly<Record<RuntimeId, Runtime>> = {
   },
   gcc14: {
     id: "gcc14",
-    image: "gcc:14",
+    // NOT the stock `gcc:14`. Built locally from docker/gcc/Dockerfile by
+    // scripts/build-judge-images.sh, which precompiles <bits/stdc++.h> with CPP_17's exact flags:
+    // the editor's starter includes it, and parsing it was ~75% of a typical C++ compile
+    // (577-612 ms CPU against 123 ms with the PCH, byte-identical binary). A PCH built for other
+    // flags is ignored silently, so `--verify` asserts the judge's own command uses it.
+    image: "ptcn-gcc:14",
     // Compiled C and C++ are the fastest things here at run time.
     multiplier: 1,
     // NATIVE LINUX (the judging host): 12-26 ms. Docker Desktop: 1182 ms.
@@ -369,6 +374,46 @@ const NEWER_THAN_CPP11 =
 
 const NEWER_THAN_CPP17 =
   "-Werror=c++20-extensions -Werror=c++23-extensions -Werror=c++26-extensions";
+
+/**
+ * JVM flags for running a student's program. They change how fast the JVM gets to `main`, never
+ * what the program computes.
+ *
+ * **Delayed C2.** Tiered compilation hands a method to C2 after 5,000 invocations (or 40,000 loop
+ * back-edges). A contest test runs for tens of milliseconds, so on a one-CPU container the C2
+ * thread spends that time optimising startup code — `Scanner`, regex, string hashing — that will
+ * never run long enough to repay it, and the program pays for it. Raising the Tier-4 thresholds
+ * tenfold keeps that work in C1, and a genuinely hot loop still reaches C2 a few milliseconds
+ * later. Measured inside the judge's isolation flags at `--cpus=1`, 30 runs each:
+ *
+ *     startup (Scanner + collections + streams)   80-81 ms CPU  ->  56-58 ms
+ *     O(n^2) 2e8-step loop + HashMap + sort       293-352 ms    ->  287-318 ms (no slower)
+ *
+ * `-XX:TieredStopAtLevel=1` was measured too and REJECTED: the same startup win (49-51 ms) but
+ * 1.45x slower on the compute-heavy program (437-469 ms), because C1-only code never reaches
+ * C2. That turns a slow-but-passing Java solution into TLE, which changes a verdict.
+ *
+ * **`-XX:-UsePerfData`** stops the JVM writing a 32 KB `hsperfdata` file into the tmpfs at
+ * every start. Measured gain is within noise; it is here because the file serves only `jps` and
+ * `jstat`, which no judge container runs.
+ *
+ * Neither changes output: the JIT tier never changes Java semantics. AppCDS was tried for the run
+ * path and gave nothing (a dynamic archive over `-cp /build` disables the default archive's
+ * optimised module handling, which cancels the class-loading saving), so it is not used.
+ */
+const JVM_RUN_FLAGS =
+  "-XX:MaxRAMPercentage=75 -XX:-UsePerfData " +
+  "-XX:Tier4InvocationThreshold=50000 -XX:Tier4MinInvocationThreshold=6000 " +
+  "-XX:Tier4CompileThreshold=150000 -XX:Tier4BackEdgeThreshold=400000";
+
+/**
+ * JVM flags for `javac` itself. The compiler's OUTPUT cannot depend on how the JVM running it
+ * JIT-compiles — byte-identical `.class` files were checked (same SHA-1 under every set below) —
+ * so here the C1-only mode that the run path rejects is free:
+ *
+ *     javac, one 15-line file, --cpus=2       579 ms CPU  ->  368 ms
+ */
+const JAVAC_FLAGS = "-J-XX:TieredStopAtLevel=1 -J-XX:+UseSerialGC -J-XX:-UsePerfData";
 /**
  * ## How a variant's `label` is written
  *
@@ -418,9 +463,9 @@ main()
     runtime: "jdk21",
     label: "Java 8",
     sourceFile: "Main.java",
-    compileCommand: "javac --release 8 -proc:none -nowarn -d /build /work/Main.java",
+    compileCommand: `javac ${JAVAC_FLAGS} --release 8 -proc:none -nowarn -d /build /work/Main.java`,
     producesArtifacts: true,
-    runCommand: "exec java -XX:MaxRAMPercentage=75 -cp /build Main",
+    runCommand: `exec java ${JVM_RUN_FLAGS} -cp /build Main`,
     starter: `import java.util.*;
 import java.io.*;
 
@@ -437,9 +482,9 @@ public class Main {
     runtime: "jdk21",
     label: "Java 11",
     sourceFile: "Main.java",
-    compileCommand: "javac --release 11 -proc:none -nowarn -d /build /work/Main.java",
+    compileCommand: `javac ${JAVAC_FLAGS} --release 11 -proc:none -nowarn -d /build /work/Main.java`,
     producesArtifacts: true,
-    runCommand: "exec java -XX:MaxRAMPercentage=75 -cp /build Main",
+    runCommand: `exec java ${JVM_RUN_FLAGS} -cp /build Main`,
     starter: `import java.util.*;
 import java.io.*;
 
@@ -456,9 +501,9 @@ public class Main {
     runtime: "jdk21",
     label: "Java 17",
     sourceFile: "Main.java",
-    compileCommand: "javac --release 17 -proc:none -nowarn -d /build /work/Main.java",
+    compileCommand: `javac ${JAVAC_FLAGS} --release 17 -proc:none -nowarn -d /build /work/Main.java`,
     producesArtifacts: true,
-    runCommand: "exec java -XX:MaxRAMPercentage=75 -cp /build Main",
+    runCommand: `exec java ${JVM_RUN_FLAGS} -cp /build Main`,
     starter: `import java.util.*;
 import java.io.*;
 
@@ -475,9 +520,9 @@ public class Main {
     runtime: "jdk21",
     label: "Java 21",
     sourceFile: "Main.java",
-    compileCommand: "javac --release 21 -proc:none -nowarn -d /build /work/Main.java",
+    compileCommand: `javac ${JAVAC_FLAGS} --release 21 -proc:none -nowarn -d /build /work/Main.java`,
     producesArtifacts: true,
-    runCommand: "exec java -XX:MaxRAMPercentage=75 -cp /build Main",
+    runCommand: `exec java ${JVM_RUN_FLAGS} -cp /build Main`,
     starter: `import java.util.*;
 import java.io.*;
 

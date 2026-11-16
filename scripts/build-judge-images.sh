@@ -101,6 +101,31 @@ EOF
   fi
 done
 
+# The C++17 flags the judge compiles with, read from the registry and never restated here. The
+# PCH in ptcn-gcc:14 is used only by a compile with exactly these flags, and a mismatch does not
+# fail — GCC silently parses <bits/stdc++.h> from source, four times slower. See docker/gcc/Dockerfile.
+CPP17_COMPILE="$(npx --yes tsx scripts/print-compile-command.ts CPP_17 2>/dev/null)" || CPP17_COMPILE=""
+CXX17_FLAGS="${CPP17_COMPILE#g++ }"
+CXX17_FLAGS="${CXX17_FLAGS% -o /build/prog /work/main.cpp}"
+case "$CPP17_COMPILE" in
+  "g++ "*" -o /build/prog /work/main.cpp") ;;
+  *)
+    echo "FAIL  could not read the C++17 compile command from lib/judge/runtimes.ts" >&2
+    echo "      got: \"${CPP17_COMPILE}\"" >&2
+    echo "      expected the shape: g++ <flags> -o /build/prog /work/main.cpp" >&2
+    exit 1
+    ;;
+esac
+
+echo
+echo "==> building ptcn-gcc:14 (precompiles <bits/stdc++.h> with the judge's C++17 flags)"
+if docker build -q --build-arg "CXX17_FLAGS=${CXX17_FLAGS}" -t ptcn-gcc:14 docker/gcc/ >/dev/null; then
+  echo "    ptcn-gcc:14                built, PCH for: ${CXX17_FLAGS}"
+else
+  echo "FAIL  could not build ptcn-gcc:14" >&2
+  exit 1
+fi
+
 echo
 echo "==> building ptcn-go:1.23 (pre-warms the Go build cache; takes a few minutes)"
 if docker build -q -t ptcn-go:1.23 docker/go/ >/dev/null; then
@@ -163,10 +188,57 @@ EOF
     ;;
 esac
 
+# ---------------------------------------------------------------------------------------------
+# ptcn-gcc:14's precompiled header, asserted two ways.
+#
+# STRUCTURAL: the .gch sits beside the bits/stdc++.h GCC resolves, and was built for the flags the
+# registry compiles with today. A PCH carries no clock (GCC checks the compiler and the flags, never
+# a timestamp), so unlike Go's trim.txt it cannot decay with age — but it CAN go stale against the
+# registry, the moment somebody edits the CPP_17 flags and does not rebuild the image.
+#
+# BEHAVIOURAL: the judge's own command, under the judge's isolation flags, with `-H` appended,
+# must report the PCH as USED. GCC prints `! <path>.gch` for a valid precompiled header and quietly
+# falls back to parsing the header otherwise — so without this, a stale PCH costs ~0.5 s of CPU
+# per C++ submission with nothing anywhere to say so.
+# ---------------------------------------------------------------------------------------------
+printf '    %-26s ' "gcc14 PCH flags"
+baked_flags=$(docker run --rm --entrypoint sh ptcn-gcc:14 -c 'cat /opt/ptcn-stdcpp.flags' 2>/dev/null || true)
+if [ "$baked_flags" != "$CXX17_FLAGS" ]; then
+  echo "FAILED"
+  cat >&2 <<EOF
+FAIL  ptcn-gcc:14 precompiled <bits/stdc++.h> for "${baked_flags:-<nothing>}",
+      but lib/judge/runtimes.ts compiles CPP_17 with "${CXX17_FLAGS}".
+      GCC will ignore the PCH without a word and every C++ submission pays to parse the
+      standard library again. Re-run this script without --verify to rebuild the image.
+EOF
+  exit 1
+fi
+echo "match the registry"
+
+printf '    %-26s ' "gcc14 PCH in use"
+pch_work=$(mktemp -d)
+printf '#include <bits/stdc++.h>\nint main() { std::cout << 1 << std::endl; }\n' > "$pch_work/main.cpp"
+mkdir -p "$pch_work/build"
+chmod -R a+rwX "$pch_work"
+pch_trace=$(docker run --rm --network=none --read-only \
+  --tmpfs=/tmp:rw,noexec,nosuid,size=256m --user=65534:65534 --cap-drop=ALL \
+  --security-opt=no-new-privileges --pids-limit=256 --memory=1024m --memory-swap=1024m \
+  --env=HOME=/tmp --env=TMPDIR=/tmp -v "$pch_work:/work:ro" -v "$pch_work/build:/build:rw" \
+  ptcn-gcc:14 sh -c "${CPP17_COMPILE} -H" 2>&1 || true)
+rm -rf "$pch_work"
+if printf '%s\n' "$pch_trace" | grep -q '^! .*bits/stdc++\.h\.gch$'; then
+  echo "used by the judge's own compile command"
+else
+  echo "FAILED"
+  echo "FAIL  the judge's C++17 compile did not use the precompiled header. GCC said:" >&2
+  printf '%s\n' "$pch_trace" | head -n 5 | sed 's/^/        /' >&2
+  exit 1
+fi
+
 # The stock runtimes need no equivalent, and this was checked rather than assumed: none of
-# python:3.12-slim, eclipse-temurin:21-jdk, gcc:14 or node:22-slim ships a cache directory or
-# sets a cache environment variable, so none of them has state on the rootfs to go stale. Go is
-# the only runtime carrying a baked cache — which is the whole reason we build it ourselves.
+# python:3.12-slim, eclipse-temurin:21-jdk or node:22-slim ships a cache directory or sets a cache
+# environment variable, so none of them has state on the rootfs to go stale. Go carries a baked
+# cache and gcc a baked PCH, which is the whole reason those two are built here.
 # If a future runtime arrives with one (a Rust image with a warm registry, say), it needs its own
 # clause above, not a note here.
 printf '    %-26s %s\n' "stock runtimes" "no runtime cache state on the rootfs — nothing to rot"
@@ -261,4 +333,4 @@ EOF
 fi
 
 echo
-echo "PASS  all judge images ready, Go cache warm"
+echo "PASS  all judge images ready, Go cache warm, C++ PCH in use"

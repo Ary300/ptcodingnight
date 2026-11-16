@@ -15,11 +15,19 @@ import { runtimeFor, variantFor, type Runtime, type Variant } from "@/lib/judge/
 import {
   OUTPUT_CAP_FLOOR_BYTES,
   runInContainer,
+  type ContainerControl,
   type ContainerLimits,
+  type ControlStdin,
   type ContainerRunResult,
 } from "@/worker/docker";
 import { withHostMaxProcs } from "./host";
-import { BATCH_DRIVER, parseMeta, type BatchTestOutcome } from "@/worker/batch-driver";
+import {
+  BATCH_DRIVER,
+  doorbellFor,
+  parseDoneLine,
+  parseMeta,
+  type BatchTestOutcome,
+} from "@/worker/batch-driver";
 import { removeAsRoot } from "@/worker/docker";
 import { scaledStartupBudgetMs } from "@/worker/host";
 
@@ -286,73 +294,90 @@ export function selfReportedTimingIsCredible(input: {
 }
 
 /**
- * Hands the container one test input at a time, and removes each once its test has finished.
+ * Hands the container one test input at a time, removes each once its test has finished, and
+ * FREEZES each test's results at the moment of the handover.
  *
- * Runs concurrently with the container. The handshake is the driver's own `<n>.meta`, which it
- * writes only after test n has exited — so seeing it means test n is done and its input can go,
- * and test n+1's can appear.
+ * ## The handshake
+ *
+ * The driver prints `ptcn-done <n>` on its stdout once test n's results are on disk; this feeder
+ * then reads them, deletes input n, renames input n+1 into place, and rings `go <n+1>` on the
+ * container's stdin. See `worker/batch-driver.ts` for the driver's half.
+ *
+ * It used to poll for `<n>.meta` every 25 ms while the driver polled for `<n>.in` every 50 ms. The
+ * two polls cost ~57 ms of idle judge slot per test — measured, about a second of every Python
+ * submission — and did no work in that time. The doorbell blocks instead of polling.
  *
  * At any instant the container's `/in` holds **at most one** test input: the one currently being
  * fed to the program on stdin, which it is entitled to see. Earlier inputs are gone and later ones
  * have not arrived, so there is nothing to read ahead to and nothing to go back for.
  *
- * `/in` is mounted read-only INSIDE the container; the host still owns the directory and can write
- * to it freely. The container cannot interfere with the feed.
+ * ## Why results are frozen at the handover, and never read again
  *
- * The feeder never rejects. If it dies the driver simply waits for an input that never comes and is
- * killed by the container backstop, and those tests are re-run individually — the existing missing
- * `.meta` path. A crashed feeder must not also crash the judge.
+ * `/out` is writable by the program, so anything the host reads AFTER the container exits could
+ * have been written by any later test — including one that had a hidden input on its stdin. Under
+ * the old file handshake a program could write `/out/1.meta` itself, collect the next inputs as the
+ * feeder obligingly placed them, and finally rewrite `/out/1.out` — a SAMPLE, whose diff snippet the
+ * student sees — with a hidden input's bytes. Freezing closes that: once test n is handed over, its
+ * outcome is whatever was on disk at that moment, and `acknowledged` tells the caller never to
+ * read n's files again. A forged early `ptcn-done` therefore freezes the program's OWN output and
+ * gains it nothing.
+ *
+ * Out-of-order or unparseable lines are ignored, so a forged bell cannot skip the feeder ahead.
+ *
+ * The feeder never rejects. If a handover fails the driver waits for a bell that never comes, the
+ * container exits when its backstop fires or its stdin closes, and the untouched tests are re-run
+ * individually — the existing missing-`.meta` path. A crashed feeder must not also crash the judge.
  */
-async function feedInputs(options: {
+interface InputFeed {
+  readonly control: ContainerControl;
+  /** Outcomes read at the moment each test was handed over. */
+  readonly frozen: ReadonlyMap<number, BatchTestOutcome>;
+  /** Ordinals the driver reported finished. Their files are never read again. */
+  readonly acknowledged: ReadonlySet<number>;
+  /** Resolves when every handover the container triggered has finished. */
+  readonly drained: () => Promise<void>;
+}
+
+function feedInputs(options: {
   readonly inputDir: string;
   readonly resultDir: string;
   readonly inputByOrdinal: ReadonlyMap<number, string>;
-  readonly count: number;
-  /**
-   * Set by the caller the instant the container exits.
-   *
-   * **Without this the feeder deadlocks the judge.** A container that dies at test 1 — an MLE
-   * fixture, a fork bomb, the host backstop — never writes `2.meta`, so the feeder waits for a
-   * file that is never coming while the runner waits for the feeder. The first version used only
-   * a 30-minute ceiling and turned a 21-minute G4 into an hour with no output.
-   */
-  readonly stopped: { value: boolean };
-}): Promise<void> {
-  const { inputDir, resultDir, inputByOrdinal, count, stopped } = options;
+  readonly cap: number;
+}): InputFeed {
+  const { inputDir, resultDir, inputByOrdinal, cap } = options;
+  const frozen = new Map<number, BatchTestOutcome>();
+  const acknowledged = new Set<number>();
+  let expected = 1;
+  let chain: Promise<void> = Promise.resolve();
 
-  // Short enough that it costs a test a few milliseconds, long enough not to spin a core. Container
-  // creation on this host is seconds, so this is noise by comparison.
-  const POLL_MS = 25;
-  // A bound, not a deadline: the container's own backstop is the real limit. This only stops the
-  // feeder looping forever if the container has already gone.
-  const MAX_WAIT_MS = 30 * 60 * 1000;
-
-  const startedAt = Date.now();
-
-  for (let ordinal = 1; ordinal <= count; ordinal += 1) {
-    const metaPath = path.join(resultDir, `${String(ordinal)}.meta`);
-
-    while (!stopped.value && Date.now() - startedAt < MAX_WAIT_MS) {
-      try {
-        await readFile(metaPath, "utf8");
-        break;
-      } catch {
-        await new Promise((resolve) => setTimeout(resolve, POLL_MS));
-      }
-    }
-
-    // The container is gone. Nothing will consume another input, and the remaining tests are
-    // re-run individually by the missing-`.meta` path.
-    if (stopped.value) return;
+  const handOver = async (ordinal: number, stdin: ControlStdin): Promise<void> => {
+    const outcome = await readBatchOutcome(resultDir, ordinal, cap);
+    if (outcome !== null) frozen.set(ordinal, outcome);
 
     // This test is finished with its input.
     await rm(path.join(inputDir, `${String(ordinal)}.in`), { force: true }).catch(() => undefined);
 
     const next = inputByOrdinal.get(ordinal + 1);
-    if (next !== undefined) {
-      await placeInput(inputDir, ordinal + 1, next).catch(() => undefined);
-    }
-  }
+    if (next === undefined) return;
+    await placeInput(inputDir, ordinal + 1, next);
+    // Only after the rename: the bell promises the input is complete.
+    stdin.send(doorbellFor(ordinal + 1));
+  };
+
+  const control: ContainerControl = {
+    initial: doorbellFor(1),
+    onLine: (line, stdin) => {
+      const ordinal = parseDoneLine(line);
+      if (ordinal === null || ordinal !== expected) return;
+      expected += 1;
+      acknowledged.add(ordinal);
+      // A handover that fails closes stdin: the driver's `read` sees EOF and stops at once,
+      // instead of waiting on a bell that will never ring until the host backstop fires.
+      chain = chain.then(() => handOver(ordinal, stdin)).catch(() => stdin.end());
+    },
+  };
+
+  return { control, frozen, acknowledged, drained: () => chain };
 }
 
 /**
@@ -393,6 +418,15 @@ async function placeInput(inputDir: string, ordinal: number, contents: string): 
   await writeFile(partialPath, contents, "utf8");
   await rename(partialPath, finalPath);
 }
+
+/**
+ * 50 ms polls the driver allows for an input whose bell has already rung — 2 s.
+ *
+ * The bell is sent only after the rename, so on Linux the file is there at once and this is never
+ * used. It exists for Docker Desktop, whose bind mount crosses a VM boundary and can surface a
+ * renamed file a moment after a bell that travelled by a different path.
+ */
+const FEED_SETTLE_POLLS = 40;
 
 export function outputCapFor(expectedBytes: number): number {
   return Math.max(OUTPUT_CAP_FLOOR_BYTES, expectedBytes * 2 + 64 * 1024);
@@ -515,9 +549,12 @@ async function runSingleTest(options: {
         PTCN_TIMEOUT: String(Math.max(1, Math.ceil(perTestKillMs / 1000))),
         PTCN_COMPILE_TIMEOUT: String(Math.max(1, Math.ceil(runtime.compileTimeoutMs / 1000))),
         PTCN_CAP: String(cap),
-        // The input is already on disk for a retry, so the driver never waits. One poll is enough.
-        PTCN_FEED_TIMEOUT: "1",
+        // The input is already on disk before the container starts, so this is never waited on.
+        PTCN_FEED_TIMEOUT: String(FEED_SETTLE_POLLS),
       },
+      // The one bell this container needs, then end of stdin: the driver runs test `ordinal` and
+      // stops.
+      stdin: doorbellFor(ordinal),
     });
 
     const outcome = await readBatchOutcome(resultDir, ordinal, cap);
@@ -810,16 +847,8 @@ export async function judge(
       await rm(path.join(inputDir, "compile.sh"), { force: true });
     }
 
-    // Runs alongside the container, handing over one input at a time. Started before the
-    // container so the feeder is already watching when the first test finishes.
-    const feedStopped = { value: false };
-    const feeder = feedInputs({
-      inputDir,
-      resultDir,
-      inputByOrdinal,
-      count: job.testCases.length,
-      stopped: feedStopped,
-    });
+    // Runs alongside the container, handing over one input at a time on the driver's doorbell.
+    const feed = feedInputs({ inputDir, resultDir, inputByOrdinal, cap: largestCap });
 
     const batch = await runInContainer({
       image,
@@ -850,17 +879,41 @@ export async function judge(
         PTCN_TIMEOUT: String(Math.max(1, Math.ceil(wallClockKillMs / 1000))),
         PTCN_COMPILE_TIMEOUT: String(Math.max(1, Math.ceil(runtime.compileTimeoutMs / 1000))),
         PTCN_CAP: String(largestCap),
-        // 50ms polls. Sized against the whole container backstop rather than one test, because a
-        // test waits for its input only after the PREVIOUS test has finished, and that one may
-        // legitimately have run for the full wall-clock kill.
-        PTCN_FEED_TIMEOUT: String(Math.max(20, Math.ceil((wallClockKillMs * 3) / 50))),
+        // How long the driver waits for an input the bell has ALREADY announced. The wait for the
+        // previous test to finish is the bell itself, which blocks, so this only has to cover a
+        // bind mount surfacing a renamed file late.
+        PTCN_FEED_TIMEOUT: String(FEED_SETTLE_POLLS),
       },
+      control: feed.control,
     });
 
-    // Tell the feeder to stop BEFORE awaiting it. The container has exited, so any `.meta` it was
-    // waiting on will never appear — awaiting first would block for the full ceiling.
-    feedStopped.value = true;
-    await feeder.catch(() => undefined);
+    // The container has exited; let any handover it triggered finish before reading results.
+    await feed.drained();
+
+    // Clear every input the feeder may have left before any single-test retry starts. A batch
+    // that died after a handover leaves the NEXT test's input in `/in`, and a retry container
+    // mounts the same directory — so without this, the retry of an earlier SAMPLE (whose diff
+    // snippet the student sees) could read a hidden input that its own run never got to. Each
+    // retry places, and removes, exactly its own input.
+    await Promise.all(
+      job.testCases.map((_, index) =>
+        rm(path.join(inputDir, `${String(index + 1)}.in`), { force: true }).catch(() => undefined),
+      ),
+    );
+
+    /**
+     * One test's outcome as the host may believe it.
+     *
+     * A test the driver reported finished is read ONLY from what was frozen at its handover —
+     * never from disk again, because a later test could have rewritten its files (see
+     * `feedInputs`). `null` there sends it to a fresh single-test container. A test never reported
+     * finished is read from disk as before: the container died during it, and no input after it
+     * was ever placed.
+     */
+    const outcomeOf = async (ordinal: number): Promise<BatchTestOutcome | null> => {
+      if (feed.acknowledged.has(ordinal)) return feed.frozen.get(ordinal) ?? null;
+      return readBatchOutcome(resultDir, ordinal, largestCap);
+    };
 
     // Same back-computation as the compile container above. For interpreted and parse-only
     // languages this batch IS the first container, so its daemon-measured start is the create
@@ -891,7 +944,7 @@ export async function judge(
     // the submission cannot touch. See `selfReportedTimingIsCredible`.
     const claimedTotalMs = (
       await Promise.all(
-        job.testCases.map((_, index) => readBatchOutcome(resultDir, index + 1, largestCap)),
+        job.testCases.map((_, index) => outcomeOf(index + 1)),
       )
     ).reduce((sum, outcome) => sum + (outcome?.durationMs ?? 0), 0);
 
@@ -906,7 +959,7 @@ export async function judge(
       const expected = expectedByOrdinal.get(ordinal) ?? "";
       const input = inputByOrdinal.get(ordinal) ?? "";
 
-      const outcome = await readBatchOutcome(resultDir, ordinal, largestCap);
+      const outcome = await outcomeOf(ordinal);
 
       const retried =
         outcome === null

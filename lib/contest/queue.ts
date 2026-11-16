@@ -2,7 +2,13 @@ import { Queue, type Job } from "bullmq";
 import IORedis from "ioredis";
 
 import { countLiveWorkers } from "@/lib/judge/heartbeat";
-import { JUDGE_JOB_OPTIONS, JUDGE_QUEUE_NAME } from "@/lib/judge/queue";
+import {
+  JUDGE_JOB_OPTIONS,
+  JUDGE_QUEUE_NAME,
+  jobsAheadInOrdinaryLane,
+  laneJobOptions,
+  sampleRunLane,
+} from "@/lib/judge/queue";
 import type { QueuePosition } from "@/lib/schemas/api";
 import { JudgeResultSchema, type JudgeJob, type JudgeResult } from "@/lib/schemas/judge";
 import { DomainError } from "@/lib/errors";
@@ -36,7 +42,27 @@ export function judgeQueue(): Queue {
  * twice and charging the student for both.
  */
 export async function enqueueJudgeJob(job: JudgeJob): Promise<void> {
-  await judgeQueue().add(JUDGE_QUEUE_NAME, job, { jobId: job.submissionId });
+  // The ordinary lane: FIFO among submissions, behind any express sample run. See
+  // `lib/judge/queue.ts` for why "ordinary" is the lane WITH a priority.
+  await judgeQueue().add(JUDGE_QUEUE_NAME, job, {
+    jobId: job.submissionId,
+    ...laneJobOptions("ordinary"),
+  });
+}
+
+/**
+ * When the oldest job in the ordinary lane was enqueued, or null if the lane is empty.
+ *
+ * Read as one ZRANGE and one HGET rather than through `getJobs`, because a job hash carries the
+ * student's whole source; hydrating it to read one timestamp would make every sample run pay for it.
+ */
+async function oldestOrdinaryEnqueuedAtMs(queue: Queue): Promise<number | null> {
+  const client = await queue.client;
+  const [oldestId] = await client.zrange(queue.toKey("prioritized"), 0, 0);
+  if (oldestId === undefined) return null;
+  const raw = await client.hget(queue.toKey(oldestId), "timestamp");
+  const timestamp = Number(raw);
+  return raw === null || !Number.isFinite(timestamp) ? null : timestamp;
 }
 
 export async function removeJob(jobId: string): Promise<void> {
@@ -156,11 +182,29 @@ export async function queuePositionOf(jobId: string): Promise<QueuePosition | nu
 
     const state = await job.getState();
     if (state === "active") return { state: "active", ahead: 0 };
+
+    const client = await queue.client;
+
+    // A submission waits in the ORDINARY lane (`prioritized`): ahead of it are every express job
+    // and every ordinary job enqueued before it.
+    if (state === "prioritized") {
+      // Ids only, in score order — the same reasoning as the LRANGE below. BullMQ's client
+      // interface has no ZRANK, and a night's queue is tens of ids.
+      const [waitLength, ordinaryIds] = await Promise.all([
+        client.llen(queue.toKey("wait")),
+        client.zrange(queue.toKey("prioritized"), 0, -1),
+      ]);
+      const rank = ordinaryIds.indexOf(jobId);
+      const aheadInLane = jobsAheadInOrdinaryLane(waitLength, rank === -1 ? null : rank);
+      // Gone from the set between the two reads means a worker took it: progress, not absence.
+      if (aheadInLane === null) return { state: "active", ahead: 0 };
+      return { state: "waiting", ahead: aheadInLane };
+    }
+
     // Delayed (the one IE retry, on its 2s backoff) and every terminal state: no claim. A
     // "position" for a job that is not plainly waiting would be a guess wearing a number.
     if (state !== "waiting") return null;
 
-    const client = await queue.client;
     const ids = await client.lrange(queue.toKey("wait"), 0, -1);
     const ahead = jobsAheadInWaitList(ids, jobId);
     // Gone from the list between the two reads means a worker took it: progress, not absence.
@@ -183,7 +227,15 @@ const SAMPLE_POLL_MS = 200;
  */
 export async function runJobAndWait(job: JudgeJob, timeoutMs: number): Promise<JudgeResult> {
   const jobId = job.submissionId;
-  await judgeQueue().add(JUDGE_QUEUE_NAME, job, { jobId, attempts: 1 });
+  const queue = judgeQueue();
+  // Express unless the oldest submission has waited too long — see `sampleRunLane`. A failed read
+  // of the lane's head falls back to express: the bound it enforces is a backstop for a
+  // pathological flood, and a Redis hiccup is not one.
+  const lane = sampleRunLane({
+    oldestOrdinaryEnqueuedAtMs: await oldestOrdinaryEnqueuedAtMs(queue).catch(() => null),
+    nowMs: Date.now(),
+  });
+  await queue.add(JUDGE_QUEUE_NAME, job, { jobId, attempts: 1, ...laneJobOptions(lane) });
 
   const deadline = Date.now() + timeoutMs;
   try {

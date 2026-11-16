@@ -216,8 +216,10 @@ export async function judgeHealth(): Promise<JudgeHealthView> {
   try {
     const queue = judgeQueue();
     const client = await queue.client;
-    const [counts, workerCount, waiting] = await Promise.all([
-      queue.getJobCounts("waiting", "active", "failed", "delayed"),
+    const [counts, workerCount, waiting, prioritized] = await Promise.all([
+      // "prioritized" is the ordinary lane every submission waits in (lib/judge/queue.ts); BullMQ's
+      // "waiting" count is only the express lane, so leaving it out reads a full queue as empty.
+      queue.getJobCounts("waiting", "prioritized", "active", "failed", "delayed"),
       // Live heartbeat keys, not `queue.getWorkers()`. The client list shows a connection for
       // a wedged worker and can show a stale one for a dead worker; the heartbeat is written
       // by the worker itself and expires 30 s after the worker stops writing it, so zero here
@@ -230,13 +232,19 @@ export async function judgeHealth(): Promise<JudgeHealthView> {
       // pouring in and nobody is judging them, which is the one condition the worker-down
       // alarm exists to catch.
       queue.getJobs(["waiting"], 0, 0, true),
+      // Lowest score first, and every submission shares one priority, so this is the OLDEST
+      // queued submission.
+      queue.getJobs(["prioritized"], 0, 0, true),
     ]);
 
-    const oldest = waiting[0]?.timestamp;
+    const stamps = [waiting[0]?.timestamp, prioritized[0]?.timestamp].filter(
+      (t): t is number => t !== undefined,
+    );
+    const oldest = stamps.length === 0 ? undefined : Math.min(...stamps);
 
     return {
       reachable: true,
-      queueDepth: (counts.waiting ?? 0) + (counts.delayed ?? 0),
+      queueDepth: (counts.waiting ?? 0) + (counts.prioritized ?? 0) + (counts.delayed ?? 0),
       active: counts.active ?? 0,
       failed: counts.failed ?? 0,
       workerCount,
