@@ -1,0 +1,48 @@
+{
+  "_comment": "A two-team contest for lib/contest/standings-cache.test.ts. Freeze at 19:45; the 19:50 revision is the post-freeze result the public board must never show while frozen.",
+  "contest": {
+    "id": "c-cache",
+    "name": "Cache night",
+    "startsAt": "2026-11-13T19:00:00.000Z",
+    "endsAt": "2026-11-13T20:15:00.000Z",
+    "freezeAt": "2026-11-13T19:45:00.000Z",
+    "state": "RUNNING",
+    "isPractice": false,
+    "scoringPresetId": "coding-night-classic",
+    "groupPointsInsideMean": true,
+    "sideActivitiesFlat": true,
+    "divisions": [],
+    "contestProblems": [
+      { "id": "cp-a1", "divisionId": null, "basePoints": 100, "round": "INDIVIDUAL", "slotLabel": "A1", "problem": { "title": "Warm up" }, "setId": "set-a" },
+      { "id": "cp-b1", "divisionId": null, "basePoints": 200, "round": "INDIVIDUAL", "slotLabel": "B1", "problem": { "title": "Climb" }, "setId": "set-b" },
+      { "id": "cp-g", "divisionId": null, "basePoints": 300, "round": "GROUP", "slotLabel": "G", "problem": { "title": "Together" }, "setId": null }
+    ],
+    "participants": [
+      { "id": "p-ada", "displayName": "Ada", "divisionId": null, "teamId": "t-red", "chosenSetId": "set-a", "joinedAt": "2026-11-13T18:55:00.000Z" },
+      { "id": "p-bo", "displayName": "Bo", "divisionId": null, "teamId": "t-red", "chosenSetId": "set-b", "joinedAt": "2026-11-13T18:56:00.000Z" },
+      { "id": "p-cy", "displayName": "Cy", "divisionId": null, "teamId": "t-blue", "chosenSetId": "set-a", "joinedAt": "2026-11-13T18:57:00.000Z" },
+      { "id": "p-di", "displayName": "Di", "divisionId": null, "teamId": "t-blue", "chosenSetId": "set-b", "joinedAt": "2026-11-13T18:58:00.000Z" }
+    ],
+    "teams": [
+      { "id": "t-red", "name": "Red", "divisionId": null },
+      { "id": "t-blue", "name": "Blue", "divisionId": null }
+    ],
+    "problemSets": [
+      { "id": "set-a", "label": "A", "divisionId": null },
+      { "id": "set-b", "label": "B", "divisionId": null }
+    ]
+  },
+  "revisions": [
+    { "id": 1, "verdict": "AC", "score": 100, "effectiveAt": "2026-11-13T19:10:00.000Z", "submission": { "id": "s-1", "participantId": "p-ada", "contestProblemId": "cp-a1", "submittedAt": "2026-11-13T19:09:50.000Z" } },
+    { "id": 2, "verdict": "WA", "score": 0, "effectiveAt": "2026-11-13T19:20:00.000Z", "submission": { "id": "s-2", "participantId": "p-cy", "contestProblemId": "cp-a1", "submittedAt": "2026-11-13T19:19:50.000Z" } },
+    { "id": 3, "verdict": "AC", "score": 200, "effectiveAt": "2026-11-13T19:30:00.000Z", "submission": { "id": "s-3", "participantId": "p-di", "contestProblemId": "cp-b1", "submittedAt": "2026-11-13T19:29:50.000Z" } }
+  ],
+  "postFreezeRevision": { "id": 4, "verdict": "AC", "score": 100, "effectiveAt": "2026-11-13T19:50:00.000Z", "submission": { "id": "s-4", "participantId": "p-cy", "contestProblemId": "cp-a1", "submittedAt": "2026-11-13T19:49:50.000Z" } },
+  "sideActivities": [
+    { "teamId": "t-blue", "label": "Kahoot", "points": 40, "enteredAt": "2026-11-13T19:05:00.000Z" }
+  ],
+  "instants": {
+    "beforeFreeze": "2026-11-13T19:40:00.000Z",
+    "afterFreeze": "2026-11-13T19:55:00.000Z"
+  }
+}

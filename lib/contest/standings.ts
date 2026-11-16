@@ -18,6 +18,7 @@ import type {
   SideActivityRecord,
   Standing,
   SubmissionRecord,
+  TeamStanding,
   TeamRecord,
 } from "@/lib/types/scoring";
 import { isPublicBoardFrozen, type ContestGateInput } from "@/lib/contest/gate";
@@ -103,6 +104,89 @@ const inputCache = new Map<
 
 export function invalidateScoringInput(contestId: string): void {
   inputCache.delete(contestId);
+}
+
+/**
+ * Computed boards, memoised ON the scoring input they were computed from.
+ *
+ * Fifty phones and a projector polling the same board each recomputed it from the same cached
+ * input, so the input memo above saved the queries and none of the CPU. These maps hold the
+ * finished response per view instead, and they are keyed by the input OBJECT, never by contest id
+ * and a clock of their own. That is the whole invalidation story: when the input is dropped (a
+ * verdict, an override, a rejudge, a side activity, a freeze or a reveal all call
+ * `invalidateScoringInput`) or expires after `INPUT_TTL_MS`, the next request loads a new input
+ * object, finds no memo on it, and computes afresh. A memo cannot outlive the rows it was computed
+ * from, and there is no second TTL to get out of step with the first.
+ *
+ * Single flight comes free: the computation is synchronous once the input promise resolves, so
+ * the first request to resume computes and stores, and every request queued on the same input
+ * finds the stored answer.
+ *
+ * It is still a cache of a pure function of (rows, view). Replay is untouched, because nothing
+ * here is a running total: drop the maps and every answer is recomputed from the same rows.
+ */
+function memoOn<T>(
+  memo: WeakMap<ScoringInput, Map<string, T>>,
+  input: ScoringInput,
+  key: string,
+  compute: () => T,
+): T {
+  let byKey = memo.get(input);
+  if (byKey === undefined) {
+    byKey = new Map();
+    memo.set(input, byKey);
+  }
+  const cached = byKey.get(key);
+  if (cached !== undefined) return cached;
+  const value = compute();
+  byKey.set(key, value);
+  return value;
+}
+
+const individualMemo = new WeakMap<ScoringInput, Map<string, readonly Standing[]>>();
+const standingsResponseMemo = new WeakMap<ScoringInput, Map<string, StandingsResponse>>();
+const teamMemo = new WeakMap<ScoringInput, Map<string, readonly TeamStanding[]>>();
+const teamResponseMemo = new WeakMap<ScoringInput, Map<string, TeamStandingsResponse>>();
+
+/**
+ * Everything about a view that is not in the input: who is asking (organizer or not) and the
+ * instant the board is computed as of. `upTo` is null for live truth and the freeze instant for a
+ * frozen public board, so the public board before the freeze and after it are different keys, and
+ * the organizer's live board can never be handed to the room.
+ */
+function viewKey(admin: boolean, upTo: Date | null): string {
+  return `${admin ? "organizer" : "public"}:${upTo === null ? "live" : upTo.getTime()}`;
+}
+
+/** The scoring engine's individual standings as of `upTo`, computed once per input. */
+function individualStandingsAt(
+  input: ScoringInput,
+  upTo: Date | null,
+): readonly Standing[] {
+  return memoOn(individualMemo, input, upTo === null ? "live" : String(upTo.getTime()), () =>
+    computeStandings(
+      input.config,
+      participantsAt(input.participants, upTo),
+      input.submissions,
+      input.hintGrants,
+      { upTo },
+    ),
+  );
+}
+
+/** The scoring engine's team standings as of `upTo`, computed once per input. */
+function teamStandingsAt(input: ScoringInput, upTo: Date | null): readonly TeamStanding[] {
+  return memoOn(teamMemo, input, upTo === null ? "live" : String(upTo.getTime()), () =>
+    computeTeamStandings(
+      input.config,
+      input.teams,
+      participantsAt(input.participants, upTo),
+      input.submissions,
+      input.hintGrants,
+      input.sideActivities,
+      { upTo },
+    ),
+  );
 }
 
 export function loadScoringInput(
@@ -427,18 +511,14 @@ export async function computeFor(
 ): Promise<ComputedStandings> {
   const admin = isAdmin(viewer);
   const input = await loadScoringInput(contestId, now);
-  const upTo = cutoffFor(input.contest, now, admin);
-  const visibleParticipants = participantsAt(input.participants, upTo);
+  return computedFrom(input, admin, now);
+}
 
+function computedFrom(input: ScoringInput, admin: boolean, now: Date): ComputedStandings {
+  const upTo = cutoffFor(input.contest, now, admin);
   return {
     input,
-    standings: computeStandings(
-      input.config,
-      visibleParticipants,
-      input.submissions,
-      input.hintGrants,
-      { upTo },
-    ),
+    standings: individualStandingsAt(input, upTo),
     frozen: !admin && isPublicBoardFrozen(input.contest, now),
     asOf: upTo ?? now,
   };
@@ -453,10 +533,23 @@ export async function getStandings(
   viewer: Viewer,
   now: Date,
 ): Promise<StandingsResponse> {
-  const computed = await computeFor(contestId, viewer, now);
+  const admin = isAdmin(viewer);
+  const input = await loadScoringInput(contestId, now);
+  const upTo = cutoffFor(input.contest, now, admin);
+  return memoOn(standingsResponseMemo, input, viewKey(admin, upTo), () =>
+    standingsResponse(contestId, computedFrom(input, admin, now), admin, now),
+  );
+}
+
+function standingsResponse(
+  contestId: string,
+  computed: ComputedStandings,
+  admin: boolean,
+  now: Date,
+): StandingsResponse {
   const { input, standings } = computed;
 
-  const deltaKey = `${contestId}:${isAdmin(viewer) ? "admin" : "public"}`;
+  const deltaKey = `${contestId}:${admin ? "admin" : "public"}`;
   const deltas = rankSnapshots.deltasFor(deltaKey, standings, now);
 
   const grouped = new Map<string, Standing[]>();
@@ -507,13 +600,7 @@ export async function problemStandingsFor(
   now: Date,
 ): Promise<Map<string, { score: number; hintsTaken: number }>> {
   const input = await loadScoringInput(contestId, now);
-  const standings = computeStandings(
-    input.config,
-    input.participants,
-    input.submissions,
-    input.hintGrants,
-    { upTo: null },
-  );
+  const standings = individualStandingsAt(input, null);
 
   const mine = standings.find((s) => s.participantId === participantId);
   const byProblem = new Map<string, { score: number; hintsTaken: number }>();
@@ -568,21 +655,6 @@ export async function getTeamStandings(
   const upTo = cutoffFor(input.contest, now, admin);
   const visibleParticipants = participantsAt(input.participants, upTo);
 
-  const teams = computeTeamStandings(
-    input.config,
-    input.teams,
-    visibleParticipants,
-    input.submissions,
-    input.hintGrants,
-    input.sideActivities,
-    { upTo },
-  );
-
-  // Set labels are a presentation concern, so they are looked up here rather than threaded through
-  // the scoring engine — which must not know that a set has a name.
-  const setLabel = new Map(input.problemSetLabels);
-  const problemLabel = new Map(input.problemLabels);
-
   /**
    * The viewer's own team, or null.
    *
@@ -596,6 +668,30 @@ export async function getTeamStandings(
           (p) => p.participantId === viewer.participantId,
         )?.teamId ?? null)
       : null;
+
+  // The detail decision reads nothing about the viewer except `admin` and `viewerTeamId`, so those
+  // two and the view are the whole key: every member of a team shares one answer, everyone without
+  // a team shares the anonymous one, and nobody can be handed another team's detail.
+  const detailKey = admin ? "all" : viewerTeamId === null ? "none" : `team:${viewerTeamId}`;
+  return memoOn(teamResponseMemo, input, `${viewKey(admin, upTo)}:${detailKey}`, () =>
+    teamStandingsResponse(contestId, input, admin, upTo, viewerTeamId, now),
+  );
+}
+
+function teamStandingsResponse(
+  contestId: string,
+  input: ScoringInput,
+  admin: boolean,
+  upTo: Date | null,
+  viewerTeamId: string | null,
+  now: Date,
+): TeamStandingsResponse {
+  const teams = teamStandingsAt(input, upTo);
+
+  // Set labels are a presentation concern, so they are looked up here rather than threaded through
+  // the scoring engine — which must not know that a set has a name.
+  const setLabel = new Map(input.problemSetLabels);
+  const problemLabel = new Map(input.problemLabels);
 
   return TeamStandingsResponseSchema.parse({
     contestId,
