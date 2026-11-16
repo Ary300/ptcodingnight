@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 
 import { Button } from "@/components/ui";
 import type { PublicTestResult, SubmissionView } from "@/lib/schemas/api";
@@ -126,8 +126,19 @@ export function ProblemWorkspace({ slug }: ProblemWorkspaceProps) {
     }
   }, [activeLanguage, detail, source]);
 
+  /*
+    One submission per press, however the press arrives. The button is disabled while a submission
+    is in flight or being judged, but Ctrl+Enter in the editor calls this directly, and the disabled
+    state only exists after the next render. A held or repeated shortcut, or a shortcut pressed while
+    the last verdict is still coming, each made another counted submission. The server also folds an
+    identical repeat into the first (REPEAT_SUBMISSION_WINDOW_MS); this keeps it from being asked.
+  */
+  const submitInFlight = useRef(false);
+  const verdictPending = stream.status === "waiting";
+
   const submit = useCallback(async () => {
-    if (detail === null) return;
+    if (detail === null || submitInFlight.current || verdictPending) return;
+    submitInFlight.current = true;
     setSubmitBusy(true);
     setActionError(null);
     setLastAction("judged");
@@ -144,9 +155,10 @@ export function ProblemWorkspace({ slug }: ProblemWorkspaceProps) {
     } catch (caught: unknown) {
       setActionError(errorMessageOf(caught));
     } finally {
+      submitInFlight.current = false;
       setSubmitBusy(false);
     }
-  }, [activeLanguage, detail, source]);
+  }, [activeLanguage, detail, source, verdictPending]);
 
   if (participant.status === "loading" || problem.status === "loading") {
     return (

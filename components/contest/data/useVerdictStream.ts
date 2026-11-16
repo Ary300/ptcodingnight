@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { SSE_EVENTS, VerdictEventSchema, type SubmissionView } from "@/lib/schemas/api";
 
 import { contestApi, errorMessageOf } from "./backend";
+import { ContestApiError } from "./contest-api";
 
 /**
  * Live verdicts: Server-Sent Events, with polling as a first-class fallback.
@@ -86,6 +87,13 @@ export function useVerdictStream(seed: SubmissionView | null): VerdictStreamStat
         if (next.verdict !== null) stop();
       } catch (caught: unknown) {
         if (cancelled) return;
+        // A dropped connection is the room's Wi-Fi, a laptop waking from sleep, or the server
+        // restarting, and every one of them ends with the verdict still on the server. One failed
+        // poll used to stop polling for good and paint an error, so the student who closed the lid
+        // came back to a red line instead of their verdict. Keep asking; the five-minute ceiling
+        // above still ends the wait. Only an answer that will not change (the submission is not
+        // theirs, or they are signed out) stops it.
+        if (isTransientFailure(caught)) return;
         setFailure({ submissionId, value: errorMessageOf(caught) });
         stop();
       }
@@ -171,4 +179,10 @@ export function useVerdictStream(seed: SubmissionView | null): VerdictStreamStat
           : "settled";
 
   return { submission, transport, status, error };
+}
+
+/** Failures a later poll can recover from. Exported for the unit test. */
+export function isTransientFailure(error: unknown): boolean {
+  if (!(error instanceof ContestApiError)) return true;
+  return ["NETWORK", "MALFORMED_RESPONSE", "INTERNAL", "RATE_LIMITED", "UNKNOWN"].includes(error.code);
 }

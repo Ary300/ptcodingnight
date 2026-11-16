@@ -15,4 +15,9 @@ export async function register(): Promise<void> {
 
   const { runBootChecks } = await import("@/lib/contest/boot-check");
   runBootChecks();
+
+  // Verdicts land in the database on a timer, not only when the submitting student is watching.
+  // See lib/contest/verdict-sweeper.ts for what went wrong without it.
+  const { startVerdictSweeper } = await import("@/lib/contest/verdict-sweeper");
+  startVerdictSweeper();
 }

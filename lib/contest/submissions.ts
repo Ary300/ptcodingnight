@@ -25,6 +25,7 @@ import {
   effectiveUnlockAt,
 } from "@/lib/contest/gate";
 import { hostLimits } from "@/lib/contest/host";
+import { reconcileContestClockById } from "@/lib/contest/contests";
 import { lockContestMutations } from "@/lib/contest/locks";
 import { canReadSet } from "@/lib/contest/set-assignment";
 import { buildJudgeJob, type TestCaseInput } from "@/lib/contest/judge-job";
@@ -66,8 +67,27 @@ import {
  * same function.
  */
 
-/** How long a submission may sit with no job before we accept that the job is gone. */
-const ORPHAN_GRACE_MS = 10 * 60 * 1000;
+/**
+ * How long an unjudged submission may have no job in the queue before the queue is taken to have
+ * lost it and the job is built again.
+ *
+ * This used to be ten minutes, after which the submission was written as `IE` and left there. A
+ * queue loses jobs in exactly the situations a contest night produces: Redis restarted without its
+ * last second of appends, a volume recreated, or a finished job pushed out of `removeOnComplete`
+ * before anybody read it. Every one of those students then watched "judging" for ten minutes and
+ * got "Rechecking", which never rechecked. The submission row holds everything the job was built
+ * from, so the honest repair is to build it again.
+ *
+ * Fifteen seconds, because `createSubmission` writes the row a moment before it enqueues. A
+ * requeue inside that window would race the original `add`, and the two are the same job under
+ * the same id, so even losing the race is harmless; the grace only keeps the log quiet.
+ */
+export const LOST_JOB_GRACE_MS = 15_000;
+
+/** What `reconcile` should do about an unjudged submission whose job the queue does not have. */
+export function lostJobAction(submittedAt: Date, now: Date): "wait" | "requeue" {
+  return now.getTime() - submittedAt.getTime() > LOST_JOB_GRACE_MS ? "requeue" : "wait";
+}
 
 /** Ceiling on a synchronous "run samples" wait, whatever the problem's limits say. */
 /**
@@ -238,6 +258,69 @@ export interface SubmitInput {
   readonly sourceCode: string;
 }
 
+/**
+ * How long an identical resubmission is treated as the same submission.
+ *
+ * A double-click, a second press after "could not reach the server", or a browser retrying a POST
+ * whose response was lost all arrive as the same code to the same problem within seconds. Each used
+ * to become a second row: a second judge run, and for a wrong answer a second rejection, which adds
+ * another five penalty minutes for what the student did once. Thirty seconds covers a retry after a
+ * Wi-Fi drop. Resubmitting unchanged code on purpose cannot change the verdict, so nothing is lost.
+ */
+export const REPEAT_SUBMISSION_WINDOW_MS = 30_000;
+
+/** Whether `candidate` is a repeat of `input`. Pure, so the rule is a unit test. */
+export function isRepeatSubmission(
+  candidate: {
+    readonly contestProblemId: string;
+    readonly language: Language;
+    readonly sourceCode: string;
+    readonly submittedAt: Date;
+  },
+  input: SubmitInput,
+  now: Date,
+): boolean {
+  const age = now.getTime() - candidate.submittedAt.getTime();
+  return (
+    candidate.contestProblemId === input.contestProblemId &&
+    candidate.language === input.language &&
+    candidate.sourceCode === input.sourceCode &&
+    // Either order: two copies of one POST stamp `now` before either inserts.
+    Math.abs(age) <= REPEAT_SUBMISSION_WINDOW_MS
+  );
+}
+
+type SubmissionReader = Pick<typeof prisma, "submission">;
+
+async function findRepeatSubmission(
+  db: SubmissionReader,
+  participantId: string,
+  input: SubmitInput,
+  now: Date,
+): Promise<string | null> {
+  const recent = await db.submission.findMany({
+    where: {
+      participantId,
+      contestProblemId: input.contestProblemId,
+      language: input.language,
+      submittedAt: {
+        gte: new Date(now.getTime() - REPEAT_SUBMISSION_WINDOW_MS),
+        lte: new Date(now.getTime() + REPEAT_SUBMISSION_WINDOW_MS),
+      },
+    },
+    select: {
+      id: true,
+      contestProblemId: true,
+      language: true,
+      sourceCode: true,
+      submittedAt: true,
+    },
+    orderBy: { submittedAt: "desc" },
+    take: 5,
+  });
+  return recent.find((row) => isRepeatSubmission(row, input, now))?.id ?? null;
+}
+
 export async function createSubmission(
   input: SubmitInput,
   viewer: CompetitorViewer,
@@ -249,6 +332,20 @@ export async function createSubmission(
     "You are submitting very quickly — wait a moment and try again",
   );
 
+  /*
+    A repeat of the same code is the same submission. Asked BEFORE the window check on purpose: a
+    POST that reached the server at 8:14:59 and lost its response on the way back is retried at
+    8:15:03, and that retry must hand back the submission that counts rather than tell the student
+    the contest is over. Only the viewer's own rows are searched.
+  */
+  const earlier = await findRepeatSubmission(prisma, viewer.participantId, input, now);
+  if (earlier !== null) return getSubmissionView(earlier, viewer, now);
+
+  // The clock, before the gate reads the state. A scheduled start used to happen only when some
+  // page polled the board, so a student whose submit was the first request after 7:00 was told
+  // the contest had not started while the lobby beside them said it had.
+  await reconcileContestClockById(viewer.contestId, now);
+
   const target = await resolveTarget(
     input.contestProblemId,
     input.language,
@@ -256,24 +353,34 @@ export async function createSubmission(
     now,
   );
 
-  const submission = await prisma.submission.create({
-    data: {
-      participantId: viewer.participantId,
-      contestProblemId: target.contestProblemId,
-      language: input.language,
-      sourceCode: input.sourceCode,
-      submittedAt: now,
-    },
-    select: {
-      id: true,
-      contestProblemId: true,
-      language: true,
-      submittedAt: true,
-      verdict: true,
-      score: true,
-      runtimeMs: true,
-    },
+  // The check above is a read, and two copies of one POST can both pass it. The lock makes the
+  // second wait for the first's insert and then find it.
+  const created = await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('submit'), hashtext(${viewer.participantId}))`;
+    const raced = await findRepeatSubmission(tx, viewer.participantId, input, now);
+    if (raced !== null) return { kind: "repeat", id: raced } as const;
+    const row = await tx.submission.create({
+      data: {
+        participantId: viewer.participantId,
+        contestProblemId: target.contestProblemId,
+        language: input.language,
+        sourceCode: input.sourceCode,
+        submittedAt: now,
+      },
+      select: {
+        id: true,
+        contestProblemId: true,
+        language: true,
+        submittedAt: true,
+        verdict: true,
+        score: true,
+        runtimeMs: true,
+      },
+    });
+    return { kind: "created", submission: row } as const;
   });
+  if (created.kind === "repeat") return getSubmissionView(created.id, viewer, now);
+  const submission = created.submission;
 
   try {
     await enqueueJudgeJob(
@@ -341,15 +448,86 @@ export async function reconcile(
     return;
   }
 
-  // No job and no verdict. Either it was evicted from Redis after we failed to read it, or the
-  // queue lost it. Past the grace period, stop showing the student a spinner forever.
+  // No job and no verdict: the queue lost it. Build the job again from the row, under the same id.
   if (
     outcome.status === "missing" &&
-    now.getTime() - submission.submittedAt.getTime() > ORPHAN_GRACE_MS
+    lostJobAction(submission.submittedAt, now) === "requeue"
   ) {
-    await persistInternalError(
-      submissionId,
-      "The judge never reported on this submission",
+    await requeueLostSubmission(submissionId);
+  }
+}
+
+/**
+ * Put a submission whose job has vanished back on the queue.
+ *
+ * Built from the submission's own contest problem, the way a rejudge is, because the student's
+ * gates (window, set, division) answered when the submission was accepted; asking them again after
+ * the end would refuse a submission that already counts. The id is the job id, so two readers that
+ * notice the loss at once enqueue one job.
+ *
+ * Failure is logged and swallowed. This runs on read paths, and a queue that cannot take the job
+ * right now leaves the submission unjudged for the next reader to try, which is the state it was in.
+ */
+async function requeueLostSubmission(submissionId: string): Promise<void> {
+  const submission = await prisma.submission.findUnique({
+    where: { id: submissionId },
+    select: {
+      id: true,
+      language: true,
+      sourceCode: true,
+      verdict: true,
+      contestProblem: {
+        select: {
+          problem: {
+            select: {
+              timeLimitMs: true,
+              memoryLimitMb: true,
+              comparator: true,
+              testCases: {
+                select: {
+                  id: true,
+                  ordinal: true,
+                  inputPath: true,
+                  expectedOutputPath: true,
+                  isSample: true,
+                  points: true,
+                  group: true,
+                },
+                orderBy: { ordinal: "asc" },
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+  if (submission === null || submission.verdict !== null) return;
+
+  const problem = submission.contestProblem.problem;
+  const comparator = ComparatorSchema.safeParse(problem.comparator);
+  try {
+    await enqueueJudgeJob(
+      buildJudgeJob({
+        submissionId: submission.id,
+        language: submission.language,
+        sourceCode: submission.sourceCode,
+        problem,
+        testCases: problem.testCases,
+        host: hostLimits(),
+        comparator: comparator.success ? comparator.data : undefined,
+      }),
+    );
+    console.warn(
+      JSON.stringify({ level: "warn", event: "judge.job_requeued", submissionId }),
+    );
+  } catch (error: unknown) {
+    console.error(
+      JSON.stringify({
+        level: "error",
+        event: "judge.job_requeue_failed",
+        submissionId,
+        message: error instanceof Error ? error.message : String(error),
+      }),
     );
   }
 }
@@ -627,6 +805,7 @@ export async function runSamples(
     now,
     "You are running samples very quickly — wait a moment and try again",
   );
+  await reconcileContestClockById(viewer.contestId, now);
 
   const target = await resolveTarget(
     input.contestProblemId,

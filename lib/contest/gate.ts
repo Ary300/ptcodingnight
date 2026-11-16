@@ -90,6 +90,16 @@ export function assertCanReadProblems(contest: ProblemReadGateInput, now: Date):
  * refuses work, so a forgotten state transition cannot extend the night.
  */
 export function assertCanSubmit(contest: ContestGateInput, now: Date): void {
+  // A published contest that has not opened says so in the words a student can act on. "Not
+  // accepting submissions" read like a fault, five minutes before the start, to a student whose
+  // lobby already showed the problem list.
+  if (contest.state === "SCHEDULED" || contest.state === "DRAFT") {
+    throw new DomainError("CONTEST_NOT_RUNNING", "This contest has not started yet");
+  }
+  // The same sentence whether the clock or an organizer ended it, and whichever request noticed.
+  if (contest.state === "ENDED" || contest.state === "ARCHIVED") {
+    throw new DomainError("CONTEST_NOT_RUNNING", "This contest is over");
+  }
   if (!SUBMITTABLE.includes(contest.state)) {
     throw new DomainError("CONTEST_NOT_RUNNING", "This contest is not accepting submissions");
   }

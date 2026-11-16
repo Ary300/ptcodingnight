@@ -706,6 +706,14 @@ export async function rejudgeSubmission(
     comparator: storedComparator.success ? storedComparator.data : undefined,
   });
 
+  /*
+    The old job goes BEFORE the verdict is cleared. In the other order there is a moment where the
+    row is unjudged and the queue still holds the previous run's finished result, and any reader
+    that reconciles in that moment (the verdict sweep runs every two seconds) writes the OLD
+    verdict back. The rejudge's own result is then refused as a second write.
+  */
+  await removeJob(submissionId);
+
   await prisma.$transaction(async (tx) => {
     await lockContestMutations(tx, submission.contestProblem.contestId);
     const effectiveAt = clock();
@@ -752,7 +760,6 @@ export async function rejudgeSubmission(
     );
   });
 
-  await removeJob(submissionId);
   await enqueueJudgeJob(job);
 
   invalidateScoringInput(submission.contestProblem.contestId);
