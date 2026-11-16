@@ -117,7 +117,7 @@ function DivisionBoard({
           whose only content was other people's names, which is exactly the opposite of a
           glance. The effect above is what keeps the viewer's own row inside the cap.
         */
-        className="mt-2 max-h-[28rem] overflow-auto"
+        className="relative mt-2 max-h-[28rem] overflow-auto"
       >
         <table className="w-full border-collapse">
           <caption className="sr-only">
