@@ -145,6 +145,7 @@ async function main(): Promise<void> {
   let compiled = 0;
   let errors = 0;
   let retried = 0;
+  let declinedByDesign = 0;
   const only = argv.includes("--only") ? (argv[argv.indexOf("--only") + 1] ?? "").split(",") : [];
   for (const [index, source] of sources.entries()) {
     if (only.length > 0 && !only.some((part) => source.name === part)) continue;
@@ -161,6 +162,20 @@ async function main(): Promise<void> {
 
     const target = await mkdtemp(path.join(SCRATCH_ROOT, "abjavac-svc-"));
     let svc = await service.compile(source.code, args, runtime.compileTimeoutMs, target);
+    // The service is DESIGNED to decline what javac itself could not finish: a compile that runs
+    // out the timeout, or a javac that ended abnormally (status 2-4, e.g. out of heap). It
+    // restarts the lane and the judge compiles that submission in a container, which is exactly
+    // the A side here, so the student sees the A side's answer by construction.
+    const containerGaveUp =
+      containerStatus === null || [2, 3, 4, 124, 137, 143].includes(containerStatus);
+    if (svc === null && containerGaveUp) {
+      declinedByDesign += 1;
+      console.log(`same ${source.name} CE (declined by the service, compiled in a container: status ${String(containerStatus)})`);
+      await rm(target, { recursive: true, force: true });
+      await removeWorkspace(ws.root);
+      errors += 1;
+      continue;
+    }
     if (svc === null) {
       // No answer is not a wrong answer: the judge would compile this submission in its own
       // container. But a lane that was killed underneath us (anything on this host that sweeps
@@ -196,9 +211,10 @@ async function main(): Promise<void> {
   await sweepJudgeContainers();
   console.log(
     `\nA/B javac: ${String(compiled + errors)} sources (${String(compiled)} compiled, ${String(errors)} CE), ` +
-      `${String(viaService)} answered by the service (${String(retried)} on a second ask), ${String(diffs)} differences`,
+      `${String(viaService)} answered by the service (${String(retried)} on a second ask), ` +
+      `${String(declinedByDesign)} declined by design and compiled in a container, ${String(diffs)} differences`,
   );
-  process.exit(diffs === 0 && viaService === compiled + errors ? 0 : 1);
+  process.exit(diffs === 0 && viaService + declinedByDesign === compiled + errors ? 0 : 1);
 }
 
 void main();
