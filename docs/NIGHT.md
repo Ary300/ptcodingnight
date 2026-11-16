@@ -157,7 +157,10 @@ on 2026-11-16 with the board frozen and real browser behaviour: 35 students subm
 second, last verdict about 23 s; 57 submissions in the same second (16 students sending two or three),
 about 33 s; submissions spread a second apart, about 5 s. Zero wrong verdicts in every run. The
 droplet's CPUs are shared, and once in testing the provider took half of them away for a few minutes;
-that is the only measured case where results took minutes without slow programs.
+that is the only measured case where results took minutes without slow programs. In the final round
+the provider took 8-16% of the CPU throughout, and 57 same-second submissions then took 51 to 61 s.
+With 8 of 35 students sending Java that times out on every test, everyone else had their verdict
+within 47 s and the slow ones got TLE within about 2 minutes 45 seconds.
 
 ### Before the doors open
 

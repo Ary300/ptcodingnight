@@ -19,14 +19,14 @@ Full `npm run verify` run, every gate's real output in the transcript:
 | Gate | State | Note |
 |---|---|---|
 | G0 build, G1 typecheck, G2 lint | PASS | |
-| G3 unit | PASS | 841 tests across 55 files (2026-11-13) |
-| G4 judge fixtures | PASS | 57/57 across all five runtimes |
-| G5 sandbox | PASS | 19/19, and `docker ps -a` back at baseline |
+| G3 unit | PASS | 1,114 tests across 85 files (2026-11-16) |
+| G4 judge fixtures | PASS | 89/89 across all five runtimes (2026-11-16) |
+| G5 sandbox | PASS | 42/42, and no `ptcn-judge` container left (2026-11-16) |
 | G6 golden scoring | PASS | includes the team formula and its variants |
-| G7 E2E | PASS | 313/313 against the **real API**, both browser profiles (2026-11-13) |
+| G7 E2E | PASS | 402/402 against the **real API** and a real worker, both browser profiles (2026-11-16) |
 | G8 load | **FAIL on this machine as it stands** | Same commit, eleven measurements: 7,363 / 7,476 / 8,713 / 9,261 ms pass; 14,737 / 16,447 / 18,723 / 22,781 / 45,620 ms fail. The 45,620 ms was inside a full `npm run verify` with a dev server, a browser and eleven unrelated containers up; the 16,447 ms was **standalone** on the same busy host, and is worse than every verify-embedded run from a quieter day. A factor of 6.2 with no code change. 40/40 AC and zero dropped every time — only the waiting moves. 2026-11-13: 11,503 ms p95, 40/40 AC, zero dropped, with the dev server on :3100 because an unrelated process held :3000. T3, `docs/HOSTING.md` §3 |
 | G9 a11y | PASS | 60/60 (2026-11-13). `/admin/awards` renders the team board and is now behind the organizer gate, so the audit signs in as an organizer to reach the admin surfaces |
-| G13 problem content | PASS | 104/104 references, 1,775 test cases, 384 generated starters, 0 containers leaked (2026-11-13) |
+| G13 problem content | PASS | 106/106 references, 1,799 test cases, 66 generated starters, 0 containers swept (2026-11-16) |
 | G10 cold start, G11 security | NOT RUN | neither is scriptable from inside the clone |
 | G12 clean tree | PASS | |
 
@@ -109,6 +109,25 @@ per puzzle, arbitrated by a unique index rather than a check-then-write, because
 racing to submit the same answer is the normal case. The sudoku is marked by VALIDATING the grid
 against its givens, never against a stored solution, so it cannot be wrong about a puzzle whose
 uniqueness nobody verified.
+
+**The judge was rebuilt for speed on 2026-11-16, and every change kept verdicts identical by A/B.**
+Production is a 4 vCPU / 8 GB shared droplet, `JUDGE_CONCURRENCY=6`. Java 21 runs all of a
+submission's tests in one JVM (`worker/jvm-harness/`, image `ptcn-jdk:21`, a fresh class loader per
+test) and compiles in a warm, locked-down javac service (`worker/javac-service.ts`); judge containers
+come from a pool created outside bursts; a test past its threshold is TLE and is killed there; a
+submission that starts timing out finishes in a slow lane so it cannot hold the room's verdicts;
+Java's startup budget is 2 s, measured on the droplet. Each has a kill switch passed into the worker
+by `docker-compose.prod.yml` (`JUDGE_JVM_HARNESS`, `JUDGE_JAVAC_SERVICE`, `JUDGE_TLE_AT_THRESHOLD`;
+the worker has no env_file, so a variable not listed there never reaches it). **`ptcn-jdk:21` must be
+rebuilt before the worker restarts** whenever `docker/`, `worker/jvm-harness/`,
+`worker/javac-service/` or `lib/judge/runtimes.ts` changes; `/srv/ptcn/update.sh` does it and stops
+if the build fails. Measured on the droplet with the board frozen and real browser behaviour: 35
+same-second submissions about 23 s to the last verdict, 57 about 33 s, spread one a second about 5 s,
+zero wrong verdicts. With 8 of 35 students sending Java that times out on every test, the rest of
+the room had verdicts within 47 s (176 s before the slow lane). The droplet's shared vCPUs lost
+8-16% to steal during the final round, and B then took 51-61 s: steal, not code, is the biggest
+remaining variable, and a dedicated-CPU droplet removes it. Load-test runners and their reports are under the session scratchpad
+(`matrix*/`), and `/srv/ptcn/tools/cpu-snap.sh` on the box prints per-service CPU counters.
 
 **The night is prepared to the teacher's brief (2026-11-13), and `docs/NIGHT.md` is the run-of-show.**
 Mr. Ritz's email asked for one non-programming puzzle per team member, a Kahoot in the scoring, no
