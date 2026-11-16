@@ -215,9 +215,9 @@ export interface Variant {
    * a CE carrying `nestedMessage`, with `{package}` replaced by the package's name, instead of an
    * RE on every test (or a bare "Compilation failed") that the student cannot act on.
    *
-   * `declaration` finds the same thing in the SOURCE, before anything is compiled: a regular
-   * expression applied after C-style comments are removed, capturing the package's name. It is
-   * the deterministic path. The build-directory check is the backstop, because the compile
+   * `declarationKeyword` finds the same thing in the SOURCE, before anything is compiled: the
+   * keyword that opens such a declaration when it is the first token after whitespace, C-style
+   * comments and annotations (worker/entry-artifact.ts). It is the deterministic path. The build-directory check is the backstop, because the compile
    * container's disk watchdog treats any subdirectory in /build as hostile and may kill javac
    * while it writes the package's directory — which is where the bare "Compilation failed" came
    * from.
@@ -225,7 +225,7 @@ export interface Variant {
   readonly entryArtifact?: {
     readonly file: string;
     readonly nestedMessage: string;
-    readonly declaration?: string;
+    readonly declarationKeyword?: string;
   };
   /**
    * Starter file shown in the editor, so the first thing a student sees is not an empty box.
@@ -504,9 +504,7 @@ const JAVA_HARNESS_COMMAND =
  */
 const JAVA_ENTRY = {
   file: "Main.class",
-  // A package declaration is the first thing in a compilation unit, after comments and any
-  // annotations, so this is anchored at the start.
-  declaration: String.raw`^\s*(?:@[\w.$]+(?:\([^)]*\))?\s*)*package\s+([A-Za-z_$][\w$]*(?:\s*\.\s*[A-Za-z_$][\w$]*)*)\s*;`,
+  declarationKeyword: "package",
   nestedMessage:
     'Delete the line "package {package};" at the top of your file. The judge runs public class Main with no package, so with that line it cannot find your program.',
 } as const;
