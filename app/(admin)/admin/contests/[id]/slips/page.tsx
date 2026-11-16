@@ -23,6 +23,12 @@ import { JoinCodeLookup } from "@/components/admin/JoinCodeLookup";
  * and no software depends on it. Sorting the slips by team is the same job it always was, and
  * the code keeps working across every reshuffle.
  */
+const PRINT_ONLY_SLIPS = `
+  [data-print-chrome] { display: none !important; }
+  #admin-main { background: none !important; }
+  #admin-main > div, [data-contest-body] { padding: 0 !important; }
+`;
+
 export default async function ContestSlipsPage({
   params,
 }: {
@@ -45,6 +51,14 @@ export default async function ContestSlipsPage({
 
   return (
     <div className="flex flex-col gap-6">
+      {/*
+        Only the slips reach the paper. The admin header, the breadcrumb, the contest title and the
+        tab strip all came out above the first slip, because they live in the layouts and the
+        `print:hidden` utilities on this page cannot reach them. Each carries `data-print-chrome`,
+        and this rule exists only while this page is mounted, so no other admin page changes how it
+        prints.
+      */}
+      <style media="print">{PRINT_ONLY_SLIPS}</style>
       <header className="print:hidden">
         <h2 className="font-display font-bold" style={{ fontSize: "var(--text-lg)" }}>
           Join code slips

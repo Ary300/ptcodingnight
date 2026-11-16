@@ -75,7 +75,8 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         Skip to content
       </a>
 
-      <header className="bg-ink text-paper">
+      {/* `data-print-chrome`: a page that prints (the join slips) hides this for print media. */}
+      <header data-print-chrome className="bg-ink text-paper">
         <div className="mx-auto flex w-full max-w-7xl flex-wrap items-center gap-x-6 gap-y-3 px-5 py-2.5">
           <Link href="/admin" className="flex items-center gap-2.5">
             <Image

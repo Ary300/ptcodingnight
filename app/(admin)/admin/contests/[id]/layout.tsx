@@ -45,7 +45,9 @@ export default async function ContestLayout({
     <div className="flex flex-col">
       {/* A rule under the crumb band: without it the trail and the identity block read as one
           run of text, and the reference separates them with a hairline and air on both sides. */}
-      <div className="border-b border-rule-hair pb-3">
+      {/* `data-print-chrome` on the crumbs, the title row and the tabs: the join slips page hides
+          all three for print media, so only the slips reach the paper. */}
+      <div data-print-chrome className="border-b border-rule-hair pb-3">
         <Crumbs
           trail={[
             { href: "/admin", label: "Contests" },
@@ -54,7 +56,7 @@ export default async function ContestLayout({
         />
       </div>
 
-      <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2">
+      <div data-print-chrome className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2">
         {/* Stepped down below `sm`: a flat 40px/60px h1 wraps a long contest name to three lines
             at 360 and pushes the tab strip past the first screenful. */}
         <h1 className="font-display font-bold text-[length:var(--text-lg)] sm:text-[length:var(--text-xl)]">
@@ -71,10 +73,14 @@ export default async function ContestLayout({
           </AlertPlate>
         </div>
       ) : (
-        <ContestTabs contestId={id} />
+        <div data-print-chrome>
+          <ContestTabs contestId={id} />
+        </div>
       )}
 
-      <div className="pt-7">{children}</div>
+      <div data-contest-body className="pt-7">
+        {children}
+      </div>
     </div>
   );
 }
