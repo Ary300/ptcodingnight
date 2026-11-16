@@ -56,6 +56,8 @@ test.beforeAll(async () => {
 
 test.afterAll(async () => {
   await testDb().contest.deleteMany({ where: { joinCode: { startsWith: "CUT" } } });
+  // Never leave the judge held for the next spec, whatever failed above.
+  await queue.resume();
   await queue.close();
   await redis.quit();
   await closeTestDb();
@@ -162,6 +164,12 @@ test("a submission just before the end is judged after it, counts, and later one
   const endsAt = new Date(Date.now() + END_LEAD_MS);
   await testDb().contest.update({ where: { id: contestId }, data: { endsAt } });
 
+  /*
+    The judge is held for the last seconds, the way the end-of-night backlog holds it. Without the
+    hold the verdict sweep (lib/contest/verdict-sweeper.ts) records an idle judge's answer within
+    two seconds, before the end, and the premise below (judged AFTER the end) would be luck.
+  */
+  await queue.pause();
   const accepted = await student.submitRaw(body);
   expect(accepted.status(), "a submission inside the window must be accepted").toBe(202);
   const created = (await accepted.json()) as { data: { submissionId: string } };
@@ -180,14 +188,29 @@ test("a submission just before the end is judged after it, counts, and later one
   const waitMs = endsAt.getTime() - Date.now() + 300;
   if (waitMs > 0) await new Promise((resolve) => setTimeout(resolve, waitMs));
 
-  const late = await readEnvelope(await student.submitRaw(body));
+  // The same code sent again is the retry of a POST whose response was lost on the way back. It
+  // gets the submission that counts, and creates nothing (lib/contest/submissions.ts,
+  // REPEAT_SUBMISSION_WINDOW_MS). A changed program is a new submission, and that is refused.
+  const retry = await student.submitRaw(body);
+  expect(retry.status(), "a retry of the counted submission is handed it back").toBe(202);
+  expect(((await retry.json()) as { data: { submissionId: string } }).data.submissionId).toBe(
+    submissionId,
+  );
+
+  const lateBody = { ...body, sourceCode: `${body.sourceCode}\n# changed after the end\n` };
+  const late = await readEnvelope(await student.submitRaw(lateBody));
   expect(late.status, "a submission after the end must be refused").toBe(409);
   expect(late.code).toBe("CONTEST_NOT_RUNNING");
   expect(late.message).toBe("This contest is over");
+  expect(
+    await testDb().submission.count({ where: { participantId: joined.participantId } }),
+    "neither the retry nor the late submission may create a row",
+  ).toBe(1);
 
   const lateSamples = await readEnvelope(await student.runSamplesRaw(body));
   expect(lateSamples.status, "run samples after the end must be refused").toBe(409);
   expect(lateSamples.message).toBe("This contest is over");
+  await queue.resume();
 
   // The scheduled freeze keeps the contest RUNNING past its end, for the reveal. The refusals above
   // came from the window check, not from the state.
