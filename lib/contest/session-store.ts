@@ -123,7 +123,26 @@ export async function loadSession(token: string, now: Date): Promise<LoadedSessi
  * every projector standings refresh — would add contention to the one database the judge also
  * uses. A failure here must never fail the request the student is making.
  */
+/**
+ * At most one `lastSeenAt` write per session per minute, per process.
+ *
+ * During the end-of-night burst every open page polls the board and holds a verdict stream, which
+ * made this about ten writes a second on the database the judge's verdict writes also need. The
+ * only reader is the organizer's session list, where a minute of staleness is invisible.
+ */
+const TOUCH_INTERVAL_MS = 60_000;
+const lastTouchedAt = new Map<string, number>();
+
 export function touchSession(sessionId: string, now: Date): void {
+  const nowMs = now.getTime();
+  const previous = lastTouchedAt.get(sessionId);
+  if (previous !== undefined && nowMs - previous < TOUCH_INTERVAL_MS) return;
+  if (lastTouchedAt.size > 10_000) {
+    for (const [id, touched] of lastTouchedAt) {
+      if (nowMs - touched >= TOUCH_INTERVAL_MS) lastTouchedAt.delete(id);
+    }
+  }
+  lastTouchedAt.set(sessionId, nowMs);
   void prisma.session
     .update({ where: { id: sessionId }, data: { lastSeenAt: now } })
     .catch(() => {
