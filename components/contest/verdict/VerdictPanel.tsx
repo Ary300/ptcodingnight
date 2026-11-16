@@ -14,6 +14,7 @@ import {
   TONE_COLOR,
   VERDICT_DISPLAY,
 } from "./verdict-display";
+import { formatEventTimeSeconds } from "@/lib/contest/event-time";
 
 /**
  * The verdict panel — dark by necessity, not by taste. Rise, fall and gold all fail AA on
@@ -49,6 +50,12 @@ export interface VerdictPanelProps {
    * panel must not invent one.
    */
   queuePosition?: QueuePosition | null;
+  /**
+   * When the server received this submission (ISO). Shown while it waits, because in the final
+   * rush grading can finish after 8:15, and a student needs to see that what counts is when it was
+   * SENT. The server stamps it on arrival; scoring and the cutoff both use that stamp.
+   */
+  submittedAt?: string | null;
 }
 
 function Chip({ verdict }: { verdict: Verdict }) {
@@ -187,6 +194,7 @@ export function VerdictPanel({
   error = null,
   totalCases = null,
   queuePosition = null,
+  submittedAt = null,
 }: VerdictPanelProps) {
   const { results: safeResults, leakedOrdinals } = useMemo(
     () => sanitizeTestResults(results),
@@ -260,6 +268,13 @@ export function VerdictPanel({
       {mode === "judged" && busy && verdict === null && queuePosition !== null && (
         <p className="mt-2 text-paper/60" style={{ fontSize: "var(--text-xs)" }}>
           {queuePositionLabel(queuePosition)}
+        </p>
+      )}
+      {mode === "judged" && verdict === null && submittedAt !== null && (
+        <p className="mt-2 text-paper/75" style={{ fontSize: "var(--text-xs)" }}>
+          Submitted at{" "}
+          <span className="numeric">{formatEventTimeSeconds(submittedAt)}</span>. This counts even if
+          grading finishes after the contest ends.
         </p>
       )}
 

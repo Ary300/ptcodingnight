@@ -427,6 +427,7 @@ export function ProblemWorkspace({ slug }: ProblemWorkspaceProps) {
               transport={stream.transport}
               error={stream.error}
               queuePosition={stream.submission?.queuePosition ?? null}
+              submittedAt={stream.submission?.submittedAt ?? null}
             />
           )}
 
