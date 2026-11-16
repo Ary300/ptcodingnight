@@ -165,7 +165,10 @@ export function TeamProjectorScreen({
 
   const message =
     standings === null
-      ? source === "error"
+      ? source === "idle"
+        ? // Plain words for the wall, and the way to point it at a contest from the laptop.
+          "No contest is running right now. This board shows a contest as soon as one opens, or open the projector from a contest's Setup tab to show that one."
+        : source === "error"
         ? (error ?? "Cannot reach the scoreboard.")
         : "Loading standings…"
       : activeTabId !== null && teams.length === 0
@@ -269,7 +272,9 @@ export function TeamProjectorScreen({
   */
   const subtitle =
     standings === null
-      ? "Waiting for the scoreboard"
+      ? source === "idle"
+        ? "Waiting for a contest to open"
+        : "Waiting for the scoreboard"
       : frozen
         ? // Short, because the plate directly below it carries the instant and the "judging
           // continues" part. Saying both twice reads as a stutter from ten metres away.

@@ -21,7 +21,11 @@ const POLL_REQUEST_TIMEOUT_MS = 10_000;
  * projector is a read-only consumer of a route it does not own.
  */
 
-export type TeamStandingsSource = "pending" | "api" | "error";
+/**
+ * `idle`: the un-scoped route answered that no contest is running (`data: null`). A state of
+ * the wall, not a failure, so it carries no error text.
+ */
+export type TeamStandingsSource = "pending" | "api" | "idle" | "error";
 
 export interface UseTeamStandingsResult {
   standings: TeamStandingsResponse | null;
@@ -59,6 +63,18 @@ function parse(body: unknown): TeamStandingsResponse | null {
   }
 
   return null;
+}
+
+/** `{ success: true, data: null }`: the un-scoped route's "no contest is running". */
+function isNothingRunning(body: unknown): boolean {
+  return (
+    typeof body === "object" &&
+    body !== null &&
+    "success" in body &&
+    (body as { success: unknown }).success === true &&
+    "data" in body &&
+    (body as { data: unknown }).data === null
+  );
 }
 
 /**
@@ -106,6 +122,13 @@ export function useTeamStandings(contestId: string | null): UseTeamStandingsResu
         const parsed = parse(body);
 
         if (cancelled) return;
+
+        if (parsed === null && isNothingRunning(body)) {
+          setStandings(null);
+          setSource("idle");
+          setError(null);
+          return;
+        }
 
         if (parsed === null) {
           setSource("error");

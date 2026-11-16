@@ -1,8 +1,7 @@
 import type { NextResponse } from "next/server";
 
 import { prisma } from "@/lib/db";
-import { NotFoundError } from "@/lib/errors";
-import { handle, jsonOkRevalidated } from "@/lib/contest/http";
+import { NO_STORE, handle, jsonOk, jsonOkRevalidated } from "@/lib/contest/http";
 import { getTeamStandings } from "@/lib/contest/standings";
 import { viewerFromRequest } from "@/lib/contest/viewer";
 
@@ -44,7 +43,7 @@ export const dynamic = "force-dynamic";
  * ended, a seeded demo beside the real thing. "Is it on right now" is a fact about the clock, and
  * it is the only question a screen on a wall can be asking.
  */
-async function currentContestId(now: Date): Promise<string> {
+async function currentContestId(now: Date): Promise<string | null> {
   const live = await prisma.contest.findFirst({
     where: {
       state: { in: ["RUNNING", "FROZEN"] },
@@ -70,10 +69,7 @@ async function currentContestId(now: Date): Promise<string> {
     orderBy: [{ state: "asc" }, { startsAt: "desc" }],
     select: { id: true },
   });
-  if (recent === null) {
-    throw new NotFoundError("No contest is running. Open the projector with ?contestId=<id>");
-  }
-  return recent.id;
+  return recent?.id ?? null;
 }
 
 export async function GET(request: Request): Promise<NextResponse> {
@@ -83,6 +79,17 @@ export async function GET(request: Request): Promise<NextResponse> {
     const requested = params.get("contest") ?? params.get("contestId");
     const contestId =
       requested !== null && requested.length > 0 ? requested : await currentContestId(now);
+
+    /*
+      Nothing running is a STATE of the wall, not an error: `data: null`, with a 200.
+
+      It was a 404 whose message was a URL template, and the projector printed it verbatim: "Open
+      the projector with ?contestId=<id> not found", with a 404 in the console of the one machine
+      everybody can see. The wall says what is true in its own words instead, and keeps polling,
+      so it picks the contest up the moment one opens.
+    */
+    if (contestId === null) return jsonOk(null, NO_STORE);
+
     const viewer = await viewerFromRequest(request, now);
 
     // Never in a SHARED cache, matching both siblings: the response DIFFERS BY VIEWER — an organizer
