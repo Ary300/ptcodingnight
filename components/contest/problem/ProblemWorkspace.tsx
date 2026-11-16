@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import { Button } from "@/components/ui";
 import type { PublicTestResult, SubmissionView } from "@/lib/schemas/api";
@@ -24,6 +24,7 @@ import { ProblemBreadcrumb, ProblemMetaRail, ProblemStatusPill, ProblemTabs } fr
 import { SampleIO } from "./SampleIO";
 import { TeamActivity } from "./TeamActivity";
 import { useDraft } from "./useDraft";
+import { initialLanguageFor, rememberLanguage, rememberedLanguageStore } from "./default-language";
 
 /**
  * The problem view: statement, constraints, samples, editor, run and submit (PRD §9.1).
@@ -68,12 +69,21 @@ export function ProblemWorkspace({ slug }: ProblemWorkspaceProps) {
   // the same server scope as the lobby so stale authorized content disappears immediately.
   const problem = useResource(load, scopeKey);
 
-  // Derived, not synced. The default is the problem's first allowed language, and an
-  // explicit choice overrides it — so there is no effect racing the load to set it, and no
+  // Derived, not synced. The default is Java 21 when the problem offers it (`defaultLanguageFor`),
+  // and an explicit choice overrides it — so there is no effect racing the load to set it, and no
   // render where the picker shows a language the problem does not allow.
   const [chosenLanguage, setChosenLanguage] = useState<Language | null>(null);
+  const rememberedLanguage = useSyncExternalStore(
+    rememberedLanguageStore.subscribe,
+    rememberedLanguageStore.getSnapshot,
+    rememberedLanguageStore.getServerSnapshot,
+  );
   const activeLanguage: Language =
-    chosenLanguage ?? problem.data?.allowedLanguages[0] ?? "PYTHON_312";
+    chosenLanguage ?? initialLanguageFor(problem.data?.allowedLanguages, rememberedLanguage);
+  const chooseLanguage = useCallback((language: Language) => {
+    setChosenLanguage(language);
+    rememberLanguage(language);
+  }, []);
 
   /*
     What the editor opens with for the active language: the problem's own generated starter
@@ -403,7 +413,7 @@ export function ProblemWorkspace({ slug }: ProblemWorkspaceProps) {
               <LanguagePicker
                 value={activeLanguage}
                 allowed={detail.allowedLanguages}
-                onChange={setChosenLanguage}
+                onChange={chooseLanguage}
                 disabled={submitBusy || judging}
               />
             }

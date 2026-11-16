@@ -2,6 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 
 import { loadContestFixture, readSolution, seedE2EContest, testDb } from "./helpers/seed";
 import { signInAsCompetitor } from "./helpers/session";
+import { chooseLanguage } from "./helpers/language";
 
 /**
  * Each problem tab shows ITS OWN submission's verdict.
@@ -31,6 +32,7 @@ async function openProblem(page: Page): Promise<void> {
 }
 
 async function submit(page: Page, source: string): Promise<void> {
+  await chooseLanguage(page, "Python 3");
   await page.getByRole("textbox", { name: /^Solution for / }).fill(source);
   await page.getByRole("button", { name: "Submit for judging" }).click();
 }

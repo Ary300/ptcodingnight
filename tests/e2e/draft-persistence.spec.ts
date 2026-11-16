@@ -2,6 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 
 import { closeTestDb, liveProblem, seedE2EContest, testDb } from "./helpers/seed";
 import { signInAsCompetitor, type CompetitorSession } from "./helpers/session";
+import { chooseLanguage } from "./helpers/language";
 
 /**
  * G7 — unsubmitted code survives a closed tab, and a returning student finds what they last sent.
@@ -106,6 +107,7 @@ test("with no draft, the editor opens on the code last submitted, and editing it
   await submittedEarlier(me);
 
   await page.goto(`/contest/${slug}`);
+  await chooseLanguage(page, "Python 3");
   const editor = editorOf(page);
   await expect(editor).toHaveValue(SUBMITTED, { timeout: 30_000 });
 
@@ -122,6 +124,8 @@ test("another student on the same browser sees neither the draft nor the submiss
   const first = await signInAsCompetitor(page, contestId);
   const firstSubmission = await submittedEarlier(first);
   await page.goto(`/contest/${slug}`);
+  // The submission was Python, and the editor opens in Java 21 by default.
+  await chooseLanguage(page, "Python 3");
   await expect(editorOf(page)).toHaveValue(SUBMITTED, { timeout: 30_000 });
   await editorOf(page).fill(TYPED);
 

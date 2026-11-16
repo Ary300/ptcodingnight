@@ -2,6 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 
 import { loadContestFixture, readSolution, testDb } from "./helpers/seed";
 import { signInAsCompetitor } from "./helpers/session";
+import { chooseLanguage } from "./helpers/language";
 
 /**
  * G7 — the journey a student actually walks, in a browser.
@@ -127,6 +128,7 @@ test.describe("the competitor journey in a browser", () => {
 
     const editor = page.getByRole("textbox", { name: /^Solution for / });
     await expect(editor).toBeVisible();
+    await chooseLanguage(page, "Python 3");
     await editor.fill(readSolution("accepted.py"));
 
     // --- run samples: free, and it must say so -------------------------------
