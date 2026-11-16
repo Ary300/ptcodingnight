@@ -222,7 +222,11 @@ export function TeamProjectorScreen({
         ? // Short, because the plate directly below it carries the instant and the "judging
           // continues" part. Saying both twice reads as a stutter from ten metres away.
           "Frozen standings"
-        : `Live standings, updated ${timeOfDay(standings.asOf)}`;
+        : // Past the end and not frozen is the revealed board. "Live standings" beside a clock
+          // reading 00:00:00 told the room the reveal was still to come.
+          Date.parse(standings.asOf) >= Date.parse(standings.endsAt) && !standings.isPractice
+          ? "Final standings"
+          : `Live standings, updated ${timeOfDay(standings.asOf)}`;
 
   return (
     /*

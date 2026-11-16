@@ -77,4 +77,12 @@ test("Unfreeze and reveal past the end shows the contest as ended without a relo
     select: { state: true },
   });
   expect(row.state).toBe("ENDED");
+
+  // The wall says so too. It read "Live standings" beside a clock at 00:00:00, which told the room
+  // the reveal was still to come.
+  await page.goto(`/projector?contest=${contestId}`);
+  await expect(page.getByText("Final standings", { exact: true })).toBeVisible({
+    timeout: 15_000,
+  });
+  await expect(page.getByText(/^Live standings/)).toHaveCount(0);
 });
