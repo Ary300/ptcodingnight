@@ -648,3 +648,34 @@ test.describe("the organizer can get in", () => {
     await context.close();
   });
 });
+
+test("the lobby's standings card never makes the page scroll past its content", async ({ page }) => {
+  /*
+    The card is a height-capped scroller holding a table, and its rows carry screen-reader-only
+    text. `.sr-only` is position: absolute, so without a positioned scroller its containing block
+    was the page itself: a long board laid those spans out far below the card, and the page grew a
+    screen or more of blank space under the footer. Found on the live practice arena, 2026-11-16;
+    moved here from practice-guest-door.spec.ts once the arena stopped showing standings, because
+    the contest lobby is where the card still renders.
+
+    A test database has too few rows to overflow the card, so the rows are added here, in the
+    browser, the way a full board fills it. What is under test is the CSS containment.
+  */
+  await join(page);
+  const table = page.locator("table").filter({ has: page.locator("caption") }).first();
+  await expect(table).toBeVisible();
+
+  const { scrollHeight, contentBottom } = await table.evaluate((element) => {
+    const body = element.querySelector("tbody") ?? element;
+    for (let index = 0; index < 80; index += 1) {
+      const row = document.createElement("tr");
+      row.innerHTML = `<td style="padding:12px">Student ${String(index)}<span class="sr-only">, </span></td>`;
+      body.appendChild(row);
+    }
+    const bottoms = [...document.body.children].map(
+      (child) => child.getBoundingClientRect().bottom + window.scrollY,
+    );
+    return { scrollHeight: document.documentElement.scrollHeight, contentBottom: Math.max(...bottoms) };
+  });
+  expect(scrollHeight).toBeLessThanOrEqual(Math.ceil(contentBottom) + 2);
+});

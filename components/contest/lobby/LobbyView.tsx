@@ -11,6 +11,7 @@ import { useParticipant } from "../data/participant";
 import { useResource } from "../data/useResource";
 import { AssignmentNotice } from "./AssignmentNotice";
 import { ContestEndedPanel } from "./ContestEndedPanel";
+import { PracticeProgressCard } from "./PracticeProgressCard";
 import { PreStartPanel } from "./PreStartPanel";
 import { ProblemBrowser } from "./ProblemBrowser";
 import { ProblemList } from "./ProblemList";
@@ -67,8 +68,19 @@ export function LobbyView({ phase = null, viewerKind }: LobbyViewProps) {
   const assignmentKey =
     participant.status === "joined" ? participant.scopeKey : participant.status;
 
+  /*
+    The practice arena never asks for standings. Its board is a column of other guests, all tied on
+    zero, and the arena's card is built from the problem list instead (`PracticeProgressCard`). Not
+    fetching it means no other guest's row reaches this lobby at all. The phase is a prop the page
+    keys this component on, so it cannot change under a mounted lobby.
+  */
+  const practiceArena = phase !== null && phase.isPractice;
+
   const loadProblems = useCallback(() => contestApi.listProblems(), []);
-  const loadStandings = useCallback(() => contestApi.getStandings(), []);
+  const loadStandings = useCallback(
+    () => (practiceArena ? Promise.resolve(null) : contestApi.getStandings()),
+    [practiceArena],
+  );
 
   // Assignment is authorization scope, not only a label. Passing it as an explicit resource key
   // forces both reads to leave their pre-assignment snapshot behind when the session poll changes.
@@ -123,12 +135,11 @@ export function LobbyView({ phase = null, viewerKind }: LobbyViewProps) {
   const beforeStart = phase !== null && phase.phase === "before";
   const afterEnd = phase !== null && phase.phase === "after";
   /*
-    The permanent practice arena, which sign-in falls back to when no real contest is open. It
-    must be impossible to mistake its sample questions for the night's contest, so the lobby says
-    so in a panel above the list, and every "time remaining" or "scored" framing is replaced:
-    the arena's window ends in 2100, and a seventy-year countdown reads as a bug.
+    `practiceArena` (above) is the permanent practice arena the guest door leads to. It must be
+    impossible to mistake its questions for the night's contest, so the heading, the intro and the
+    right-hand card all say so, and every "time remaining" or "scored" framing is replaced: the
+    arena's window ends in 2100, and a seventy-year countdown reads as a bug.
   */
-  const practiceArena = phase !== null && phase.isPractice;
 
   /*
     The server withholds the titles until the start (`listProblems` in lib/contest/problems.ts:
@@ -318,7 +329,10 @@ export function LobbyView({ phase = null, viewerKind }: LobbyViewProps) {
                 <ProblemList problems={visibleProblems} />
               </section>
             ) : (
-              <ProblemBrowser problems={visibleProblems} />
+              <ProblemBrowser
+                problems={visibleProblems}
+                slotWidth={practiceArena ? "compact" : "wide"}
+              />
             ))}
         </div>
       </section>
