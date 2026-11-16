@@ -34,6 +34,9 @@ import type { AdminContestList } from "@/lib/schemas/api";
  */
 export async function listContestsForAdmin(): Promise<AdminContestList> {
   const rows = await prisma.contest.findMany({
+    // The practice area is not an organizer's contest to manage, and listing it beside the real ones
+    // is how it got ended by accident on 2026-11-15. `setContestState` refuses it as well.
+    where: { isPractice: false },
     orderBy: [{ startsAt: "desc" }, { id: "asc" }],
     select: {
       id: true,
@@ -466,6 +469,7 @@ export async function setContestState(
     where: { id: contestId },
     select: {
       state: true,
+      isPractice: true,
       startsAt: true,
       endsAt: true,
       freezeAt: true,
@@ -479,6 +483,17 @@ export async function setContestState(
 
   if (options.onlyFromState !== undefined && contest.state !== options.onlyFromState) {
     return { state: contest.state };
+  }
+
+  /*
+    The practice area is permanent: its window runs to 2100 and students reach it from the Practice
+    button all year. On 2026-11-15 an organizer clearing out old contests ended it along with them,
+    and Practice answered "not set up" until it was re-seeded. No lifecycle button may move it.
+  */
+  if (contest.isPractice) {
+    throw new ValidationError(
+      "The practice problems stay open all year, so they cannot be published, started or ended here.",
+    );
   }
 
   if (next !== "ENDED" && contest._count.contestProblems === 0) {
