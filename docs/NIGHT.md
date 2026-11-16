@@ -147,6 +147,16 @@ From a laptop, with the organizer passcode in hand.
    unhealthy; Aryav rebuilds with `scripts/build-judge-images.sh --verify` on the box.
 4. Check the judge bar on `/admin/contests/{id}/console`: workers alive is at least 1, queue
    reachable says yes.
+5. On the box, `scripts/build-judge-images.sh --verify` must end in PASS (a judge image can rot
+   with age; CLAUDE.md), and `df -h /` must show room. `docker ps --format '{{.Names}}' | grep -c
+   javac` should print 6: the warm Java compilers, one per judge lane.
+
+What to expect from the judge, measured on this droplet (4 vCPU shared, 8 GB, `JUDGE_CONCURRENCY=6`)
+on 2026-11-16 with the board frozen and real browser behaviour: 35 students submitting in the same
+second, last verdict about 23 s; 57 submissions in the same second (16 students sending two or three),
+about 33 s; submissions spread a second apart, about 5 s. Zero wrong verdicts in every run. The
+droplet's CPUs are shared, and once in testing the provider took half of them away for a few minutes;
+that is the only measured case where results took minutes without slow programs.
 
 ### Before the doors open
 
@@ -256,8 +266,9 @@ not fixed in 10 minutes triggers the decision rule in §3.
 | A student's problem list is empty | They have no division or no set, or the contest has not been opened | Teams tab: set their division and set in the move form. Check the Setup tab says Live. | Sameer at the roster, Aryav on Setup |
 | "The judge is busy right now" on Run samples in the last minutes | Run samples shares the judge with submissions, and 50 students submitting at once fills the queue | Nothing is broken. Tell them to Submit instead: a submission is accepted at once and judged in order, and it counts even if the verdict arrives after 8:15 | Sameer, to the room |
 | A student cannot sign in | Code typed wrong, or the Google button failing for its own reasons | Join slips tab: type the code into the lookup to see whose it is. Reissue the code from the Teams tab if it is lost. Google failing is why the codes exist; use the code. | Sameer at the door |
-| Verdicts take minutes and the console queue keeps growing | A burst of slow programs. A Java submission that times out holds a judge slot for about a minute, so twenty of them stall everyone behind them for several minutes (measured 2026-11-16) | Nothing is lost. Tell the room their submissions are saved and judged in order, and that pressing Submit again only adds to the queue. Do not restart the worker for this | Sameer, to the room |
-| The worker died or was restarted | A crash, or a redeploy during the round | Submissions waiting in the queue resume at once. The ones it was judging at that moment come back after about four minutes, by themselves. Do not run the update script during the round: a restart can change a verdict that was mid-judge | Aryav |
+| Verdicts take minutes and the console queue keeps growing | A burst of slow programs. A Java test that times out runs to its 6 s limit before it is stopped, and every test runs because each one earns partial credit. A submission that starts timing out moves to a slow lane so the rest of the room keeps getting verdicts, but a large wave of them still slows everything | Nothing is lost. Tell the room their submissions are saved and judged in order, and that pressing Submit again on identical code only adds to the queue. Do not restart the worker for this | Sameer, to the room |
+| The worker died or was restarted | A crash, or a redeploy during the round | Submissions waiting in the queue resume at once. The ones it was judging at that moment come back after about a minute, by themselves, with no verdict changed (a shutdown releases them unjudged). Still do not run the update script during the round | Aryav |
+| Java verdicts look wrong: correct Java gets RE, TLE or CE that the same code does not get in practice | A fault in one of the three Java speedups | On the box, set the matching line in `/srv/ptcn/app/.env` to `off` and recreate only the worker: `JUDGE_JVM_HARNESS` (tests in one JVM), `JUDGE_JAVAC_SERVICE` (warm compiler) or `JUDGE_TLE_AT_THRESHOLD` (stop at the limit). Then `docker compose -f docker-compose.prod.yml up -d --no-deps --force-recreate worker` and Rejudge the affected submissions from the live console. Java gets slower; verdicts return to the plain path every gate covers | Aryav, only if verdicts are wrong |
 | The room needs more time, or End contest was pressed by mistake | An outage that cost the room minutes, or the wrong button | Setup tab, Window panel. **Change the end time** for more minutes, or **Reopen the contest** with a new end time, then press the 15 minute freeze preset again | Aryav, after Sameer decides |
 | The board froze too early, or was frozen by hand and unfrozen | A wrong freeze preset, or the live console's freeze button | Setup tab, freeze presets: press 15 again. Unfreezing by hand before 8:00 clears the scheduled freeze, so it has to be set again or the final board shows at 8:15 | Aryav |
 | Projector shows the wrong thing | Bare `/projector` picked a different contest, or the page was never refreshed | Open `/projector?contest={id}` from the Setup tab's link. Frozen plate missing after 8:00 means the Window panel on Setup has no freeze; press Freeze the public board on the live console instead. | Aryav |
