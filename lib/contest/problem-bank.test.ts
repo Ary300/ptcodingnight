@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   KEPT_OUT_OF_SETS_BLOCKER,
+  PRACTICE_ONLY_BLOCKER,
   readyBlockersFor,
   type ReadyFacts,
 } from "@/lib/contest/problem-bank";
@@ -19,6 +20,7 @@ const READY: ReadyFacts = {
   testCaseCount: 12,
   sampleCaseCount: 2,
   keepOutOfSets: false,
+  practiceOnly: false,
 };
 
 describe("readyBlockersFor", () => {
@@ -49,5 +51,9 @@ describe("readyBlockersFor", () => {
       "No test cases",
       "No sample cases, so a student cannot self-check",
     ]);
+  });
+
+  it("blocks a practice-area problem, so the set planner never deals one into a contest", () => {
+    expect(readyBlockersFor({ ...READY, practiceOnly: true })).toEqual([PRACTICE_ONLY_BLOCKER]);
   });
 });

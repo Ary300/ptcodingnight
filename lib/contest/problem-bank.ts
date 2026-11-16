@@ -47,6 +47,8 @@ export interface ReadyFacts {
   readonly sampleCaseCount: number;
   /** Set in the problem's manifest for a question whose whole point is a data type. */
   readonly keepOutOfSets: boolean;
+  /** A practice-area problem. Students can read it, and its answer, all year. */
+  readonly practiceOnly: boolean;
 }
 
 /**
@@ -54,6 +56,14 @@ export interface ReadyFacts {
  * decision was made, because the organizer reading it on the Problems tab has no other way to
  * find out that the flag exists or how to lift it.
  */
+/**
+ * Practice problems are public all year, so a student who practised could arrive holding the
+ * answer. The line-up API already refused them; the set planner read this list instead and dealt
+ * three of them into a live contest on 2026-11-16.
+ */
+export const PRACTICE_ONLY_BLOCKER =
+  "Practice problem: students can open it and its answer in the practice area, so it never goes into a contest.";
+
 export const KEPT_OUT_OF_SETS_BLOCKER =
   "Kept out of sets: this problem is about a data type (see its manifest). Place it by hand if you want it.";
 
@@ -74,6 +84,7 @@ export function readyBlockersFor(facts: ReadyFacts): string[] {
   if (facts.sampleCaseCount === 0)
     blockers.push("No sample cases, so a student cannot self-check");
   if (facts.keepOutOfSets) blockers.push(KEPT_OUT_OF_SETS_BLOCKER);
+  if (facts.practiceOnly) blockers.push(PRACTICE_ONLY_BLOCKER);
   return blockers;
 }
 
@@ -100,6 +111,7 @@ export async function problemBank(): Promise<AdminProblemBank> {
       pastStatus: string | null;
       round: string;
       keepOutOfSets: boolean;
+      practiceOnly: boolean;
       hasStatement: boolean;
       testCaseCount: bigint;
       sampleCaseCount: bigint;
@@ -107,7 +119,7 @@ export async function problemBank(): Promise<AdminProblemBank> {
   >`
     SELECT p."id", p."slug", p."title", p."state"::text AS "state",
            p."difficulty"::text AS "difficulty", p."pastStatus"::text AS "pastStatus",
-           p."round"::text AS "round", p."keepOutOfSets",
+           p."round"::text AS "round", p."keepOutOfSets", p."practiceOnly",
            (btrim(p."statementMd") <> '') AS "hasStatement",
            COUNT(t."id")                                  AS "testCaseCount",
            COUNT(t."id") FILTER (WHERE t."isSample")       AS "sampleCaseCount"
@@ -131,6 +143,7 @@ export async function problemBank(): Promise<AdminProblemBank> {
         testCaseCount,
         sampleCaseCount,
         keepOutOfSets: row.keepOutOfSets,
+        practiceOnly: row.practiceOnly,
       });
 
       return {
