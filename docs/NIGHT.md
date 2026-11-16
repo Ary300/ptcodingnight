@@ -120,6 +120,7 @@ Each line in the teacher's email, mapped to a screen or a person.
   button, on the laptop that will drive the wall, plugged into the room's projector. Read the
   clock and the smallest text from the back row. On the wall, space pauses the rotation, the
   arrow keys page, and B blacks it out.
+- The projector switches between divisions every 20 seconds on its own. To hold one division, add `&division={divisionId}` to its URL; clicking a tab pauses the switching for a minute.
 
 ### Not on the site
 

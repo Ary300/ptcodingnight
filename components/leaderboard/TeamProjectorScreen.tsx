@@ -6,12 +6,20 @@ import { formatEventTime } from "@/lib/contest/event-time";
 import { TEAM_EXPANDED_ROW_COST, TEAM_VISIBLE_ROWS } from "./constants";
 import { Countdown } from "./Countdown";
 import { CrestWatermark } from "./CrestWatermark";
+import {
+  nextTabId,
+  RESUME_AFTER_MS,
+  ROTATE_MS,
+  rotationHold,
+  rotationNote,
+} from "./division-rotation";
 import { resolveTabId, teamTabsFor, teamsForTab } from "./team-tabs";
 import { FrozenPlate } from "./FrozenPlate";
 import styles from "./leaderboard.module.css";
 import { drawnTeamRows, memberBlockBudget } from "./projector-rows";
 import { TeamDivisionTabs } from "./TeamDivisionTabs";
 import { TeamStandingsBoard } from "./TeamStandingsBoard";
+import { useReducedMotion } from "./useReducedMotion";
 import { useTeamStandings } from "./useTeamStandings";
 
 /**
@@ -62,9 +70,11 @@ export interface TeamProjectorScreenProps {
    */
   contestId: string | null;
   /**
-   * From `?division=`, so a kiosk URL can be bookmarked per division. Null or absent opens on
-   * the FIRST division's tab; an id that names no division in this contest falls back to that
-   * default rather than to an empty wall. A contest with no divisions has no tabs at all.
+   * From `?division=`, so a kiosk URL can be bookmarked per division, and a URL that names one
+   * PINS the wall to it: no rotation. Null or absent opens on the FIRST division's tab and then
+   * rotates through every division (see `division-rotation.ts`); an id that names no division in
+   * this contest falls back to that first tab rather than to an empty wall. A contest with no
+   * divisions has no tabs at all.
    */
   initialDivisionId?: string | null;
   /** Rows beyond this are not drawn; the footnote still counts them. */
@@ -105,6 +115,14 @@ export function TeamProjectorScreen({
   const [openTeamIds, setOpenTeamIds] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
+
+  /**
+   * When the viewer last picked a tab by hand, or null. A hand-picked tab holds the wall for
+   * `RESUME_AFTER_MS` and then rotation picks up again, so a laptop click cannot strand the room
+   * on one division for the rest of the night.
+   */
+  const [chosenAt, setChosenAt] = useState<number | null>(null);
+  const reducedMotion = useReducedMotion();
 
   // Escape closes, because the organizer opening this is at a laptop and the board is behind them.
   // Bound to the window rather than to the row: once the strip is open, the focused element may be
@@ -155,6 +173,40 @@ export function TeamProjectorScreen({
         : null;
 
   const frozen = standings?.frozen === true;
+
+  /*
+    THE ROTATION. Two divisions, one wall: without this the projector sat on the first tab all
+    night. Reduced motion changes how a switch LOOKS (no wipe, no progress bar), never whether it
+    happens, because the division a viewer cannot see is information, not decoration.
+  */
+  const hold = rotationHold({
+    pinned: initialDivisionId !== null,
+    tabCount: tabs.length,
+    chosenRecently: chosenAt !== null,
+    breakdownOpen: openTeamIds.size > 0,
+  });
+  const note = rotationNote(hold);
+  const activeTab = tabs.find((tab) => tab.id === activeTabId);
+  /* A string, so a poll that returns the same divisions does not restart the 20 seconds. */
+  const tabIdsKey = tabs.map((tab) => tab.id).join("\n");
+
+  useEffect(() => {
+    if (hold !== null) return undefined;
+    const timer = window.setTimeout(() => {
+      setRequestedTabId(nextTabId(tabIdsKey.split("\n"), activeTabId));
+    }, ROTATE_MS);
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [hold, tabIdsKey, activeTabId]);
+
+  useEffect(() => {
+    if (chosenAt === null) return undefined;
+    const timer = window.setTimeout(() => setChosenAt(null), RESUME_AFTER_MS);
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [chosenAt]);
 
   /*
     How many rows fit, and which ones.
@@ -263,12 +315,35 @@ export function TeamProjectorScreen({
             the CANVAS rather than on whatever the clock left over; removing the element would
             centre it on the wrong thing.
           */}
-          <div className={styles.teamHeadLeft} />
+          <div className={styles.teamHeadLeft}>
+            {/*
+              The rotation is stated in words in the otherwise empty left track, so it costs the
+              rows nothing in height. The bar under it fills over the 20 seconds a division holds
+              the wall; it is a second channel, and under reduced motion it is simply absent.
+            */}
+            {note !== null && (
+              <div className={styles.rotation}>
+                <p className={styles.rotationNote}>{note}</p>
+                {hold === null && !reducedMotion && (
+                  <span aria-hidden="true" className={styles.rotationTrack}>
+                    <span
+                      key={activeTabId}
+                      className={styles.rotationFill}
+                      style={{ animationDuration: `${String(ROTATE_MS)}ms` }}
+                    />
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
 
           <div>
             <h1 className={styles.teamTitle}>
               Park Tudor Coding Night{" "}
-              <span className={styles.teamTitleSub}>Team standings</span>
+              {/* The division on the wall, in the heading itself: the one line everyone reads. */}
+              <span className={styles.teamTitleSub} data-projector-division>
+                {activeTab === undefined ? "Team standings" : `${activeTab.label} team standings`}
+              </span>
             </h1>
             <p
               className={`${styles.teamSubtitle} ${frozen ? styles.teamSubtitleFrozen : ""}`}
@@ -286,7 +361,10 @@ export function TeamProjectorScreen({
               <TeamDivisionTabs
                 tabs={tabs}
                 activeTabId={activeTabId}
-                onSelect={setRequestedTabId}
+                onSelect={(tabId) => {
+                  setRequestedTabId(tabId);
+                  setChosenAt(Date.now());
+                }}
                 panelId={TEAM_PANEL_ID}
               />
             )}
@@ -313,7 +391,12 @@ export function TeamProjectorScreen({
           )}
         </div>
 
-        <div id={TEAM_PANEL_ID} className={styles.teamBoard}>
+        {/* Keyed per division so each switch replays the wipe; reduced motion removes the wipe. */}
+        <div
+          key={activeTabId ?? "all-teams"}
+          id={TEAM_PANEL_ID}
+          className={`${styles.teamBoard} ${styles.teamBoardSwap}`}
+        >
           {message !== null ? (
             /*
               Exactly ONE `role="status"` is on screen at a time. The empty state and the

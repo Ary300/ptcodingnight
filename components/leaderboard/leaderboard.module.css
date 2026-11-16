@@ -437,12 +437,91 @@
 }
 
 .teamHeadLeft {
+  /* Bottom of the track, level with the division tabs it describes, and clear of the Home chip
+     the projector layout pins to the top-left corner. */
+  align-self: end;
   justify-self: start;
 }
 
 .teamHeadRight {
   justify-self: end;
   text-align: right;
+}
+
+/*
+ * The division rotation, stated in the left track that the title's centring leaves empty, so it
+ * costs the standings no height. Muted words, then a hairline track whose panther fill runs the
+ * length of one division's 20 seconds: chrome, never text, so panther needs no alpha here.
+ */
+.rotation {
+  display: flex;
+  max-width: 16em;
+  flex-direction: column;
+  gap: calc(var(--gap) * 0.6);
+  font-size: var(--fs-sm);
+}
+
+.rotationNote {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.3;
+}
+
+.rotationTrack {
+  display: block;
+  overflow: hidden;
+  width: 100%;
+  height: calc(var(--fs-sm) * 0.16);
+  background: color-mix(in srgb, var(--color-ink) 12%, var(--color-paper));
+}
+
+.rotationFill {
+  display: block;
+  height: 100%;
+  animation-name: rotationFill;
+  animation-fill-mode: forwards;
+  animation-timing-function: linear;
+  background: var(--color-panther);
+  transform: scaleX(0);
+  transform-origin: left center;
+}
+
+@keyframes rotationFill {
+  from {
+    transform: scaleX(0);
+  }
+
+  to {
+    transform: scaleX(1);
+  }
+}
+
+/*
+ * A division change wipes the new board in from the left. Clip, not opacity: a fading wrapper
+ * would multiply with every muted value under it for the length of the fade (DESIGN.md §7).
+ */
+.teamBoardSwap {
+  animation: boardWipe 420ms ease-out;
+}
+
+@keyframes boardWipe {
+  from {
+    clip-path: inset(0 100% 0 0);
+  }
+
+  to {
+    clip-path: inset(0 0 0 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .teamBoardSwap {
+    animation: none;
+  }
+
+  .rotationTrack {
+    display: none;
+  }
 }
 
 .teamTitle {
