@@ -54,7 +54,8 @@ export const ServerEnvSchema = z.object({
   JUDGE_CONCURRENCY: numeric("JUDGE_CONCURRENCY", "4"),
 
   JUDGE_IMAGE_PYTHON: z.string().min(1).default("python:3.12-slim"),
-  JUDGE_IMAGE_JAVA: z.string().min(1).default("eclipse-temurin:21-jdk"),
+  /** Built locally by scripts/build-judge-images.sh: temurin 21 plus the one-JVM-per-submission harness. */
+  JUDGE_IMAGE_JAVA: z.string().min(1).default("ptcn-jdk:21"),
 
   JUDGE_MEMORY_LIMIT: z.string().min(1).default("256m"),
   JUDGE_CPU_LIMIT: z.string().min(1).default("1.0"),

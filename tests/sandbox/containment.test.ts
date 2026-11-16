@@ -27,7 +27,7 @@ const FIXTURES = path.join(ROOT, "fixtures", "sandbox");
 
 const IMAGES = {
   python: process.env.JUDGE_IMAGE_PYTHON ?? "python:3.12-slim",
-  java: process.env.JUDGE_IMAGE_JAVA ?? "eclipse-temurin:21-jdk",
+  java: process.env.JUDGE_IMAGE_JAVA ?? "ptcn-jdk:21",
 };
 
 interface Manifest {
