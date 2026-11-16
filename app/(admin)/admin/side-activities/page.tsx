@@ -23,7 +23,7 @@ export default async function SideActivitiesPage({
           Side activities
         </h1>
         <p className="mt-1 max-w-[70ch] text-ink/60" style={{ fontSize: "var(--text-sm)" }}>
-          The metal puzzle, train tracks, Connections. This screen is the only record of these
+          The paper puzzles and the Kahoot placing. This screen is the only record of these
           points. Pick the contest the points belong to.
         </p>
       </header>

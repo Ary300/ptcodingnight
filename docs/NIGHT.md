@@ -95,8 +95,9 @@ Each line in the teacher's email, mapped to a screen or a person.
 - [ ] **Hide the on-site puzzles.** `/admin/puzzles`. The puzzle this year is on paper, so every
   puzzle here should show as hidden; a student would otherwise see extra puzzles worth points.
   Hiding keeps nothing from anyone and is one press to undo.
-- [ ] **Print the paper puzzle** and decide the points for a correct one before the night, so
-  entry at the desk is one number per team on `/admin/contests/{id}/side-activities`.
+- [ ] **Print the paper puzzles**, one per team member, and decide the points for a correct one
+  before the night. Entry at the desk is on `/admin/contests/{id}/side-activities`: press Sudoku
+  or Another puzzle, choose the team and, if you like, the seat or student, then type the points.
 - [ ] **Publish.** Setup tab, Publish. The checklist above the button says what is missing.
   Students can then sign in with their codes before 7:00 and will wait in the lobby.
 - [ ] **Tell students they can practice beforehand.** "Try practice problems" on the homepage and
@@ -169,8 +170,8 @@ Kahoot runs 8:25 to 8:35, after rooms are clean and before awards. Plan 8 to 12 
 to 10 minutes, because a longer game bores the room. Teams play as teams on one device each, so
 the placing is a team placing.
 
-At 8:35 Aryav opens `/admin/contests/{id}/side-activities` and presses the Kahoot preset above
-the Activity field. The screen then shows the suggested payout. Enter one line per team that
+At 8:35 Aryav opens `/admin/contests/{id}/side-activities` and presses the Kahoot button at the
+top of the form. The screen then shows the suggested payout. Enter one line per team that
 played, choosing the team and typing its points:
 
 | Kahoot placing | Points |
@@ -180,8 +181,12 @@ played, choosing the team and typing its points:
 | 3rd | 20 |
 | Every other team | 10 |
 
-The screen records each entry with who entered it and when, and never edits or deletes one.
-Correct a mistake with a new entry of negative points, so the record keeps both lines.
+Every award is listed under its team with what it was for, its points, who entered it and when.
+A wrong one is fixed with Edit or Remove on its own row, and the audit log keeps what it said
+before. Entering the same award twice for a team (the same puzzle and seat, or a second Kahoot) is
+refused with the first one named, and goes through only if you press Record it as a second award.
+While the board is frozen, an award that was already on it cannot change its points; the Kahoot,
+entered after the freeze, can.
 
 The engine adds these points flat to the team score and never divides them by team size.
 SCORING.md §1 explains why: a side activity is something the team did as a unit, so dividing it
@@ -193,8 +198,9 @@ teamScore = (sum of every member's points) / teamSize
             + sideActivityPoints
 ```
 
-The paper puzzle is entered on the same screen, so the puzzle and the Kahoot both land in the
-flat term, and a student can check the whole sum on `/team`.
+The paper puzzles are entered on the same screen, so the puzzles and the Kahoot all land in the
+flat term, shown as the Puzzle column. Expand a team on the Awards tab to see each award under the
+player pool, and check they add up to the Puzzle column.
 
 ## 5. Awards in under ten minutes
 

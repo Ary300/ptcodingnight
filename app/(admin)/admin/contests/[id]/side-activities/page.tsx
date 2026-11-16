@@ -22,8 +22,8 @@ export default async function ContestSideActivitiesPage({
           Side activities
         </h2>
         <p className="mt-1 max-w-[70ch] text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
-          The metal puzzle, train tracks, Connections. This screen is the only record of these
-          points. Every entry is kept, with who entered it.
+          The paper puzzles and the Kahoot placing. This screen is the only record of these
+          points. Every award says what it was for and who entered it.
         </p>
       </header>
 

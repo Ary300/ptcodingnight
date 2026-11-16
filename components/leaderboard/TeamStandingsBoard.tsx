@@ -156,6 +156,24 @@ export interface TeamStandingsBoardProps {
    * are open (`memberBlockBudget` in `projector-rows.ts`). Undefined means the full block.
    */
   memberBlockRows?: number;
+  /**
+   * Organizer surfaces only: each team's typed awards, by team id, so the Puzzle column can say
+   * where its points came from ("Sudoku, seat A" +25, "Kahoot" +60). The expanded team lists one
+   * row per award under the player pool, and the Puzzle cell carries the list as its title.
+   * Absent on the public board and the projector, which show the total and nothing else.
+   */
+  sideActivityBreakdown?: ReadonlyMap<string, readonly SideActivityLine[]>;
+}
+
+/** One typed award as the organizer's breakdown shows it. */
+export interface SideActivityLine {
+  readonly id: string;
+  readonly label: string;
+  readonly points: number;
+}
+
+function signedAward(points: number): string {
+  return points > 0 ? `+${String(points)}` : String(points);
 }
 
 function formatScore(score: number): string {
@@ -379,6 +397,7 @@ export function TeamStandingsBoard({
   openTeamIds = new Set(),
   onToggleTeam,
   memberBlockRows,
+  sideActivityBreakdown,
 }: TeamStandingsBoardProps) {
   const rankSlideTable = useRef<HTMLTableElement | null>(null);
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
@@ -711,6 +730,9 @@ export function TeamStandingsBoard({
             const zebra = index % 2 === 1 ? "bg-ink/[0.03]" : "";
             const rowTint = mine ? "bg-panther/8" : zebra;
             const rosterId = `team-roster-${team.teamId}`;
+            const awards = projector
+              ? undefined
+              : sideActivityBreakdown?.get(team.teamId);
             const groupInsidePool = groupPointsInsideMean && team.groupPoints > 0;
 
             const mineTag = mine ? (
@@ -899,6 +921,13 @@ export function TeamStandingsBoard({
                     )}
                     <td
                       className={`numeric border ${grid} ${cellPad} text-center align-top`}
+                      title={
+                        awards === undefined || awards.length === 0
+                          ? undefined
+                          : awards
+                              .map((award) => `${award.label} ${signedAward(award.points)}`)
+                              .join("\n")
+                      }
                     >
                       {team.sideActivityPoints === 0 ? (
                         <span
@@ -1099,6 +1128,52 @@ export function TeamStandingsBoard({
                           <span className={styles.cellBox} />
                         </td>
                       </tr>
+
+                      {/*
+                        Where the Puzzle column came from, one row per typed award, its points in
+                        the Puzzle column itself so the rows visibly add up to the cell above.
+                        Organizer surfaces only: the prop is absent everywhere else.
+                      */}
+                      {awards?.map((award) => (
+                        <tr
+                          key={award.id}
+                          className={`${styles.memberRow} ${styles.poolRow}`}
+                        >
+                          <td className={styles.memberCell} />
+                          <th
+                            scope="row"
+                            className={`${styles.memberCell} ${styles.memberNameCell}`}
+                          >
+                            <span
+                              className={`${styles.cellBox} ${styles.cellBoxName}`}
+                            >
+                              <span className={styles.poolLabel}>
+                                {award.label}
+                              </span>
+                            </span>
+                          </th>
+                          <td className={styles.memberCell}>
+                            <span className={styles.cellBox} />
+                          </td>
+                          {columns.map((column) => (
+                            <td key={column.match} className={styles.memberCell}>
+                              <span className={styles.cellBox} />
+                            </td>
+                          ))}
+                          {showGroup && (
+                            <td className={styles.memberCell}>
+                              <span className={styles.cellBox} />
+                            </td>
+                          )}
+                          <td
+                            className={`numeric ${styles.memberCell} ${styles.memberNumber}`}
+                          >
+                            <span className={styles.cellBox}>
+                              {signedAward(award.points)}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
                     </>
                   )}
                 </tbody>

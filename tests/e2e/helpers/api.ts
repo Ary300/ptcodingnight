@@ -432,7 +432,28 @@ export class ContestApi {
     return this.req().get(`/api/admin/teams/${teamId}/side-activities`);
   }
 
-  addSideActivityRaw(teamId: string, body: { label: string; points: number }): Promise<APIResponse> {
+  editSideActivityRaw(
+    teamId: string,
+    activityId: string,
+    body: { label?: string; points?: number },
+  ): Promise<APIResponse> {
+    return this.req().patch(`/api/admin/teams/${teamId}/side-activities/${activityId}`, {
+      data: body,
+    });
+  }
+
+  removeSideActivityRaw(teamId: string, activityId: string): Promise<APIResponse> {
+    return this.req().delete(`/api/admin/teams/${teamId}/side-activities/${activityId}`);
+  }
+
+  contestSideActivitiesRaw(): Promise<APIResponse> {
+    return this.req().get(`/api/admin/contests/${this.contestId}/side-activities`);
+  }
+
+  addSideActivityRaw(
+    teamId: string,
+    body: { label: string; points: number; confirmDuplicate?: boolean },
+  ): Promise<APIResponse> {
     return this.req().post(`/api/admin/teams/${teamId}/side-activities`, { data: body });
   }
 

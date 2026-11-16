@@ -122,6 +122,15 @@ export const API_ROUTES = {
     `/api/admin/contests/${encodeURIComponent(contestId)}/teams`,
   adminTeam: (teamId: string) =>
     `/api/admin/teams/${encodeURIComponent(teamId)}`,
+  /** One team's hand-typed awards (`GET`), or a new one (`POST`). */
+  adminTeamSideActivities: (teamId: string) =>
+    `/api/admin/teams/${encodeURIComponent(teamId)}/side-activities`,
+  /** Edit (`PATCH`) or remove (`DELETE`) one award. */
+  adminTeamSideActivity: (teamId: string, activityId: string) =>
+    `/api/admin/teams/${encodeURIComponent(teamId)}/side-activities/${encodeURIComponent(activityId)}`,
+  /** Every team's awards in one contest: the Puzzle column's breakdown. */
+  adminContestSideActivities: (contestId: string) =>
+    `/api/admin/contests/${encodeURIComponent(contestId)}/side-activities`,
   /** Add a roster seat by name (no account) and mint its join code. */
   adminAddNamedParticipant: (contestId: string) =>
     `/api/admin/contests/${encodeURIComponent(contestId)}/roster/named`,
@@ -616,6 +625,29 @@ export const RosterMemberSchema = TeamMemberSchema.extend({
   joinCode: z.string().nullable(),
 });
 export type RosterMember = z.infer<typeof RosterMemberSchema>;
+
+/** One hand-typed award: a paper puzzle, a Kahoot placing. `label` says what it was for. */
+export const SideActivityRowSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  points: z.number().int(),
+  enteredBy: z.string(),
+  enteredAt: z.string(),
+});
+export type SideActivityRowView = z.infer<typeof SideActivityRowSchema>;
+
+/** A team's awards and their sum, which is the Puzzle column. */
+export const TeamSideActivitiesSchema = z.object({
+  teamId: z.string(),
+  teamName: z.string(),
+  total: z.number().int(),
+  activities: z.array(SideActivityRowSchema),
+});
+export type TeamSideActivitiesView = z.infer<typeof TeamSideActivitiesSchema>;
+
+export const ContestSideActivitiesSchema = z.object({
+  teams: z.array(TeamSideActivitiesSchema),
+});
 
 /** The organizer's roster view: every team plus everybody on none. */
 export const AdminRosterSchema = z.object({

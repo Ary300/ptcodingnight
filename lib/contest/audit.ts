@@ -76,6 +76,10 @@ export const AUDIT_ACTIONS = {
   /// become unexplainable, which is the property the seed exists to provide.
   setPlanApplied: "contest.build_sets",
   sideActivity: "team.side_activity",
+  /// An award's source or points changed. `before` keeps what it said.
+  sideActivityEdited: "team.side_activity_edited",
+  /// An award was taken off a team. `before` keeps all of it, including who entered it and when.
+  sideActivityRemoved: "team.side_activity_removed",
   /// Team formation. A roster change is a SCORE change with extra steps, because team size is
   /// the divisor — so every one of these is recorded with an actor, and the organizer ones with
   /// a reason as well.
