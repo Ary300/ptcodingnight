@@ -277,7 +277,7 @@ export function SettingsView() {
     <div className="mx-auto max-w-2xl">
       <Crumbs
         trail={[
-          { href: "/contest", label: "Coding Night" },
+          { href: "/", label: "Coding Night" },
           { label: "Settings" },
         ]}
       />

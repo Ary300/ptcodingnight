@@ -326,7 +326,17 @@ export function CompetitorChrome({ children }: { children: ReactNode }) {
           page rather than as chrome over it.
         */}
         <div className="flex w-full flex-wrap items-stretch gap-x-5 px-4 sm:px-6">
-          <Link href="/contest" className="order-1 flex items-center gap-2.5 py-2.5">
+          {/*
+            The wordmark goes home, to "/", as a site's logo does everywhere else. It used to go
+            to /contest, which the "Problems" tab beside it already does. The accessible name says
+            where it goes, because the visible "Coding Night" alone does not.
+          */}
+          <Link
+            href="/"
+            aria-label="Coding Night home"
+            data-brand-home
+            className="order-1 flex items-center gap-2.5 py-2.5"
+          >
             <Image
               src="/brand/pt-panther.png"
               alt=""

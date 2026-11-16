@@ -164,7 +164,7 @@ export function LobbyView({ phase = null, viewerKind }: LobbyViewProps) {
       <section className="min-w-0">
         <Crumbs
           trail={[
-            { href: "/contest", label: "Coding Night" },
+            { href: "/", label: "Coding Night" },
             { label: beforeStart ? "Lobby" : "Problems" },
           ]}
         />

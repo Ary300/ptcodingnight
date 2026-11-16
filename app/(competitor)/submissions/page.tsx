@@ -15,7 +15,7 @@ export default function SubmissionsPage() {
     // reference's table fills its column; the verdict-next-to-title pairing survives because the
     // table's own columns hold their x-positions at any width.
     <div>
-      <Crumbs trail={[{ href: "/contest", label: "Coding Night" }, { label: "My submissions" }]} />
+      <Crumbs trail={[{ href: "/", label: "Coding Night" }, { label: "My submissions" }]} />
       {/* Steps down to --text-lg below `sm` (the pattern ProblemWorkspace set): a flat 40px h1
           wraps at 360 and spends 120px of the first screen before any content. */}
       <h1 className="mt-1 font-display font-bold text-[length:var(--text-lg)] sm:text-[length:var(--text-xl)]">

@@ -116,7 +116,7 @@ export function MyTeamView() {
       <header>
         <Crumbs
           trail={[
-            { href: "/contest", label: "Coding Night" },
+            { href: "/", label: "Coding Night" },
             { href: "/team", label: "My team" },
             // The team's own name is the page you are on, so it is text rather than a link. Before
             // the roster is set there is no name, and the trail simply ends at "My team".
