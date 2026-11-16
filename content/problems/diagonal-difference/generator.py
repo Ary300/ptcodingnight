@@ -7,6 +7,11 @@ the test set covers degenerate cases (1x1, all entries equal, symmetric
 matrices where the diagonals cancel, entries pinned to both constraint
 bounds, one huge off-diagonal outlier) as well as uniform noise, up to the
 n = 1000 ceiling.
+
+Every generated grid with n > 1 has a nonzero answer (see break_balance), so a
+program that prints 0 cannot pass them. Which seed made which test: 04 = seed 4,
+05 = 7, 07 = 9, 08 = 22, 10 = 5, 12 = 35, 13 = 30, 15 = 14. The rest are written
+by hand.
 """
 
 import random
@@ -76,14 +81,42 @@ def build_matrix(seed: int, n: int, rng: random.Random) -> list[list[int]]:
     return m
 
 
+def diagonal_gap(m: list[list[int]]) -> int:
+    n = len(m)
+    return sum(m[i][i] for i in range(n)) - sum(m[i][n - 1 - i] for i in range(n))
+
+
+def break_balance(m: list[list[int]], rng: random.Random) -> list[list[int]]:
+    """Return a copy whose diagonals no longer balance, when n > 1 allows it.
+
+    The flat, mirrored and bound-only shapes all tend to give 0, which is also what
+    an untouched starter prints. A zero answer is kept for the hand-written edge
+    cases (03, n = 1, and 06, a mirrored grid); generated grids get one cell that
+    sits on exactly one diagonal nudged, so the sums differ by a nonzero amount.
+    """
+    n = len(m)
+    if n < 2 or diagonal_gap(m) != 0:
+        return m
+    i = rng.choice([r for r in range(n) if r != n - 1 - r])
+    shift = rng.randint(1, MAX_ABS)
+    old = m[i][i]
+    new = old - shift if old - shift >= -MAX_ABS else old + shift
+    if new > MAX_ABS:
+        new = -MAX_ABS if old != -MAX_ABS else MAX_ABS
+    copy = [row[:] for row in m]
+    copy[i][i] = new
+    return copy
+
+
 def main() -> None:
     seed = int(sys.argv[1])
     rng = random.Random(seed)
     n = choose_n(seed, rng)
-    matrix = build_matrix(seed, n, rng)
+    matrix = break_balance(build_matrix(seed, n, rng), rng)
 
     assert len(matrix) == n and all(len(row) == n for row in matrix)
     assert all(-MAX_ABS <= v <= MAX_ABS for row in matrix for v in row)
+    assert n == 1 or diagonal_gap(matrix) != 0
 
     out = sys.stdout
     out.write(f"{n}\n")
