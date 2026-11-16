@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { formatEventTimeSeconds } from "@/lib/contest/event-time";
 
@@ -215,15 +216,23 @@ export function LiveConsole({ contestId }: LiveConsoleProps) {
     [record, refresh],
   );
 
+  const router = useRouter();
   const setFreeze = useCallback(
     (next: boolean): void => {
       void act(
         `/api/admin/contests/${contestId}/freeze`,
         { frozen: next },
         next ? "Froze the public board" : "Unfroze the public board",
-      );
+      ).then(() => {
+        /*
+          The contest's state pill above the tabs is server-rendered. Unfreezing a contest past
+          its end ENDS it, and without this the header went on saying "RUNNING. Live. Students
+          are submitting now." beside a revealed final board until somebody reloaded.
+        */
+        router.refresh();
+      });
     },
-    [act, contestId],
+    [act, contestId, router],
   );
 
   const onRejudge = useCallback(
