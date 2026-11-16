@@ -332,29 +332,32 @@ export async function createSubmission(
     "You are submitting very quickly — wait a moment and try again",
   );
 
-  /*
-    A repeat of the same code is the same submission. Asked BEFORE the window check on purpose: a
-    POST that reached the server at 8:14:59 and lost its response on the way back is retried at
-    8:15:03, and that retry must hand back the submission that counts rather than tell the student
-    the contest is over. Only the viewer's own rows are searched.
-  */
-  const earlier = await findRepeatSubmission(prisma, viewer.participantId, input, now);
-  if (earlier !== null) return getSubmissionView(earlier, viewer, now);
-
   // The clock, before the gate reads the state. A scheduled start used to happen only when some
   // page polled the board, so a student whose submit was the first request after 7:00 was told
   // the contest had not started while the lobby beside them said it had.
   await reconcileContestClockById(viewer.contestId, now);
 
-  const target = await resolveTarget(
-    input.contestProblemId,
-    input.language,
-    viewer,
-    now,
-  );
+  let target: SubmissionTarget;
+  try {
+    target = await resolveTarget(input.contestProblemId, input.language, viewer, now);
+  } catch (error: unknown) {
+    /*
+      A POST that reached the server at 8:14:59 and lost its response on the way back is retried
+      at 8:15:03. Refusing the retry tells the student the contest is over while their submission
+      counts, so a closed window hands back that submission instead. Only for the window: every
+      other refusal (practice paused, a set they were moved off) still answers as it did. Only the
+      viewer's own rows are searched.
+    */
+    if (error instanceof DomainError && error.code === "CONTEST_NOT_RUNNING") {
+      const earlier = await findRepeatSubmission(prisma, viewer.participantId, input, now);
+      if (earlier !== null) return getSubmissionView(earlier, viewer, now);
+    }
+    throw error;
+  }
 
-  // The check above is a read, and two copies of one POST can both pass it. The lock makes the
-  // second wait for the first's insert and then find it.
+  // A repeat of the same code is the same submission. Two copies of one POST can arrive together,
+  // so the check and the insert happen under one per-student lock: the second waits for the
+  // first's row and then finds it.
   const created = await prisma.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('submit'), hashtext(${viewer.participantId}))`;
     const raced = await findRepeatSubmission(tx, viewer.participantId, input, now);
