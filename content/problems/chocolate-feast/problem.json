@@ -13,5 +13,25 @@
     "kind": "whitespace"
   },
   "sampleCount": 2,
-  "originAttribution": "Task inspired by a problem of the same name used at a past Coding Night. Statement and test data written fresh for this platform."
+  "originAttribution": "Task inspired by a problem of the same name used at a past Coding Night. Statement and test data written fresh for this platform.",
+  "signature": {
+    "name": "chocolateFeast",
+    "returns": {
+      "type": "int"
+    },
+    "params": [
+      {
+        "name": "n",
+        "type": "int"
+      },
+      {
+        "name": "c",
+        "type": "int"
+      },
+      {
+        "name": "m",
+        "type": "int"
+      }
+    ]
+  }
 }

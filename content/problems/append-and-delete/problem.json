@@ -13,5 +13,25 @@
     "kind": "whitespace"
   },
   "sampleCount": 3,
-  "originAttribution": "Task inspired by a problem of the same name used at a past Coding Night. Statement and test data written fresh for this platform."
+  "originAttribution": "Task inspired by a problem of the same name used at a past Coding Night. Statement and test data written fresh for this platform.",
+  "signature": {
+    "name": "appendAndDelete",
+    "returns": {
+      "type": "string"
+    },
+    "params": [
+      {
+        "name": "s",
+        "type": "string"
+      },
+      {
+        "name": "t",
+        "type": "string"
+      },
+      {
+        "name": "k",
+        "type": "int"
+      }
+    ]
+  }
 }

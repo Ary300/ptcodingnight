@@ -14,5 +14,27 @@
   },
   "sampleCount": 2,
   "originAttribution": "Written for the Park Tudor practice arena. Original task.",
-  "practiceOnly": true
+  "practiceOnly": true,
+  "signature": {
+    "name": "orchardRoutes",
+    "returns": {
+      "type": "int"
+    },
+    "params": [
+      {
+        "name": "r",
+        "type": "int",
+        "passed": false
+      },
+      {
+        "name": "c",
+        "type": "int"
+      },
+      {
+        "name": "grid",
+        "type": "string[]",
+        "length": "r"
+      }
+    ]
+  }
 }

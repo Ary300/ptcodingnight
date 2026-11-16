@@ -13,5 +13,37 @@
     "kind": "whitespace"
   },
   "sampleCount": 3,
-  "originAttribution": "Task inspired by a problem of the same name used at a past Coding Night. Statement and test data written fresh for this platform."
+  "originAttribution": "Task inspired by a problem of the same name used at a past Coding Night. Statement and test data written fresh for this platform.",
+  "signature": {
+    "name": "libraryFine",
+    "returns": {
+      "type": "int"
+    },
+    "params": [
+      {
+        "name": "dr",
+        "type": "int"
+      },
+      {
+        "name": "mr",
+        "type": "int"
+      },
+      {
+        "name": "yr",
+        "type": "int"
+      },
+      {
+        "name": "de",
+        "type": "int"
+      },
+      {
+        "name": "me",
+        "type": "int"
+      },
+      {
+        "name": "ye",
+        "type": "int"
+      }
+    ]
+  }
 }
