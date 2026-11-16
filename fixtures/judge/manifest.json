@@ -472,6 +472,13 @@
       "testCount": 2,
       "timeLimitMs": 8000,
       "expectedVerdict": "AC"
+    },
+    {
+      "id": "java-ce-package",
+      "language": "JAVA_21",
+      "sourceFile": "Main.java",
+      "expectedVerdict": "CE",
+      "expectedCompileErrorContains": "package solution;"
     }
   ]
 }

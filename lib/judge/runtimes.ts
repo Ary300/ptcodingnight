@@ -209,6 +209,25 @@ export interface Variant {
    */
   readonly compileService?: "javac";
   /**
+   * The file in /build that `runCommand` starts. A build that succeeds WITHOUT it, but leaves a
+   * file of that name in a subdirectory, put the entry point in a package — for Java, a
+   * `package x;` line, which javac accepts and `java Main` then cannot find. That is reported as
+   * a CE carrying `nestedMessage`, with `{package}` replaced by the package's name, instead of an
+   * RE on every test (or a bare "Compilation failed") that the student cannot act on.
+   *
+   * `declaration` finds the same thing in the SOURCE, before anything is compiled: a regular
+   * expression applied after C-style comments are removed, capturing the package's name. It is
+   * the deterministic path. The build-directory check is the backstop, because the compile
+   * container's disk watchdog treats any subdirectory in /build as hostile and may kill javac
+   * while it writes the package's directory — which is where the bare "Compilation failed" came
+   * from.
+   */
+  readonly entryArtifact?: {
+    readonly file: string;
+    readonly nestedMessage: string;
+    readonly declaration?: string;
+  };
+  /**
    * Starter file shown in the editor, so the first thing a student sees is not an empty box.
    *
    * Lives here rather than in the UI for the same reason everything else does: adding a
@@ -479,6 +498,19 @@ const JAVA_HARNESS_COMMAND =
  * (see CLAUDE.md); renaming a label has one, because `LANGUAGE_LABEL` in
  * components/contest/editor/types.ts derives from here.
  */
+/**
+ * The web side tells students the same thing: `public class Main`, no package. Keep the two in
+ * step.
+ */
+const JAVA_ENTRY = {
+  file: "Main.class",
+  // A package declaration is the first thing in a compilation unit, after comments and any
+  // annotations, so this is anchored at the start.
+  declaration: String.raw`^\s*(?:@[\w.$]+(?:\([^)]*\))?\s*)*package\s+([A-Za-z_$][\w$]*(?:\s*\.\s*[A-Za-z_$][\w$]*)*)\s*;`,
+  nestedMessage:
+    'Delete the line "package {package};" at the top of your file. The judge runs public class Main with no package, so with that line it cannot find your program.',
+} as const;
+
 export const VARIANTS: Readonly<Record<LanguageId, Variant>> = {
   PYTHON_312: {
     id: "PYTHON_312",
@@ -510,6 +542,7 @@ main()
     compileCommand: `javac ${JAVAC_FLAGS} --release 8 -proc:none -nowarn -d /build /work/Main.java`,
     producesArtifacts: true,
     runCommand: `exec java ${JVM_RUN_FLAGS} -cp /build Main`,
+    entryArtifact: JAVA_ENTRY,
     starter: `import java.util.*;
 import java.io.*;
 
@@ -529,6 +562,7 @@ public class Main {
     compileCommand: `javac ${JAVAC_FLAGS} --release 11 -proc:none -nowarn -d /build /work/Main.java`,
     producesArtifacts: true,
     runCommand: `exec java ${JVM_RUN_FLAGS} -cp /build Main`,
+    entryArtifact: JAVA_ENTRY,
     starter: `import java.util.*;
 import java.io.*;
 
@@ -548,6 +582,7 @@ public class Main {
     compileCommand: `javac ${JAVAC_FLAGS} --release 17 -proc:none -nowarn -d /build /work/Main.java`,
     producesArtifacts: true,
     runCommand: `exec java ${JVM_RUN_FLAGS} -cp /build Main`,
+    entryArtifact: JAVA_ENTRY,
     starter: `import java.util.*;
 import java.io.*;
 
@@ -567,6 +602,7 @@ public class Main {
     compileCommand: `javac ${JAVAC_FLAGS} --release 21 -proc:none -nowarn -d /build /work/Main.java`,
     producesArtifacts: true,
     runCommand: `exec java ${JVM_RUN_FLAGS} -cp /build Main`,
+    entryArtifact: JAVA_ENTRY,
     harnessCommand: JAVA_HARNESS_COMMAND,
     compileService: "javac",
     starter: `import java.util.*;

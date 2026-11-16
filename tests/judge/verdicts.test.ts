@@ -77,6 +77,8 @@ interface Manifest {
      */
     problemDir?: string;
     testCount?: number;
+    /** For a CE whose message the judge writes itself rather than the compiler. */
+    expectedCompileErrorContains?: string;
   }[];
 }
 
@@ -205,6 +207,9 @@ describe("G4 judge fixtures", () => {
       if (entry.expectedVerdict === "CE") {
         expect(result.compileError, `${entry.id} produced no compiler output`).not.toBeNull();
         expect(result.compileError).not.toBe("Compilation failed");
+        if (entry.expectedCompileErrorContains !== undefined) {
+          expect(result.compileError).toContain(entry.expectedCompileErrorContains);
+        }
       }
     });
   }

@@ -21,6 +21,7 @@ import {
   type ControlStdin,
   type ContainerRunResult,
 } from "@/worker/docker";
+import { declaredPackageMessage, misplacedEntryMessage } from "./entry-artifact";
 import { withHostMaxProcs } from "./host";
 import {
   BATCH_DRIVER,
@@ -874,7 +875,20 @@ export async function judge(
   };
 
   try {
-    await writeFile(path.join(sourceDir, variant.sourceFile), job.sourceCode, "utf8");    await writeFile(path.join(sourceDir, variant.sourceFile), job.sourceCode, "utf8");
+    await writeFile(path.join(sourceDir, variant.sourceFile), job.sourceCode, "utf8");
+
+    // A Java package line, found in the source before anything is compiled (lib/judge/runtimes.ts,
+    // entryArtifact). A CE that says what to delete, not an RE on every test.
+    const declaredPackage =
+      variant.entryArtifact === undefined ? null : declaredPackageMessage(job.sourceCode, variant.entryArtifact);
+    if (declaredPackage !== null) {
+      return withTimings(aggregate({
+        submissionId: job.submissionId,
+        results: [],
+        testCases: job.testCases,
+        compileError: declaredPackage,
+      }));
+    }
 
     // --- build, in its OWN container when it emits artifacts --------------
     //
@@ -944,6 +958,20 @@ export async function judge(
           // g++ template error is useless to them.
           compileError: compile.stderr.trim() || "Compilation failed",
         }));
+      }
+
+      // The build succeeded, but not where the run command looks (a Java package line). Said as a
+      // CE the student can act on, rather than an RE on every test.
+      if (variant.entryArtifact !== undefined) {
+        const misplaced = await misplacedEntryMessage(buildDir, variant.entryArtifact);
+        if (misplaced !== null) {
+          return withTimings(aggregate({
+            submissionId: job.submissionId,
+            results: [],
+            testCases: job.testCases,
+            compileError: misplaced,
+          }));
+        }
       }
     }
 
