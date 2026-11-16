@@ -626,7 +626,13 @@ export const AdminRosterSchema = z.object({
     "PLAYER_CHOOSES",
     "ONE_SET_PER_TEAM",
   ]),
-  problemSets: z.array(z.object({ setId: z.string(), label: z.string() })),
+  /**
+   * Every set, with the division it belongs to. Letters repeat across divisions (each division
+   * has its own A), so the division is what tells "Intermediate A" from "Advanced A" apart.
+   */
+  problemSets: z.array(
+    z.object({ setId: z.string(), label: z.string(), divisionId: z.string().nullable() }),
+  ),
   /**
    * The contest's divisions, in board order. Empty for a contest with none, which is what the
    * screen keys "show division controls at all" on. The per-division headcount is derived from

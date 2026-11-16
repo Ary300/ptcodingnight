@@ -768,6 +768,7 @@ export async function adminReassignSet(
         contestId: true,
         teamId: true,
         chosenSetId: true,
+        divisionId: true,
         contest: { select: { setSelection: true } },
       },
     });
@@ -779,11 +780,22 @@ export async function adminReassignSet(
     if (setId !== null) {
       const set = await tx.problemSet.findUnique({
         where: { id: setId },
-        select: { id: true, contestId: true },
+        select: { id: true, contestId: true, divisionId: true },
       });
       if (set === null) throw new NotFoundError("Problem set");
       if (set.contestId !== participant.contestId) {
         throw new ValidationError("That problem set belongs to a different contest");
+      }
+      /*
+        Every division has its own set A, B, C. A set from another division is another division's
+        problems, and the teammate check below compares set ids, so it would not even notice two
+        teammates now sharing a letter. Refused, the same rule `ensureSetAssigned` deals by.
+      */
+      if (set.divisionId !== participant.divisionId) {
+        throw new ValidationError(
+          "That set belongs to a different division. Choose a set from this student's division, " +
+            "or change their division first with Move.",
+        );
       }
       if (
         participant.teamId !== null &&
@@ -1011,26 +1023,56 @@ export async function adminAddNamedParticipant(
         )?.divisionId ?? null;
 
   const displayName = await uniqueDisplayName(contestId, input.displayName);
-  const participant = await prisma.participant.create({
-    data: {
-      contestId,
-      userId: null,
-      displayName,
-      teamId: input.teamId ?? null,
-      divisionId: input.divisionId ?? teamDivision,
-    },
-    select: { id: true },
+
+  /*
+    A LATE ARRIVAL IS DEALT A SET, exactly as a move onto a team is.
+
+    This used to create the row and stop. Once the sets had been dealt, a student added onto a
+    team at the door sat on it with no set at all: no problems to open, a blank column on the
+    board, and a checklist that only said "1 of 34 has no set" with the one remedy, re-dealing,
+    reshuffling everybody's printed letter. `ensureSetAssigned` picks a set no teammate holds,
+    from the seat's own division, and refuses the add outright when the team already uses every
+    set, so the seat is never created half-made. Before any deal (no seed yet) it changes nothing
+    and the later "Assign problem sets" covers this seat like every other.
+
+    Under the contest lock, and a seat put straight onto a team passes the same guard as a move,
+    because it is a new member of that team's divisor.
+  */
+  const participant = await prisma.$transaction(async (tx) => {
+    await lockContestMutations(tx, contestId);
+    const lockedContest = await contestForTeams(contestId, tx);
+    if (input.teamId != null) assertCanMutateStandingsInputs(lockedContest, new Date());
+
+    const created = await tx.participant.create({
+      data: {
+        contestId,
+        userId: null,
+        displayName,
+        teamId: input.teamId ?? null,
+        divisionId: input.divisionId ?? teamDivision,
+      },
+      select: { id: true },
+    });
+
+    const chosenSetId =
+      lockedContest.setAssignmentSeed === null
+        ? null
+        : await ensureSetAssigned(tx, lockedContest, created.id, input.teamId ?? null);
+
+    await writeAudit(
+      {
+        actor,
+        action: AUDIT_ACTIONS.participantAdded,
+        entity: `Participant:${created.id}`,
+        after: { displayName, teamId: input.teamId ?? null, byJoinCode: true, chosenSetId },
+        reason: "roster seat created for a student with no account",
+      },
+      tx,
+    );
+    return created;
   });
 
   const joinCode = await mintJoinCode(participant.id);
-
-  await writeAudit({
-    actor,
-    action: AUDIT_ACTIONS.participantAdded,
-    entity: `Participant:${participant.id}`,
-    after: { displayName, teamId: input.teamId ?? null, byJoinCode: true },
-    reason: "roster seat created for a student with no account",
-  });
 
   invalidateScoringInput(contestId);
   return { participantId: participant.id, displayName, joinCode };
@@ -1319,7 +1361,11 @@ export async function adminRoster(contestId: string): Promise<{
   readonly maxTeamSize: number;
   readonly formationOpen: boolean;
   readonly setSelection: "RANDOM_ASSIGNED" | "PLAYER_CHOOSES" | "ONE_SET_PER_TEAM";
-  readonly problemSets: readonly { readonly setId: string; readonly label: string }[];
+  readonly problemSets: readonly {
+    readonly setId: string;
+    readonly label: string;
+    readonly divisionId: string | null;
+  }[];
   readonly divisions: readonly { readonly divisionId: string; readonly name: string }[];
   readonly teams: readonly (Omit<TeamView, "members"> & {
     readonly memberCount: number;
@@ -1398,7 +1444,11 @@ export async function adminRoster(contestId: string): Promise<{
       | "RANDOM_ASSIGNED"
       | "PLAYER_CHOOSES"
       | "ONE_SET_PER_TEAM",
-    problemSets: contest.problemSets.map((set) => ({ setId: set.id, label: set.label })),
+    problemSets: contest.problemSets.map((set) => ({
+      setId: set.id,
+      label: set.label,
+      divisionId: set.divisionId,
+    })),
     divisions: contest.divisions.map((division) => ({
       divisionId: division.id,
       name: division.name,

@@ -1034,7 +1034,11 @@ export function RosterManager({ contestId }: RosterManagerProps) {
               onChange={(event) => setSetTarget(event.target.value)}
             >
               <option value="">(no individual set)</option>
-              {roster.problemSets.map((set) => (
+              {/* Only this student's division: every division has its own A to E, and a list of
+                  two identical "Set A" lines gave no way to tell them apart. */}
+              {roster.problemSets
+                .filter((set) => set.divisionId === settingSet.divisionId)
+                .map((set) => (
                 <option key={set.setId} value={set.setId}>
                   Set {set.label}
                 </option>
