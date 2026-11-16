@@ -7,8 +7,9 @@
 # than pulled and takes minutes. It does two things:
 #
 #   1. Pulls the stock images the registry names.
-#   2. Builds the images we derive ourselves — currently just Go, which needs a pre-warmed
-#      build cache to be judgeable at all (see docker/go/Dockerfile).
+#   2. Builds the images we derive ourselves: Go (a pre-warmed build cache), gcc (a precompiled
+#      <bits/stdc++.h>) and the JDK (the in-JVM test harness, docker/jdk/Dockerfile). Go needs its
+#      cache to be judgeable at all (see docker/go/Dockerfile).
 #
 # `--verify` then asserts two DIFFERENT properties, and neither one implies the other:
 #
@@ -126,6 +127,30 @@ else
   exit 1
 fi
 
+# The SHA-256 of the in-JVM harness source, over every .java file's path and bytes in a fixed
+# order. Baked into ptcn-jdk:21 so --verify can tell an image built from TODAY's harness from one
+# built before somebody edited it.
+harness_source_sha256() {
+  (
+    cd worker/jvm-harness
+    find . -type f -name '*.java' | LC_ALL=C sort | while IFS= read -r f; do
+      printf '%s\n' "$f"
+      cat "$f"
+    done
+  ) | { if command -v sha256sum >/dev/null 2>&1; then sha256sum; else shasum -a 256; fi; } | cut -d' ' -f1
+}
+HARNESS_SHA="$(harness_source_sha256)"
+
+echo
+echo "==> building ptcn-jdk:21 (eclipse-temurin:21-jdk + the in-JVM test harness)"
+if docker build -q --build-arg "HARNESS_SOURCE_SHA256=${HARNESS_SHA}" -t ptcn-jdk:21 \
+     -f docker/jdk/Dockerfile worker/jvm-harness >/dev/null; then
+  echo "    ptcn-jdk:21                built, harness source ${HARNESS_SHA:0:12}"
+else
+  echo "FAIL  could not build ptcn-jdk:21" >&2
+  exit 1
+fi
+
 echo
 echo "==> building ptcn-go:1.23 (pre-warms the Go build cache; takes a few minutes)"
 if docker build -q -t ptcn-go:1.23 docker/go/ >/dev/null; then
@@ -235,6 +260,69 @@ else
   exit 1
 fi
 
+# ---------------------------------------------------------------------------------------------
+# ptcn-jdk:21's in-JVM harness, asserted two ways.
+#
+# STRUCTURAL: the image carries a modular harness.jar declaring module ptcn.harness, and the hash
+# baked beside it is the hash of worker/jvm-harness as it is in the repo NOW. A harness edited
+# without a rebuild would otherwise run old code against a new driver. The driver refuses a
+# harness whose protocol number differs and falls back to one process per test, so the failure is
+# never a wrong verdict — it is every Java submission quietly back at the old speed, which is what
+# this check exists to make loud.
+#
+# BEHAVIOURAL: the registry's own harness command, under the judge's isolation flags, starts and
+# says `ready`.
+# ---------------------------------------------------------------------------------------------
+printf '    %-26s ' "jdk21 harness source"
+baked_sha=$(docker run --rm --entrypoint sh ptcn-jdk:21 -c 'cat /opt/ptcn/harness.sha256' 2>/dev/null || true)
+if [ "$baked_sha" != "$HARNESS_SHA" ]; then
+  echo "FAILED"
+  cat >&2 <<EOF
+FAIL  ptcn-jdk:21 was built from harness source ${baked_sha:-<none>},
+      but worker/jvm-harness is ${HARNESS_SHA} today.
+      Re-run this script without --verify to rebuild the image.
+EOF
+  exit 1
+fi
+module_line=$(docker run --rm --entrypoint sh ptcn-jdk:21 -c \
+  'jar --describe-module --file /opt/ptcn/harness.jar 2>/dev/null | head -n 1' 2>/dev/null || true)
+case "$module_line" in
+  "ptcn.harness "*) echo "matches the repo, module ptcn.harness" ;;
+  *)
+    echo "FAILED"
+    echo "FAIL  /opt/ptcn/harness.jar is not the ptcn.harness module (got: ${module_line:-nothing})" >&2
+    exit 1
+    ;;
+esac
+
+printf '    %-26s ' "jdk21 harness starts"
+HARNESS_CMD="$(npx --yes tsx scripts/print-compile-command.ts JAVA_21 --harness 2>/dev/null)" || HARNESS_CMD=""
+if [ -z "$HARNESS_CMD" ]; then
+  echo "FAILED"
+  echo "FAIL  could not read the JAVA_21 harness command from lib/judge/runtimes.ts" >&2
+  exit 1
+fi
+harness_work=$(mktemp -d)
+mkdir -p "$harness_work/build" "$harness_work/in"
+chmod -R a+rX "$harness_work"
+hello=$(docker run --rm --network=none --read-only \
+  --tmpfs=/tmp:rw,noexec,nosuid,size=16m --user=65534:65534 --cap-drop=ALL \
+  --security-opt=no-new-privileges --pids-limit=64 --memory=256m --memory-swap=256m \
+  --env=HOME=/tmp --env=TMPDIR=/tmp --env=PTCN_TIMEOUT=5 \
+  -v "$harness_work/build:/build:ro" -v "$harness_work/in:/in:ro" \
+  ptcn-jdk:21 bash -c 'printf "%s\n" "$1" > /tmp/h.sh
+coproc H { exec sh /tmp/h.sh 3<&0 4>&1 </dev/null >/dev/null 2>&1; }
+read -r -t 60 -u "${H[0]}" line && printf "%s\n" "$line"' _ "$HARNESS_CMD" 2>/dev/null || true)
+rm -rf "$harness_work"
+case "$hello" in
+  "ready "*) echo "says \"${hello}\" under the judge's flags" ;;
+  *)
+    echo "FAILED"
+    echo "FAIL  the Java harness did not start under the judge's flags (said: ${hello:-nothing})" >&2
+    exit 1
+    ;;
+esac
+
 # The stock runtimes need no equivalent, and this was checked rather than assumed: none of
 # python:3.12-slim, eclipse-temurin:21-jdk or node:22-slim ships a cache directory or sets a cache
 # environment variable, so none of them has state on the rootfs to go stale. Go carries a baked
@@ -333,4 +421,4 @@ EOF
 fi
 
 echo
-echo "PASS  all judge images ready, Go cache warm, C++ PCH in use"
+echo "PASS  all judge images ready, Go cache warm, C++ PCH in use, Java harness current"

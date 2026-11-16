@@ -30,6 +30,16 @@ import {
 } from "@/worker/batch-driver";
 import { removeAsRoot } from "@/worker/docker";
 import { scaledStartupBudgetMs } from "@/worker/host";
+import {
+  HARNESS_BACKSTOP_GRACE_S,
+  HARNESS_PROTOCOL,
+  HARNESS_SETTLE_TIMEOUT_S,
+  HARNESS_START_TIMEOUT_S,
+  JVM_DRIVER,
+  parseRunMode,
+  type RunMode,
+} from "@/worker/jvm-driver";
+import { harnessDeclineReason } from "@/worker/jvm-harness-eligibility";
 
 /**
  * Judges one submission: prepare a source directory, compile if the language needs it, run
@@ -66,6 +76,34 @@ const SCRATCH_ROOT =
  * adding a language must not require a new field here.
  */
 export type ImageOverrides = Partial<Record<string, string>>;
+
+/**
+ * How the tests of one submission were run, for the A/B harness and the worker log. Nothing in the
+ * verdict depends on it.
+ */
+export interface RunReport {
+  /** The variant has an in-process harness and it was switched on for this job. */
+  readonly harnessOffered: boolean;
+  /** Why the harness was not used for this submission, when it was offered and not used. */
+  readonly declined: string | null;
+  /** Per test, in ordinal order: the path that produced its result. */
+  readonly modes: readonly (RunMode | "retry")[];
+}
+
+export interface JudgeOptions {
+  /**
+   * Override for the in-process harness (worker/jvm-driver.ts). Absent means on, unless the worker
+   * runs with JUDGE_JVM_HARNESS=off — the switch an organizer flips if the harness misbehaves on
+   * the night, without a deploy.
+   */
+  readonly harness?: boolean;
+  readonly onReport?: (report: RunReport) => void;
+}
+
+function harnessSwitchedOn(options: JudgeOptions | undefined): boolean {
+  if (options?.harness !== undefined) return options.harness;
+  return (process.env.JUDGE_JVM_HARNESS ?? "on").toLowerCase() !== "off";
+}
 
 /**
  * The two queue-side clocks and the attempt number, handed in by `worker/index.ts`.
@@ -456,8 +494,11 @@ async function readBatchOutcome(
   const metaPath = path.join(resultDir, `${String(ordinal)}.meta`);
 
   let meta: { exitCode: number; durationMs: number; rawBytes: number } | null = null;
+  let mode: RunMode | null = null;
   try {
-    meta = parseMeta(await readFile(metaPath, "utf8"));
+    const metaLine = await readFile(metaPath, "utf8");
+    meta = parseMeta(metaLine);
+    mode = parseRunMode(metaLine);
   } catch {
     return null;
   }
@@ -479,6 +520,7 @@ async function readBatchOutcome(
     rawBytes: meta.rawBytes,
     stdout,
     stderr: await read("err"),
+    ...(mode === null ? {} : { mode }),
   };
 }
 
@@ -621,6 +663,7 @@ export async function judge(
   job: JudgeJob,
   images?: ImageOverrides,
   queueFacts?: QueueTimingFacts,
+  options?: JudgeOptions,
 ): Promise<JudgeResult> {
   // Everything language-specific comes from the registry. There is no switch on job.language
   // anywhere in this file, and adding C++20 or Rust must not add one.
@@ -836,8 +879,22 @@ export async function judge(
       await placeInput(inputDir, 1, firstInput);
     }
 
+    // The per-process driver is always written: the single-test retry below runs it whatever drove
+    // the batch.
     await writeFile(path.join(inputDir, "driver.sh"), BATCH_DRIVER, "utf8");
     await writeFile(path.join(inputDir, "run.sh"), `${withHostMaxProcs(variant.runCommand)}\n`, "utf8");
+
+    // The in-process harness, when the registry offers one, it is switched on, and the compiled
+    // program uses nothing the harness cannot reproduce per test (worker/jvm-harness-eligibility.ts).
+    // Otherwise the batch runs exactly as it always has. No language is named here.
+    const harnessOffered =
+      variant.harnessCommand !== undefined && variant.producesArtifacts && harnessSwitchedOn(options);
+    const declined = harnessOffered ? await harnessDeclineReason(buildDir) : null;
+    const harnessCommand = harnessOffered && declined === null ? variant.harnessCommand : undefined;
+    if (harnessCommand !== undefined) {
+      await writeFile(path.join(inputDir, "jvm-driver.sh"), JVM_DRIVER, "utf8");
+      await writeFile(path.join(inputDir, "harness.sh"), `${withHostMaxProcs(harnessCommand)}\n`, "utf8");
+    }
 
     // A parse-only check writes nothing, so it costs nothing to do inside the run container.
     // An artifact-producing build already ran above and its compile.sh must NOT run again.
@@ -850,9 +907,13 @@ export async function judge(
     // Runs alongside the container, handing over one input at a time on the driver's doorbell.
     const feed = feedInputs({ inputDir, resultDir, inputByOrdinal, cap: largestCap });
 
+    const perTestTimeoutS = Math.max(1, Math.ceil(wallClockKillMs / 1000));
     const batch = await runInContainer({
       image,
-      argv: ["/bin/sh", "/in/driver.sh"],
+      argv:
+        harnessCommand === undefined
+          ? ["/bin/sh", "/in/driver.sh"]
+          : ["/bin/bash", "/in/jvm-driver.sh"],
       sourceDir,
       inputDir,
       outputDir: resultDir,
@@ -870,19 +931,41 @@ export async function judge(
         return { ...runLimits, tmpfsBytes, fsizeBytes: tmpfsBytes };
       })(),
       name: containerName(job, "run"),
-      containerKillMs: wallClockKillMs * job.testCases.length + runtime.compileTimeoutMs,
+      // With the harness, the JVM's start is waited for once, and one test may cost its harness
+      // attempt up to the backstop AND a rerun as a process. Both are added, so the host backstop
+      // never cuts a legitimate run short.
+      containerKillMs:
+        wallClockKillMs * job.testCases.length +
+        runtime.compileTimeoutMs +
+        (harnessCommand === undefined
+          ? 0
+          : (HARNESS_START_TIMEOUT_S +
+              perTestTimeoutS +
+              HARNESS_BACKSTOP_GRACE_S +
+              HARNESS_SETTLE_TIMEOUT_S) *
+            1000),
       outputCapBytes: 64 * 1024,
       outputDirBudgetBytes: outputDirBudget(largestCap, job.testCases.length),
       outputDirMaxFiles: outputDirFileLimit(job.testCases.length),
       env: {
         PTCN_TESTS: String(job.testCases.length),
-        PTCN_TIMEOUT: String(Math.max(1, Math.ceil(wallClockKillMs / 1000))),
+        PTCN_TIMEOUT: String(perTestTimeoutS),
         PTCN_COMPILE_TIMEOUT: String(Math.max(1, Math.ceil(runtime.compileTimeoutMs / 1000))),
         PTCN_CAP: String(largestCap),
         // How long the driver waits for an input the bell has ALREADY announced. The wait for the
         // previous test to finish is the bell itself, which blocks, so this only has to cover a
         // bind mount surfacing a renamed file late.
         PTCN_FEED_TIMEOUT: String(FEED_SETTLE_POLLS),
+        ...(harnessCommand === undefined
+          ? {}
+          : {
+              PTCN_HARNESS_PROTOCOL: String(HARNESS_PROTOCOL),
+              PTCN_HARNESS_START: String(HARNESS_START_TIMEOUT_S),
+              PTCN_HARNESS_SETTLE: String(HARNESS_SETTLE_TIMEOUT_S),
+              // The harness's own watchdog fires at PTCN_TIMEOUT. This is the driver's backstop
+              // for a harness that has stopped answering; past it the test reruns as a process.
+              PTCN_HARNESS_BACKSTOP: String(perTestTimeoutS + HARNESS_BACKSTOP_GRACE_S),
+            }),
       },
       control: feed.control,
     });
@@ -939,6 +1022,7 @@ export async function judge(
     }
 
     const results: JudgeTestResult[] = [];
+    const modes: (RunMode | "retry")[] = [];
 
     // Read every self-reported duration first, so the batch can be cross-checked against a clock
     // the submission cannot touch. See `selfReportedTimingIsCredible`.
@@ -960,6 +1044,7 @@ export async function judge(
       const input = inputByOrdinal.get(ordinal) ?? "";
 
       const outcome = await outcomeOf(ordinal);
+      modes.push(outcome === null ? "retry" : (outcome.mode ?? "process"));
 
       const retried =
         outcome === null
@@ -1040,6 +1125,8 @@ export async function judge(
       });
     }
 
+    reportRun({ job, harnessOffered, declined, harnessCommand, modes, onReport: options?.onReport });
+
     return withTimings(aggregate({
       submissionId: job.submissionId,
       results,
@@ -1048,6 +1135,35 @@ export async function judge(
   } finally {
     await removeWorkspace(workspace);
   }
+}
+
+/**
+ * Tell the caller how the tests ran, and log when the in-process harness handed tests back to the
+ * per-process path — the line an organizer looks for if Java grading slows down on the night.
+ */
+function reportRun(input: {
+  readonly job: JudgeJob;
+  readonly harnessOffered: boolean;
+  readonly declined: string | null;
+  readonly harnessCommand: string | undefined;
+  readonly modes: readonly (RunMode | "retry")[];
+  readonly onReport: ((report: RunReport) => void) | undefined;
+}): void {
+  const { job, harnessOffered, declined, harnessCommand, modes, onReport } = input;
+  onReport?.({ harnessOffered, declined, modes });
+  if (harnessCommand === undefined) return;
+  const fellBack = modes.filter((mode) => mode !== "harness").length;
+  if (fellBack === 0) return;
+  console.warn(
+    JSON.stringify({
+      level: "info",
+      event: "judge.jvm_harness.fallback",
+      submissionId: job.submissionId,
+      tests: modes.length,
+      perProcess: fellBack,
+      firstFallback: modes.findIndex((mode) => mode !== "harness") + 1,
+    }),
+  );
 }
 
 /**

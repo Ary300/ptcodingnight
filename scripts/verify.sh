@@ -93,11 +93,11 @@ else
 fi
 
 # Runtime images. G4, G5 and G13 judge in all five, and a missing image surfaces as a pile of
-# confusing per-fixture failures rather than as "you did not build the images". ptcn-go and ptcn-gcc are the
+# confusing per-fixture failures rather than as "you did not build the images". ptcn-go, ptcn-gcc and ptcn-jdk are the
 # ones BUILT rather than pulled, so they are the ones most likely to be absent.
 if [ "$DOCKER_UP" -eq 1 ]; then
   MISSING_IMAGES=""
-  for image in python:3.12-slim eclipse-temurin:21-jdk ptcn-gcc:14 node:22-slim ptcn-go:1.23; do
+  for image in python:3.12-slim ptcn-jdk:21 ptcn-gcc:14 node:22-slim ptcn-go:1.23; do
     docker image inspect "$image" >/dev/null 2>&1 || MISSING_IMAGES="$MISSING_IMAGES $image"
   done
   if [ -z "$MISSING_IMAGES" ]; then

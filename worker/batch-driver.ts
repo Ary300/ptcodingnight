@@ -176,6 +176,11 @@ export interface BatchTestOutcome {
   readonly rawBytes: number;
   readonly stdout: string;
   readonly stderr: string;
+  /**
+   * Which path judged the test, when the driver says (worker/jvm-driver.ts writes a fourth `.meta`
+   * field; this driver does not). Diagnostics only: no verdict depends on it.
+   */
+  readonly mode?: "harness" | "process";
 }
 
 /** Parse one `.meta` line: `<exitCode> <durationMs> <rawBytes>`. */

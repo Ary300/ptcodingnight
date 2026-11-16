@@ -191,6 +191,17 @@ export interface Variant {
   /** Shell command that runs one test, reading the test input on stdin. */
   readonly runCommand: string;
   /**
+   * Optional: a shell command that starts an in-process harness able to run EVERY test of a
+   * submission in one process, with commands on fd 3 and replies on fd 4 (worker/jvm-driver.ts).
+   *
+   * An optimisation with a fallback, never a different judge: `runCommand` still runs any test the
+   * harness cannot vouch for, and the harness reproduces what `runCommand` would have shown the
+   * program. Only Java 21 has one, because the JVM's startup is the cost it removes and Java 21 is
+   * the language nearly every submission uses. The runner reads this field; it never asks which
+   * language it is judging.
+   */
+  readonly harnessCommand?: string;
+  /**
    * Starter file shown in the editor, so the first thing a student sees is not an empty box.
    *
    * Lives here rather than in the UI for the same reason everything else does: adding a
@@ -248,7 +259,13 @@ export const RUNTIMES: Readonly<Record<RuntimeId, Runtime>> = {
   },
   jdk21: {
     id: "jdk21",
-    image: "eclipse-temurin:21-jdk",
+    /*
+      eclipse-temurin:21-jdk plus the in-JVM test harness at /opt/ptcn/harness.jar, BUILT locally
+      by scripts/build-judge-images.sh from docker/jdk/Dockerfile (pinned to the same temurin
+      digest). JAVA_8/11/17 and every compile run in it exactly as in the stock image; only
+      JAVA_21's harnessCommand uses what it adds.
+    */
+    image: "ptcn-jdk:21",
     // The JVM is genuinely slower per unit of algorithm, not merely slower to start.
     multiplier: 2,
     /*
@@ -414,6 +431,26 @@ const JVM_RUN_FLAGS =
  *     javac, one 15-line file, --cpus=2       579 ms CPU  ->  368 ms
  */
 const JAVAC_FLAGS = "-J-XX:TieredStopAtLevel=1 -J-XX:+UseSerialGC -J-XX:-UsePerfData";
+
+/**
+ * The Java 21 harness (worker/jvm-harness): one JVM for all of a submission's tests, a fresh class
+ * loader for each. Same JVM flags as `runCommand`, plus:
+ *
+ *   - `-Djava.security.manager=allow`  lets the harness install the SecurityManager that traps
+ *     System.exit (Java 21 refuses one otherwise). It grants everything; the container isolates.
+ *   - `--add-opens java.base/java.lang=ptcn.harness`  lets the harness clear the main thread's
+ *     thread-locals between tests. Opened to the harness MODULE only, never to student code.
+ *   - `-p /opt/ptcn/harness.jar -m ...`  the harness is loaded from the read-only image, on the
+ *     module path, never from /build.
+ *
+ * Arguments: class directory, main class, the per-test wall-clock limit in seconds (the same one
+ * `timeout` enforces on the per-process path), input directory, stdout and stderr files.
+ */
+const JAVA_HARNESS_COMMAND =
+  `exec java ${JVM_RUN_FLAGS} -Djava.security.manager=allow ` +
+  "--add-opens java.base/java.lang=ptcn.harness " +
+  "-p /opt/ptcn/harness.jar -m ptcn.harness/ptcn.harness.Harness " +
+  '/build Main "$PTCN_TIMEOUT" /in /tmp/ptcn-raw /tmp/ptcn-err';
 /**
  * ## How a variant's `label` is written
  *
@@ -523,6 +560,7 @@ public class Main {
     compileCommand: `javac ${JAVAC_FLAGS} --release 21 -proc:none -nowarn -d /build /work/Main.java`,
     producesArtifacts: true,
     runCommand: `exec java ${JVM_RUN_FLAGS} -cp /build Main`,
+    harnessCommand: JAVA_HARNESS_COMMAND,
     starter: `import java.util.*;
 import java.io.*;
 

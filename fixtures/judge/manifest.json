@@ -359,6 +359,119 @@
       "language": "JAVA_17",
       "sourceFile": "Main.java",
       "expectedVerdict": "AC"
+    },
+    {
+      "id": "java-ac-static-scanner",
+      "language": "JAVA_21",
+      "sourceFile": "Main.java",
+      "expectedVerdict": "AC"
+    },
+    {
+      "id": "java-ac-exit-zero",
+      "language": "JAVA_21",
+      "sourceFile": "Main.java",
+      "expectedVerdict": "AC"
+    },
+    {
+      "id": "java-ac-exit-swallowed",
+      "language": "JAVA_21",
+      "sourceFile": "Main.java",
+      "expectedVerdict": "AC"
+    },
+    {
+      "id": "java-ac-exit-from-thread",
+      "language": "JAVA_21",
+      "sourceFile": "Main.java",
+      "expectedVerdict": "AC"
+    },
+    {
+      "id": "java-ac-worker-thread",
+      "language": "JAVA_21",
+      "sourceFile": "Main.java",
+      "expectedVerdict": "AC"
+    },
+    {
+      "id": "java-ac-daemon-lingers",
+      "language": "JAVA_21",
+      "sourceFile": "Main.java",
+      "expectedVerdict": "AC"
+    },
+    {
+      "id": "java-ac-near-heap-limit",
+      "language": "JAVA_21",
+      "sourceFile": "Main.java",
+      "expectedVerdict": "AC"
+    },
+    {
+      "id": "java-ac-near-heap-256",
+      "language": "JAVA_21",
+      "sourceFile": "Main.java",
+      "expectedVerdict": "AC",
+      "memoryLimitMb": 256
+    },
+    {
+      "id": "java-tle-third-test",
+      "language": "JAVA_21",
+      "sourceFile": "Main.java",
+      "expectedVerdict": "TLE"
+    },
+    {
+      "id": "java-mle-third-test",
+      "language": "JAVA_21",
+      "sourceFile": "Main.java",
+      "expectedVerdict": "MLE",
+      "timeLimitMs": 8000
+    },
+    {
+      "id": "java-re-clinit",
+      "language": "JAVA_21",
+      "sourceFile": "Main.java",
+      "expectedVerdict": "RE"
+    },
+    {
+      "id": "java-re-printed-trace",
+      "language": "JAVA_21",
+      "sourceFile": "Main.java",
+      "expectedVerdict": "RE"
+    },
+    {
+      "id": "java-re-uncaught-cause",
+      "language": "JAVA_21",
+      "sourceFile": "Main.java",
+      "expectedVerdict": "RE"
+    },
+    {
+      "id": "java-wa-unflushed",
+      "language": "JAVA_21",
+      "sourceFile": "Main.java",
+      "expectedVerdict": "WA"
+    },
+    {
+      "id": "java-ac-deep-recursion",
+      "language": "JAVA_21",
+      "sourceFile": "Main.java",
+      "expectedVerdict": "AC"
+    },
+    {
+      "id": "java-ac-legacy-mergesort",
+      "language": "JAVA_21",
+      "sourceFile": "Main.java",
+      "expectedVerdict": "AC"
+    },
+    {
+      "id": "java-wa-trace-stdout",
+      "language": "JAVA_21",
+      "sourceFile": "Main.java",
+      "expectedVerdict": "WA"
+    },
+    {
+      "id": "java-ac-largeoutput",
+      "language": "JAVA_21",
+      "sourceFile": "Main.java",
+      "problemDir": "problem-large",
+      "testCount": 2,
+      "timeLimitMs": 8000,
+      "expectedVerdict": "AC"
     }
   ]
 }

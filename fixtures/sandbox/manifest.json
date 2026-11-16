@@ -124,6 +124,14 @@
       "sourceFile": "main.py",
       "expectedVerdict": "RE",
       "why": "T4, second form. The watchdog reads /out one level deep and summed only isFile() entries, so ONE subdirectory is one entry contributing ZERO bytes and both the count limit and the byte budget are defeated at once. Its own case rather than a third attack in disk-fill-out, where the container is already dead before it would run \u2014 a regression test that cannot fail is not one."
+    },
+    {
+      "id": "java-handshake-forgery",
+      "language": "JAVA_21",
+      "sourceFile": "Main.java",
+      "expectedVerdict": "WA",
+      "testCount": 3,
+      "why": "Runs inside the JVM that hands its tests over. Forged replies, bells and other tests' results are frozen out by the host and the driver; it prints a wrong answer, so only a forgery that worked could score, and any hidden input it reaches is printed after ESCAPED."
     }
   ]
 }

@@ -31,6 +31,17 @@ if (variant === undefined) {
   process.exit(2);
 }
 
+// `--harness` prints the variant's in-process harness command instead, for the behavioural check
+// in build-judge-images.sh --verify. Same rule: the command is read from the registry, not retyped.
+if (process.argv[3] === "--harness") {
+  if (variant.harnessCommand === undefined) {
+    console.error(`${id} has no in-process harness`);
+    process.exit(2);
+  }
+  process.stdout.write(`${withHostMaxProcs(variant.harnessCommand)}\n`);
+  process.exit(0);
+}
+
 if (variant.compileCommand === undefined) {
   console.error(`${id} is interpreted and has no compile command`);
   process.exit(2);

@@ -38,6 +38,12 @@ interface Manifest {
     sourceFile: string;
     expectedVerdict: Verdict;
     why: string;
+    /**
+     * Optional: judge against this many tests of the G4 problem instead of the one trivial test.
+     * A fixture that attacks the hand-over BETWEEN tests needs a next test to attack: test 1 is
+     * the sample, whose snippet the student sees, and the rest are hidden.
+     */
+    testCount?: number;
   }[];
 }
 
@@ -58,6 +64,19 @@ const testCases = [
   },
 ];
 
+/** The G4 problem's first `count` tests; only the first is a sample. */
+function problemTests(count: number): JudgeJob["testCases"] {
+  return Array.from({ length: count }, (_, i) => ({
+    testCaseId: `t${String(i + 1)}`,
+    ordinal: i + 1,
+    inputPath: path.join(ROOT, "fixtures", "judge", "problem", `${String(i + 1)}.in`),
+    expectedOutputPath: path.join(ROOT, "fixtures", "judge", "problem", `${String(i + 1)}.out`),
+    isSample: i === 0,
+    points: 10,
+    group: null,
+  }));
+}
+
 function jobFor(entry: Manifest["cases"][number]): JudgeJob {
   return {
     submissionId: `sandbox-${entry.id}`,
@@ -72,7 +91,7 @@ function jobFor(entry: Manifest["cases"][number]): JudgeJob {
       cpus: 1,
     },
     comparator: { kind: "whitespace" },
-    testCases,
+    testCases: entry.testCount === undefined ? testCases : problemTests(entry.testCount),
     attempt: 1,
     captureOutput: false,
   };
@@ -134,6 +153,14 @@ describe("G5 hostile submission containment", () => {
       "disk-fill-out",
       "disk-fill-subdir",
       "fork-bomb",
+      /**
+       * The Java harness runs every test in one JVM, so a program shares a process with the code
+       * that hands its tests over. This fixture forges that hand-over from inside — replies on the
+       * harness's pipe, bells to the host, results for other tests — and leaves a thread behind
+       * hunting for the next test's input. A hidden input reaching anything it can see is printed
+       * after ESCAPED, which the escape check below catches.
+       */
+      "handshake-forgery",
       "infinite-loop",
       "memory-bomb-10gb",
       "network-egress",
