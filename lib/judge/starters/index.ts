@@ -87,6 +87,29 @@ export const PROBE_LANGUAGES: readonly LanguageId[] = LANGUAGE_IDS.filter((langu
 });
 
 /**
+ * The languages to probe for ONE problem: for each source file the problem's allowed languages
+ * produce, the first allowed language that produces it.
+ *
+ * `PROBE_LANGUAGES` is the bank-wide list of representatives, and its Java and C++ entries are
+ * JAVA_8 and CPP_11. A problem that allows only PYTHON_312, JAVA_21 and CPP_17 (every problem in
+ * the bank since 2026-11-15) matched none of those but Python, so G13 compiled its Python starter
+ * and never its Java or C++ one. Choosing among the problem's own languages closes that.
+ */
+export function probeLanguagesFor(allowed: readonly LanguageId[]): LanguageId[] {
+  const allowedSet = new Set(allowed);
+  const seen = new Set<string>();
+  const picked: LanguageId[] = [];
+  for (const language of LANGUAGE_IDS) {
+    if (!allowedSet.has(language)) continue;
+    const sourceFile = VARIANTS[language].sourceFile;
+    if (seen.has(sourceFile)) continue;
+    seen.add(sourceFile);
+    picked.push(language);
+  }
+  return picked;
+}
+
+/**
  * Languages the registry can run but no emitter serves.
  *
  * Always empty today, and checked rather than assumed: adding a runtime to

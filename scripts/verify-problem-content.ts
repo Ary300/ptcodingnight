@@ -6,7 +6,7 @@ import path from "node:path";
 
 import { VARIANTS, type LanguageId } from "@/lib/judge/runtimes";
 import {
-  PROBE_LANGUAGES,
+  probeLanguagesFor,
   expectedEchoLines,
   languagesWithoutStarter,
   probeFor,
@@ -361,14 +361,12 @@ async function probeProblem(
   const tokens = readFileSync(inputPath, "utf8").split(/\s+/).filter((t) => t.length > 0);
   const trace = traceHarness(signature, tokens);
 
-  const allowed = new Set(meta.manifest.allowedLanguages);
   const failures: ProbeFailure[] = [];
   let ran = 0;
 
-  for (const language of PROBE_LANGUAGES) {
-    // A problem may narrow its languages deliberately; there is nothing to prove about an
-    // emitter it does not offer. Counted rather than assumed, so the summary line stays true.
-    if (!allowed.has(language)) continue;
+  // One representative per emitter among the problem's OWN languages (`probeLanguagesFor`), so a
+  // problem offering JAVA_21 and CPP_17 has those starters compiled rather than skipped.
+  for (const language of probeLanguagesFor(meta.manifest.allowedLanguages)) {
     ran += 1;
 
     const sourceFile = VARIANTS[language].sourceFile;
@@ -549,9 +547,9 @@ async function main(): Promise<void> {
   if (signed.length > 0) {
     mkdirSync(PROBE_SCRATCH, { recursive: true });
     console.log(
-      `\njudging ${String(signed.length)} x ${String(PROBE_LANGUAGES.length)} generated ` +
-        `starters: they must compile and echo the arguments the declaration says they were ` +
-        `handed\n`,
+      `\njudging the generated starters of ${String(signed.length)} problems, in each problem's ` +
+        `own languages: they must compile and echo the arguments the declaration says they ` +
+        `were handed\n`,
     );
 
     for (const meta of signed) {

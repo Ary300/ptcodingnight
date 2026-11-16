@@ -6,6 +6,7 @@ import { ProblemManifestSchema, SignatureSchema } from "@/lib/schemas/seed";
 import {
   PROBE_LANGUAGES,
   expectedEchoLines,
+  probeLanguagesFor,
   isOrderedSubsequence,
   languagesWithoutStarter,
   probeFor,
@@ -306,5 +307,19 @@ describe("ProblemManifestSchema", () => {
     const mistyped: Record<string, unknown> = { ...manifest, timeLimtMs: 2000 };
     delete mistyped.timeLimitMs;
     expect(ProblemManifestSchema.safeParse(mistyped).success).toBe(false);
+  });
+});
+
+describe("probeLanguagesFor", () => {
+  it("picks the problem's own Java and C++ variants, not the bank-wide representatives", () => {
+    expect(probeLanguagesFor(["PYTHON_312", "JAVA_21", "CPP_17"])).toEqual([
+      "PYTHON_312",
+      "JAVA_21",
+      "CPP_17",
+    ]);
+  });
+
+  it("probes a shared source file once", () => {
+    expect(probeLanguagesFor(["CPP_11", "CPP_17"])).toHaveLength(1);
   });
 });
