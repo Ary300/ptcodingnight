@@ -69,7 +69,23 @@ export function lockedLabel(unlockAt: string | null | undefined): string {
   return `Opens ${formatEventTime(at)}`;
 }
 
-function ProblemCard({ problem }: { problem: ProblemSummary }) {
+/**
+ * How much room the slot label gets.
+ *
+ * `wide` is the contest lobby's column, sized for slot labels like "A1-E" that an organizer
+ * writes. The practice arena's labels are "P1" to "P8", and at desktop the wide column left a gap
+ * between label and title wider than the title's first word, so the list read as two columns
+ * instead of as rows. `compact` sizes the column to a short label; `overflow-wrap: anywhere`
+ * still keeps any longer label inside it.
+ */
+export type SlotWidth = "wide" | "compact";
+
+const SLOT_WIDTH_CLASS: Readonly<Record<SlotWidth, string>> = {
+  wide: "w-20 sm:w-28",
+  compact: "w-8",
+};
+
+function ProblemCard({ problem, slotWidth }: { problem: ProblemSummary; slotWidth: SlotWidth }) {
   const status = problemStatusLabel(problem.solved, problem.bestScore);
   const partial = !problem.solved && problem.bestScore !== null && problem.bestScore > 0;
 
@@ -90,7 +106,7 @@ function ProblemCard({ problem }: { problem: ProblemSummary }) {
     <div className="flex flex-1 items-center gap-3 px-3 py-3 sm:gap-4 sm:px-4">
       <span
         data-problem-slot
-        className="numeric w-20 min-w-0 shrink-0 font-semibold leading-tight text-panther sm:w-28"
+        className={`numeric ${SLOT_WIDTH_CLASS[slotWidth]} min-w-0 shrink-0 font-semibold leading-tight text-panther`}
         style={{ fontSize: "var(--text-xs)", overflowWrap: "anywhere" }}
       >
         {problem.slotLabel}
@@ -180,9 +196,11 @@ function ProblemCard({ problem }: { problem: ProblemSummary }) {
 
 export interface ProblemListProps {
   problems: readonly ProblemSummary[];
+  /** The slot label's column. Defaults to the contest lobby's `wide`. */
+  slotWidth?: SlotWidth;
 }
 
-export function ProblemList({ problems }: ProblemListProps) {
+export function ProblemList({ problems, slotWidth = "wide" }: ProblemListProps) {
   if (problems.length === 0) {
     return (
       // Centred inside the full list card, matching the reference's empty state and the grammar
@@ -209,7 +227,7 @@ export function ProblemList({ problems }: ProblemListProps) {
       className="motion-stagger divide-y divide-rule-hair overflow-hidden rounded-panel border border-rule-edge bg-paper"
     >
       {problems.map((problem) => (
-        <ProblemCard key={problem.contestProblemId} problem={problem} />
+        <ProblemCard key={problem.contestProblemId} problem={problem} slotWidth={slotWidth} />
       ))}
     </ul>
   );

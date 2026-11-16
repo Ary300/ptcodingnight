@@ -5,7 +5,7 @@ import { useCallback, useMemo, useState } from "react";
 import type { ProblemSummary } from "@/lib/schemas/api";
 
 import { FilterRail, type FilterGroup } from "../FilterRail";
-import { ProblemList } from "./ProblemList";
+import { ProblemList, type SlotWidth } from "./ProblemList";
 
 /**
  * The problem list with HackerRank's filter rail beside it: STATUS and DIFFICULTY, as checkbox
@@ -46,9 +46,11 @@ const GROUPS: readonly FilterGroup[] = [
 
 export interface ProblemBrowserProps {
   problems: readonly ProblemSummary[];
+  /** Passed through to `ProblemList`; see `SlotWidth` there. */
+  slotWidth?: SlotWidth;
 }
 
-export function ProblemBrowser({ problems }: ProblemBrowserProps) {
+export function ProblemBrowser({ problems, slotWidth = "wide" }: ProblemBrowserProps) {
   const [selected, setSelected] = useState<Readonly<Record<string, readonly string[]>>>({});
 
   const onChange = useCallback((groupId: string, value: string, checked: boolean) => {
@@ -145,7 +147,7 @@ export function ProblemBrowser({ problems }: ProblemBrowserProps) {
             No problems match those filters. Untick one to widen the list.
           </p>
         ) : (
-          <ProblemList problems={visible} />
+          <ProblemList problems={visible} slotWidth={slotWidth} />
         )}
       </div>
 

@@ -328,7 +328,10 @@ export function LobbyView({ phase = null, viewerKind }: LobbyViewProps) {
       </section>
 
       <div className="min-w-0">
-        {standings.status === "ready" && (
+        {practiceArena && problems.status === "ready" && (
+          <PracticeProgressCard problems={visibleProblems} />
+        )}
+        {!practiceArena && standings.status === "ready" && standings.data !== null && (
           <StandingsCard
             standings={standings.data}
             participantId={
