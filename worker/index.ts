@@ -23,6 +23,7 @@ import { describeMissingImages, findMissingImages, requiredImages } from "@/work
 import { judge, slotProfileFor, type ImageOverrides } from "@/worker/runner";
 import { ContainerPool } from "@/worker/container-pool";
 import { JavacService } from "@/worker/javac-service";
+import { requeuesAfter } from "@/worker/requeue";
 import { removeStaleWorkspaces } from "@/worker/workspace";
 import { hostLimits } from "@/lib/contest/host";
 import type { JudgeJob } from "@/lib/schemas/judge";
@@ -136,7 +137,7 @@ async function processJob(
   // An IE is our fault, not the student's. Throwing hands the job back to BullMQ for its one
   // retry; on the final attempt we stop retrying and surface it for an admin instead of
   // spinning forever.
-  if (result.verdict === "IE" && job.attemptsMade + 1 < MAX_JOB_ATTEMPTS) {
+  if (requeuesAfter(result.verdict, job.attemptsMade + 1)) {
     throw new Error(`Internal judge error on submission ${result.submissionId}; requeueing`);
   }
 

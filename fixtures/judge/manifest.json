@@ -479,6 +479,20 @@
       "sourceFile": "Main.java",
       "expectedVerdict": "CE",
       "expectedCompileErrorContains": "package solution;"
+    },
+    {
+      "id": "java-ce-compile-timeout",
+      "language": "JAVA_21",
+      "sourceFile": "Main.java",
+      "expectedVerdict": "CE",
+      "expectedCompileErrorContains": "Compilation took longer than the limit"
+    },
+    {
+      "id": "java-ce-compile-memory",
+      "language": "JAVA_21",
+      "sourceFile": "Main.java",
+      "expectedVerdict": "CE",
+      "expectedCompileErrorContains": "OutOfMemoryError"
     }
   ]
 }

@@ -12,7 +12,7 @@ import {
   variantsOfRuntime,
   type RuntimeId,
 } from "@/lib/judge/runtimes";
-import { compilerSaidNothing, outputCapFor, selfReportedTimingIsCredible } from "@/worker/runner";
+import { classifyCompileFailure, outputCapFor, selfReportedTimingIsCredible } from "@/worker/runner";
 
 /**
  * Unit-level pin for the two judge bugs that made correct solutions fail.
@@ -305,8 +305,8 @@ describe("selfReportedTimingIsCredible", () => {
   });
 });
 
-describe("compilerSaidNothing", () => {
-  const build = (over: Partial<Parameters<typeof compilerSaidNothing>[0]>) => ({
+describe("classifyCompileFailure", () => {
+  const build = (over: Partial<Parameters<typeof classifyCompileFailure>[0]>) => ({
     stdout: "",
     stderr: "",
     exitCode: 1 as number | null,
@@ -319,23 +319,42 @@ describe("compilerSaidNothing", () => {
     infrastructureFailure: false,
     ...over,
   });
+  const classify = (over: Partial<Parameters<typeof classifyCompileFailure>[0]>) =>
+    classifyCompileFailure(build(over), 60_000);
 
-  it("is a compile error, not the judge, whenever the compiler printed anything", () => {
-    expect(compilerSaidNothing(build({ stderr: "Main.java:3: error: ';' expected", exitCode: 1 }))).toBe(false);
-    expect(compilerSaidNothing(build({ stderr: "javac: out of memory", exitCode: 137, oomKilled: true }))).toBe(false);
+  it("is no failure for a build that succeeded", () => {
+    expect(classify({ exitCode: 0 })).toBeNull();
   });
 
-  it("is the judge when the build was killed in silence: timeout, memory, or our backstop", () => {
-    expect(compilerSaidNothing(build({ exitCode: 124 }))).toBe(true);
-    expect(compilerSaidNothing(build({ exitCode: 137 }))).toBe(true);
-    expect(compilerSaidNothing(build({ exitCode: 143 }))).toBe(true);
-    expect(compilerSaidNothing(build({ exitCode: 1, oomKilled: true }))).toBe(true);
-    expect(compilerSaidNothing(build({ exitCode: 1, timedOut: true }))).toBe(true);
-    expect(compilerSaidNothing(build({ exitCode: null }))).toBe(true);
+  it("is the compiler's own words, verbatim, whenever it printed any", () => {
+    expect(classify({ stderr: "Main.java:3: error: ';' expected\n", exitCode: 1 })).toEqual({
+      kind: "ce",
+      message: "Main.java:3: error: ';' expected",
+    });
+    expect(classify({ stderr: "The system is out of resources.", exitCode: 3 })).toEqual({
+      kind: "ce",
+      message: "The system is out of resources.",
+    });
   });
 
-  it("leaves a silent ordinary failure, and a success, as they were", () => {
-    expect(compilerSaidNothing(build({ exitCode: 1 }))).toBe(false);
-    expect(compilerSaidNothing(build({ exitCode: 0 }))).toBe(false);
+  it("is CE, never IE, for a compile the SOURCE got killed: timeout, memory cap, disk watchdog", () => {
+    for (const exitCode of [124, 137, 143]) {
+      expect(classify({ exitCode })).toEqual({ kind: "ce", message: "Compilation took longer than the limit of 60 seconds." });
+    }
+    // Our backstop fired too, but the in-container timeout had already: still the source.
+    expect(classify({ exitCode: 124, timedOut: true })?.kind).toBe("ce");
+    expect(classify({ exitCode: 137, oomKilled: true })).toEqual({
+      kind: "ce",
+      message: "The compiler ran out of memory compiling this program.",
+    });
+    expect(classify({ exitCode: 137, diskExceeded: true })?.kind).toBe("ce");
+    expect(classify({ exitCode: 1 })).toEqual({ kind: "ce", message: "Compilation failed" });
+  });
+
+  it("is the host only on evidence the source cannot produce", () => {
+    // The client reported no exit status at all.
+    expect(classify({ exitCode: null })).toEqual({ kind: "host" });
+    // Our backstop killed the container and the in-container timeout, which fires first, had not.
+    expect(classify({ exitCode: 137, timedOut: true })).toEqual({ kind: "host" });
   });
 });

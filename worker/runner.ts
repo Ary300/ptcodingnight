@@ -300,23 +300,56 @@ function containerName(job: JudgeJob, suffix: string): string {
   return `ptcn-judge-${safe}-${suffix}-${String(job.attempt)}-${randomBytes(3).toString("hex")}`;
 }
 
+export type CompileFailure =
+  | { readonly kind: "host" }
+  | { readonly kind: "ce"; readonly message: string };
+
 /**
- * A build that was KILLED — by the compile timeout, the memory cap, or our backstop — without the
- * compiler printing a word. That is not a compile error: a compiler that rejects code says why,
- * and these are the build step failing around it (an overloaded host, a starved container). It
- * used to reach the student as a bare "Compilation failed" CE. The caller reports IE, which is
- * requeued once.
+ * What a failed build container means. Null for a build that succeeded.
+ *
+ * IE ("host") ONLY on evidence the student's source cannot produce: the client reported no exit
+ * at all, or OUR backstop killed the container while the in-container `timeout` — which fires
+ * first by construction — had not. A lost or foreign container is caught earlier, as
+ * `infrastructureFailure`.
+ *
+ * Everything else is CE and is never requeued, because the source is the cause and a requeue only
+ * repeats an expensive compile on purpose: a compile bomb that runs out the compile timeout, a
+ * compiler killed by its memory cap, a build that tripped the disk watchdog. When the compiler
+ * printed something, that is the message, verbatim; when it was killed in silence, a plain one.
  */
-export function compilerSaidNothing(compile: ContainerRunResult): boolean {
-  if (compile.exitCode === 0 || compile.stderr.trim().length > 0) return false;
-  return (
-    compile.oomKilled ||
-    compile.timedOut ||
-    compile.exitCode === null ||
+export function classifyCompileFailure(compile: ContainerRunResult, compileTimeoutMs: number): CompileFailure | null {
+  if (compile.exitCode === 0) return null;
+  if (compile.exitCode === null) return { kind: "host" };
+  if (compile.timedOut && compile.exitCode !== TIMEOUT_EXIT_CODE) return { kind: "host" };
+  const said = compile.stderr.trim();
+  if (said.length > 0) return { kind: "ce", message: said };
+  if (compile.oomKilled) return { kind: "ce", message: "The compiler ran out of memory compiling this program." };
+  if (compile.diskExceeded) {
+    return { kind: "ce", message: "The compiler wrote more to the build directory than the judge allows." };
+  }
+  if (
     compile.exitCode === TIMEOUT_EXIT_CODE ||
     compile.exitCode === SIGKILL_EXIT_CODE ||
     compile.exitCode === SIGTERM_EXIT_CODE
-  );
+  ) {
+    return {
+      kind: "ce",
+      message: `Compilation took longer than the limit of ${String(Math.round(compileTimeoutMs / 1000))} seconds.`,
+    };
+  }
+  return { kind: "ce", message: "Compilation failed" };
+}
+
+/** A build container's result as the compile step reads it: the message replaces silent stderr. */
+function asCompileOutcome(
+  compile: ContainerRunResult,
+  failure: CompileFailure | null,
+): { readonly exitCode: number | null; readonly stderr: string; readonly durationMs: number } {
+  return {
+    exitCode: compile.exitCode,
+    stderr: failure?.kind === "ce" ? failure.message : compile.stderr,
+    durationMs: compile.durationMs,
+  };
 }
 
 /**
@@ -933,12 +966,14 @@ export async function judge(
           noteFreshFallback("build");
           pooledCompile = await runInContainer({ ...freshCompileSpec, ...compileOptions });
         }
-        if (pooledCompile.infrastructureFailure || compilerSaidNothing(pooledCompile)) return containerLost("build");
-        compile = pooledCompile;
+        const failure = classifyCompileFailure(pooledCompile, runtime.compileTimeoutMs);
+        if (pooledCompile.infrastructureFailure || failure?.kind === "host") return containerLost("build");
+        compile = asCompileOutcome(pooledCompile, failure);
       } else {
         const freshCompile = await runInContainer({ ...freshCompileSpec, ...compileOptions });
-        if (freshCompile.infrastructureFailure || compilerSaidNothing(freshCompile)) return containerLost("build");
-        compile = freshCompile;
+        const failure = classifyCompileFailure(freshCompile, runtime.compileTimeoutMs);
+        if (freshCompile.infrastructureFailure || failure?.kind === "host") return containerLost("build");
+        compile = asCompileOutcome(freshCompile, failure);
       }
 
       // The daemon's execution span ends at (roughly) this instant, so subtracting it recovers
