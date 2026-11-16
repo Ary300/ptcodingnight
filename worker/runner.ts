@@ -1,4 +1,4 @@
-import { chmod, mkdtemp, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { aggregate } from "@/lib/judge/aggregate";
@@ -28,7 +28,6 @@ import {
   parseMeta,
   type BatchTestOutcome,
 } from "@/worker/batch-driver";
-import { removeAsRoot } from "@/worker/docker";
 import { scaledStartupBudgetMs } from "@/worker/host";
 import {
   HARNESS_BACKSTOP_GRACE_S,
@@ -40,6 +39,9 @@ import {
   type RunMode,
 } from "@/worker/jvm-driver";
 import { harnessDeclineReason } from "@/worker/jvm-harness-eligibility";
+import type { ContainerPool } from "@/worker/container-pool";
+import { specsFor, startScript, type SlotNames, type SlotProfile } from "@/worker/slot-profile";
+import { createWorkspace, removeWorkspace, SCRATCH_ROOT } from "@/worker/workspace";
 
 /**
  * Judges one submission: prepare a source directory, compile if the language needs it, run
@@ -48,25 +50,6 @@ import { harnessDeclineReason } from "@/worker/jvm-harness-eligibility";
  * Nothing here executes student code in-process. Every execution goes through
  * `runInContainer`.
  */
-
-/**
- * Scratch lives under the repo rather than os.tmpdir().
- *
- * On macOS `os.tmpdir()` is `/var/folders/…`, which Docker Desktop does not share by
- * default — bind-mounting it silently yields an empty directory inside the container and
- * every submission fails with "file not found". The project directory is under /Users,
- * which is shared out of the box.
- *
- * `JUDGE_SCRATCH_ROOT` overrides it, and a containerised worker MUST set it.
- *
- * These directories are bind-mounted into each judge container by the HOST daemon, which
- * resolves the path in the host's namespace. A worker running inside a container therefore
- * hands over a path that means something different — or nothing — on the other side, and the
- * judge container gets an empty mount with no error anywhere. `docker-compose.prod.yml` mounts
- * one host directory at the identical path inside the worker so the two namespaces agree.
- */
-const SCRATCH_ROOT =
-  process.env.JUDGE_SCRATCH_ROOT ?? path.join(process.cwd(), ".judge-tmp");
 
 /**
  * Kept as an optional override so a caller can pin different images (a test host with
@@ -88,6 +71,8 @@ export interface RunReport {
   readonly declined: string | null;
   /** Per test, in ordinal order: the path that produced its result. */
   readonly modes: readonly (RunMode | "retry")[];
+  /** The submission's containers were pre-created (worker/container-pool.ts), not made on demand. */
+  readonly pooled: boolean;
 }
 
 export interface JudgeOptions {
@@ -98,6 +83,69 @@ export interface JudgeOptions {
    */
   readonly harness?: boolean;
   readonly onReport?: (report: RunReport) => void;
+  /**
+   * Containers created ahead of time (worker/container-pool.ts). A submission whose profile has a
+   * ready slot uses it; otherwise its containers are created on demand, exactly as without a pool.
+   */
+  readonly pool?: ContainerPool;
+}
+
+/**
+ * The creation profile of a submission's containers: what a pooled container must have been
+ * created with to serve it. Built from the registry, the job's limits and the largest output cap,
+ * and nothing else. `wallClockKillMs` is carried by every run as `containerKillMs`, never by the
+ * container, so it is left out and does not split the pool by time limit.
+ */
+/**
+ * The profile a job WILL ask the pool for, from the sizes of its expected outputs — for whoever
+ * fills the pool ahead of a job (the worker's warm-up, the gates, the benchmark). `judge` itself
+ * computes the same value from the bytes it reads.
+ */
+export async function slotProfileForJob(job: JudgeJob, images?: ImageOverrides): Promise<SlotProfile> {
+  let largestCap = OUTPUT_CAP_FLOOR_BYTES;
+  for (const testCase of job.testCases) {
+    const { size } = await stat(testCase.expectedOutputPath);
+    largestCap = Math.max(largestCap, outputCapFor(size));
+  }
+  return slotProfileFor(job, images, largestCap);
+}
+
+export function slotProfileFor(job: JudgeJob, images: ImageOverrides | undefined, largestCap: number): SlotProfile {
+  const variant = variantFor(job.language);
+  const runtime = runtimeFor(job.language);
+  const base = { ...containerLimits(job), wallClockKillMs: 0 };
+  // Widened for a large expected output; fsize tracks it, so a per-file cap below the tmpfs cannot
+  // fail a legitimate answer the tmpfs was sized to hold.
+  const tmpfsBytes = Math.max(base.tmpfsBytes, largestCap * 2 + 64 * 1024 * 1024);
+  return {
+    image: images?.[runtime.id] ?? runtime.image,
+    compile:
+      variant.compileCommand !== undefined && variant.producesArtifacts
+        ? {
+            argv: [
+              "timeout",
+              "-k",
+              "1",
+              String(Math.max(1, Math.ceil(runtime.compileTimeoutMs / 1000))),
+              "/bin/sh",
+              "/in/compile.sh",
+            ],
+            limits: {
+              ...base,
+              memoryLimitMb: runtime.compileMemoryLimitMb,
+              pidsLimit: runtime.compilePidsLimit,
+              tmpfsBytes: runtime.compileTmpfsBytes,
+              cpus: runtime.compileCpus,
+              // fsize is the SIXTH axis on which compile limits differ from run limits, and it has
+              // to be set here for the same reason as the other five (CLAUDE.md): inheriting the
+              // run container's value would cap `javac` or `go build` at a size chosen for a
+              // student's program, and the student sees CE on code that compiles perfectly well.
+              fsizeBytes: runtime.compileTmpfsBytes,
+            },
+          }
+        : null,
+    run: { limits: { ...base, tmpfsBytes, fsizeBytes: tmpfsBytes }, mountsBuild: variant.producesArtifacts },
+  };
 }
 
 function harnessSwitchedOn(options: JudgeOptions | undefined): boolean {
@@ -711,72 +759,47 @@ export async function judge(
 
   const runLimits = containerLimits(job);
 
-  await mkdir(SCRATCH_ROOT, { recursive: true });
-  const workspace = await mkdtemp(path.join(SCRATCH_ROOT, "job-"));
+  // The tests are read FIRST: the output cap they imply is part of the run container's creation
+  // profile, which decides whether a pre-created container can serve this submission.
+  const expectedByOrdinal = new Map<number, string>();
+  const inputByOrdinal = new Map<number, string>();
+  let largestCap = OUTPUT_CAP_FLOOR_BYTES;
+  for (const [index, testCase] of job.testCases.entries()) {
+    const ordinal = index + 1;
+    const [input, expected] = await Promise.all([
+      readFile(testCase.inputPath, "utf8"),
+      readFile(testCase.expectedOutputPath, "utf8"),
+    ]);
+    inputByOrdinal.set(ordinal, input);
+    expectedByOrdinal.set(ordinal, expected);
+    largestCap = Math.max(largestCap, outputCapFor(Buffer.byteLength(expected, "utf8")));
+  }
 
-  /**
-   * Make the workspace traversable and the RESULT directory writable by the container's uid.
-   *
-   * `mkdtemp` creates 0700 owned by the worker process. The judge container runs as
-   * `--user=65534:65534`, so on Linux it cannot traverse that parent — the driver cannot write
-   * `<n>.meta`, every test falls to the retry path, the retry fails identically, and **every
-   * submission reports IE**. It is invisible on macOS only because Docker Desktop's file-sharing
-   * layer rewrites ownership (SECURITY.md A6).
-   *
-   * Narrow on purpose. `0o711` on the workspace grants traverse and NOT read, so the container
-   * cannot list its siblings; only the results directory below is made writable. The field fix
-   * somebody reaches for at 6pm — `chmod 777`, or dropping `--user` — would widen the source and
-   * build mounts too and make both the timing-forgery and disk-fill classes strictly worse.
-   */
-  await chmod(workspace, 0o711);
-  const sourceDir = path.join(workspace, "src");
-  const buildDir = path.join(workspace, "build");
-  const inputDir = path.join(workspace, "in");
-  const resultDir = path.join(workspace, "res");
+  const profile = slotProfileFor(job, images, largestCap);
+  const pool = options?.pool;
+  const slot = pool?.take(profile) ?? null;
+  const ws = slot?.workspace ?? (await createWorkspace("job-"));
+  const freshNames: SlotNames = {
+    build: profile.compile === null ? null : containerName(job, "build"),
+    run: containerName(job, "run"),
+  };
+  const specs = specsFor(profile, ws, slot?.names ?? freshNames);
+  const { sourceDir, buildDir, inputDir, resultDir } = ws;
+  // A pooled container is started rather than created, and queued for removal rather than removed.
+  const pooled =
+    slot !== null && pool !== undefined
+      ? { precreated: true, retire: (name: string) => pool.retire(name) }
+      : {};
+  let freshContainerUsed = false;
+  const noteFreshFallback = (which: string): void => {
+    freshContainerUsed = true;
+    console.warn(
+      JSON.stringify({ level: "warn", event: "judge.pool.not_started", submissionId: job.submissionId, which }),
+    );
+  };
 
   try {
-    await mkdir(sourceDir, { recursive: true });
-    await mkdir(buildDir, { recursive: true });
-    await mkdir(inputDir, { recursive: true });
-    await mkdir(resultDir, { recursive: true });
-    /**
-     * The two directories a container is given write access to, and no others.
-     *
-     * ## `resultDir` — `/out` on the run container
-     *
-     * The batch driver writes each test's captured stdout and exit status here, as uid 65534.
-     *
-     * ## `buildDir` — `/build` on the COMPILE container
-     *
-     * **This one was missing, and it made every compiled language unjudgeable on real Linux.**
-     *
-     * The comment that used to sit here said `buildDir` "stays at their default mode and is
-     * mounted read-only". That is true of the RUN container, which mounts it via `readonlyDir` so
-     * a submission cannot rewrite the binary it is executing between tests. It was never true of
-     * the compile container, which mounts the same directory via `writableBuildDir` precisely so
-     * the compiler can emit its artifact — into a directory `mkdir` had left owned by the worker
-     * at mode 0755, while the container runs as `--user=65534:65534`.
-     *
-     * So the compiler could traverse and not write:
-     *
-     *     /usr/bin/ld: cannot open output file /build/prog: Permission denied
-     *
-     * reported to the student as **CE on correct code**, for jdk21, gcc14 and go123 — every
-     * runtime that emits a binary. python312 and node22 passed throughout, because their compile
-     * step writes nothing (`python -c compile(...)`, `node --check`), which is exactly why the
-     * failure looked language-specific rather than structural.
-     *
-     * Invisible on Docker Desktop, which rewrites file ownership across its VM boundary
-     * (SECURITY.md A6). It appears the moment the judge runs on real Linux — which is every
-     * deployment that matters, and none of the machines any gate had ever run on.
-     *
-     * Still narrow: the workspace above stays 0711 so a container cannot list its siblings, and
-     * `sourceDir` and `inputDir` keep their default mode and are mounted read-only. Widening
-     * those is what makes the timing-forgery (H2) and hidden-input (H3) classes worse.
-     */
-    await chmod(resultDir, 0o777);
-    await chmod(buildDir, 0o777);
-    await writeFile(path.join(sourceDir, variant.sourceFile), job.sourceCode, "utf8");
+    await writeFile(path.join(sourceDir, variant.sourceFile), job.sourceCode, "utf8");    await writeFile(path.join(sourceDir, variant.sourceFile), job.sourceCode, "utf8");
 
     // --- build, in its OWN container when it emits artifacts --------------
     //
@@ -784,36 +807,10 @@ export async function judge(
     // program to the problem's 256 MB — and MLE detection depends on that cap being the
     // problem's. Compiled languages therefore build separately, at the runtime's compile
     // memory limit, and hand /build to the run container read-only.
-    if (variant.compileCommand !== undefined && variant.producesArtifacts) {
+    if (variant.compileCommand !== undefined && specs.compile !== null && freshNames.build !== null) {
       await writeFile(path.join(inputDir, "compile.sh"), `${withHostMaxProcs(variant.compileCommand)}\n`, "utf8");
 
-      const compile = await runInContainer({
-        image,
-        argv: [
-          "timeout",
-          "-k",
-          "1",
-          String(Math.max(1, Math.ceil(runtime.compileTimeoutMs / 1000))),
-          "/bin/sh",
-          "/in/compile.sh",
-        ],
-        sourceDir,
-        inputDir,
-        // Writable /build here; the run container gets the same directory read-only.
-        writableBuildDir: buildDir,
-        limits: {
-          ...runLimits,
-          memoryLimitMb: runtime.compileMemoryLimitMb,
-          pidsLimit: runtime.compilePidsLimit,
-          tmpfsBytes: runtime.compileTmpfsBytes,
-          cpus: runtime.compileCpus,
-          // fsize is the SIXTH axis on which compile limits differ from run limits, and it has to
-          // be set here for the same reason as the other five (CLAUDE.md): inheriting the run
-          // container's value would cap `javac` or `go build` at a size chosen for a student's
-          // program, and the student sees CE on code that compiles perfectly well.
-          fsizeBytes: runtime.compileTmpfsBytes,
-        },
-        name: containerName(job, "build"),
+      const compileOptions = {
         containerKillMs: runtime.compileTimeoutMs,
         outputCapBytes: 256 * 1024,
         // `/build` is writable host disk too, and it is the compile container's `/out`. Bounded
@@ -824,7 +821,13 @@ export async function judge(
         // so this is far looser than the run container's and is a runaway backstop rather than a
         // tight bound.
         outputDirMaxFiles: 4096,
-      });
+      };
+      let compile = await runInContainer({ ...specs.compile, ...compileOptions, ...pooled });
+      if (compile.neverStarted === true) {
+        // The pre-created container could not be started, so nothing ran: build in a fresh one.
+        noteFreshFallback("build");
+        compile = await runInContainer({ ...specs.compile, ...compileOptions, name: freshNames.build });
+      }
 
       // The daemon's execution span ends at (roughly) this instant, so subtracting it recovers
       // the daemon's StartedAt: everything before that mark — workspace prep, image start,
@@ -847,21 +850,6 @@ export async function judge(
     }
 
     // --- ONE container: every test for this submission --------------------
-    const expectedByOrdinal = new Map<number, string>();
-    const inputByOrdinal = new Map<number, string>();
-    let largestCap = OUTPUT_CAP_FLOOR_BYTES;
-
-    for (const [index, testCase] of job.testCases.entries()) {
-      const ordinal = index + 1;
-      const [input, expected] = await Promise.all([
-        readFile(testCase.inputPath, "utf8"),
-        readFile(testCase.expectedOutputPath, "utf8"),
-      ]);
-      inputByOrdinal.set(ordinal, input);
-      expectedByOrdinal.set(ordinal, expected);
-      largestCap = Math.max(largestCap, outputCapFor(Buffer.byteLength(expected, "utf8")));
-    }
-
     // ONLY THE FIRST test's input is on disk when the container starts. The rest are fed one at a
     // time by `feedInputs` below, and each is deleted once its test has finished.
     //
@@ -904,33 +892,39 @@ export async function judge(
       await rm(path.join(inputDir, "compile.sh"), { force: true });
     }
 
-    // Runs alongside the container, handing over one input at a time on the driver's doorbell.
-    const feed = feedInputs({ inputDir, resultDir, inputByOrdinal, cap: largestCap });
-
     const perTestTimeoutS = Math.max(1, Math.ceil(wallClockKillMs / 1000));
-    const batch = await runInContainer({
-      image,
-      argv:
-        harnessCommand === undefined
-          ? ["/bin/sh", "/in/driver.sh"]
-          : ["/bin/bash", "/in/jvm-driver.sh"],
-      sourceDir,
-      inputDir,
-      outputDir: resultDir,
-      // Compiled artifacts arrive read-only: the program must not be able to rewrite the
-      // binary it is running from between tests.
-      readonlyDir: variant.producesArtifacts ? buildDir : undefined,
-      limits: (() => {
-        const tmpfsBytes = Math.max(
-          runLimits.tmpfsBytes,
-          largestCap * 2 + 64 * 1024 * 1024,
-        );
-        // fsize tracks the tmpfs rather than the base limit: the tmpfs was already widened for a
-        // large expected output, and a per-file cap below it would fail a legitimate answer that
-        // the tmpfs was explicitly sized to hold.
-        return { ...runLimits, tmpfsBytes, fsizeBytes: tmpfsBytes };
-      })(),
-      name: containerName(job, "run"),
+    // The driver's parameters reach it through /in/start.sh, not the container's environment: the
+    // container may have been created before this submission existed (worker/slot-profile.ts).
+    const driverEnv: Record<string, string> = {
+      PTCN_TESTS: String(job.testCases.length),
+      PTCN_TIMEOUT: String(perTestTimeoutS),
+      PTCN_COMPILE_TIMEOUT: String(Math.max(1, Math.ceil(runtime.compileTimeoutMs / 1000))),
+      PTCN_CAP: String(largestCap),
+      // How long the driver waits for an input the bell has ALREADY announced. The wait for the
+      // previous test to finish is the bell itself, which blocks, so this only has to cover a
+      // bind mount surfacing a renamed file late.
+      PTCN_FEED_TIMEOUT: String(FEED_SETTLE_POLLS),
+      ...(harnessCommand === undefined
+        ? {}
+        : {
+            PTCN_HARNESS_PROTOCOL: String(HARNESS_PROTOCOL),
+            PTCN_HARNESS_START: String(HARNESS_START_TIMEOUT_S),
+            PTCN_HARNESS_SETTLE: String(HARNESS_SETTLE_TIMEOUT_S),
+            // The harness's own watchdog fires at PTCN_TIMEOUT. This is the driver's backstop for
+            // a harness that has stopped answering; past it the test reruns as a process.
+            PTCN_HARNESS_BACKSTOP: String(perTestTimeoutS + HARNESS_BACKSTOP_GRACE_S),
+          }),
+    };
+    await writeFile(
+      path.join(inputDir, "start.sh"),
+      startScript(
+        driverEnv,
+        harnessCommand === undefined ? ["/bin/sh", "/in/driver.sh"] : ["/bin/bash", "/in/jvm-driver.sh"],
+      ),
+      "utf8",
+    );
+
+    const batchOptions = {
       // With the harness, the JVM's start is waited for once, and one test may cost its harness
       // attempt up to the backstop AND a rerun as a process. Both are added, so the host backstop
       // never cuts a legitimate run short.
@@ -947,28 +941,19 @@ export async function judge(
       outputCapBytes: 64 * 1024,
       outputDirBudgetBytes: outputDirBudget(largestCap, job.testCases.length),
       outputDirMaxFiles: outputDirFileLimit(job.testCases.length),
-      env: {
-        PTCN_TESTS: String(job.testCases.length),
-        PTCN_TIMEOUT: String(perTestTimeoutS),
-        PTCN_COMPILE_TIMEOUT: String(Math.max(1, Math.ceil(runtime.compileTimeoutMs / 1000))),
-        PTCN_CAP: String(largestCap),
-        // How long the driver waits for an input the bell has ALREADY announced. The wait for the
-        // previous test to finish is the bell itself, which blocks, so this only has to cover a
-        // bind mount surfacing a renamed file late.
-        PTCN_FEED_TIMEOUT: String(FEED_SETTLE_POLLS),
-        ...(harnessCommand === undefined
-          ? {}
-          : {
-              PTCN_HARNESS_PROTOCOL: String(HARNESS_PROTOCOL),
-              PTCN_HARNESS_START: String(HARNESS_START_TIMEOUT_S),
-              PTCN_HARNESS_SETTLE: String(HARNESS_SETTLE_TIMEOUT_S),
-              // The harness's own watchdog fires at PTCN_TIMEOUT. This is the driver's backstop
-              // for a harness that has stopped answering; past it the test reruns as a process.
-              PTCN_HARNESS_BACKSTOP: String(perTestTimeoutS + HARNESS_BACKSTOP_GRACE_S),
-            }),
-      },
-      control: feed.control,
-    });
+    };
+
+    // Runs alongside the container, handing over one input at a time on the driver's doorbell.
+    let feed = feedInputs({ inputDir, resultDir, inputByOrdinal, cap: largestCap });
+    let batch = await runInContainer({ ...specs.run, ...batchOptions, control: feed.control, ...pooled });
+    if (batch.neverStarted === true) {
+      // The pre-created container could not be started, so no test ran and no input was handed
+      // over: run the batch in a fresh container, with a fresh feeder.
+      noteFreshFallback("run");
+      await feed.drained();
+      feed = feedInputs({ inputDir, resultDir, inputByOrdinal, cap: largestCap });
+      batch = await runInContainer({ ...specs.run, ...batchOptions, control: feed.control, name: freshNames.run });
+    }
 
     // The container has exited; let any handover it triggered finish before reading results.
     await feed.drained();
@@ -1125,7 +1110,15 @@ export async function judge(
       });
     }
 
-    reportRun({ job, harnessOffered, declined, harnessCommand, modes, onReport: options?.onReport });
+    reportRun({
+      job,
+      harnessOffered,
+      declined,
+      harnessCommand,
+      modes,
+      pooled: slot !== null && !freshContainerUsed,
+      onReport: options?.onReport,
+    });
 
     return withTimings(aggregate({
       submissionId: job.submissionId,
@@ -1133,7 +1126,9 @@ export async function judge(
       testCases: job.testCases,
     }));
   } finally {
-    await removeWorkspace(workspace);
+    // Whatever of the slot this submission did not start is removed unused, never handed on.
+    if (slot !== null) pool?.discardUnused(slot);
+    await removeWorkspace(ws.root);
   }
 }
 
@@ -1147,10 +1142,11 @@ function reportRun(input: {
   readonly declined: string | null;
   readonly harnessCommand: string | undefined;
   readonly modes: readonly (RunMode | "retry")[];
+  readonly pooled: boolean;
   readonly onReport: ((report: RunReport) => void) | undefined;
 }): void {
-  const { job, harnessOffered, declined, harnessCommand, modes, onReport } = input;
-  onReport?.({ harnessOffered, declined, modes });
+  const { job, harnessOffered, declined, harnessCommand, modes, pooled, onReport } = input;
+  onReport?.({ harnessOffered, declined, modes, pooled });
   if (harnessCommand === undefined) return;
   const fellBack = modes.filter((mode) => mode !== "harness").length;
   if (fellBack === 0) return;
@@ -1164,52 +1160,4 @@ function reportRun(input: {
       firstFallback: modes.findIndex((mode) => mode !== "harness") + 1,
     }),
   );
-}
-
-/**
- * Remove a job workspace, including anything the container left behind that the worker cannot
- * unlink.
- *
- * `rm -rf` runs as the worker. A container running as uid 65534 can create directories inside the
- * writable mounts, and it creates them with ITS umask and ITS ownership — so the worker ends up
- * unable to write to a directory it needs to empty:
- *
- *     EACCES: permission denied, unlink '.../job-WyNUey/res/hidden/0'
- *
- * A failed cleanup is not cosmetic. Scratch accumulates on a box that also runs Postgres, and a
- * full disk stops the database accepting writes — which takes the contest down rather than one
- * submission.
- *
- * The fallback asks the daemon to delete the tree from a throwaway container running as root.
- * That is the same daemon that created the files, it touches only this job's directory, and it is
- * reached only when the ordinary removal has already failed.
- */
-async function removeWorkspace(workspace: string): Promise<void> {
-  try {
-    await rm(workspace, { recursive: true, force: true });
-    return;
-  } catch (error) {
-    console.warn(
-      JSON.stringify({
-        level: "warn",
-        event: "judge.workspace.cleanup_fallback",
-        workspace,
-        reason: error instanceof Error ? error.message : String(error),
-      }),
-    );
-  }
-
-  const removed = await removeAsRoot(workspace);
-  if (!removed) {
-    // Reported, never thrown: a workspace that will not delete must not fail a submission that
-    // has already been judged.
-    console.error(
-      JSON.stringify({
-        level: "error",
-        event: "judge.workspace.leaked",
-        workspace,
-        detail: "scratch could not be removed; disk will accumulate",
-      }),
-    );
-  }
 }

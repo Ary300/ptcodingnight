@@ -64,7 +64,13 @@ export interface ContainerLimits {
   readonly fsizeBytes: number;
 }
 
-export interface ContainerRunOptions {
+/**
+ * Everything that is fixed when a container is CREATED: image, command, mounts, environment,
+ * isolation flags. `runInContainer` builds its `docker run` from exactly this, and
+ * `createContainer` builds a `docker create` from exactly this, through the one function
+ * `containerArgs`, so a container made ahead of time cannot differ from one made on demand.
+ */
+export interface ContainerSpec {
   readonly image: string;
   /** Command and arguments to run inside the container. */
   readonly argv: readonly string[];
@@ -101,17 +107,33 @@ export interface ContainerRunOptions {
    * rewrite the binary it is executing.
    */
   readonly writableBuildDir?: string;
-  readonly stdin?: string;
   readonly limits: ContainerLimits;
   readonly name: string;
+  /** Extra environment for the container. */
+  readonly env?: Readonly<Record<string, string>>;
+}
+
+export interface ContainerRunOptions extends ContainerSpec {
+  readonly stdin?: string;
+  /**
+   * The container named `name` already exists, CREATED ahead of time from the same spec by
+   * `createContainer` (worker/container-pool.ts) and never started. It is started and attached
+   * here instead of being created; every other step — the controls, the watchdogs, the inspect for
+   * OOMKilled and the daemon's timestamps — is the same.
+   */
+  readonly precreated?: boolean;
+  /**
+   * Called with the container's name once its exit state has been read, INSTEAD of removing it
+   * here. The pool queues it for removal when the judge is idle, so a burst does not pay for
+   * `docker rm`. The container is never started again either way.
+   */
+  readonly retire?: (name: string) => void;
   /**
    * Bytes of stdout to capture before treating the submission as a flood and killing it.
    * Defaults to the floor; callers that know the expected output size should pass a cap
    * derived from it.
    */
   readonly outputCapBytes?: number;
-  /** Extra environment for the container. Used to parameterise the batch driver. */
-  readonly env?: Readonly<Record<string, string>>;
   /**
    * Host-side backstop for the WHOLE container, before the startup allowance is added.
    *
@@ -205,6 +227,12 @@ export interface ContainerRunResult {
    * "this program tried to fill the judge host", and an organizer wants to know which.
    */
   readonly diskExceeded: boolean;
+  /**
+   * A pre-created container that never ran: `docker start` failed (the container was swept, or the
+   * daemon refused). Nothing of the submission executed, so the caller runs it again in a fresh
+   * container instead of reading anything from this result.
+   */
+  readonly neverStarted?: boolean;
 }
 
 /**
@@ -247,7 +275,7 @@ const WATCHDOG_POLL_MS = 100;
  *                         that is NOT a tmpfs is the `/out` bind mount, and without this a
  *                         submission could write host disk until the box died (T4).
  */
-function isolationArgs(limits: ContainerLimits): string[] {
+export function isolationArgs(limits: ContainerLimits): string[] {
   const memory = `${limits.memoryLimitMb}m`;
   return [
     "--network=none",
@@ -341,14 +369,12 @@ export async function imageExists(image: string): Promise<boolean> {
  * kill (TLE), since both surface as exit 137. Removal happens explicitly in the `finally`,
  * with `sweepJudgeContainers` as the backstop if this process dies mid-run.
  */
-export async function runInContainer(options: ContainerRunOptions): Promise<ContainerRunResult> {
-  const { image, argv, sourceDir, outputDir, inputDir, readonlyDir, writableBuildDir, stdin,
-    limits, name } = options;
-  const extraEnv = options.env ?? {};
-  const outputCap = options.outputCapBytes ?? OUTPUT_CAP_FLOOR_BYTES;
-
-  const args = [
-    "run",
+/** The arguments after `docker run` / `docker create` for a spec. The ONE place they are built. */
+function containerArgs(spec: ContainerSpec): string[] {
+  const { image, argv, sourceDir, outputDir, inputDir, readonlyDir, writableBuildDir, limits, name } =
+    spec;
+  const extraEnv = spec.env ?? {};
+  return [
     `--name=${name}`,
     ...isolationArgs(limits),
     "--workdir=/work",
@@ -369,6 +395,27 @@ export async function runInContainer(options: ContainerRunOptions): Promise<Cont
     image,
     ...argv,
   ];
+}
+
+/**
+ * Create a container from a spec without starting it. Used to make containers ahead of a burst;
+ * `runInContainer({ ...spec, precreated: true })` starts it later. False if the daemon refused.
+ */
+export async function createContainer(spec: ContainerSpec): Promise<boolean> {
+  const { code } = await runDocker(["create", ...containerArgs(spec)]);
+  return code === 0;
+}
+
+export async function runInContainer(options: ContainerRunOptions): Promise<ContainerRunResult> {
+  const { stdin, limits, name, outputDir, writableBuildDir } = options;
+  const outputCap = options.outputCapBytes ?? OUTPUT_CAP_FLOOR_BYTES;
+
+  // A pre-created container is started and attached; anything else is created and started in one
+  // `docker run`. Both attach stdin, stdout and stderr, and both return the container's exit code.
+  const args =
+    options.precreated === true
+      ? ["start", "--attach", "--interactive", name]
+      : ["run", ...containerArgs(options)];
 
   const startedAt = Date.now();
 
@@ -515,7 +562,12 @@ export async function runInContainer(options: ContainerRunOptions): Promise<Cont
     }
   }
 
-  await removeContainer(name);
+  // A container that never started has the zero time as its StartedAt.
+  const neverStarted =
+    options.precreated === true && (exit === null || exit.startedAt.startsWith("0001-"));
+
+  if (options.retire === undefined) await removeContainer(name);
+  else options.retire(name);
 
   return {
     stdout: result.stdout,
@@ -527,6 +579,7 @@ export async function runInContainer(options: ContainerRunOptions): Promise<Cont
     durationMs,
     wallMs,
     diskExceeded: result.diskExceeded,
+    ...(neverStarted ? { neverStarted } : {}),
   };
 }
 

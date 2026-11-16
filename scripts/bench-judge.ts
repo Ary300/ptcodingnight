@@ -8,7 +8,8 @@ import path from "node:path";
 import type { LanguageId } from "@/lib/judge/runtimes";
 import type { JudgeJob, JudgeResult } from "@/lib/schemas/judge";
 import { isDockerAvailable, sweepJudgeContainers } from "@/worker/docker";
-import { judge } from "@/worker/runner";
+import { ContainerPool } from "@/worker/container-pool";
+import { judge, slotProfileForJob } from "@/worker/runner";
 
 /**
  * Judge-throughput micro-benchmark: what one submission costs the judge, per stage.
@@ -56,6 +57,12 @@ interface Args {
   readonly out: string | null;
   readonly slugs: readonly string[];
   readonly languages: readonly LanguageId[];
+  /**
+   * `--pool`: judge in containers created BEFORE the measurement, and remove them after it, as the
+   * worker's pool does ahead of and after a burst. What is measured is then what a submission costs
+   * DURING a burst.
+   */
+  readonly pool: boolean;
 }
 
 function parseArgs(argv: readonly string[]): Args {
@@ -63,6 +70,7 @@ function parseArgs(argv: readonly string[]): Args {
   let reps = 3;
   let out: string | null = null;
   let languages: LanguageId[] = ["PYTHON_312", "JAVA_21", "CPP_17"];
+  let pool = false;
   const slugs: string[] = [];
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i] ?? "";
@@ -70,9 +78,10 @@ function parseArgs(argv: readonly string[]): Args {
     else if (arg === "--reps") reps = Number(argv[++i] ?? "3");
     else if (arg === "--out") out = argv[++i] ?? null;
     else if (arg === "--lang") languages = (argv[++i] ?? "").split(",") as LanguageId[];
+    else if (arg === "--pool") pool = true;
     else slugs.push(arg);
   }
-  return { solDir, reps, out, slugs: slugs.length > 0 ? slugs : DEFAULT_SLUGS, languages };
+  return { solDir, reps, out, slugs: slugs.length > 0 ? slugs : DEFAULT_SLUGS, languages, pool };
 }
 
 /* ------------------------------------------------------------------------------------------ */
@@ -211,22 +220,27 @@ async function benchOne(
   source: string,
   rep: number,
   backgroundCoresBusy: number,
+  pool: ContainerPool | null,
 ): Promise<Sample> {
   const job = jobFor(slug, language, source, rep);
+  if (pool !== null) await pool.prefill(await slotProfileForJob(job), 1);
   calls.length = 0;
 
   const busy0 = hostBusyTicks();
   const cpu0 = process.cpuUsage();
   const t0 = performance.now();
   const epoch0 = Date.now();
-  const result: JudgeResult = await judge(job, undefined, {
-    enqueuedAtMs: epoch0,
-    dequeuedAtMs: epoch0,
-    attempt: 1,
-  });
+  const result: JudgeResult = await judge(
+    job,
+    undefined,
+    { enqueuedAtMs: epoch0, dequeuedAtMs: epoch0, attempt: 1 },
+    pool === null ? {} : { pool },
+  );
   const t1 = performance.now();
   const cpu1 = process.cpuUsage(cpu0);
   const busy1 = hostBusyTicks();
+  // The removals the pool deferred happen after the measurement, as they do after a burst.
+  if (pool !== null) await pool.maintain();
 
   const wallMs = t1 - t0;
   const hostCpuS = Math.max(
@@ -292,6 +306,9 @@ async function main(): Promise<void> {
 
   const samples: Sample[] = [];
   let failures = 0;
+  const pool = args.pool
+    ? new ContainerPool({ target: 0, removalBacklog: 10_000, isBusy: () => false })
+    : null;
   try {
     const background = await measureBackgroundRate(5);
     console.log(`host background: ${background.toFixed(2)} cores busy while idle`);
@@ -301,9 +318,9 @@ async function main(): Promise<void> {
         const source = sourceFor(slug, language, args.solDir);
         if (source === null) continue;
         // One unmeasured warm-up, so the first sample does not carry the page cache filling.
-        await benchOne(slug, language, source, 0, background);
+        await benchOne(slug, language, source, 0, background, pool);
         for (let rep = 1; rep <= args.reps; rep += 1) {
-          const s = await benchOne(slug, language, source, rep, background);
+          const s = await benchOne(slug, language, source, rep, background, pool);
           samples.push(s);
           const ok = s.verdict === "AC" && s.score === s.maxScore;
           if (!ok) failures += 1;
@@ -318,6 +335,7 @@ async function main(): Promise<void> {
       }
     }
   } finally {
+    await pool?.close();
     execFileSync("docker", ["rm", "-f", PROBE], { stdio: "ignore" });
     await sweepJudgeContainers();
   }

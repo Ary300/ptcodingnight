@@ -9,7 +9,8 @@ import type { LanguageId } from "@/lib/judge/runtimes";
 import type { JudgeJob, JudgeResult } from "@/lib/schemas/judge";
 import { parseProblemManifest, type ProblemManifest } from "@/lib/schemas/seed";
 import { isDockerAvailable, sweepJudgeContainers } from "@/worker/docker";
-import { judge, type RunReport } from "@/worker/runner";
+import { ContainerPool } from "@/worker/container-pool";
+import { judge, slotProfileForJob, type RunReport } from "@/worker/runner";
 
 /**
  * A/B for the in-JVM harness: judge the SAME submissions with the harness on and with it off, and
@@ -43,6 +44,11 @@ interface Args {
   readonly out: string | null;
   /** `--only a,b`: judge only the cases whose name contains one of these. */
   readonly only: readonly string[];
+  /**
+   * What the two sides differ in: `harness` (on/off, the default), or `pool` (pre-created
+   * containers versus containers made on demand, the harness on for both).
+   */
+  readonly compare: "harness" | "pool";
 }
 
 function parseArgs(argv: readonly string[]): Args {
@@ -50,14 +56,16 @@ function parseArgs(argv: readonly string[]): Args {
   const solDirs: string[] = [];
   let out: string | null = null;
   let only: string[] = [];
+  let compare: "harness" | "pool" = "harness";
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === "--set") sets = new Set((argv[++i] ?? "").split(","));
     else if (arg === "--sol-dir") solDirs.push(argv[++i] ?? "");
     else if (arg === "--out") out = argv[++i] ?? null;
     else if (arg === "--only") only = (argv[++i] ?? "").split(",").filter((x) => x.length > 0);
+    else if (arg === "--compare") compare = argv[++i] === "pool" ? "pool" : "harness";
   }
-  return { sets, solDirs, out, only };
+  return { sets, solDirs, out, only, compare };
 }
 
 interface Case {
@@ -195,11 +203,19 @@ interface Side {
   readonly wallMs: number;
 }
 
-async function run(job: JudgeJob, harness: boolean): Promise<Side> {
+const pool = new ContainerPool({ target: 0, removalBacklog: 10_000, isBusy: () => false });
+
+/**
+ * One side of the comparison. With `--compare pool`, the "on" side gets one slot created for its
+ * profile just before it is judged — the same thing the worker does ahead of a burst — and the
+ * "off" side creates its containers on demand.
+ */
+async function run(job: JudgeJob, on: boolean, compare: "harness" | "pool"): Promise<Side> {
   let report: RunReport | null = null;
+  if (compare === "pool" && on) await pool.prefill(await slotProfileForJob(job), 1);
   const started = Date.now();
   const result = await judge(job, undefined, undefined, {
-    harness,
+    ...(compare === "harness" ? { harness: on } : on ? { pool } : {}),
     onReport: (r) => {
       report = r;
     },
@@ -252,20 +268,22 @@ async function main(): Promise<void> {
   let tests = 0;
   let harnessTests = 0;
   let declinedJobs = 0;
+  let pooledJobs = 0;
   let wallOn = 0;
   let wallOff = 0;
 
   for (const [index, c] of cases.entries()) {
     // Alternate which side goes first, so neither systematically inherits a warmer host.
     const onFirst = index % 2 === 0;
-    const first = await run(c.job, onFirst);
-    const second = await run(c.job, !onFirst);
+    const first = await run(c.job, onFirst, args.compare);
+    const second = await run(c.job, !onFirst, args.compare);
     const on = onFirst ? first : second;
     const off = onFirst ? second : first;
 
     const diffs = differences(on.result, off.result);
     const modes = on.report?.modes ?? [];
     const judgedInHarness = modes.filter((m) => m === "harness").length;
+    if (args.compare === "pool" && on.report?.pooled === true) pooledJobs += 1;
     tests += on.result.testResults.length;
     harnessTests += judgedInHarness;
     wallOn += on.wallMs;
@@ -277,6 +295,7 @@ async function main(): Promise<void> {
     console.log(
       `${tag} ${c.name.padEnd(48)} ${on.result.verdict.padEnd(3)} ${String(on.result.score).padStart(4)}` +
         `  harness ${String(judgedInHarness)}/${String(modes.length)}` +
+        (args.compare === "pool" ? `  pooled ${on.report?.pooled === true ? "yes" : "NO"}` : "") +
         `${on.report?.declined ? ` (declined: ${on.report.declined})` : ""}` +
         `  on ${String(on.wallMs)} ms  off ${String(off.wallMs)} ms`,
     );
@@ -284,11 +303,14 @@ async function main(): Promise<void> {
     rows.push({ name: c.name, diffs, verdict: on.result.verdict, modes, onMs: on.wallMs, offMs: off.wallMs });
   }
 
+  // Removing the pooled side's finished containers is idle-time work; the run is over, so do it.
+  await pool.close();
   await sweepJudgeContainers();
 
   console.log(
     `\nA/B: ${String(cases.length)} submissions, ${String(tests)} tests, ` +
       `${String(harnessTests)} judged in the harness, ${String(declinedJobs)} declined, ` +
+      (args.compare === "pool" ? `${String(pooledJobs)} judged in pre-created containers, ` : "") +
       `${String(diffCount)} differences. wall on ${String(wallOn)} ms, off ${String(wallOff)} ms`,
   );
   if (args.out !== null) writeFileSync(args.out, JSON.stringify(rows, null, 2));

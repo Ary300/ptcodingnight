@@ -8,7 +8,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { JudgeJob, JudgeResult, Verdict } from "@/lib/schemas/judge";
 import { isDockerAvailable, sweepJudgeContainers } from "@/worker/docker";
 import { VARIANTS } from "@/lib/judge/runtimes";
-import { judge } from "@/worker/runner";
+import { ContainerPool } from "@/worker/container-pool";
+import { judge, slotProfileForJob } from "@/worker/runner";
 
 /**
  * G5 — hostile submission containment.
@@ -97,9 +98,19 @@ function jobFor(entry: Manifest["cases"][number]): JudgeJob {
   };
 }
 
+/**
+ * Containers THIS gate could have made: the on-demand ones are named after the `sandbox-`
+ * submission ids below, and the pre-created ones carry the pool's `pool-` infix. Counting every
+ * container on the host (`docker ps -a`) failed this gate whenever anything else on the machine —
+ * another checkout's gates, an MCP server — started or stopped a container meanwhile; the count
+ * and the thing it checks have to name the same set (CLAUDE.md).
+ */
 function containerCount(): number {
-  const out = execFileSync("docker", ["ps", "-a", "-q"], { encoding: "utf8" });
-  return out.split("\n").filter((l) => l.trim().length > 0).length;
+  const out = execFileSync("docker", ["ps", "-a", "--format", "{{.Names}}"], { encoding: "utf8" });
+  return out
+    .split("\n")
+    .filter((name) => name.startsWith("ptcn-judge-sandbox-") || name.startsWith("ptcn-judge-pool-"))
+    .length;
 }
 
 /** Everything the submission managed to emit, for escape-string scanning. */
@@ -183,24 +194,55 @@ describe("G5 hostile submission containment", () => {
     expect(runtimes.size).toBeGreaterThanOrEqual(4);
   });
 
-  for (const entry of manifest.cases) {
-    it(`contains ${entry.id} → ${entry.expectedVerdict}`, async () => {
-      const result = await judge(jobFor(entry), IMAGES);
-      results.set(entry.id, result);
+  /**
+   * Every case runs twice: in containers created on demand, and in containers PRE-CREATED by the
+   * worker's pool (worker/container-pool.ts) — created before the submission existed, started for
+   * it, queued for removal after it. The isolation flags are the same by construction (one spec,
+   * one argument builder); this proves the containment is too.
+   */
+  const pool = new ContainerPool({ target: 0, removalBacklog: 10_000, isBusy: () => false });
+  const pooledUse: boolean[] = [];
 
-      // An escape is categorically worse than a wrong verdict, so it is asserted first.
-      expect(allOutput(result)).not.toContain("ESCAPED");
+  for (const [mode, label] of [["fresh", ""], ["pooled", " (pre-created container)"]] as const) {
+    for (const entry of manifest.cases) {
+      it(`contains ${entry.id} → ${entry.expectedVerdict}${label}`, async () => {
+        const job = jobFor(entry);
+        if (mode === "pooled") await pool.prefill(await slotProfileForJob(job, IMAGES), 1);
+        const result = await judge(job, IMAGES, undefined, {
+          ...(mode === "pooled" ? { pool } : {}),
+          onReport: (report) => {
+            if (mode === "pooled") pooledUse.push(report.pooled);
+          },
+        });
+        if (mode === "fresh") results.set(entry.id, result);
 
-      expect(result.verdict).toBe(entry.expectedVerdict);
+        // An escape is categorically worse than a wrong verdict, so it is asserted first.
+        expect(allOutput(result)).not.toContain("ESCAPED");
 
-      // A contained hostile submission still gets a clean student-facing verdict. IE would
-      // mean the judge fell over, which is the failure mode this gate exists to catch.
-      expect(result.verdict).not.toBe("IE");
+        expect(result.verdict).toBe(entry.expectedVerdict);
 
-      // Nothing hostile should ever bank points.
-      expect(result.score).toBe(0);
-    }, 300_000);
+        // A contained hostile submission still gets a clean student-facing verdict. IE would
+        // mean the judge fell over, which is the failure mode this gate exists to catch.
+        expect(result.verdict).not.toBe("IE");
+
+        // Nothing hostile should ever bank points.
+        expect(result.score).toBe(0);
+      }, 300_000);
+    }
   }
+
+  it("ran every pooled case in its pre-created containers", () => {
+    expect(pooledUse.length).toBeGreaterThan(0);
+    expect(pooledUse.every((used) => used)).toBe(true);
+  });
+
+  it("is back at its container baseline once the pool's removals have run", async () => {
+    // The pool's idle-time work: remove every finished container it was holding for removal.
+    await pool.maintain();
+    expect(pool.stats().pendingRemoval).toBe(0);
+    expect(containerCount()).toBe(baseline);
+    await pool.close();
+  }, 180_000);
 
   it("never exposes the host filesystem through /etc/passwd", () => {
     const result = results.get("read-etc-passwd");

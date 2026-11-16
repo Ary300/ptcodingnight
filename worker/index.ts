@@ -10,11 +10,15 @@ import { startWorkerHeartbeat } from "@/lib/judge/heartbeat";
 import { JudgeJobSchema, type JudgeResult } from "@/lib/schemas/judge";
 import { JUDGE_QUEUE_NAME, MAX_JOB_ATTEMPTS, STALLED_JOB_GRACE_MS } from "@/lib/judge/queue";
 import { parseServerEnv } from "@/lib/schemas/env";
-import { isDockerAvailable, sweepJudgeContainers } from "@/worker/docker";
+import { isDockerAvailable, OUTPUT_CAP_FLOOR_BYTES, sweepJudgeContainers } from "@/worker/docker";
 import { defaultJudgeConcurrency, hostCpuCount, hostMemoryMb } from "./host";
 import { RUNTIMES, type RuntimeId } from "@/lib/judge/runtimes";
 import { describeMissingImages, findMissingImages, requiredImages } from "@/worker/preflight";
-import { judge, type ImageOverrides } from "@/worker/runner";
+import { judge, slotProfileFor, type ImageOverrides } from "@/worker/runner";
+import { ContainerPool } from "@/worker/container-pool";
+import { removeStaleWorkspaces } from "@/worker/workspace";
+import { hostLimits } from "@/lib/contest/host";
+import type { JudgeJob } from "@/lib/schemas/judge";
 
 /**
  * The judge worker.
@@ -24,7 +28,59 @@ import { judge, type ImageOverrides } from "@/worker/runner";
  * docs/PRD.md §7 for the rules.
  */
 
-async function processJob(job: Job, images: ImageOverrides): Promise<JudgeResult> {
+/**
+ * Pre-created containers (worker/container-pool.ts): how many submissions' worth to keep ready.
+ * Each slot is a build and a run container, created and never started, plus a workspace. 0 turns
+ * the pool off and every container is created on demand, as before.
+ */
+const POOL_SLOTS = Number.parseInt(process.env.JUDGE_POOL_SLOTS ?? "60", 10);
+
+/** Finished containers allowed to wait for removal while judging continues. */
+const POOL_REMOVAL_BACKLOG = Number.parseInt(process.env.JUDGE_POOL_REMOVAL_BACKLOG ?? "120", 10);
+
+/** How long the queue must have been quiet before the pool spends CPU on creating or removing. */
+const POOL_IDLE_MS = 1_500;
+
+/** Submissions being judged right now, and when the last one started or ended. */
+let activeJobs = 0;
+let lastJobActivityMs = 0;
+
+function judgeIsBusy(): boolean {
+  return activeJobs > 0 || Date.now() - lastJobActivityMs < POOL_IDLE_MS;
+}
+
+/**
+ * The profile a typical submission will ask for on this host — Java 21 against a 256 MB problem
+ * whose answers fit the default output cap, which is most of the bank — so the pool is useful
+ * before the first submission arrives. Every other profile is learned from demand.
+ */
+function expectedProfile(images: ImageOverrides) {
+  const host = hostLimits();
+  const seed: JudgeJob = {
+    submissionId: "pool-seed",
+    language: "JAVA_21",
+    sourceCode: "",
+    limits: {
+      timeLimitMs: 1_000,
+      memoryLimitMb: Math.min(256, host.memoryLimitMb),
+      wallClockKillMs: 3_000,
+      pidsLimit: host.pidsLimit,
+      tmpfsBytes: host.tmpfsBytes,
+      cpus: host.cpus,
+    },
+    comparator: { kind: "whitespace" },
+    testCases: [],
+    attempt: 1,
+    captureOutput: false,
+  };
+  return slotProfileFor(seed, images, OUTPUT_CAP_FLOOR_BYTES);
+}
+
+async function processJob(
+  job: Job,
+  images: ImageOverrides,
+  pool: ContainerPool | null,
+): Promise<JudgeResult> {
   // Parsed, not cast. A malformed job means the enqueuer and this worker disagree about the
   // contract, and guessing at the difference is how a submission gets judged against the
   // wrong problem.
@@ -40,11 +96,25 @@ async function processJob(job: Job, images: ImageOverrides): Promise<JudgeResult
   // `processedOn` when this worker picked the job up. `processedOn` is set before the processor
   // runs, so the fallback is unreachable in practice; it exists because the field is typed
   // optional, and "now" is the honest value at the only moment the fallback could fire.
-  const result = await judge(parsed.data, images, {
-    enqueuedAtMs: job.timestamp,
-    dequeuedAtMs: job.processedOn ?? Date.now(),
-    attempt: job.attemptsMade + 1,
-  });
+  activeJobs += 1;
+  lastJobActivityMs = Date.now();
+  let result: JudgeResult;
+  try {
+    result = await judge(
+      parsed.data,
+      images,
+      {
+        enqueuedAtMs: job.timestamp,
+        dequeuedAtMs: job.processedOn ?? Date.now(),
+        attempt: job.attemptsMade + 1,
+      },
+      pool === null ? {} : { pool },
+    );
+  } finally {
+    activeJobs -= 1;
+    lastJobActivityMs = Date.now();
+    if (pool !== null) scheduleMaintenance(pool);
+  }
 
   // An IE is our fault, not the student's. Throwing hands the job back to BullMQ for its one
   // retry; on the final attempt we stop retrying and surface it for an admin instead of
@@ -54,6 +124,13 @@ async function processJob(job: Job, images: ImageOverrides): Promise<JudgeResult
   }
 
   return result;
+}
+
+/** Once the queue has been quiet for POOL_IDLE_MS, remove finished containers and refill. */
+function scheduleMaintenance(pool: ContainerPool): void {
+  setTimeout(() => {
+    if (!judgeIsBusy()) void pool.maintain();
+  }, POOL_IDLE_MS + 50);
 }
 
 async function main(): Promise<void> {
@@ -91,8 +168,24 @@ async function main(): Promise<void> {
   }
 
   // A previous crash may have left containers behind; start from a clean host.
+  // Pooled and pending-removal containers carry the same prefix, so this clears both after a
+  // crash; their workspaces go with them.
   const swept = await sweepJudgeContainers();
   if (swept > 0) console.warn(`swept ${swept} judge container(s) left by a previous run`);
+  await removeStaleWorkspaces("pool-");
+
+  const pool =
+    POOL_SLOTS > 0
+      ? new ContainerPool({
+          target: POOL_SLOTS,
+          removalBacklog: POOL_REMOVAL_BACKLOG,
+          isBusy: judgeIsBusy,
+        })
+      : null;
+  if (pool !== null) {
+    pool.expect(expectedProfile(images));
+    void pool.maintain();
+  }
 
   const connection = new IORedis(env.REDIS_URL, { maxRetriesPerRequest: null });
 
@@ -109,7 +202,7 @@ async function main(): Promise<void> {
       ? defaultJudgeConcurrency()
       : env.JUDGE_CONCURRENCY;
 
-  const worker = new Worker(JUDGE_QUEUE_NAME, (job) => processJob(job, images), {
+  const worker = new Worker(JUDGE_QUEUE_NAME, (job) => processJob(job, images, pool), {
     connection,
     concurrency,
     stalledInterval: STALLED_JOB_GRACE_MS,
@@ -149,6 +242,7 @@ async function main(): Promise<void> {
   const shutdown = async (signal: string) => {
     console.warn(`${signal} received; draining judge worker`);
     await worker.close();
+    await pool?.close();
     await sweepJudgeContainers();
     // Before the connection closes, because the stop DELETES the heartbeat key — an orderly
     // shutdown reads as "no worker" immediately rather than after a 30 s TTL of doubt.
@@ -166,6 +260,7 @@ async function main(): Promise<void> {
       event: "judge.started",
       queue: JUDGE_QUEUE_NAME,
       concurrency,
+      poolSlots: pool === null ? 0 : POOL_SLOTS,
       concurrencySource: process.env.JUDGE_CONCURRENCY === undefined ? "derived from cpu count" : "JUDGE_CONCURRENCY",
       /*
         The box, in the first line of the log.
