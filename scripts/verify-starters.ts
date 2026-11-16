@@ -41,6 +41,19 @@ import { imageExists, isDockerAvailable, isolationArgs } from "@/worker/docker";
 const RUN_TIMEOUT_SECONDS = 10;
 const COMPILE_TIMEOUT_SECONDS = 120;
 const MAX_STDOUT_BYTES = 4 * 1024;
+
+/**
+ * The output allowance for one input: the flat floor, or twice the expected answer when that is
+ * larger. A starter prints placeholder answers in the problem's own shape, so a problem whose
+ * answer is one line per query legitimately prints one placeholder line per query: 200,000 bytes
+ * on circular-array-rotation's large inputs. The cap is there to catch a flood, not a correct
+ * shape, so it scales with what the problem itself prints.
+ */
+function outputCapFor(testsDir: string, input: string): number {
+  const expected = path.join(testsDir, input.replace(/\.in$/, ".out"));
+  const expectedBytes = existsSync(expected) ? statSync(expected).size : 0;
+  return Math.max(MAX_STDOUT_BYTES, expectedBytes * 2);
+}
 const CONCURRENCY = 3;
 const CONTAINER_PREFIX = "ptcn-verify-starter-";
 
@@ -222,8 +235,9 @@ async function verify(job: Job): Promise<Outcome> {
       const stderr = lines[index + 1]?.startsWith("@@STDERR ") ? lines[index + 1]?.slice(9) : "";
       problems.push(`${input}: exit ${rcText} ${stderr ?? ""}`.trim());
     }
-    if (bytes > MAX_STDOUT_BYTES) {
-      problems.push(`${input}: wrote ${String(bytes)} bytes (cap ${String(MAX_STDOUT_BYTES)})`);
+    const cap = outputCapFor(job.testsDir, input);
+    if (bytes > cap) {
+      problems.push(`${input}: wrote ${String(bytes)} bytes (cap ${String(cap)})`);
     }
   }
 
