@@ -38,6 +38,15 @@ function createClient(): PrismaClient {
   return new PrismaClient({
     adapter,
     log: env.NODE_ENV === "development" ? ["warn", "error"] : ["error"],
+    /*
+      Interactive transactions wait at most 2 s for a pooled connection by default. The
+      2026-11-15 production matrix (50 students sending 2 or 3 each, both CPUs saturated by
+      judging) hit that ceiling and answered 500 "Unable to start a transaction in the given
+      time" on verdict reads and writes. A slow answer during the end-of-night rush is fine; a
+      failed one is not, so waiting for a connection is allowed up to 15 s and a transaction may
+      run for 20.
+    */
+    transactionOptions: { maxWait: 15_000, timeout: 20_000 },
   });
 }
 
