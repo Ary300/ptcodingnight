@@ -487,6 +487,9 @@ function hitWallClock(exitCode: number | null, durationMs: number, wallClockKill
  * measured up to 38 s for the JVM on this host. So this only fires when the claim is implausibly
  * small — orders of magnitude, not percentages — and a correct submission is never caught by it.
  */
+/** The startup budget this check assumed when it last produced zero false positives on the droplet. */
+export const CREDIBILITY_STARTUP_FLOOR_MS = 4_000;
+
 export function selfReportedTimingIsCredible(input: {
   readonly claimedTotalMs: number;
   readonly containerMs: number;
@@ -497,7 +500,12 @@ export function selfReportedTimingIsCredible(input: {
   // Everything the container spends that is not the tests themselves: image start, compile, shell,
   // the driver's copies. Doubling the startup budget and adding a flat floor keeps a fast, honest
   // submission comfortably inside the allowance.
-  const unaccountedAllowanceMs = startupBudgetMs * 2 + 10_000;
+  //
+  // The startup budget is floored at CREDIBILITY_STARTUP_FLOOR_MS here. Lowering Java's budget to
+  // 2 s on 2026-11-16 also shrank this allowance from 18 s to 14 s, and on a heavily loaded host
+  // that failed two correct tests whose containers simply waited longer. The time limit and this
+  // forgery check measure different things, so moving one must not move the other.
+  const unaccountedAllowanceMs = Math.max(startupBudgetMs, CREDIBILITY_STARTUP_FLOOR_MS) * 2 + 10_000;
 
   // The container was quick enough that nothing could have been hidden in it.
   if (containerMs <= unaccountedAllowanceMs) return true;

@@ -303,6 +303,18 @@ describe("selfReportedTimingIsCredible", () => {
       }),
     ).toBe(true);
   });
+
+  it("keeps its slack when a runtime's startup budget is lowered, because it measures something else", () => {
+    // Java's budget fell from 4 s to 2 s on 2026-11-16. A container that waited 17 s longer than
+    // its tests claimed was believed at 4 s and must still be believed at 2 s.
+    const honestButSlow = { claimedTotalMs: 1_000, containerMs: 1_000 + 18_000 + 17_000 };
+    expect(selfReportedTimingIsCredible({ ...honestButSlow, startupBudgetMs: 4_000 })).toBe(true);
+    expect(selfReportedTimingIsCredible({ ...honestButSlow, startupBudgetMs: 2_000 })).toBe(true);
+    // A forgery is still caught: minutes of container time against a claim of milliseconds.
+    expect(
+      selfReportedTimingIsCredible({ claimedTotalMs: 80, containerMs: 96_000, startupBudgetMs: 2_000 }),
+    ).toBe(false);
+  });
 });
 
 describe("classifyCompileFailure", () => {
