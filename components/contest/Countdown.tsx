@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 
 import { serverNow } from "@/components/leaderboard/server-clock";
 
+import { humanDuration } from "./lobby/phase";
+
 /**
  * The contest clock.
  *
@@ -33,19 +35,18 @@ function format(ms: number): string {
   return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
 }
 
-function announceStart(ms: number): string {
-  const minutes = Math.ceil(ms / 60_000);
-  if (minutes <= 1) return "The contest starts in under a minute.";
-  if (minutes < 60) return `The contest starts in ${String(minutes)} minutes.`;
-  return `The contest starts in ${String(Math.floor(minutes / 60))} hours ${String(minutes % 60)} minutes.`;
+/*
+  Whole minutes in words, through the one helper that already pluralises (`humanDuration`). These
+  read "1 hours 9 minutes remaining" and "2 hours 1 minutes" with their own arithmetic.
+*/
+export function announceStart(ms: number): string {
+  if (Math.ceil(ms / 60_000) <= 1) return "The contest starts in under a minute.";
+  return `The contest starts in ${humanDuration(ms)}.`;
 }
 
-function announce(ms: number): string {
+export function announce(ms: number): string {
   if (ms <= 0) return "Contest over.";
-  const minutes = Math.ceil(ms / 60_000);
-  if (minutes === 1) return "1 minute remaining.";
-  if (minutes < 60) return `${minutes} minutes remaining.`;
-  return `${Math.floor(minutes / 60)} hours ${minutes % 60} minutes remaining.`;
+  return `${humanDuration(ms)} remaining.`;
 }
 
 export interface CountdownProps {
