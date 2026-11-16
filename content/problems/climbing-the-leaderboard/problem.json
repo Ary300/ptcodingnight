@@ -13,5 +13,34 @@
     "kind": "whitespace"
   },
   "sampleCount": 2,
-  "originAttribution": "Task inspired by a problem of the same name used at a past Coding Night. Statement and test data written fresh for this platform."
+  "originAttribution": "Task inspired by a problem of the same name used at a past Coding Night. Statement and test data written fresh for this platform.",
+  "signature": {
+    "name": "climbingLeaderboard",
+    "returns": {
+      "type": "int[]",
+      "join": "\n"
+    },
+    "params": [
+      {
+        "name": "n",
+        "type": "int",
+        "passed": false
+      },
+      {
+        "name": "ranked",
+        "type": "int[]",
+        "length": "n"
+      },
+      {
+        "name": "m",
+        "type": "int",
+        "passed": false
+      },
+      {
+        "name": "player",
+        "type": "int[]",
+        "length": "m"
+      }
+    ]
+  }
 }

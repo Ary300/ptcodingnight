@@ -14,5 +14,24 @@
   },
   "sampleCount": 2,
   "originAttribution": "Written for the Park Tudor practice arena. Original task.",
-  "practiceOnly": true
+  "practiceOnly": true,
+  "signature": {
+    "name": "trainSwitchyard",
+    "returns": {
+      "type": "string[]",
+      "join": "\n"
+    },
+    "params": [
+      {
+        "name": "n",
+        "type": "int",
+        "passed": false
+      },
+      {
+        "name": "cars",
+        "type": "int[]",
+        "length": "n"
+      }
+    ]
+  }
 }
