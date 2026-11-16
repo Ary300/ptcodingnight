@@ -3,6 +3,7 @@ import { Crumbs, TabStrip } from "@/components/ui";
 import type { ProblemDetail } from "@/lib/schemas/api";
 
 import { lockedLabel } from "../lobby/ProblemList";
+import { problemLabel } from "./problem-label";
 
 /**
  * The furniture HackerRank puts around a problem: a breadcrumb above the title, a status pill
@@ -107,11 +108,16 @@ export function ProblemStatusPill({ detail }: { detail: ProblemDetail }) {
   return null;
 }
 
-/** `Problems › B2 › A Very Big Sum`, in the shared breadcrumb. */
+/**
+ * `Problems › B2 (A Very Big Sum)`, in the shared breadcrumb.
+ *
+ * One crumb for the problem rather than a bare `B2` crumb followed by a title crumb: the slot
+ * label is not a place a student can go, and on its own it named nothing.
+ */
 export function ProblemBreadcrumb({ slotLabel, title }: { slotLabel: string; title: string }) {
   return (
     <Crumbs
-      trail={[{ href: "/contest", label: "Problems" }, { label: slotLabel }, { label: title }]}
+      trail={[{ href: "/contest", label: "Problems" }, { label: problemLabel(slotLabel, title) }]}
     />
   );
 }

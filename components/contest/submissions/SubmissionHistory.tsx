@@ -14,6 +14,7 @@ import { useParticipant } from "../data/participant";
 import { useResource } from "../data/useResource";
 import { LANGUAGE_LABEL } from "../editor/types";
 import { SignInRequired } from "../lobby/SignInRequired";
+import { problemLabel } from "../problem/problem-label";
 import { TONE_COLOR, VERDICT_DISPLAY } from "../verdict/verdict-display";
 import { recallSource } from "./source-cache";
 
@@ -365,7 +366,7 @@ export function SubmissionHistory() {
   const titleById = useMemo(() => {
     const map = new Map<string, string>();
     for (const problem of problems.data ?? ([] as ProblemSummary[])) {
-      map.set(problem.contestProblemId, `${problem.slotLabel}: ${problem.title}`);
+      map.set(problem.contestProblemId, problemLabel(problem.slotLabel, problem.title));
     }
     return map;
   }, [problems.data]);
