@@ -231,3 +231,87 @@ export function parseMarkdown(source: string): Block[] {
 
   return blocks;
 }
+
+// ---------------------------------------------------------------------------
+// Collapsible sections
+// ---------------------------------------------------------------------------
+
+type HeadingBlock = Extract<Block, { kind: "heading" }>;
+
+/** A heading and everything under it, up to the next heading of the same or higher rank. */
+export interface CollapsedSection {
+  readonly kind: "section";
+  readonly heading: HeadingBlock;
+  readonly body: readonly Block[];
+}
+
+export type SectionedBlock = Block | CollapsedSection;
+
+/** The plain text of an inline run, for matching a heading by its words. */
+export function inlineText(nodes: readonly Inline[]): string {
+  return nodes
+    .map((node) => {
+      switch (node.kind) {
+        case "text":
+        case "code":
+          return node.value;
+        case "math":
+          return node.tex;
+        case "strong":
+        case "em":
+        case "link":
+          return inlineText(node.children);
+      }
+    })
+    .join("");
+}
+
+/** "Example", "Examples", "Example 1", "Example 2:". Matched on the heading's words. */
+export function isExampleHeading(block: Block): boolean {
+  return block.kind === "heading" && /^examples?\b/i.test(inlineText(block.children).trim());
+}
+
+function sectionEnd(blocks: readonly Block[], start: number, level: number): number {
+  let end = start + 1;
+  while (end < blocks.length) {
+    const next = blocks[end];
+    if (next !== undefined && next.kind === "heading" && next.level <= level) break;
+    end += 1;
+  }
+  return end;
+}
+
+/**
+ * Fold every section whose heading `matches` into one `CollapsedSection`.
+ *
+ * A matching section that itself contains a matching sub-heading ("## Examples" over
+ * "### Example 1" and "### Example 2") is NOT folded: its heading stays a plain heading and each
+ * inner example folds on its own, so a student opens an example with one click rather than
+ * opening a fold to find more folds.
+ */
+export function collapseSections(
+  blocks: readonly Block[],
+  matches: (block: Block) => boolean,
+): SectionedBlock[] {
+  const out: SectionedBlock[] = [];
+  let i = 0;
+  while (i < blocks.length) {
+    const block = blocks[i];
+    if (block === undefined) break;
+    if (block.kind !== "heading" || !matches(block)) {
+      out.push(block);
+      i += 1;
+      continue;
+    }
+    const end = sectionEnd(blocks, i, block.level);
+    const body = blocks.slice(i + 1, end);
+    if (body.some(matches)) {
+      out.push(block);
+      i += 1;
+      continue;
+    }
+    out.push({ kind: "section", heading: block, body });
+    i = end;
+  }
+  return out;
+}

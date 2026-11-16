@@ -347,6 +347,7 @@ export function ProblemWorkspace({ slug }: ProblemWorkspaceProps) {
           <Markdown
             source={statementWithoutRepeatedTitle(detail.statementMd, detail.title)}
             className="mt-5 max-w-none"
+            collapseExamples
           />
 
           {/*

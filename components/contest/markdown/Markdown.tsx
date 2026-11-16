@@ -1,6 +1,15 @@
 import { createElement, type ReactNode } from "react";
 
-import { parseMarkdown, type Block, type Inline } from "./parse";
+import { Disclosure } from "../Disclosure";
+import {
+  collapseSections,
+  isExampleHeading,
+  parseMarkdown,
+  type Block,
+  type CollapsedSection,
+  type Inline,
+  type SectionedBlock,
+} from "./parse";
 import { Tex } from "./Tex";
 
 /**
@@ -140,17 +149,60 @@ function renderBlock(block: Block, key: string): ReactNode {
   }
 }
 
+/**
+ * An "Example" section folded behind its heading. The heading keeps its rank inside the summary,
+ * so the outline still lists it, but drops the block margins it carries in running prose: the
+ * disclosure's own row is the spacing now.
+ */
+function renderSection(section: CollapsedSection, key: string): ReactNode {
+  const { heading } = section;
+  return (
+    <Disclosure
+      key={key}
+      kind="example"
+      className="my-5"
+      summary={createElement(
+        `h${heading.level}`,
+        {
+          className: "font-display font-bold text-ink",
+          style: { fontSize: heading.level <= 3 ? "var(--text-md)" : "var(--text-sm)" },
+        },
+        renderInline(heading.children, `${key}-h`),
+      )}
+    >
+      {/* `[&>*:first-child]:mt-0`: the body's first paragraph or code block would otherwise
+          stack its own top margin on the disclosure's padding. */}
+      <div className="[&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
+        {section.body.map((block, index) => renderBlock(block, `${key}-${index}`))}
+      </div>
+    </Disclosure>
+  );
+}
+
 export interface MarkdownProps {
   source: string;
   className?: string;
+  /**
+   * Fold each "Example" section (heading through to the next heading of the same or higher
+   * rank) behind a closed disclosure. The student problem page sets it; the organizer's preview
+   * does not, because an author checking an example wants to see it.
+   */
+  collapseExamples?: boolean;
 }
 
-export function Markdown({ source, className }: MarkdownProps) {
+export function Markdown({ source, className, collapseExamples = false }: MarkdownProps) {
   const blocks = parseMarkdown(source);
+  const sectioned: readonly SectionedBlock[] = collapseExamples
+    ? collapseSections(blocks, isExampleHeading)
+    : blocks;
 
   return (
     <div className={`max-w-[70ch] text-ink ${className ?? ""}`} style={{ fontSize: "var(--text-sm)" }}>
-      {blocks.map((block, index) => renderBlock(block, `b-${index}`))}
+      {sectioned.map((block, index) =>
+        block.kind === "section"
+          ? renderSection(block, `s-${index}`)
+          : renderBlock(block, `b-${index}`),
+      )}
     </div>
   );
 }

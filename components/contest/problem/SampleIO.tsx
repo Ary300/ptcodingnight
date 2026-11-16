@@ -5,6 +5,7 @@ import type { z } from "zod";
 import type { SampleCaseSchema } from "@/lib/schemas/api";
 
 import { CopyButton } from "../CopyButton";
+import { Disclosure } from "../Disclosure";
 
 /**
  * Sample input and output, with a copy button on each.
@@ -81,12 +82,23 @@ export function SampleIO({ samples }: SampleIOProps) {
   }
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-3">
+      {/*
+        Each sample folds behind its own heading. The first starts open because it is the one a
+        student reads before writing anything; the rest start closed so a problem with six samples
+        does not push the editor three screens down.
+      */}
       {samples.map((sample, index) => (
-        <div key={sample.ordinal}>
-          <h3 className="mb-2 font-display font-bold" style={{ fontSize: "var(--text-sm)" }}>
-            Sample {index + 1}
-          </h3>
+        <Disclosure
+          key={sample.ordinal}
+          kind="sample"
+          defaultOpen={index === 0}
+          summary={
+            <h3 className="font-display font-bold" style={{ fontSize: "var(--text-sm)" }}>
+              Sample {index + 1}
+            </h3>
+          }
+        >
           {/* Stacks on a phone, side by side from 640px — students are on phones. */}
           <div className="flex flex-col gap-4 sm:flex-row">
             <Block
@@ -100,7 +112,7 @@ export function SampleIO({ samples }: SampleIOProps) {
               what={`sample ${index + 1} expected output`}
             />
           </div>
-        </div>
+        </Disclosure>
       ))}
     </div>
   );
