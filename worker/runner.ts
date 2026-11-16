@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { mkdtemp, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
@@ -288,10 +289,33 @@ export function outputDirFileLimit(testCount: number): number {
   return Math.max(1, testCount) * 3 + 16;
 }
 
-/** Container names must be unique and traceable back to a submission. */
+/**
+ * Container names must be unique and traceable back to a submission. The random tail is what makes
+ * them unique: submission and attempt alone repeat on a rejudge, and on a job that two workers ran
+ * at once, and the second `docker run` then failed on a name conflict.
+ */
 function containerName(job: JudgeJob, suffix: string): string {
   const safe = job.submissionId.replace(/[^a-zA-Z0-9_.-]/g, "");
-  return `ptcn-judge-${safe}-${suffix}-${job.attempt}`;
+  return `ptcn-judge-${safe}-${suffix}-${String(job.attempt)}-${randomBytes(3).toString("hex")}`;
+}
+
+/**
+ * A build that was KILLED — by the compile timeout, the memory cap, or our backstop — without the
+ * compiler printing a word. That is not a compile error: a compiler that rejects code says why,
+ * and these are the build step failing around it (an overloaded host, a starved container). It
+ * used to reach the student as a bare "Compilation failed" CE. The caller reports IE, which is
+ * requeued once.
+ */
+export function compilerSaidNothing(compile: ContainerRunResult): boolean {
+  if (compile.exitCode === 0 || compile.stderr.trim().length > 0) return false;
+  return (
+    compile.oomKilled ||
+    compile.timedOut ||
+    compile.exitCode === null ||
+    compile.exitCode === TIMEOUT_EXIT_CODE ||
+    compile.exitCode === SIGKILL_EXIT_CODE ||
+    compile.exitCode === SIGTERM_EXIT_CODE
+  );
 }
 
 /**
@@ -895,11 +919,11 @@ export async function judge(
           noteFreshFallback("build");
           pooledCompile = await runInContainer({ ...freshCompileSpec, ...compileOptions });
         }
-        if (pooledCompile.infrastructureFailure) return containerLost("build");
+        if (pooledCompile.infrastructureFailure || compilerSaidNothing(pooledCompile)) return containerLost("build");
         compile = pooledCompile;
       } else {
         const freshCompile = await runInContainer({ ...freshCompileSpec, ...compileOptions });
-        if (freshCompile.infrastructureFailure) return containerLost("build");
+        if (freshCompile.infrastructureFailure || compilerSaidNothing(freshCompile)) return containerLost("build");
         compile = freshCompile;
       }
 

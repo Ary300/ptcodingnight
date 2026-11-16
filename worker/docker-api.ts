@@ -84,6 +84,8 @@ export interface ContainerExitState {
    * this status in the moment between its client returning and the removal completing.
    */
   readonly status: string;
+  /** The container's full id, to tell OUR container from another that has taken its name. */
+  readonly id: string;
 }
 
 /**
@@ -111,7 +113,9 @@ export function parseExitState(body: string): ContainerExitState | null {
   if (typeof OOMKilled !== "boolean") return null;
   if (typeof StartedAt !== "string" || typeof FinishedAt !== "string") return null;
   if (typeof Status !== "string") return null;
-  return { oomKilled: OOMKilled, startedAt: StartedAt, finishedAt: FinishedAt, status: Status };
+  const id = (doc as { Id?: unknown }).Id;
+  if (typeof id !== "string") return null;
+  return { oomKilled: OOMKilled, startedAt: StartedAt, finishedAt: FinishedAt, status: Status, id };
 }
 
 /**

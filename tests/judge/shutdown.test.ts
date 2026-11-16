@@ -23,15 +23,17 @@ import { isDockerAvailable } from "@/worker/docker";
 
 const ROOT = path.resolve(__dirname, "..", "..");
 const FIXTURE = "java-tle-spin";
-const RUN_CONTAINER = `ptcn-judge-signal-${FIXTURE}-run-1`;
+/** Container names end in a random tail (worker/runner.ts containerName), so match the rest. */
+const RUN_CONTAINER = `ptcn-judge-signal-${FIXTURE}-run-1-`;
 
-async function containerRunning(name: string): Promise<boolean> {
+/** The full name of the running container whose name starts with `prefix`, if there is one. */
+async function runningContainer(prefix: string): Promise<string | null> {
   return new Promise((resolve) => {
-    const child = spawn("docker", ["ps", "--filter", `name=^${name}$`, "--filter", "status=running", "-q"]);
+    const child = spawn("docker", ["ps", "--filter", `name=^${prefix}`, "--filter", "status=running", "--format", "{{.Names}}"]);
     let out = "";
     child.stdout.on("data", (chunk: Buffer) => (out += chunk.toString()));
-    child.on("close", () => resolve(out.trim().length > 0));
-    child.on("error", () => resolve(false));
+    child.on("close", () => resolve(out.trim().split("\n")[0] || null));
+    child.on("error", () => resolve(null));
   });
 }
 
@@ -58,7 +60,7 @@ describe("worker shutdown mid-judge", () => {
 
     // Into the first test: the run container is up and the JVM has had time to start.
     const deadline = Date.now() + 120_000;
-    while (!(await containerRunning(RUN_CONTAINER))) {
+    while ((await runningContainer(RUN_CONTAINER)) === null) {
       if (Date.now() > deadline) throw new Error(`run container never started\n${stderr}`);
       await sleep(250);
     }
@@ -109,13 +111,15 @@ describe("worker shutdown mid-judge", () => {
     const exited = new Promise<number | null>((resolve) => child.on("close", resolve));
 
     const deadline = Date.now() + 120_000;
-    while (!(await containerRunning(RUN_CONTAINER))) {
+    let running: string | null = null;
+    while ((running = await runningContainer(RUN_CONTAINER)) === null) {
       if (Date.now() > deadline) throw new Error(`run container never started\n${stderr}`);
       await sleep(250);
     }
     await sleep(3_000);
+    const victim = running;
     await new Promise<void>((resolve) => {
-      spawn("docker", ["rm", "-f", RUN_CONTAINER]).on("close", () => resolve());
+      spawn("docker", ["rm", "-f", victim]).on("close", () => resolve());
     });
 
     expect(await exited).toBe(0);

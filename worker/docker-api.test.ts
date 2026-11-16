@@ -26,6 +26,7 @@ describe("parseExitState", () => {
       startedAt: "2026-11-15T20:00:00.123456789Z",
       finishedAt: "2026-11-15T20:00:01.5Z",
       status: "exited",
+      id: "x",
     });
   });
 

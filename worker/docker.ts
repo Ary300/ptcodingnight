@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
-import { readdir, rm, stat } from "node:fs/promises";
-import { hostname } from "node:os";
+import { randomUUID } from "node:crypto";
+import { readFile, readdir, rm, stat } from "node:fs/promises";
+import { hostname, tmpdir } from "node:os";
 import path from "node:path";
 
 import {
@@ -494,10 +495,16 @@ export async function runInContainer(options: ContainerRunOptions): Promise<Cont
   // the worker reached the student's program and killed it mid-test, and the judge then read
   // the wreckage as a verdict (measured: a TLE submission recorded as RE). Hence also `detached`
   // below, which keeps the client out of the worker's process group.
+  //
+  // `--cidfile`: the client writes the new container's id there once the daemon has CREATED it.
+  // No file means `docker run` failed before our container existed — a name conflict, a daemon
+  // error — and whatever it printed is the Docker CLI talking, which once reached a student as
+  // "compiler output". A different id means the name now belongs to some other container.
+  const cidFile = options.precreated === true ? null : path.join(tmpdir(), `ptcn-cid-${randomUUID()}`);
   const args =
     options.precreated === true
       ? ["start", "--attach", "--interactive", name]
-      : ["run", "--sig-proxy=false", ...containerArgs(options)];
+      : ["run", "--sig-proxy=false", `--cidfile=${cidFile ?? ""}`, ...containerArgs(options)];
 
   const startedAt = Date.now();
 
@@ -636,6 +643,10 @@ export async function runInContainer(options: ContainerRunOptions): Promise<Cont
   let durationMs = wallMs;
 
   const exit = await readExitState(name);
+  const createdId =
+    cidFile === null ? null : await readFile(cidFile, "utf8").then((id) => id.trim(), () => "");
+  if (cidFile !== null) await rm(cidFile, { force: true });
+  const notOurs = createdId !== null && (createdId.length === 0 || (exit !== null && exit.id !== createdId));
 
   if (exit !== null) {
     oomKilled = exit.oomKilled;
@@ -650,9 +661,12 @@ export async function runInContainer(options: ContainerRunOptions): Promise<Cont
   // A container that never started has the zero time as its StartedAt.
   const neverStarted =
     options.precreated === true && (exit === null || exit.startedAt.startsWith("0001-"));
-  const infrastructureFailure = isInfrastructureFailure(exit);
+  const infrastructureFailure = notOurs || isInfrastructureFailure(exit);
 
-  if (options.retire === undefined) await removeContainer(name);
+  // A name that is not ours is somebody else's container: leave it to its owner.
+  if (notOurs) {
+    // nothing to remove
+  } else if (options.retire === undefined) await removeContainer(name);
   else options.retire(name);
 
   return {
@@ -697,15 +711,16 @@ async function readExitState(name: string): Promise<ContainerExitState | null> {
     "inspect",
     name,
     "--format",
-    "{{.State.OOMKilled}}|{{.State.StartedAt}}|{{.State.FinishedAt}}|{{.State.Status}}",
+    "{{.State.OOMKilled}}|{{.State.StartedAt}}|{{.State.FinishedAt}}|{{.State.Status}}|{{.Id}}",
   ]);
   if (inspect.code !== 0) return null;
-  const [oom, started, finished, status] = inspect.stdout.trim().split("|");
+  const [oom, started, finished, status, id] = inspect.stdout.trim().split("|");
   return {
     oomKilled: oom === "true",
     startedAt: started ?? "",
     finishedAt: finished ?? "",
     status: status ?? "",
+    id: id ?? "",
   };
 }
 

@@ -12,7 +12,7 @@ import {
   variantsOfRuntime,
   type RuntimeId,
 } from "@/lib/judge/runtimes";
-import { outputCapFor, selfReportedTimingIsCredible } from "@/worker/runner";
+import { compilerSaidNothing, outputCapFor, selfReportedTimingIsCredible } from "@/worker/runner";
 
 /**
  * Unit-level pin for the two judge bugs that made correct solutions fail.
@@ -302,5 +302,40 @@ describe("selfReportedTimingIsCredible", () => {
         startupBudgetMs: 45_000,
       }),
     ).toBe(true);
+  });
+});
+
+describe("compilerSaidNothing", () => {
+  const build = (over: Partial<Parameters<typeof compilerSaidNothing>[0]>) => ({
+    stdout: "",
+    stderr: "",
+    exitCode: 1 as number | null,
+    oomKilled: false,
+    timedOut: false,
+    outputTruncated: false,
+    durationMs: 100,
+    wallMs: 100,
+    diskExceeded: false,
+    infrastructureFailure: false,
+    ...over,
+  });
+
+  it("is a compile error, not the judge, whenever the compiler printed anything", () => {
+    expect(compilerSaidNothing(build({ stderr: "Main.java:3: error: ';' expected", exitCode: 1 }))).toBe(false);
+    expect(compilerSaidNothing(build({ stderr: "javac: out of memory", exitCode: 137, oomKilled: true }))).toBe(false);
+  });
+
+  it("is the judge when the build was killed in silence: timeout, memory, or our backstop", () => {
+    expect(compilerSaidNothing(build({ exitCode: 124 }))).toBe(true);
+    expect(compilerSaidNothing(build({ exitCode: 137 }))).toBe(true);
+    expect(compilerSaidNothing(build({ exitCode: 143 }))).toBe(true);
+    expect(compilerSaidNothing(build({ exitCode: 1, oomKilled: true }))).toBe(true);
+    expect(compilerSaidNothing(build({ exitCode: 1, timedOut: true }))).toBe(true);
+    expect(compilerSaidNothing(build({ exitCode: null }))).toBe(true);
+  });
+
+  it("leaves a silent ordinary failure, and a success, as they were", () => {
+    expect(compilerSaidNothing(build({ exitCode: 1 }))).toBe(false);
+    expect(compilerSaidNothing(build({ exitCode: 0 }))).toBe(false);
   });
 });
