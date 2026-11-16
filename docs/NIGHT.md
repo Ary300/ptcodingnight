@@ -44,6 +44,11 @@ press it, so pressing it at 6:58 closes submissions at 8:13. **End contest** tur
 into the final board the moment you press it, which is the reveal with nobody watching. Leave the
 contest alone through Kahoot and let the unfreeze do the ending.
 
+Both are recoverable on the Setup tab's Window panel. **Change the end time** gives the room 5, 10
+or 15 more minutes, or takes an exact Indianapolis time, and a scheduled freeze moves with the end.
+On an ended contest the same place reads **Reopen the contest**: type the end time, confirm, then
+press the 15 minute freeze preset again, because ending early erased the freeze.
+
 The clock will not spoil this for you. Once the board is frozen, the site stops accepting
 submissions at 8:15 and otherwise waits: it does not end a frozen contest on its own, because an
 ended contest's board is public. The only way the final board reaches the wall is **Unfreeze and
@@ -251,6 +256,10 @@ not fixed in 10 minutes triggers the decision rule in §3.
 | A student's problem list is empty | They have no division or no set, or the contest has not been opened | Teams tab: set their division and set in the move form. Check the Setup tab says Live. | Sameer at the roster, Aryav on Setup |
 | "The judge is busy right now" on Run samples in the last minutes | Run samples shares the judge with submissions, and 50 students submitting at once fills the queue | Nothing is broken. Tell them to Submit instead: a submission is accepted at once and judged in order, and it counts even if the verdict arrives after 8:15 | Sameer, to the room |
 | A student cannot sign in | Code typed wrong, or the Google button failing for its own reasons | Join slips tab: type the code into the lookup to see whose it is. Reissue the code from the Teams tab if it is lost. Google failing is why the codes exist; use the code. | Sameer at the door |
+| Verdicts take minutes and the console queue keeps growing | A burst of slow programs. A Java submission that times out holds a judge slot for about a minute, so twenty of them stall everyone behind them for several minutes (measured 2026-11-16) | Nothing is lost. Tell the room their submissions are saved and judged in order, and that pressing Submit again only adds to the queue. Do not restart the worker for this | Sameer, to the room |
+| The worker died or was restarted | A crash, or a redeploy during the round | Submissions waiting in the queue resume at once. The ones it was judging at that moment come back after about four minutes, by themselves. Do not run the update script during the round: a restart can change a verdict that was mid-judge | Aryav |
+| The room needs more time, or End contest was pressed by mistake | An outage that cost the room minutes, or the wrong button | Setup tab, Window panel. **Change the end time** for more minutes, or **Reopen the contest** with a new end time, then press the 15 minute freeze preset again | Aryav, after Sameer decides |
+| The board froze too early, or was frozen by hand and unfrozen | A wrong freeze preset, or the live console's freeze button | Setup tab, freeze presets: press 15 again. Unfreezing by hand before 8:00 clears the scheduled freeze, so it has to be set again or the final board shows at 8:15 | Aryav |
 | Projector shows the wrong thing | Bare `/projector` picked a different contest, or the page was never refreshed | Open `/projector?contest={id}` from the Setup tab's link. Frozen plate missing after 8:00 means the Window panel on Setup has no freeze; press Freeze the public board on the live console instead. | Aryav |
 
 Logs, if a row needs them: on the box, `docker compose -f docker-compose.prod.yml logs --tail=100

@@ -184,6 +184,13 @@ services:
       dockerfile: Dockerfile
       target: worker
     restart: unless-stopped
+    # Long enough to finish what it is judging. On SIGTERM the worker stops taking jobs and waits
+    # for the ones in hand (worker/index.ts), but Docker's default grace is 10 s and then SIGKILL.
+    # A Java submission that times out on three tests holds a slot for about 50 s, so a redeploy
+    # mid-contest killed it mid-judge, and BullMQ only hands a killed job to the next worker after
+    # two stalled-job checks: measured at 247 s on 2026-11-16. Three minutes covers the longest
+    # compile (Go, 90 s) plus a full run.
+    stop_grace_period: 3m
     depends_on:
       postgres:
         condition: service_healthy
