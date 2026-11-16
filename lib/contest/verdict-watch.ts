@@ -26,11 +26,34 @@ export const WATCH_TICK_MS = 1_000;
 /** Newest submissions considered per participant per tick. Nobody has more than a few in flight. */
 export const WATCHED_SUBMISSIONS = 25;
 
+/** How long a tick waits for the verdicts it started writing before it publishes. */
+export const RECONCILE_WAIT_MS = 250;
+
+/**
+ * Verdict writes this watcher keeps in flight at once.
+ *
+ * Every write for one contest takes the contest's mutation lock, so they run one at a time
+ * whatever this is. A write waiting on that lock still holds a connection from the web process's
+ * pool of 20, though, and starting fifty at once (a burst's worth) parked the whole pool on the
+ * lock: measured on a loaded host, polls then waited seconds for a connection and the median
+ * verdict took 34 s to reach its page. A handful keeps the lock busy and leaves the pool to
+ * everyone else. Oldest submission first, so the queue order is the order verdicts appear.
+ */
+export const MAX_RECONCILES_IN_FLIGHT = 4;
+
+/** A write that lands after its tick published brings the next tick forward to this. */
+export const WAKE_DELAY_MS = 25;
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export interface WatchedSubmission {
   readonly id: string;
   readonly participantId: string;
   readonly verdict: string | null;
   readonly score: number;
+  readonly submittedAt: Date;
 }
 
 export type VerdictListener = (rows: readonly WatchedSubmission[], now: Date) => void;
@@ -58,11 +81,11 @@ async function newestSubmissionsFromDb(
   perParticipant: number,
 ): Promise<WatchedSubmission[]> {
   const rows = await prisma.$queryRaw<
-    { id: string; participantId: string; verdict: string | null; score: number }[]
+    { id: string; participantId: string; verdict: string | null; score: number; submittedAt: Date }[]
   >`
-    SELECT "id", "participantId", "verdict"::text AS "verdict", "score"
+    SELECT "id", "participantId", "verdict"::text AS "verdict", "score", "submittedAt"
     FROM (
-      SELECT "id", "participantId", "verdict", "score",
+      SELECT "id", "participantId", "verdict", "score", "submittedAt",
              row_number() OVER (
                PARTITION BY "participantId" ORDER BY "submittedAt" DESC, "id" DESC
              ) AS "position"
@@ -83,6 +106,10 @@ const DB_DEPS: VerdictWatchDeps = {
 export class VerdictWatch {
   private readonly listeners = new Map<string, Set<VerdictListener>>();
   private timer: ReturnType<typeof setTimeout> | null = null;
+  /** A tick is in progress; the loop schedules the next one when it ends. */
+  private running = false;
+  /** Something asked for an early tick while one was running. */
+  private wakeSoon = false;
 
   constructor(
     private readonly deps: VerdictWatchDeps = DB_DEPS,
@@ -123,16 +150,34 @@ export class VerdictWatch {
 
     let rows = await this.deps.newestSubmissions(participantIds, WATCHED_SUBMISSIONS);
 
-    const pending = rows.filter((row) => row.verdict === null).map((row) => row.id);
-    if (pending.length > 0) {
+    const room = MAX_RECONCILES_IN_FLIGHT - this.reconciling.size;
+    const pending = rows
+      .filter((row) => row.verdict === null && !this.reconciling.has(row.id))
+      .sort((a, b) => a.submittedAt.getTime() - b.submittedAt.getTime() || (a.id < b.id ? -1 : 1))
+      .map((row) => row.id);
+    if (pending.length > 0 && room > 0) {
       const ready = await this.deps.readyToReconcile(pending);
-      if (ready.size > 0) {
-        await Promise.all(
-          [...ready].map((id) =>
-            this.deps.reconcile(id, now).catch((error: unknown) => logTickError(error)),
-          ),
-        );
-        // Re-read so the verdicts just written go out on THIS tick, not a second later.
+      const next = pending.filter((id) => ready.has(id)).slice(0, room);
+      if (next.length > 0) {
+        const writes = next.map((id) => {
+          const write = { landed: false, done: Promise.resolve() };
+          write.done = this.startReconcile(id, now).finally(() => {
+            write.landed = true;
+          });
+          return write;
+        });
+        /*
+          Wait for the writes, but only briefly. Verdict writes for one contest serialize on its
+          mutation lock, so a burst of fifty finished jobs can take seconds to persist; a tick that
+          waited for all of them would hold back the first verdict until the last was written, and
+          hold every later tick behind it. Whatever lands inside the budget goes out on THIS tick;
+          anything slower keeps writing in the background (never started twice, see
+          `reconciling`) and brings the next tick forward the moment it lands.
+        */
+        await Promise.race([Promise.all(writes.map((w) => w.done)), delay(RECONCILE_WAIT_MS)]);
+        for (const write of writes) {
+          if (!write.landed) void write.done.then(() => this.wake());
+        }
         rows = await this.deps.newestSubmissions(participantIds, WATCHED_SUBMISSIONS);
       }
     }
@@ -156,20 +201,51 @@ export class VerdictWatch {
     }
   }
 
-  private schedule(): void {
-    if (this.timer !== null) return;
-    this.timer = setTimeout(() => void this.loop(), this.tickMs);
+  /** Submissions whose verdict this watcher is writing right now. */
+  private readonly reconciling = new Set<string>();
+
+  private startReconcile(submissionId: string, now: Date): Promise<void> {
+    this.reconciling.add(submissionId);
+    return this.deps
+      .reconcile(submissionId, now)
+      .catch((error: unknown) => logTickError(error))
+      .finally(() => this.reconciling.delete(submissionId));
+  }
+
+  /** At most one timer and at most one running tick, ever. */
+  private schedule(delayMs: number = this.tickMs): void {
+    if (this.running || this.timer !== null) return;
+    this.timer = setTimeout(() => {
+      this.timer = null;
+      void this.loop();
+    }, delayMs);
+  }
+
+  /** Tick soon rather than on the schedule: a verdict write just landed. */
+  private wake(): void {
+    if (this.listeners.size === 0) return;
+    if (this.running) {
+      this.wakeSoon = true;
+      return;
+    }
+    this.stop();
+    this.schedule(WAKE_DELAY_MS);
   }
 
   private async loop(): Promise<void> {
+    this.running = true;
     try {
       await this.tick();
     } catch (error: unknown) {
       // One bad tick is not a reason to stop watching; the next one retries.
       logTickError(error);
+    } finally {
+      this.running = false;
     }
-    this.timer = null;
-    if (this.listeners.size > 0) this.schedule();
+    if (this.listeners.size === 0) return;
+    const soon = this.wakeSoon;
+    this.wakeSoon = false;
+    this.schedule(soon ? WAKE_DELAY_MS : this.tickMs);
   }
 
   private stop(): void {

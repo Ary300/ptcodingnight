@@ -23,7 +23,13 @@ vi.mock("@/lib/contest/submissions", () => ({
 
 const views = new Map<string, { verdict: string; score: number }>();
 
-const { VerdictWatch, WATCH_TICK_MS } = await import("@/lib/contest/verdict-watch");
+const {
+  MAX_RECONCILES_IN_FLIGHT,
+  RECONCILE_WAIT_MS,
+  VerdictWatch,
+  WAKE_DELAY_MS,
+  WATCH_TICK_MS,
+} = await import("@/lib/contest/verdict-watch");
 type WatchedSubmission = import("@/lib/contest/verdict-watch").WatchedSubmission;
 type VerdictWatchDeps = import("@/lib/contest/verdict-watch").VerdictWatchDeps;
 const { verdictFrames } = await import("@/lib/contest/stream");
@@ -50,14 +56,27 @@ function fakeWorld(rows: WatchedSubmission[]) {
   return { deps, finished, calls, rows };
 }
 
+let submittedOrder = 0;
+
+/** A submission row; each new one was submitted a second after the one before. */
+function row(
+  id: string,
+  participantId: string,
+  verdict: string | null,
+  score: number,
+): WatchedSubmission {
+  submittedOrder += 1;
+  return { id, participantId, verdict, score, submittedAt: new Date(1_000 * submittedOrder) };
+}
+
 function pending(id: string, participantId: string): WatchedSubmission {
-  return { id, participantId, verdict: null, score: 0 };
+  return row(id, participantId, null, 0);
 }
 
 describe("one database read per tick, however many pages are open", () => {
   it("fifty subscribed students cost one read and no queue check when nothing is pending", async () => {
     const world = fakeWorld(
-      Array.from({ length: 50 }, (_, i) => ({ id: `s${i}`, participantId: `p${i}`, verdict: "WA", score: 0 })),
+      Array.from({ length: 50 }, (_, i) => (row(`s${i}`, `p${i}`, "WA", 0))),
     );
     const watch = new VerdictWatch(world.deps);
     const received = new Map<string, number>();
@@ -90,6 +109,22 @@ describe("one database read per tick, however many pages are open", () => {
     expect(seen.find((r) => r.id === "s4")?.verdict).toBeNull();
   });
 
+  it("keeps at most a handful of verdict writes in flight, oldest submission first", async () => {
+    const world = fakeWorld(Array.from({ length: 57 }, (_, i) => pending(`s${i}`, `p${i % 50}`)));
+    for (const r of world.rows) world.finished.add(r.id);
+    const watch = new VerdictWatch(world.deps);
+    for (let i = 0; i < 50; i += 1) watch.subscribe(`p${i}`, () => undefined);
+
+    await watch.tick();
+    expect(world.calls.reconciles).toEqual(
+      Array.from({ length: MAX_RECONCILES_IN_FLIGHT }, (_, i) => `s${i}`),
+    );
+
+    await watch.tick();
+    expect(world.calls.reconciles).toHaveLength(2 * MAX_RECONCILES_IN_FLIGHT);
+    expect(world.calls.reconciles.at(-1)).toBe(`s${2 * MAX_RECONCILES_IN_FLIGHT - 1}`);
+  });
+
   it("a reconcile that throws does not stop the rest of the tick", async () => {
     const world = fakeWorld([pending("s1", "p1"), pending("s2", "p2")]);
     world.finished.add("s1");
@@ -117,8 +152,8 @@ describe("one database read per tick, however many pages are open", () => {
 describe("each student receives their own rows and nobody else's", () => {
   it("routes rows by participant, to every stream that participant has open", async () => {
     const world = fakeWorld([
-      { id: "a1", participantId: "ada", verdict: "AC", score: 100 },
-      { id: "c1", participantId: "cy", verdict: "WA", score: 0 },
+      row("a1", "ada", "AC", 100),
+      row("c1", "cy", "WA", 0),
     ]);
     const watch = new VerdictWatch(world.deps);
     const ada: string[] = [];
@@ -136,7 +171,7 @@ describe("each student receives their own rows and nobody else's", () => {
   });
 
   it("stops reading for a participant whose last stream closed, and stops ticking when none are open", async () => {
-    const world = fakeWorld([{ id: "a1", participantId: "ada", verdict: "AC", score: 100 }]);
+    const world = fakeWorld([row("a1", "ada", "AC", 100)]);
     const watch = new VerdictWatch(world.deps);
     const calls: number[] = [];
     const unsubscribe = watch.subscribe("ada", () => calls.push(1));
@@ -173,6 +208,39 @@ describe("latency", () => {
     expect(world.calls.reads).toBe(3);
   });
 
+  it("a slow verdict write does not hold back the others, and is never started twice", async () => {
+    const world = fakeWorld([pending("slow", "ada"), pending("fast", "cy")]);
+    world.finished.add("slow");
+    world.finished.add("fast");
+    let releaseSlow: () => void = () => undefined;
+    const attempts: string[] = [];
+    const deps: VerdictWatchDeps = {
+      ...world.deps,
+      reconcile: async (id, now) => {
+        attempts.push(id);
+        if (id === "slow") await new Promise<void>((resolve) => (releaseSlow = resolve));
+        return world.deps.reconcile(id, now);
+      },
+    };
+    const watch = new VerdictWatch(deps);
+    const seen = new Map<string, string | null>();
+    watch.subscribe("ada", (rows) => rows.forEach((r) => seen.set(r.id, r.verdict)));
+    watch.subscribe("cy", (rows) => rows.forEach((r) => seen.set(r.id, r.verdict)));
+
+    await vi.advanceTimersByTimeAsync(WATCH_TICK_MS + RECONCILE_WAIT_MS);
+    expect(seen.get("fast")).toBe("AC");
+    expect(seen.get("slow")).toBeNull();
+
+    // Later ticks keep running while the slow write is still in flight, without re-starting it.
+    await vi.advanceTimersByTimeAsync(WATCH_TICK_MS * 3);
+    expect(attempts.filter((id) => id === "slow")).toHaveLength(1);
+
+    releaseSlow();
+    // It goes out as soon as it lands, not on the next scheduled tick.
+    await vi.advanceTimersByTimeAsync(WAKE_DELAY_MS + 5);
+    expect(seen.get("slow")).toBe("AC");
+  });
+
   it("ticks at most once a second, so a 1 s tick is the bound", () => {
     expect(WATCH_TICK_MS).toBeLessThanOrEqual(1_000);
   });
@@ -194,9 +262,9 @@ describe("verdictFrames sends what the per-stream poll sent", () => {
     views.set("s1", { verdict: "WA", score: 0 });
 
     const rows: WatchedSubmission[] = [
-      { id: "old", participantId: "ada", verdict: "AC", score: 100 },
-      { id: "s1", participantId: "ada", verdict: "WA", score: 0 },
-      { id: "s2", participantId: "ada", verdict: null, score: 0 },
+      row("old", "ada", "AC", 100),
+      row("s1", "ada", "WA", 0),
+      row("s2", "ada", null, 0),
     ];
     const first = await verdictFrames(ada, rows, announced, now);
     expect(first).toHaveLength(1);
@@ -214,7 +282,7 @@ describe("verdictFrames sends what the per-stream poll sent", () => {
   it("two overlapping ticks cannot announce the same verdict twice", async () => {
     const announced = new Map<string, string>();
     views.set("s9", { verdict: "AC", score: 100 });
-    const rows: WatchedSubmission[] = [{ id: "s9", participantId: "ada", verdict: "AC", score: 100 }];
+    const rows: WatchedSubmission[] = [row("s9", "ada", "AC", 100)];
     const [a, b] = await Promise.all([
       verdictFrames(ada, rows, announced, new Date()),
       verdictFrames(ada, rows, announced, new Date()),
