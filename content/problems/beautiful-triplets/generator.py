@@ -7,6 +7,14 @@ the constraint ceiling. The seed also selects the shape of the sequence so the
 test set covers degenerate cases (a lone tree, a gap larger than the whole row,
 a perfect arithmetic progression, decoy pairs with no third element) rather than
 only uniform noise.
+
+Shapes 0, 3 and 4 plant a few d-spaced trios among their noise or decoys, so a
+program that prints 0 without looking cannot pass them. A zero answer is kept only
+for the hand-written edge cases (a lone tree, a gap wider than the row).
+
+Which seed made which test: 04 = seed 3, 06 = 6, 09 = 9,
+10 = 13, 11 = 14, 12 = 16, 13 = 17, 14 = 18, 15 = 33, 16 = 40, 17 = 47, 18 = 49.
+01-03, 05, 07 and 08 are written by hand.
 """
 
 import random
@@ -27,13 +35,33 @@ def random_increasing(rng: random.Random, n: int, low: int, high: int) -> list[i
     return sorted(rng.sample(range(low, high + 1), n))
 
 
+def plant_trios(rng: random.Random, values: list[int], d: int, trios: int) -> list[int]:
+    """Swap a few values for d-spaced trios (x, x + d, x + 2d), keeping n fixed.
+
+    Planted values are never the ones dropped to make room, so every planted trio
+    survives, and the result stays strictly increasing with the same length.
+    """
+    n = len(values)
+    if n < 3 or 2 * d > MAX_VALUE:
+        return values
+    planted: set[int] = set()
+    for _ in range(min(trios, n // 3)):
+        x = rng.randint(0, MAX_VALUE - 2 * d)
+        planted.update((x, x + d, x + 2 * d))
+    others = [v for v in values if v not in planted]
+    keep = rng.sample(others, max(0, n - len(planted)))
+    return sorted(planted.union(keep))
+
+
 def build_case(seed: int, n: int, rng: random.Random) -> tuple[int, list[int]]:
     shape = seed % 6
 
     if shape == 0:
-        # Uniform noise over the full value range, small d: few or no triples.
+        # Uniform noise over the full value range, small d, with a handful of
+        # planted trios hidden in it.
         d = rng.randint(1, 100)
-        return d, random_increasing(rng, n, 0, MAX_VALUE)
+        noise = random_increasing(rng, n, 0, MAX_VALUE)
+        return d, plant_trios(rng, noise, d, rng.randint(1, max(1, n // 40)))
 
     if shape == 1:
         # Perfect arithmetic progression with step exactly d: n - 2 triples.
@@ -50,11 +78,12 @@ def build_case(seed: int, n: int, rng: random.Random) -> tuple[int, list[int]]:
         return d, [start + i * s for i in range(n)]
 
     if shape == 3:
-        # d wider than the whole row: the answer is forced to zero.
+        # A tight cluster of values plus a d far wider than the cluster: only the
+        # few trios planted far out across the value range can count.
         values = random_increasing(rng, n, 0, min(MAX_VALUE, max(4 * n, 100)))
         span = values[-1] - values[0]
-        d = rng.randint(span + 1, MAX_D)
-        return d, values
+        d = rng.randint(span + 1, MAX_D // 2)
+        return d, plant_trios(rng, values, d, rng.randint(1, 3))
 
     if shape == 4:
         # Decoy pairs: many gaps of exactly d, but each pair is fenced off so no
@@ -69,7 +98,7 @@ def build_case(seed: int, n: int, rng: random.Random) -> tuple[int, list[int]]:
             top = values[-1] if values else 0
             extra = random_increasing(rng, n - len(values), top + 1, top + 1 + 10 * (n + 1))
             values.extend(extra)
-        return d, values
+        return d, plant_trios(rng, values, d, rng.randint(1, max(1, n // 50)))
 
     # shape == 5: dense consecutive integers with d = 1: the maximum n - 2 answer
     # plus duplicate-free adjacency everywhere.

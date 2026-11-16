@@ -6,9 +6,10 @@ cider store and the Hilbert Early Education Center. For a Tribune piece on what 
 of the orchard, Kylie walked the row and measured each tree's distance from a marker post
 at the head of it, recording the measurements in increasing order. Mr. Ritz, who had dug
 up the original planting plan for her, pointed out that the orchard crews spaced their
-trees a fixed distance apart: so any three trees in her list where both neighboring gaps
-equal that historic spacing are almost certainly original plantings, and those are the
-trios her article should count.
+trees a fixed distance apart. Any three trees in her list where the second stands exactly
+that spacing past the first, and the third exactly that spacing past the second, are almost
+certainly original plantings, even when other trees stand between them in her list. Those
+trios are what her article should count.
 
 You are given a strictly increasing sequence of integers $a_1 < a_2 < \dots < a_n$ and an
 integer $d$. Count the number of index triples $(i, j, k)$ with $i < j < k$ such that
