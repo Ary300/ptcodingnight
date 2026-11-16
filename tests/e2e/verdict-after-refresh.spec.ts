@@ -14,6 +14,9 @@ import { signInAsCompetitor } from "./helpers/session";
 
 const CODE = "NFMREFRESH";
 
+// The second case reuses the contest the first one builds.
+test.describe.configure({ mode: "serial" });
+
 test.afterAll(async () => {
   await testDb().contest.deleteMany({ where: { joinCode: CODE } });
   await closeTestDb();
@@ -70,4 +73,63 @@ test("the problem page opens on the verdict of the last submission made there", 
 
   await page.reload();
   await expect(solution.getByText("Accepted", { exact: true })).toBeVisible({ timeout: 30_000 });
+});
+
+test("a Java class not named Main is told to rename it (requires the worker)", async ({
+  page,
+  playwright,
+}) => {
+  test.setTimeout(240_000);
+  const seeded = await seedE2EContest({ now: new Date() });
+  const problem = liveProblem(seeded);
+  const db = testDb();
+  const contest = await db.contest.findFirstOrThrow({
+    where: { joinCode: CODE },
+    select: { id: true },
+  });
+  // The first case's slot pointed at a problem the reseed above replaced; point a fresh one at it.
+  await db.contestProblem.deleteMany({ where: { contestId: contest.id } });
+  const slot = await db.contestProblem.create({
+    data: {
+      contestId: contest.id,
+      problemId: problem.problemId,
+      slotLabel: "G1",
+      basePoints: 100,
+      round: "GROUP",
+    },
+    select: { id: true },
+  });
+
+  await signInAsCompetitor(page, contest.id);
+  const cookies = await page.context().cookies();
+  const api = await playwright.request.newContext({
+    extraHTTPHeaders: { cookie: cookies.map((c) => `${c.name}=${c.value}`).join("; ") },
+  });
+  // What an IDE writes for a file called Solution.java.
+  const response = await api.post("/api/submissions", {
+    data: {
+      contestProblemId: slot.id,
+      language: "JAVA_21",
+      sourceCode:
+        "import java.util.*;\npublic class Solution {\n  public static void main(String[] a) {\n" +
+        "    Scanner s = new Scanner(System.in);\n    System.out.println(s.nextLong() + s.nextLong());\n  }\n}\n",
+    },
+  });
+  expect(response.status()).toBe(202);
+  const id = ((await response.json()) as { data: { submissionId: string } }).data.submissionId;
+  await expect
+    .poll(
+      async () =>
+        (await db.submission.findUniqueOrThrow({ where: { id }, select: { verdict: true } }))
+          .verdict,
+      { timeout: 180_000 },
+    )
+    .toBe("CE");
+
+  await page.goto(`/contest/${problem.slug}`);
+  await expect(
+    page
+      .getByRole("region", { name: "Your solution" })
+      .getByText(/^Rename the class Solution to Main\./),
+  ).toBeVisible({ timeout: 30_000 });
 });

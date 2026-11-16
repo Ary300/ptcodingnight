@@ -444,6 +444,8 @@ export function ProblemWorkspace({ slug }: ProblemWorkspaceProps) {
               results={sampleResults}
               compileError={null}
               busy={sampleBusy}
+              language={activeLanguage}
+              source={source}
             />
           )}
 
@@ -459,6 +461,8 @@ export function ProblemWorkspace({ slug }: ProblemWorkspaceProps) {
               error={stream.error}
               queuePosition={stream.submission?.queuePosition ?? null}
               submittedAt={stream.submission?.submittedAt ?? null}
+              language={stream.submission?.language ?? null}
+              source={source}
             />
           )}
 

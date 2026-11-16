@@ -3,10 +3,11 @@
 import { useMemo } from "react";
 
 import type { PublicTestResult, QueuePosition } from "@/lib/schemas/api";
-import type { Verdict } from "@/lib/schemas/judge";
+import type { Language, Verdict } from "@/lib/schemas/judge";
 
 import { sanitizeTestResults } from "../data/leak-guard";
 import type { StreamTransport } from "../data/useVerdictStream";
+import { compileHint } from "./compile-hint";
 import type { VerdictTone } from "./verdict-display";
 import {
   judgingProgressLabel,
@@ -56,6 +57,9 @@ export interface VerdictPanelProps {
    * SENT. The server stamps it on arrival; scoring and the cutoff both use that stamp.
    */
   submittedAt?: string | null;
+  /** The language and code this result is for, so a Java compile error can say what to change. */
+  language?: Language | null;
+  source?: string | null;
 }
 
 function Chip({ verdict }: { verdict: Verdict }) {
@@ -195,7 +199,15 @@ export function VerdictPanel({
   totalCases = null,
   queuePosition = null,
   submittedAt = null,
+  language = null,
+  source = null,
 }: VerdictPanelProps) {
+  // A sample run's compile error arrives as its one CE row rather than in `compileError`.
+  const hint = compileHint(
+    language,
+    compileError ?? results.find((row) => row.verdict === "CE")?.diffSnippet ?? null,
+    source,
+  );
   const { results: safeResults, leakedOrdinals } = useMemo(
     () => sanitizeTestResults(results),
     [results],
@@ -339,6 +351,12 @@ export function VerdictPanel({
           The server sent detail for {leakedOrdinals.length} hidden{" "}
           {leakedOrdinals.length === 1 ? "test" : "tests"}. It has been withheld. Please tell
           an organizer. This is a platform bug, not something you did.
+        </p>
+      )}
+
+      {hint !== null && (
+        <p className="mt-3 font-semibold text-paper" style={{ fontSize: "var(--text-sm)" }}>
+          {hint}
         </p>
       )}
 
