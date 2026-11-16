@@ -532,9 +532,18 @@ export const VARIANTS: Readonly<Record<LanguageId, Variant>> = {
     runCommand: "exec python -I /work/main.py",
     starter: `import sys
 
+
 def main():
     data = sys.stdin.read().split()
-    # your code here
+    pos = 0
+
+    # Read the input in the order the problem describes it, for example:
+    #   n = int(data[pos]); pos += 1
+    #   values = [int(x) for x in data[pos:pos + n]]; pos += n
+    #
+    # Then print the answer:
+    #   print(answer)
+
 
 main()
 `
@@ -616,9 +625,39 @@ public class Main {
 import java.io.*;
 
 public class Main {
+    static BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+    static StringTokenizer tokens = new StringTokenizer("");
+
+    // The next word of the input, reading across line breaks.
+    static String next() throws IOException {
+        while (!tokens.hasMoreTokens()) {
+            String line = in.readLine();
+            if (line == null) return null;
+            tokens = new StringTokenizer(line);
+        }
+        return tokens.nextToken();
+    }
+
+    static int nextInt() throws IOException {
+        return Integer.parseInt(next());
+    }
+
+    static long nextLong() throws IOException {
+        return Long.parseLong(next());
+    }
+
     public static void main(String[] args) throws IOException {
-        BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
-        // your code here
+        PrintWriter out = new PrintWriter(new BufferedWriter(new OutputStreamWriter(System.out)));
+
+        // Read the input in the order the problem describes it, for example:
+        //   int n = nextInt();
+        //   int[] a = new int[n];
+        //   for (int i = 0; i < n; i++) a[i] = nextInt();
+        //
+        // Then print the answer:
+        //   out.println(answer);
+
+        out.flush();
     }
 }
 `
@@ -676,7 +715,16 @@ using namespace std;
 int main() {
     ios::sync_with_stdio(false);
     cin.tie(nullptr);
-    // your code here
+
+    // Read the input in the order the problem describes it, for example:
+    //   int n;
+    //   cin >> n;
+    //   vector<long long> a(n);
+    //   for (auto &x : a) cin >> x;
+    //
+    // Then print the answer:
+    //   cout << answer << '\\n';
+
     return 0;
 }
 `
