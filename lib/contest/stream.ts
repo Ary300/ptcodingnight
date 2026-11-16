@@ -3,7 +3,12 @@ import { prisma } from "@/lib/db";
 import { SSE_EVENTS, VerdictEventSchema } from "@/lib/schemas/api";
 import { isPublicBoardFrozen } from "@/lib/contest/gate";
 import { getStandings, loadScoringInput } from "@/lib/contest/standings";
-import { getSubmissionView, reconcile } from "@/lib/contest/submissions";
+import { getSubmissionView } from "@/lib/contest/submissions";
+import {
+  WATCHED_SUBMISSIONS,
+  verdictWatch,
+  type WatchedSubmission,
+} from "@/lib/contest/verdict-watch";
 import { isAdmin, type Viewer } from "@/lib/contest/viewer";
 
 /**
@@ -22,11 +27,26 @@ import { isAdmin, type Viewer } from "@/lib/contest/viewer";
 
 const TICK_MS = 2_000;
 
+/**
+ * The serialized board, once per board object.
+ *
+ * `getStandings` hands every stream in the same second the SAME response object (it is memoised
+ * on the scoring input), so stringifying it once per object instead of once per connection per
+ * tick turns fifty identical serializations into one, and turns the per-stream "did it change"
+ * test into a comparison of one string with itself.
+ */
+const serializedBoards = new WeakMap<object, string>();
+
+function serializedBoard(board: object): string {
+  const cached = serializedBoards.get(board);
+  if (cached !== undefined) return cached;
+  const json = JSON.stringify(board);
+  serializedBoards.set(board, json);
+  return json;
+}
+
 /** Streams are recycled so a forgotten projector tab does not hold a connection all night. */
 const MAX_LIFETIME_MS = 30 * 60 * 1000;
-
-/** Newest submissions considered per tick. Nobody has more than a handful in flight. */
-const WATCHED_SUBMISSIONS = 25;
 
 /**
  * How many streams this process will hold at once.
@@ -110,6 +130,7 @@ export function openContestStream(
   /** submissionId -> the verdict/score we last told this client about. */
   const announced = new Map<string, string>();
   let closed = false;
+  let unwatch: (() => void) | null = null;
 
   /**
    * Counted here rather than in `start`, because `start` may not run for a connection the client
@@ -122,6 +143,8 @@ export function openContestStream(
     if (released) return;
     released = true;
     openStreams -= 1;
+    unwatch?.();
+    unwatch = null;
   };
 
   return new ReadableStream<Uint8Array>({
@@ -146,6 +169,18 @@ export function openContestStream(
         for (const row of await recentSubmissions(viewer.participantId)) {
           if (row.verdict !== null) announced.set(row.id, `${row.verdict}:${row.score}`);
         }
+
+        // Verdicts arrive from the process-wide watcher, which reads every open stream's rows in
+        // one query per tick, instead of from a query of this connection's own every tick.
+        if (!closed && !signal.aborted) {
+          unwatch = verdictWatch().subscribe(viewer.participantId, (rows, now) => {
+            void verdictFrames(viewer, rows, announced, now)
+              .then((frames) => {
+                for (const frame of frames) send(frame);
+              })
+              .catch((error: unknown) => logTickError(contestId, error));
+          });
+        }
       }
 
       while (!closed && !signal.aborted) {
@@ -160,27 +195,16 @@ export function openContestStream(
           }
 
           const standings = await getStandings(contestId, viewer, now);
-          const standingsJson = JSON.stringify(standings);
+          const standingsJson = serializedBoard(standings);
           if (standingsJson !== lastStandings) {
             lastStandings = standingsJson;
-            send(sseFrame(SSE_EVENTS.standings, standings));
-          }
-
-          if (viewer.kind === "competitor") {
-            for (const frame of await verdictFrames(viewer, announced, now)) send(frame);
+            send(`event: ${SSE_EVENTS.standings}\ndata: ${standingsJson}\n\n`);
           }
 
           // Keeps intermediaries from closing an idle connection between verdicts.
           send(": ping\n\n");
         } catch (error: unknown) {
-          console.error(
-            JSON.stringify({
-              level: "error",
-              event: "sse.tick_failed",
-              contestId,
-              message: error instanceof Error ? error.message : String(error),
-            }),
-          );
+          logTickError(contestId, error);
           // One bad tick is not a reason to drop the room's leaderboard; the next tick retries.
         }
 
@@ -198,6 +222,17 @@ export function openContestStream(
   });
 }
 
+function logTickError(contestId: string, error: unknown): void {
+  console.error(
+    JSON.stringify({
+      level: "error",
+      event: "sse.tick_failed",
+      contestId,
+      message: error instanceof Error ? error.message : String(error),
+    }),
+  );
+}
+
 async function recentSubmissions(
   participantId: string,
 ): Promise<{ id: string; verdict: string | null; score: number }[]> {
@@ -210,31 +245,34 @@ async function recentSubmissions(
 }
 
 /**
- * Verdict frames for this participant only.
+ * Verdict frames for this participant only, from the rows the watcher read for them.
  *
- * Reconciling here is what makes the stream *feel* live — but the same call in the plain GET is
- * what makes it durable, so a student with SSE blocked loses nothing but latency.
+ * The watcher's `reconcile` is what makes the stream *feel* live — but the same call in the plain
+ * GET is what makes it durable, so a student with SSE blocked loses nothing but latency.
+ *
+ * `announced` is updated before the first await, so two ticks that overlap cannot both send the
+ * same verdict.
  */
-async function verdictFrames(
+export async function verdictFrames(
   viewer: Extract<Viewer, { kind: "competitor" }>,
+  rows: readonly WatchedSubmission[],
   announced: Map<string, string>,
   now: Date,
 ): Promise<string[]> {
-  const rows = await recentSubmissions(viewer.participantId);
-
+  const changed: string[] = [];
   for (const row of rows) {
-    if (row.verdict === null) await reconcile(row.id, now);
-  }
-
-  const frames: string[] = [];
-  for (const row of await recentSubmissions(viewer.participantId)) {
     if (row.verdict === null) continue;
 
     const signature = `${row.verdict}:${row.score}`;
     if (announced.get(row.id) === signature) continue;
     announced.set(row.id, signature);
+    changed.push(row.id);
+  }
 
-    const view = await getSubmissionView(row.id, viewer, now);
+  const frames: string[] = [];
+  for (const submissionId of changed) {
+
+    const view = await getSubmissionView(submissionId, viewer, now);
     frames.push(
       sseFrame(
         SSE_EVENTS.verdict,

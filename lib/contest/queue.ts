@@ -83,6 +83,57 @@ export async function jobOutcome(jobId: string): Promise<JobOutcome> {
   return outcomeOf(job);
 }
 
+/**
+ * Which of these jobs are worth a `reconcile` right now, in ONE Redis round trip.
+ *
+ * `reconcile` costs a database read plus two Redis calls per submission, and a burst leaves fifty
+ * or so submissions pending at once. Asking each of them every second is most of what the verdict
+ * stream cost the database. A job whose hash has no `finishedOn` is still queued or running and
+ * `reconcile` would do nothing with it, so only two kinds come back:
+ *
+ * - **finished** (`finishedOn` set): completed or out of attempts. `reconcile` reads the outcome,
+ *   including the moment where the state says completed and the return value has not landed yet,
+ *   which it already treats as "keep waiting".
+ * - **gone** (no hash at all): evicted or lost. `reconcile` owns the orphan rule and its grace
+ *   period, so it decides.
+ *
+ * Read with HMGET on the job's own key, the layout `oldestOrdinaryEnqueuedAtMs` already relies on.
+ * Any error for a key, or for the whole pipeline, counts that job as ready: the fallback is the
+ * call the stream used to make every tick anyway, so a Redis hiccup costs queries, never a verdict.
+ */
+export async function jobsReadyToReconcile(
+  jobIds: readonly string[],
+): Promise<ReadonlySet<string>> {
+  if (jobIds.length === 0) return new Set();
+  try {
+    const queue = judgeQueue();
+    const client = await queue.client;
+    // Issued together on one connection, so ioredis writes them back to back and the replies
+    // come back in one round trip. `null` stands for a failed read: ready, see above.
+    const replies = await Promise.all(
+      jobIds.map((jobId) =>
+        client
+          .hmget(queue.toKey(jobId), "finishedOn", "timestamp")
+          .catch((): null => null),
+      ),
+    );
+
+    const ready = new Set<string>();
+    jobIds.forEach((jobId, index) => {
+      const reply = replies[index] ?? null;
+      if (reply === null) {
+        ready.add(jobId);
+        return;
+      }
+      const [finishedOn, timestamp] = reply;
+      if (finishedOn !== null || timestamp === null) ready.add(jobId);
+    });
+    return ready;
+  } catch {
+    return new Set(jobIds);
+  }
+}
+
 async function outcomeOf(job: Job): Promise<JobOutcome> {
   const state = await job.getState();
 
