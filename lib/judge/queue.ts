@@ -22,8 +22,31 @@ export const JUDGE_JOB_OPTIONS = {
   removeOnFail: { count: 500 },
 } as const;
 
-/** The queue never loses a job (PRD §7.3): a worker crash mid-judge must retry, not drop. */
-export const STALLED_JOB_GRACE_MS = 120_000;
+/**
+ * The queue never loses a job (PRD §7.3): a worker crash mid-judge must retry, not drop.
+ *
+ * How often a worker looks for stalled jobs. A job is stalled when its LOCK has expired, and the
+ * lock is what keeps a long job safe, not this number: a worker renews the lock of every job it is
+ * running every `lockDuration / 2` (15 s), from a timer on its event loop, for as long as the job
+ * runs. The judge awaits Docker and never blocks that loop for seconds, so a 100 s TLE submission
+ * or a 90 s Go compile is renewed six or seven times and is never stalled however long it takes.
+ * Only a job whose worker has stopped renewing (crashed, killed, or frozen for 30 s) loses it.
+ *
+ * BullMQ moves a job on the second check that finds it unlocked, so recovery after a crash takes
+ * one to two intervals once the lock has lapsed. Measured with scripts/measure-stall-recovery.ts
+ * against Redis: 240.0 s twice at the old 120 s, 60.0 s five times out of five at 30 s. The same
+ * script runs a 150 s job alongside: processed once, stalled zero times, at both settings.
+ */
+export const STALLED_JOB_GRACE_MS = 30_000;
+
+/**
+ * The lock and stall options every judge worker runs with. `lockDuration` is BullMQ's default,
+ * written down because the safety argument above depends on it.
+ */
+export const JUDGE_WORKER_LOCK_OPTIONS = {
+  lockDuration: 30_000,
+  stalledInterval: STALLED_JOB_GRACE_MS,
+} as const;
 
 /**
  * Two lanes, and which one a job joins.

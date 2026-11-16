@@ -8,7 +8,7 @@ import IORedis from "ioredis";
 
 import { startWorkerHeartbeat } from "@/lib/judge/heartbeat";
 import { JudgeJobSchema, type JudgeResult } from "@/lib/schemas/judge";
-import { JUDGE_QUEUE_NAME, MAX_JOB_ATTEMPTS, STALLED_JOB_GRACE_MS } from "@/lib/judge/queue";
+import { JUDGE_QUEUE_NAME, JUDGE_WORKER_LOCK_OPTIONS, MAX_JOB_ATTEMPTS } from "@/lib/judge/queue";
 import { parseServerEnv } from "@/lib/schemas/env";
 import {
   isDockerAvailable,
@@ -245,7 +245,7 @@ async function main(): Promise<void> {
   const worker = new Worker(JUDGE_QUEUE_NAME, (job) => processJob(job, images, pool, javacService), {
     connection,
     concurrency,
-    stalledInterval: STALLED_JOB_GRACE_MS,
+    ...JUDGE_WORKER_LOCK_OPTIONS,
   });
 
   worker.on("failed", (job, error) => {
