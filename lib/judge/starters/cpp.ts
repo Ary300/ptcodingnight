@@ -189,11 +189,28 @@ const cppStringLiteral = (value: string): string =>
  * Parameters are by value. A copy of 100 000 elements is nothing against the memory limit, and
  * `const vector<long long>&` on a warm-up problem is a reference-and-const lesson nobody signed
  * up for tonight.
+ *
+ * One exception: a SHARED array or string in a signature that REPEATS is passed as a const
+ * reference. That argument is read once and handed to every call, so by value it was copied once
+ * per query: circular-array-rotation copied 10^10 ints at n = q = 100 000, and a correct O(1)
+ * answer measured 1.7 s quiet and 5.5 to 7.8 s under load against a 2 s limit (32 to 194 ms with
+ * the reference). Const, because the next query must see the same data.
  */
 export const cppSignatureLine = (signature: Signature): string => {
+  const sharedByReference = new Set(
+    signature.repeat === undefined
+      ? []
+      : (signature.shared ?? [])
+          .filter((field) => isArrayType(field.type) || field.type === "string")
+          .map((field) => field.name),
+  );
   const declared = fields(signature)
     .filter(isPassed)
-    .map((field) => `${CPP_TYPE[field.type]} ${field.name}`)
+    .map((field) =>
+      sharedByReference.has(field.name)
+        ? `const ${CPP_TYPE[field.type]}& ${field.name}`
+        : `${CPP_TYPE[field.type]} ${field.name}`,
+    )
     .join(", ");
   return `${CPP_TYPE[signature.returns.type]} ${signature.name}(${declared})`;
 };

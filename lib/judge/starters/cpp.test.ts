@@ -344,3 +344,33 @@ describe("emitCppProbe", () => {
     expect(harness(emitCppProbe(ENCRYPTION))).toBe(harness(emitCpp(ENCRYPTION)));
   });
 });
+
+describe("cppSignatureLine, shared data in a repeating signature", () => {
+  it("passes a shared array by const reference so each query does not copy it", () => {
+    const line = cppSignatureLine({
+      name: "circularArrayRotation",
+      returns: { type: "int" },
+      shared: [
+        { name: "n", type: "int", passed: false },
+        { name: "k", type: "int" },
+        { name: "q", type: "int", passed: false },
+        { name: "a", type: "int[]", length: "n" },
+      ],
+      repeat: "q",
+      params: [{ name: "j", type: "int" }],
+    });
+    expect(line).toBe("int circularArrayRotation(int k, const vector<int>& a, int j)");
+  });
+
+  it("keeps by-value parameters when nothing repeats", () => {
+    const line = cppSignatureLine({
+      name: "aVeryBigSum",
+      returns: { type: "long" },
+      params: [
+        { name: "n", type: "int", passed: false },
+        { name: "ar", type: "long[]", length: "n" },
+      ],
+    });
+    expect(line).toBe("long long aVeryBigSum(vector<long long> ar)");
+  });
+});
