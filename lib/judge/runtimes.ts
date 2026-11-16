@@ -307,9 +307,18 @@ export const RUNTIMES: Readonly<Record<RuntimeId, Runtime>> = {
       collapse. The 45,000 ms was never measuring the JVM; it was measuring Docker Desktop's
       virtualisation layer, and it silently encoded that layer into the contest's rules.
 
-      4000 ms is 17x the worst native observation, and Java time limits mean something again.
+      4000 ms was 17x the worst native observation, and Java time limits meant something again.
+
+      2000 ms since 2026-11-16, measured on the contest droplet (4 vCPU, shared) during
+      same-second bursts of 35 to 57 submissions: over 32,098 passing Java tests the per-test
+      runtime was p50 112 ms, p99 874 ms, max 2,719 ms. The threshold is now 2 s x 2 + 2 s = 6 s,
+      more than twice the slowest passing test seen under full load, and since most Java tests
+      run in the one-JVM harness they do not pay startup per test at all. The reason to cut it: a
+      test that runs past the threshold holds a judge lane until it is killed there, so every
+      too-slow Java test cost 8.25 s of lane time and a few brute-force submissions could stall
+      the room's verdicts for minutes.
     */
-    startupBudgetMs: 4_000,
+    startupBudgetMs: 2_000,
     // javac on a cold JVM is slow, and it is not the student's fault.
     compileTimeoutMs: 60_000,
     compilePidsLimit: 256,
