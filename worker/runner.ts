@@ -22,6 +22,7 @@ import {
   type ContainerRunResult,
 } from "@/worker/docker";
 import { declaredPackageMessage, misplacedEntryMessage } from "./entry-artifact";
+import type { SubmissionLane } from "./lanes";
 import { withHostMaxProcs } from "./host";
 import {
   BATCH_DRIVER,
@@ -101,6 +102,12 @@ export interface JudgeOptions {
    * Whatever it cannot answer is compiled in a fresh container, exactly as without it.
    */
   readonly javacService?: JavacService;
+  /**
+   * The worker's lanes (worker/lanes.ts). A submission whose test ends over its threshold may park:
+   * it gives its main lane back and runs each remaining test only with a slow-lane slot. Absent,
+   * every test runs as soon as the previous one ends, as before.
+   */
+  readonly lane?: SubmissionLane;
 }
 
 /**
@@ -540,6 +547,10 @@ export function selfReportedTimingIsCredible(input: {
  */
 interface InputFeed {
   readonly control: ContainerControl;
+  /** Host time spent waiting for slow-lane slots, during which the container sat idle. */
+  readonly parkedMs: () => number;
+  /** Give back a slot still held (the container died during a parked test). */
+  readonly releaseSlot: () => void;
   /** Outcomes read at the moment each test was handed over. */
   readonly frozen: ReadonlyMap<number, BatchTestOutcome>;
   /** Ordinals the driver reported finished. Their files are never read again. */
@@ -553,22 +564,47 @@ function feedInputs(options: {
   readonly resultDir: string;
   readonly inputByOrdinal: ReadonlyMap<number, string>;
   readonly cap: number;
+  /** The TLE threshold, for deciding when to park. Not a verdict: verdicts are decided later. */
+  readonly timeLimitMs: number;
+  readonly lane?: SubmissionLane;
 }): InputFeed {
-  const { inputDir, resultDir, inputByOrdinal, cap } = options;
+  const { inputDir, resultDir, inputByOrdinal, cap, timeLimitMs, lane } = options;
   const frozen = new Map<number, BatchTestOutcome>();
   const acknowledged = new Set<number>();
   let expected = 1;
   let chain: Promise<void> = Promise.resolve();
+  let parkedMs = 0;
+  let heldSlot: (() => void) | null = null;
+  let extendBackstop: (ms: number) => void = () => undefined;
+  const releaseSlot = (): void => {
+    heldSlot?.();
+    heldSlot = null;
+  };
 
   const handOver = async (ordinal: number, stdin: ControlStdin): Promise<void> => {
     const outcome = await readBatchOutcome(resultDir, ordinal, cap);
     if (outcome !== null) frozen.set(ordinal, outcome);
 
-    // This test is finished with its input.
+    // This test is finished with its input, and with its slow-lane slot if it had one.
     await rm(path.join(inputDir, `${String(ordinal)}.in`), { force: true }).catch(() => undefined);
+    releaseSlot();
+
+    // A test that ran past its threshold (or was killed at it) parks the submission, once.
+    if (lane !== undefined && !lane.parked && outcome !== null &&
+        (outcome.exitCode === TIMEOUT_EXIT_CODE || outcome.durationMs > timeLimitMs)) {
+      lane.demote();
+    }
 
     const next = inputByOrdinal.get(ordinal + 1);
     if (next === undefined) return;
+    if (lane?.parked === true) {
+      // The container waits on its doorbell meanwhile: no test is running, so nothing is timed.
+      const waitStarted = performance.now();
+      heldSlot = await lane.testSlot();
+      const waited = performance.now() - waitStarted;
+      parkedMs += waited;
+      extendBackstop(waited);
+    }
     await placeInput(inputDir, ordinal + 1, next);
     // Only after the rename: the bell promises the input is complete.
     stdin.send(doorbellFor(ordinal + 1));
@@ -576,6 +612,9 @@ function feedInputs(options: {
 
   const control: ContainerControl = {
     initial: doorbellFor(1),
+    onBackstop: (extend) => {
+      extendBackstop = extend;
+    },
     onLine: (line, stdin) => {
       const ordinal = parseDoneLine(line);
       if (ordinal === null || ordinal !== expected) return;
@@ -587,7 +626,7 @@ function feedInputs(options: {
     },
   };
 
-  return { control, frozen, acknowledged, drained: () => chain };
+  return { control, frozen, acknowledged, drained: () => chain, parkedMs: () => parkedMs, releaseSlot };
 }
 
 /**
@@ -1156,19 +1195,22 @@ export async function judge(
     };
 
     // Runs alongside the container, handing over one input at a time on the driver's doorbell.
-    let feed = feedInputs({ inputDir, resultDir, inputByOrdinal, cap: largestCap });
+    const feedOptions = { inputDir, resultDir, inputByOrdinal, cap: largestCap, timeLimitMs, lane: options?.lane };
+    let feed = feedInputs(feedOptions);
     let batch = await runInContainer({ ...specs.run, ...batchOptions, control: feed.control, ...pooled });
     if (batch.neverStarted === true) {
       // The pre-created container could not be started, so no test ran and no input was handed
       // over: run the batch in a fresh container, with a fresh feeder.
       noteFreshFallback("run");
       await feed.drained();
-      feed = feedInputs({ inputDir, resultDir, inputByOrdinal, cap: largestCap });
+      feed.releaseSlot();
+      feed = feedInputs(feedOptions);
       batch = await runInContainer({ ...specs.run, ...batchOptions, control: feed.control, name: freshNames.run });
     }
 
     // The container has exited; let any handover it triggered finish before reading results.
     await feed.drained();
+    feed.releaseSlot();
     if (batch.infrastructureFailure) return containerLost("run");
 
     // Clear every input the feeder may have left before any single-test retry starts. A batch
@@ -1232,7 +1274,9 @@ export async function judge(
 
     const timingCredible = selfReportedTimingIsCredible({
       claimedTotalMs,
-      containerMs: batch.durationMs,
+      // Less the time the host kept the container waiting for a slow-lane slot: it was idle on
+      // its doorbell, measured by the host's own clock, and no test was running.
+      containerMs: Math.max(0, batch.durationMs - feed.parkedMs()),
       startupBudgetMs: runtime.startupBudgetMs,
     });
 

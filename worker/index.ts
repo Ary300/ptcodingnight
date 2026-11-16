@@ -23,6 +23,7 @@ import { describeMissingImages, findMissingImages, requiredImages } from "@/work
 import { judge, slotProfileFor, type ImageOverrides } from "@/worker/runner";
 import { ContainerPool } from "@/worker/container-pool";
 import { JavacService } from "@/worker/javac-service";
+import { LaneScheduler } from "@/worker/lanes";
 import { requeuesAfter } from "@/worker/requeue";
 import { removeStaleWorkspaces } from "@/worker/workspace";
 import { hostLimits } from "@/lib/contest/host";
@@ -51,6 +52,14 @@ const JAVAC_SERVICE_ON = (process.env.JUDGE_JAVAC_SERVICE ?? "on").toLowerCase()
 
 /** Finished containers allowed to wait for removal while judging continues. */
 const POOL_REMOVAL_BACKLOG = Number.parseInt(process.env.JUDGE_POOL_REMOVAL_BACKLOG ?? "120", 10);
+
+/**
+ * The slow lane (worker/lanes.ts). A submission whose test ends over its threshold gives its main
+ * lane back and runs its remaining tests JUDGE_SLOW_LANE at a time machine-wide (or on main lanes
+ * nobody else is using). JUDGE_PARKED_MAX bounds how many can be parked at once; 0 turns parking off.
+ */
+const SLOW_LANE = Number.parseInt(process.env.JUDGE_SLOW_LANE ?? "2", 10);
+const PARKED_MAX = Number.parseInt(process.env.JUDGE_PARKED_MAX ?? "8", 10);
 
 /** How long the queue must have been quiet before the pool spends CPU on creating or removing. */
 const POOL_IDLE_MS = 1_500;
@@ -95,6 +104,7 @@ async function processJob(
   images: ImageOverrides,
   pool: ContainerPool | null,
   javacService: JavacService | null,
+  lanes: LaneScheduler,
 ): Promise<JudgeResult> {
   // Parsed, not cast. A malformed job means the enqueuer and this worker disagree about the
   // contract, and guessing at the difference is how a submission gets judged against the
@@ -113,6 +123,7 @@ async function processJob(
   // optional, and "now" is the honest value at the only moment the fallback could fire.
   activeJobs += 1;
   lastJobActivityMs = Date.now();
+  const lane = lanes.enter();
   let result: JudgeResult;
   try {
     result = await judge(
@@ -126,9 +137,11 @@ async function processJob(
       {
         ...(pool === null ? {} : { pool }),
         ...(javacService === null ? {} : { javacService }),
+        lane,
       },
     );
   } finally {
+    lane.finish();
     activeJobs -= 1;
     lastJobActivityMs = Date.now();
     if (pool !== null) scheduleMaintenance(pool);
@@ -242,11 +255,23 @@ async function main(): Promise<void> {
     void pool.maintain();
   }
 
-  const worker = new Worker(JUDGE_QUEUE_NAME, (job) => processJob(job, images, pool, javacService), {
+  // Concurrency is main lanes plus parked submissions: parking one lets the queue's next job start.
+  let workerRef: Worker | null = null;
+  const lanes = new LaneScheduler({
+    main: concurrency,
+    slow: Math.max(1, SLOW_LANE),
+    maxParked: Math.max(0, PARKED_MAX),
+    onConcurrency: (n) => {
+      if (workerRef !== null) workerRef.concurrency = n;
+    },
+  });
+
+  const worker = new Worker(JUDGE_QUEUE_NAME, (job) => processJob(job, images, pool, javacService, lanes), {
     connection,
     concurrency,
     ...JUDGE_WORKER_LOCK_OPTIONS,
   });
+  workerRef = worker;
 
   worker.on("failed", (job, error) => {
     console.error(

@@ -11,6 +11,7 @@ import { parseProblemManifest, type ProblemManifest } from "@/lib/schemas/seed";
 import { isDockerAvailable, sweepJudgeContainers } from "@/worker/docker";
 import { scaledStartupBudgetMs } from "@/worker/host";
 import { JavacService } from "@/worker/javac-service";
+import type { SubmissionLane } from "@/worker/lanes";
 import { judge } from "@/worker/runner";
 
 /**
@@ -19,7 +20,12 @@ import { judge } from "@/worker/runner";
  * past its threshold is TLE, killed at the threshold plus TLE_KILL_MARGIN_MS).
  *
  *     npx tsx scripts/ab-tle-rule.ts [--set g4,sandbox,refs,starters,probes,sols] [--sol-dir DIR ...]
- *                                    [--only name-part,...] [--out file.json]
+ *                                    [--only name-part,...] [--out file.json] [--compare rule|lane]
+ *
+ * `--compare lane` instead compares judging with no lane against judging in a slow lane
+ * (worker/lanes.ts) that parks the submission at its first test over the threshold and makes every
+ * later test wait --lane-wait-ms (default 1000) for its slot. Both sides use the current TLE rule,
+ * and there every per-test verdict must match: no label may change at all.
  *
  * The organizers' requirement is that SCORES never change. So it requires, for every submission:
  *   - the same score, and the same points on every test;
@@ -44,14 +50,18 @@ function args(argv: readonly string[]) {
   const solDirs: string[] = [];
   let only: string[] = [];
   let out: string | null = null;
+  let mode: "rule" | "lane" = "rule";
+  let laneWaitMs = 1000;
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === "--set") sets = new Set((argv[++i] ?? "").split(","));
     else if (arg === "--sol-dir") solDirs.push(argv[++i] ?? "");
     else if (arg === "--only") only = (argv[++i] ?? "").split(",").filter((x) => x.length > 0);
     else if (arg === "--out") out = argv[++i] ?? null;
+    else if (arg === "--compare") mode = argv[++i] === "lane" ? "lane" : "rule";
+    else if (arg === "--lane-wait-ms") laneWaitMs = Number(argv[++i] ?? "1000");
   }
-  return { sets, solDirs, only, out };
+  return { sets, solDirs, only, out, mode, laneWaitMs };
 }
 
 /** The verdict threshold judge() computes for a job: limit x multiplier + startup budget. */
@@ -188,9 +198,37 @@ interface Side {
 
 const service = new JavacService({ lanes: 1, image: RUNTIMES.jdk21.image, runtime: RUNTIMES.jdk21 });
 
-async function run(job: JudgeJob, atThreshold: boolean): Promise<Side> {
+let MODE: "rule" | "lane" = "rule";
+let LANE_WAIT_MS = 1000;
+let parkedSubmissions = 0;
+
+/** A lane that parks at the first over-threshold test and makes every later test wait. */
+function waitingLane(): SubmissionLane {
+  let parked = false;
+  return {
+    get parked() {
+      return parked;
+    },
+    demote: () => {
+      parked = true;
+      parkedSubmissions += 1;
+      return true;
+    },
+    testSlot: async () => {
+      await new Promise((resolve) => setTimeout(resolve, LANE_WAIT_MS));
+      return () => undefined;
+    },
+  };
+}
+
+/** `after` is the new side: the threshold rule, or (with --compare lane) the slow lane. */
+async function run(job: JudgeJob, after: boolean): Promise<Side> {
   const started = Date.now();
-  const result = await judge(job, undefined, undefined, { tleAtThreshold: atThreshold, javacService: service });
+  const options =
+    MODE === "rule"
+      ? { tleAtThreshold: after, javacService: service }
+      : { javacService: service, ...(after ? { lane: waitingLane() } : {}) };
+  const result = await judge(job, undefined, undefined, options);
   return { result, wallMs: Date.now() - started };
 }
 
@@ -215,7 +253,7 @@ function compare(job: JudgeJob, before: JudgeResult, after: JudgeResult, thresho
     const py = pointsOf(job, y.testCaseId, y.verdict);
     if (px !== py) scoreDiffs.push(`${x.testCaseId} points ${String(px)} -> ${String(py)} (${x.verdict} ${String(x.runtimeMs)} ms -> ${y.verdict} ${String(y.runtimeMs)} ms)`);
     if (x.verdict === y.verdict) continue;
-    const wasOver = x.verdict === "TLE" || (x.runtimeMs ?? 0) > threshold;
+    const wasOver = MODE === "rule" && (x.verdict === "TLE" || (x.runtimeMs ?? 0) > threshold);
     const line = `${x.testCaseId} ${x.verdict} ${String(x.runtimeMs)} ms -> ${y.verdict} ${String(y.runtimeMs)} ms (threshold ${String(threshold)} ms)`;
     if (wasOver) labelChanges.push(line);
     else scoreDiffs.push(`label under the threshold: ${line}`);
@@ -228,6 +266,8 @@ function compare(job: JudgeJob, before: JudgeResult, after: JudgeResult, thresho
 
 async function main(): Promise<void> {
   const a = args(process.argv.slice(2));
+  MODE = a.mode;
+  LANE_WAIT_MS = a.laneWaitMs;
   if (!(await isDockerAvailable())) {
     console.error("Docker daemon is not reachable. The A/B is NOT RUN.");
     process.exit(2);
@@ -294,7 +334,8 @@ async function main(): Promise<void> {
   console.log(
     `\nA/B TLE rule: ${String(cases.length)} submissions, ${String(tests)} tests, ` +
       `${String(failures)} score differences that repeated, ${String(noise)} that did not repeat, ` +
-      `${String(allChanges.length)} label changes over the threshold. wall old ${String(wallBefore)} ms, new ${String(wallAfter)} ms`,
+      `${String(allChanges.length)} label changes over the threshold. wall old ${String(wallBefore)} ms, new ${String(wallAfter)} ms` +
+      (MODE === "lane" ? `. ${String(parkedSubmissions)} judgements parked in the slow lane` : ""),
   );
   if (a.out !== null) writeFileSync(a.out, JSON.stringify(rows, null, 2));
   process.exit(failures === 0 ? 0 : 1);

@@ -3,7 +3,14 @@
  * The judge WORKER's own CPU per submission, during a burst, with a CPU profile of where it went.
  *
  *     BURST_REDIS_URL=redis://:pw@localhost:6379/7 npx tsx scripts/measure-worker-cpu.ts \
- *         --sol-dir DIR [--count 40] [--concurrency 4] [--profile-dir DIR]
+ *         --sol-dir DIR [--count 40] [--concurrency 4] [--profile-dir DIR] \
+ *         [--tle 8 --ce 3 --tle-problem compare-the-triplets] [--host-cpu]
+ *
+ * `--tle N --ce M`: of the `--count` submissions, N are a Java program that spins forever, judged
+ * against `--tle-problem`'s tests (it times out on every one), and M do not compile; the rest are
+ * correct solutions. The report then gives the last ORDINARY verdict and the last TLE verdict, each
+ * measured from the moment the burst was enqueued. `--host-cpu` also reports the Docker host's CPU
+ * over the burst (its /proc/stat, through a probe container, less its idle rate).
  *
  * Runs the real worker (worker/index.ts, under `node --cpu-prof`) against a Redis DATABASE that no
  * other worker reads, enqueues `--count` Java 21 submissions at once (correct solutions from
@@ -35,6 +42,87 @@ const CONTENT = path.join(ROOT, "content", "problems");
 function arg(flag: string, fallback: string): string {
   const i = process.argv.indexOf(flag);
   return i === -1 ? fallback : (process.argv[i + 1] ?? fallback);
+}
+
+const SPIN = `public class Main {
+  public static void main(String[] args) {
+    long x = 0;
+    while (true) { x++; }
+  }
+}
+`;
+const BROKEN = `public class Main {
+  public static void main(String[] args) {
+    System.out.println("no semicolon")
+  }
+}
+`;
+
+/** A job for `slug`'s real tests, with this source. */
+function problemJob(slug: string, sourceCode: string, id: string): JudgeJob {
+  const manifestFile = path.join(CONTENT, slug, "problem.json");
+  const manifest = parseProblemManifest(JSON.parse(readFileSync(manifestFile, "utf8")), manifestFile);
+  const testDir = path.join(CONTENT, slug, "tests");
+  const inputs = readdirSync(testDir).filter((f) => f.endsWith(".in")).sort();
+  return {
+    submissionId: id,
+    language: "JAVA_21",
+    sourceCode,
+    limits: {
+      timeLimitMs: manifest.timeLimitMs,
+      memoryLimitMb: manifest.memoryLimitMb,
+      wallClockKillMs: manifest.timeLimitMs * 3,
+      pidsLimit: 64,
+      tmpfsBytes: 16 * 1024 * 1024,
+      cpus: 1,
+    },
+    comparator: { kind: "whitespace" },
+    testCases: inputs.map((f, i) => ({
+      testCaseId: f.replace(/\.in$/, ""),
+      ordinal: i + 1,
+      inputPath: path.join(testDir, f),
+      expectedOutputPath: path.join(testDir, f.replace(/\.in$/, ".out")),
+      isSample: i < manifest.sampleCount,
+      points: 10,
+      group: null,
+    })),
+    attempt: 1,
+    captureOutput: false,
+  };
+}
+
+/**
+ * The burst: `tle` spinning programs and `ce` broken ones spread evenly through `count`, the rest
+ * correct solutions — so the bad ones arrive in the same second as everyone else, not first.
+ */
+function mixedJobs(solDir: string, count: number, tle: number, ce: number, tleProblem: string): JudgeJob[] {
+  const ordinary = jobs(solDir, count - tle - ce);
+  const bad: JudgeJob[] = [
+    ...Array.from({ length: tle }, (_, i) => problemJob(tleProblem, SPIN, `burst-${String(process.pid)}-tle-${String(i)}`)),
+    ...Array.from({ length: ce }, (_, i) => problemJob(tleProblem, BROKEN, `burst-${String(process.pid)}-ce-${String(i)}`)),
+  ];
+  const out: JudgeJob[] = [];
+  const every = bad.length === 0 ? Infinity : Math.max(1, Math.floor(count / bad.length));
+  let b = 0;
+  for (let i = 0; out.length < count; i += 1) {
+    if (b < bad.length && i % every === 0) out.push(bad[b++] as JudgeJob);
+    else {
+      const next = ordinary.shift();
+      if (next !== undefined) out.push(next);
+      else if (b < bad.length) out.push(bad[b++] as JudgeJob);
+    }
+  }
+  return out;
+}
+
+const PROBE = `ptcn-burst-cpuprobe-${String(process.pid)}`;
+
+function hostBusySeconds(): number {
+  const stat = execFileSync("docker", ["exec", PROBE, "head", "-1", "/proc/stat"], { encoding: "utf8" });
+  const fields = stat.trim().split(/\s+/).slice(1).map(Number);
+  const idle = (fields[3] ?? 0) + (fields[4] ?? 0);
+  const total = fields.slice(0, 8).reduce((a, b) => a + b, 0);
+  return (total - idle) / 100;
 }
 
 function jobs(solDir: string, count: number): JudgeJob[] {
@@ -130,7 +218,19 @@ async function main(): Promise<void> {
   const concurrency = arg("--concurrency", "4");
   const profileDir = path.resolve(arg("--profile-dir", path.join(ROOT, ".judge-tmp", "cpu-prof")));
   mkdirSync(profileDir, { recursive: true });
-  const work = count === 0 ? [] : jobs(arg("--sol-dir", ""), count);
+  const tle = Number(arg("--tle", "0"));
+  const ce = Number(arg("--ce", "0"));
+  const work =
+    count === 0
+      ? []
+      : tle + ce > 0
+        ? mixedJobs(arg("--sol-dir", ""), count, tle, ce, arg("--tle-problem", "compare-the-triplets"))
+        : jobs(arg("--sol-dir", ""), count);
+  const hostCpu = process.argv.includes("--host-cpu");
+  if (hostCpu) {
+    execFileSync("docker", ["rm", "-f", PROBE], { stdio: "ignore" });
+    execFileSync("docker", ["run", "-d", "--name", PROBE, "--network=none", "alpine:3", "sleep", "86400"], { stdio: "ignore" });
+  }
 
   const connection = new IORedis(redisUrl, { maxRetriesPerRequest: null });
   const queue = new Queue(JUDGE_QUEUE_NAME, { connection });
@@ -163,6 +263,30 @@ async function main(): Promise<void> {
   // Let start-up work (pool fill, javac warm-up) finish before the clock starts.
   await new Promise((r) => setTimeout(r, Number(arg("--settle-ms", "60000"))));
 
+  let idleRate = 0;
+  if (hostCpu) {
+    const b0 = hostBusySeconds();
+    const t0 = Date.now();
+    await new Promise((r) => setTimeout(r, 10_000));
+    idleRate = (hostBusySeconds() - b0) / ((Date.now() - t0) / 1000);
+  }
+  const poolReady = execFileSync(
+    "docker",
+    ["ps", "-a", "--filter", `label=ptcn.judge.instance=burst-${String(process.pid)}`, "--filter", "status=created", "--format", "{{.Names}}"],
+    { encoding: "utf8" },
+  ).split("\n").filter((n) => n.includes("-pool-") && n.endsWith("-run")).length;
+  const hostBefore = hostCpu ? hostBusySeconds() : 0;
+  // Streamed live rather than queried by time afterwards: the daemon's clock (a VM on Docker
+  // Desktop) need not agree with this one.
+  let eventLog = "";
+  const watcher = spawn("docker", [
+    "events",
+    "--filter", "type=container",
+    "--filter", `label=ptcn.judge.instance=burst-${String(process.pid)}`,
+    "--format", "{{.Action}} {{.Actor.Attributes.name}}",
+  ]);
+  watcher.stdout.on("data", (chunk: Buffer) => (eventLog += chunk.toString()));
+  await new Promise((r) => setTimeout(r, 500));
   const cpuBefore = cpuSeconds(pid);
   const started = Date.now();
   if (work.length > 0) {
@@ -174,12 +298,25 @@ async function main(): Promise<void> {
     await new Promise((r) => setTimeout(r, 250));
   }
   const drainMs = Date.now() - started;
+  await new Promise((r) => setTimeout(r, 500));
+  watcher.kill();
   const cpuAfter = cpuSeconds(pid);
+  const hostAfter = hostCpu ? hostBusySeconds() : 0;
+  if (hostCpu) execFileSync("docker", ["rm", "-f", PROBE], { stdio: "ignore" });
   const done = await queue.getJobs(["completed"], 0, count);
   const verdicts = new Map<string, number>();
+  let lastOrdinary = 0;
+  let lastTle = 0;
+  const wrong: string[] = [];
   for (const job of done) {
     const verdict = (job.returnvalue as { verdict?: string } | undefined)?.verdict ?? "?";
     verdicts.set(verdict, (verdicts.get(verdict) ?? 0) + 1);
+    const at = (job.finishedOn ?? started) - started;
+    const id = String(job.id ?? "");
+    const expect = id.includes("-tle-") ? "TLE" : id.includes("-ce-") ? "CE" : "AC";
+    if (verdict !== expect) wrong.push(`${id} ${verdict} (expected ${expect})`);
+    if (id.includes("-tle-")) lastTle = Math.max(lastTle, at);
+    else lastOrdinary = Math.max(lastOrdinary, at);
   }
 
   // To the worker itself: /usr/bin/time would die of it and leave the worker running.
@@ -190,7 +327,27 @@ async function main(): Promise<void> {
   await connection.quit();
 
   console.log(`burst: ${String(count)} Java 21 submissions, concurrency ${concurrency}, drained in ${String(drainMs)} ms`);
-  console.log(`verdicts: ${[...verdicts.entries()].map(([v, n]) => `${v} ${String(n)}`).join(", ")}`);
+  // What the daemon did for this worker DURING the burst: creates and removals here are churn.
+  const events = eventLog;
+  const actions = new Map<string, number>();
+  for (const line of events.split("\n").filter((x) => x.length > 0)) {
+    const [action = "", name = ""] = line.split(" ");
+    // By action and by kind of container: pool-, javac- or a submission's own.
+    const kind = name.includes("-pool-") ? "pool" : name.includes("-javac-") ? "javac" : "own";
+    const key = `${action.split(":")[0] ?? action}/${kind}`;
+    actions.set(key, (actions.get(key) ?? 0) + 1);
+  }
+  console.log(`pool slots ready when the burst began: ${String(poolReady)}`);
+  console.log(`daemon events during the burst: ${[...actions.entries()].sort().map(([k, n]) => `${k} ${String(n)}`).join(", ")}`);
+  console.log(`verdicts: ${[...verdicts.entries()].map(([v, n]) => `${v} ${String(n)}`).join(", ")}; wrong: ${String(wrong.length)}`);
+  for (const w of wrong) console.log(`  WRONG ${w}`);
+  console.log(`last ordinary verdict at ${String(lastOrdinary)} ms; last TLE verdict at ${tle > 0 ? `${String(lastTle)} ms` : "-"}`);
+  if (hostCpu) {
+    const burstS = (hostAfter - hostBefore) - idleRate * (drainMs / 1000);
+    console.log(
+      `host CPU over the burst: ${burstS.toFixed(1)} s less an idle ${idleRate.toFixed(2)} cores = ${(burstS / Math.max(1, count)).toFixed(2)} CPU-s per submission`,
+    );
+  }
   const user = /^user\s+([\d.]+)/m.exec(errLog)?.[1];
   const sys = /^sys\s+([\d.]+)/m.exec(errLog)?.[1];
   console.log(

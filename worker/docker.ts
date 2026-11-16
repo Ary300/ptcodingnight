@@ -223,6 +223,12 @@ export interface ContainerControl {
   readonly initial?: string;
   /** Called once per complete stdout line, with the container's stdin. */
   readonly onLine: (line: string, stdin: ControlStdin) => void;
+  /**
+   * Handed, once, a function that moves the host backstop later by `ms`. For time the HOST spends
+   * not handing the container its next test (a parked submission waiting for a slot): the
+   * container is idle on its doorbell then, and the backstop must not count it.
+   */
+  readonly onBackstop?: (extend: (ms: number) => void) => void;
 }
 
 /** The container's stdin as a control channel: write a line, or close it. */
@@ -538,10 +544,18 @@ export async function runInContainer(options: ContainerRunOptions): Promise<Cont
 
     // Backstop only. The authoritative wall-clock kill runs as `timeout` inside the
     // container, where it measures the program rather than Docker's startup.
-    const timer = setTimeout(() => {
+    const fireBackstop = () => {
       timedOut = true;
       killContainer();
-    }, (options.containerKillMs ?? limits.wallClockKillMs) + STARTUP_ALLOWANCE_MS);
+    };
+    let deadlineAt = Date.now() + (options.containerKillMs ?? limits.wallClockKillMs) + STARTUP_ALLOWANCE_MS;
+    let timer = setTimeout(fireBackstop, deadlineAt - Date.now());
+    options.control?.onBackstop?.((ms) => {
+      if (settled || timedOut) return;
+      clearTimeout(timer);
+      deadlineAt += Math.max(0, ms);
+      timer = setTimeout(fireBackstop, Math.max(0, deadlineAt - Date.now()));
+    });
 
     /**
      * The disk watchdog on the writable bind mount.

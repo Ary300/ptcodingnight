@@ -77,6 +77,8 @@ interface Manifest {
      */
     problemDir?: string;
     testCount?: number;
+    /** The exact score, for a case whose partial credit is the point. */
+    expectedScore?: number;
     /** For a CE whose message the judge writes itself rather than the compiler. */
     expectedCompileErrorContains?: string;
   }[];
@@ -196,6 +198,7 @@ describe("G4 judge fixtures", () => {
       } else {
         expect(result.score).toBeLessThan(fullMarks);
       }
+      if (entry.expectedScore !== undefined) expect(result.score).toBe(entry.expectedScore);
 
       // IE means the judge broke. It must never be the answer for a well-formed submission.
       expect(result.verdict).not.toBe("IE");

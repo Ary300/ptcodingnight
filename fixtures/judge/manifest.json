@@ -511,6 +511,13 @@
       "language": "PYTHON_312",
       "sourceFile": "main.py",
       "expectedVerdict": "TLE"
+    },
+    {
+      "id": "java-tle-first-then-ac",
+      "language": "JAVA_21",
+      "sourceFile": "Main.java",
+      "expectedVerdict": "TLE",
+      "expectedScore": 20
     }
   ]
 }
