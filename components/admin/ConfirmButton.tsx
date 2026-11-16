@@ -29,6 +29,13 @@ export interface ConfirmButtonProps {
   size?: ButtonSize;
   disabled?: boolean;
   className?: string;
+  /**
+   * The resting button's accessible name, when the visible `label` alone is ambiguous: a list of
+   * rows that each have a "Remove" needs every one to say what it removes.
+   */
+  accessibleName?: string;
+  /** The same, for the armed confirm button. */
+  confirmAccessibleName?: string;
 }
 
 export function ConfirmButton({
@@ -39,6 +46,8 @@ export function ConfirmButton({
   size = "md",
   disabled = false,
   className,
+  accessibleName,
+  confirmAccessibleName,
 }: ConfirmButtonProps) {
   const [armed, setArmed] = useState(false);
   // `components/ui/Button` is frozen and does not forward a ref, so focus is moved through
@@ -57,6 +66,7 @@ export function ConfirmButton({
         size={size}
         disabled={disabled}
         className={className}
+        aria-label={accessibleName}
         onClick={() => setArmed(true)}
       >
         {label}
@@ -84,6 +94,7 @@ export function ConfirmButton({
         variant="primary"
         size={size}
         className={className}
+        aria-label={confirmAccessibleName}
         onClick={() => {
           setArmed(false);
           onConfirm();

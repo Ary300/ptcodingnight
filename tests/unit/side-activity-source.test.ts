@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { sameAwardSource } from "@/lib/contest/award-source";
 import {
-  actorParts,
+  actorRole,
   composeAwardLabel,
   seatLabel,
 } from "@/components/admin/side-activity-format";
@@ -44,15 +44,19 @@ describe("sameAwardSource", () => {
   });
 });
 
-describe("actorParts", () => {
+describe("actorRole", () => {
   it("names the on-site puzzle checker rather than printing its raw label", () => {
-    expect(actorParts("puzzle")).toEqual({ role: "Puzzle checker", ref: "" });
+    expect(actorRole("puzzle")).toBe("Puzzle checker");
   });
 
-  it("shows an organizer's session as a short reference", () => {
-    expect(actorParts("admin:cmwisdpht00c7kn8cs1ocnyn3")).toEqual({
-      role: "Organizer",
-      ref: "ocnyn3",
-    });
+  it("says Organizer and nothing of the session id", () => {
+    const role = actorRole("admin:cmwisdpht00c7kn8cs1ocnyn3");
+    expect(role).toBe("Organizer");
+    expect(role).not.toMatch(/ocnyn3|session|admin:/);
+  });
+
+  it("never prints a raw actor it does not recognise", () => {
+    expect(actorRole("system:abc123")).toBe("Organizer");
+    expect(actorRole("participant:abc")).toBe("Competitor");
   });
 });

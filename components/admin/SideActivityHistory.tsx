@@ -17,7 +17,8 @@ import {
 import { ConfirmButton } from "@/components/admin/ConfirmButton";
 import { TextInput } from "@/components/admin/Field";
 import {
-  actorParts,
+  actorRole,
+  pointsWord,
   signedPoints,
 } from "@/components/admin/side-activity-format";
 
@@ -109,7 +110,9 @@ export function SideActivityHistory({
         <TBody>
           {activities.map((activity) => {
             const when = formatEventDateParts(activity.enteredAt);
-            const who = actorParts(activity.enteredBy);
+            const who = actorRole(activity.enteredBy);
+            // What this row's buttons are named, so a list of "Remove" buttons is never ambiguous.
+            const awardName = `${activity.label}, ${signedPoints(activity.points)} ${pointsWord(activity.points)}`;
             const editing = editingId === activity.id;
             return (
               <TR key={activity.id}>
@@ -182,14 +185,8 @@ export function SideActivityHistory({
                     </TD>
                   </>
                 )}
-                <TD className="align-top" title={activity.enteredBy}>
-                  <Stacked
-                    value={who.role}
-                    detail={who.ref === "" ? undefined : `…${who.ref}`}
-                  />
-                  <span className="sr-only">
-                    , session {activity.enteredBy}
-                  </span>
+                <TD className="align-top">
+                  <Stacked value={who} detail={when.time} />
                 </TD>
                 <TD className="align-top">
                   {!editing && (
@@ -199,14 +196,16 @@ export function SideActivityHistory({
                         variant="quiet"
                         size="sm"
                         disabled={busy}
-                        aria-label={`Edit ${activity.label}`}
+                        aria-label={`Edit award: ${awardName}`}
                         onClick={() => startEdit(activity)}
                       >
                         Edit
                       </Button>
                       <ConfirmButton
                         label="Remove"
+                        accessibleName={`Remove award: ${awardName}`}
                         confirmLabel={`Remove ${signedPoints(activity.points)}`}
+                        confirmAccessibleName={`Confirm removing award: ${awardName}`}
                         variant="quiet"
                         size="sm"
                         disabled={busy}

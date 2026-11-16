@@ -44,16 +44,16 @@ export function pointsWord(value: number): string {
 }
 
 /**
- * `actorLabel()` writes `admin:<sessionId>`, the on-site checker writes `puzzle`. Neither is a
- * name, so this says what it knows and shows enough of the id to tell two organizers apart.
+ * Who entered an award, as a role and nothing more.
+ *
+ * `actorLabel()` writes `admin:<sessionId>`, the on-site checker writes `puzzle`. The screen used
+ * to print the tail of the session id and, for screen readers, the whole raw value ("Organizer
+ * ...qf1638, session admin:cmwj..."). A session id is an internal reference nobody at the desk can
+ * act on, so the column says the role and the row's entry time says when. The audit log keeps
+ * the full actor.
  */
-export function actorParts(enteredBy: string): { role: string; ref: string } {
+export function actorRole(enteredBy: string): string {
   const separator = enteredBy.indexOf(":");
-  if (separator === -1) {
-    return { role: enteredBy === "puzzle" ? "Puzzle checker" : enteredBy, ref: "" };
-  }
-  const kind = enteredBy.slice(0, separator);
-  const id = enteredBy.slice(separator + 1);
-  const role = kind === "admin" ? "Organizer" : kind === "participant" ? "Competitor" : kind;
-  return { role, ref: id.slice(-6) };
+  if (separator === -1) return enteredBy === "puzzle" ? "Puzzle checker" : "Organizer";
+  return enteredBy.slice(0, separator) === "participant" ? "Competitor" : "Organizer";
 }
