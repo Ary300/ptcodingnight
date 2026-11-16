@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { jobsReadyToReconcile } from "@/lib/contest/queue";
 import { reconcile } from "@/lib/contest/submissions";
 
 /**
@@ -41,7 +42,13 @@ export async function sweepVerdicts(now: Date = new Date()): Promise<number> {
     orderBy: [{ submittedAt: "asc" }, { id: "asc" }],
     take: SWEEP_BATCH,
   });
+  // One pipelined Redis read decides which rows have anything to write: a finished job, or no job
+  // at all (lost, which `reconcile` decides with its own grace period). Rows still queued or
+  // running are skipped, so a burst of 57 pending submissions costs one round trip per tick
+  // instead of 40 database reads and 40 job lookups.
+  const ready = await jobsReadyToReconcile(unjudged.map((row) => row.id));
   for (const row of unjudged) {
+    if (!ready.has(row.id)) continue;
     await reconcile(row.id, now);
   }
   return unjudged.length;
