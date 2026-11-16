@@ -210,6 +210,14 @@ services:
       # 4 GB the services already hold ~1.9 GB. Raise it after a contest-night resize — see
       # docs/DEPLOY.md §9.
       JUDGE_CONCURRENCY: ${JUDGE_CONCURRENCY:-2}
+      # Stable across a recreate, so the boot sweep recognises the previous worker's leftovers as
+      # its own. Containers are labelled with it and a sweep removes only its own label.
+      JUDGE_WORKER_ID: ptcn-worker
+      # Kill switches for the night, each a one-line .env change plus a worker recreate. Off falls
+      # back to the per-container path that every gate also covers.
+      JUDGE_JAVAC_SERVICE: ${JUDGE_JAVAC_SERVICE:-on}
+      JUDGE_JVM_HARNESS: ${JUDGE_JVM_HARNESS:-on}
+      JUDGE_IMAGE_JAVA: ${JUDGE_IMAGE_JAVA:-ptcn-jdk:21}
     volumes:
       # Effective root on the host. PRD §14 says the judge belongs on a machine with nothing
       # else on it, and this deployment knowingly breaks that to fit one droplet — recorded in
