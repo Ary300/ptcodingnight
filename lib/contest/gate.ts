@@ -89,6 +89,9 @@ export function assertCanReadProblems(contest: ProblemReadGateInput, now: Date):
  * against the clock the caller supplies — a contest left in `RUNNING` past its end time still
  * refuses work, so a forgotten state transition cannot extend the night.
  */
+/** The refusal for a submit after the window. Matched exactly by the retry path in submissions.ts. */
+export const CONTEST_OVER_MESSAGE = "This contest is over";
+
 export function assertCanSubmit(contest: ContestGateInput, now: Date): void {
   // A published contest that has not opened says so in the words a student can act on. "Not
   // accepting submissions" read like a fault, five minutes before the start, to a student whose
@@ -98,7 +101,7 @@ export function assertCanSubmit(contest: ContestGateInput, now: Date): void {
   }
   // The same sentence whether the clock or an organizer ended it, and whichever request noticed.
   if (contest.state === "ENDED" || contest.state === "ARCHIVED") {
-    throw new DomainError("CONTEST_NOT_RUNNING", "This contest is over");
+    throw new DomainError("CONTEST_NOT_RUNNING", CONTEST_OVER_MESSAGE);
   }
   if (!SUBMITTABLE.includes(contest.state)) {
     throw new DomainError("CONTEST_NOT_RUNNING", "This contest is not accepting submissions");
@@ -107,7 +110,7 @@ export function assertCanSubmit(contest: ContestGateInput, now: Date): void {
     throw new DomainError("CONTEST_NOT_RUNNING", "This contest has not started yet");
   }
   if (now.getTime() > contest.endsAt.getTime()) {
-    throw new DomainError("CONTEST_NOT_RUNNING", "This contest is over");
+    throw new DomainError("CONTEST_NOT_RUNNING", CONTEST_OVER_MESSAGE);
   }
 }
 

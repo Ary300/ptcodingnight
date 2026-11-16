@@ -41,6 +41,24 @@ describe("isRepeatSubmission", () => {
     expect(isRepeatSubmission(first, { ...again, language: "PYTHON_312" }, later(500))).toBe(false);
     expect(isRepeatSubmission(first, again, later(REPEAT_SUBMISSION_WINDOW_MS + 1))).toBe(false);
   });
+
+  it("still folds a repeat of a pending, accepted or wrong submission: the double-click case", () => {
+    for (const verdict of [null, "AC", "WA"]) {
+      expect(isRepeatSubmission({ ...first, verdict }, again, later(5_000)), String(verdict)).toBe(true);
+    }
+  });
+
+  it("runs again when the earlier identical submission failed for a reason a rerun can change", () => {
+    for (const verdict of ["IE", "TLE", "MLE", "RE", "CE"]) {
+      expect(isRepeatSubmission({ ...first, verdict }, again, later(10_000)), verdict).toBe(false);
+    }
+  });
+
+  it("after the window closes, hands back the identical submission that counts, whatever it scored", () => {
+    for (const verdict of [null, "AC", "WA", "TLE", "IE"]) {
+      expect(isRepeatSubmission({ ...first, verdict }, again, later(4_000), true), String(verdict)).toBe(true);
+    }
+  });
 });
 
 describe("lostJobAction", () => {

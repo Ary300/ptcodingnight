@@ -19,6 +19,7 @@ import {
 } from "@/lib/schemas/judge";
 import { AUDIT_ACTIONS, writeAudit } from "@/lib/contest/audit";
 import {
+  CONTEST_OVER_MESSAGE,
   assertCanSubmit,
   assertProblemIsLive,
   assertUnlocked,
@@ -265,9 +266,18 @@ export interface SubmitInput {
  * whose response was lost all arrive as the same code to the same problem within seconds. Each used
  * to become a second row: a second judge run, and for a wrong answer a second rejection, which adds
  * another five penalty minutes for what the student did once. Thirty seconds covers a retry after a
- * Wi-Fi drop. Resubmitting unchanged code on purpose cannot change the verdict, so nothing is lost.
+ * Wi-Fi drop.
+ *
+ * A repeat of a FINISHED submission that failed for a reason a rerun can change is not folded:
+ * internal error, a time or memory limit hit while the box was loaded, a runtime or compile error
+ * from a judge fault. A student who presses Submit again on those is asking for a new run and gets
+ * one. A repeat of a pending submission, an AC or a WA is still folded, which is the double-click
+ * the window exists for.
  */
 export const REPEAT_SUBMISSION_WINDOW_MS = 30_000;
+
+/** Finished verdicts a deliberate identical resubmission may legitimately want rerun. */
+const RERUNNABLE_VERDICTS: ReadonlySet<string> = new Set(["IE", "TLE", "MLE", "RE", "CE"]);
 
 /** Whether `candidate` is a repeat of `input`. Pure, so the rule is a unit test. */
 export function isRepeatSubmission(
@@ -276,10 +286,21 @@ export function isRepeatSubmission(
     readonly language: Language;
     readonly sourceCode: string;
     readonly submittedAt: Date;
+    readonly verdict?: string | null;
   },
   input: SubmitInput,
   now: Date,
+  /** After the window has closed every identical row is the one that counts, whatever it scored. */
+  windowClosed = false,
 ): boolean {
+  if (
+    !windowClosed &&
+    candidate.verdict !== undefined &&
+    candidate.verdict !== null &&
+    RERUNNABLE_VERDICTS.has(candidate.verdict)
+  ) {
+    return false;
+  }
   const age = now.getTime() - candidate.submittedAt.getTime();
   return (
     candidate.contestProblemId === input.contestProblemId &&
@@ -297,6 +318,7 @@ async function findRepeatSubmission(
   participantId: string,
   input: SubmitInput,
   now: Date,
+  windowClosed = false,
 ): Promise<string | null> {
   const recent = await db.submission.findMany({
     where: {
@@ -314,11 +336,12 @@ async function findRepeatSubmission(
       language: true,
       sourceCode: true,
       submittedAt: true,
+      verdict: true,
     },
     orderBy: { submittedAt: "desc" },
     take: 5,
   });
-  return recent.find((row) => isRepeatSubmission(row, input, now))?.id ?? null;
+  return recent.find((row) => isRepeatSubmission(row, input, now, windowClosed))?.id ?? null;
 }
 
 export async function createSubmission(
@@ -344,12 +367,16 @@ export async function createSubmission(
     /*
       A POST that reached the server at 8:14:59 and lost its response on the way back is retried
       at 8:15:03. Refusing the retry tells the student the contest is over while their submission
-      counts, so a closed window hands back that submission instead. Only for the window: every
-      other refusal (practice paused, a set they were moved off) still answers as it did. Only the
+      counts, so a closed window hands back that submission instead. Only for "over": every other
+      refusal (not started, practice paused, a set they were moved off) still answers as it did. Only the
       viewer's own rows are searched.
     */
-    if (error instanceof DomainError && error.code === "CONTEST_NOT_RUNNING") {
-      const earlier = await findRepeatSubmission(prisma, viewer.participantId, input, now);
+    if (
+      error instanceof DomainError &&
+      error.code === "CONTEST_NOT_RUNNING" &&
+      error.message === CONTEST_OVER_MESSAGE
+    ) {
+      const earlier = await findRepeatSubmission(prisma, viewer.participantId, input, now, true);
       if (earlier !== null) return getSubmissionView(earlier, viewer, now);
     }
     throw error;
