@@ -32,6 +32,8 @@ import { ContestApiError } from "./contest-api";
  */
 
 const POLL_INTERVAL_MS = 1_000;
+/** While the stream is open, how often the plain GET double-checks it. */
+const SAFETY_POLL_MS = 10_000;
 /** Stop chasing a verdict eventually; the judge has a wall-clock kill of its own. */
 const MAX_WAIT_MS = 5 * 60_000;
 
@@ -60,8 +62,11 @@ export function useVerdictStream(seed: SubmissionView | null): VerdictStreamStat
   const streamUrl = submissionId === null ? null : contestApi.verdictStreamUrl(submissionId);
   const polling = streamUrl === null || fellBack === submissionId;
 
+  /** A seed that already carries a verdict is settled; there is nothing to wait for. */
+  const seedSettled = seed !== null && seed.verdict !== null;
+
   useEffect(() => {
-    if (submissionId === null) return;
+    if (submissionId === null || seedSettled) return;
 
     let cancelled = false;
     let source: EventSource | null = null;
@@ -130,6 +135,11 @@ export function useVerdictStream(seed: SubmissionView | null): VerdictStreamStat
         if (!parsed.success) return;
 
         const frame = parsed.data;
+        // The contest stream carries EVERY verdict this student gets, not only this submission's.
+        // A student with two problems pending used to see whichever finished first painted under
+        // both problems, and the second tab then stopped listening for good. Only this
+        // submission's frame may settle this tab.
+        if (frame.submissionId !== submissionId) return;
         setUpdate((previous) => {
           const base = previous !== null && previous.submissionId === submissionId
             ? previous.value
@@ -148,6 +158,26 @@ export function useVerdictStream(seed: SubmissionView | null): VerdictStreamStat
         if (frame.verdict !== null) stop();
       });
 
+      // The stream only announces verdicts that land after it primed itself, so a verdict that
+      // landed between the submit and the stream's first tick would never arrive as a frame. One
+      // read once the stream is open closes that gap, and a slow read every SAFETY_POLL_MS is the
+      // backstop for anything else the stream misses. Both are the same GET polling mode uses.
+      source.onopen = () => {
+        if (cancelled) return;
+        void poll();
+      };
+      timer = setInterval(() => {
+        if (Date.now() - startedAt > MAX_WAIT_MS) {
+          stop();
+          setFailure({
+            submissionId,
+            value: "Still waiting on the judge. Your submission is saved. Tell an organizer.",
+          });
+          return;
+        }
+        void poll();
+      }, SAFETY_POLL_MS);
+
       // A dropped stream is not an error the student should ever see. Record the handover
       // and let the effect re-run in polling mode.
       source.onerror = () => {
@@ -161,7 +191,7 @@ export function useVerdictStream(seed: SubmissionView | null): VerdictStreamStat
       cancelled = true;
       stop();
     };
-  }, [submissionId, polling, streamUrl, seed]);
+  }, [submissionId, seedSettled, polling, streamUrl, seed]);
 
   const submission =
     update !== null && update.submissionId === submissionId ? update.value : seed;
