@@ -8,6 +8,7 @@ import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { Countdown } from "./Countdown";
 import { UserMenu } from "./UserMenu";
 import type { StandingsResponse } from "@/lib/schemas/api";
+import { isGuestName } from "@/lib/contest/guest-name";
 import { contestApi, isStubBackend } from "./data/backend";
 import { clearParticipant, fetchParticipant, useParticipant } from "./data/participant";
 import { useResource } from "./data/useResource";
@@ -468,6 +469,11 @@ export function CompetitorChrome({ children }: { children: ReactNode }) {
                 userId={account.userId}
                 avatarVersion={account.avatarVersion}
                 accountKnown={account.known}
+                guestSeed={
+                  isGuestName(participant.participant.displayName)
+                    ? participant.participant.participantId
+                    : null
+                }
                 practice={contestKind === "practice"}
                 onSignOut={leave}
               />

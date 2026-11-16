@@ -6,6 +6,8 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { API_ROUTES } from "@/lib/schemas/api";
 import { shownName } from "@/lib/contest/guest-name";
 
+import { GuestAvatar } from "./GuestAvatar";
+
 /**
  * The account menu HackerRank puts at the right of its nav: an avatar and a chevron, a panel with
  * the viewer's headline stat at the top, then divided destinations and finally sign-out.
@@ -48,6 +50,11 @@ export interface UserMenuProps {
    */
   readonly accountKnown?: boolean;
   /**
+   * A practice guest's participant id, which seeds their generated avatar. Null for everyone
+   * else, who keeps the initial (or their uploaded picture).
+   */
+  readonly guestSeed?: string | null;
+  /**
    * Whether this session is in the practice arena. The arena has no teams and no sets, so the menu
    * drops "My team" and its highlighted slot describes practice instead of promising a team.
    */
@@ -87,15 +94,22 @@ function Avatar({
   displayName,
   userId,
   version,
+  guestSeed,
   sizeClass = "h-7 w-7",
 }: {
   displayName: string;
   userId?: string | null;
   version?: string | null;
+  guestSeed?: string | null;
   sizeClass?: string;
 }) {
   const initial = displayName.trim().charAt(0).toUpperCase();
   const [broken, setBroken] = useState(false);
+
+  // Every guest is "Guest", so an initial would give every guest the same "G". See GuestAvatar.
+  if (typeof guestSeed === "string" && guestSeed !== "") {
+    return <GuestAvatar seed={guestSeed} sizeClass={sizeClass} />;
+  }
   const showImage =
     typeof userId === "string" && userId !== "" && (version ?? null) !== null && !broken;
 
@@ -132,6 +146,7 @@ export function UserMenu({
   userId = null,
   avatarVersion = null,
   accountKnown = false,
+  guestSeed = null,
   practice = false,
   onSignOut,
 }: UserMenuProps) {
@@ -228,7 +243,7 @@ export function UserMenu({
         className="flex min-w-0 items-center gap-2 rounded-chip px-1.5 py-1 text-paper/85 transition-colors duration-[var(--motion-press)] hover:text-paper"
         style={{ fontSize: "var(--text-sm)" }}
       >
-        <Avatar displayName={name} userId={userId} version={avatarVersion} />
+        <Avatar displayName={name} userId={userId} version={avatarVersion} guestSeed={guestSeed} />
         {/*
           Hidden only BELOW 400px, where 10rem of display name is a third of the viewport spent on
           something the student already knows; the avatar and the aria-label still identify the
