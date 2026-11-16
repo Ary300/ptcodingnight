@@ -94,6 +94,37 @@ function setInScope(
   });
 }
 
+/**
+ * Which of a slug's line-up rows this viewer means.
+ *
+ * ONE PROBLEM CAN SIT IN SEVERAL ROWS OF ONE CONTEST. The set planner deals each division from
+ * the same bank, so "Find the Median" can be Intermediate set D and Advanced set C at once: two
+ * `ContestProblem` rows, one slug, one URL. The page is addressed by slug, and the lookup used to
+ * be `findFirst`, which returned whichever row Postgres produced first. A student in the other
+ * division then opened their own problem from their own list and read "That problem belongs to
+ * another division", with no way to work on it at all.
+ *
+ * So the row is chosen for the viewer: the first one in their division AND their set. Only when
+ * no row passes is the first row returned, so the refusal names the real reason (another
+ * division, another set) exactly as before. Rows arrive in id order, so an organizer, who may
+ * read any of them, always gets the same one. Pure, so the rule is testable without a database.
+ */
+export function pickContestProblemForViewer<
+  T extends { readonly divisionId: string | null; readonly setId: string | null },
+>(
+  rows: readonly T[],
+  scope: Pick<ViewerScope, "admin" | "divisionId" | "chosenSetId">,
+  allowReadingUnassignedSets: boolean,
+): T | null {
+  const full: ViewerScope = { ...scope, participantId: null };
+  const mine = rows.find(
+    (row) =>
+      inScope(row.divisionId, full) &&
+      setInScope(row.setId, full, allowReadingUnassignedSets),
+  );
+  return mine ?? rows[0] ?? null;
+}
+
 /** What the next hint on a problem costs — a price quote, using the one shared constant. */
 export function hintCostFor(basePoints: number): number {
   return Math.round((basePoints * CLASSIC_PRESET.hintCostPercent) / 100);
@@ -229,8 +260,9 @@ export async function getProblemDetail(
   const scope = await scopeFor(contestId, viewer);
   if (!scope.admin) assertCanReadProblems(contest, now);
 
-  const contestProblem = await prisma.contestProblem.findFirst({
+  const candidates = await prisma.contestProblem.findMany({
     where: { contestId, problem: { slug } },
+    orderBy: { id: "asc" },
     select: {
       id: true,
       divisionId: true,
@@ -262,6 +294,11 @@ export async function getProblemDetail(
     },
   });
 
+  const contestProblem = pickContestProblemForViewer(
+    candidates,
+    scope,
+    contest.allowReadingUnassignedSets,
+  );
   if (contestProblem === null) throw new NotFoundError("Problem");
   if (!inScope(contestProblem.divisionId, scope)) {
     throw new ForbiddenError("That problem belongs to another division");
