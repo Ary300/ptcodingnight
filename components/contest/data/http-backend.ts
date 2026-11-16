@@ -7,11 +7,13 @@ import {
   ProblemSummarySchema,
   RunSamplesResponseSchema,
   StandingsResponseSchema,
+  SubmissionSourceSchema,
   SubmissionViewSchema,
   type ProblemDetail,
   type TeamProblemFeed,
   type ProblemSummary,
   type StandingsResponse,
+  type SubmissionSource,
   type SubmissionView,
   type SubmitRequest,
 } from "@/lib/schemas/api";
@@ -180,6 +182,10 @@ export const httpContestApi: ContestApi = {
 
   getSubmission(submissionId: string): Promise<SubmissionView> {
     return request(API_ROUTES.submission(submissionId), SubmissionViewSchema);
+  },
+
+  getSubmissionSource(submissionId: string): Promise<SubmissionSource> {
+    return request(API_ROUTES.submissionSource(submissionId), SubmissionSourceSchema);
   },
 
   listSubmissions(): Promise<SubmissionView[]> {

@@ -77,6 +77,7 @@ export const API_ROUTES = {
   runSamples: "/api/run-samples",
   submissions: "/api/submissions",
   submission: (id: string) => `/api/submissions/${encodeURIComponent(id)}`,
+  submissionSource: (id: string) => `/api/submissions/${encodeURIComponent(id)}/source`,
 
   /** The signed-in student's own account: read the profile, rename, manage the avatar. */
   me: "/api/me",
@@ -1127,6 +1128,21 @@ export const SubmissionViewSchema = z.object({
   queuePosition: QueuePositionSchema.optional(),
 });
 export type SubmissionView = z.infer<typeof SubmissionViewSchema>;
+
+/**
+ * The code a student submitted, for that student. `GET /api/submissions/{id}/source`.
+ *
+ * Its own route rather than a field on `SubmissionView`, because the view is polled while a
+ * verdict is pending and listed fifty at a time; the source is read once, when a returning student
+ * opens a problem with no draft and the editor should show what they last sent.
+ */
+export const SubmissionSourceSchema = z.object({
+  submissionId: z.string(),
+  contestProblemId: z.string(),
+  language: LanguageSchema,
+  sourceCode: z.string(),
+});
+export type SubmissionSource = z.infer<typeof SubmissionSourceSchema>;
 
 /** "Run samples" is free and unjudged — it never creates a Submission (PRD §9.1). */
 export const RunSamplesRequestSchema = SubmitRequestSchema;

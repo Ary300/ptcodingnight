@@ -84,7 +84,8 @@ export function ProblemWorkspace({ slug }: ProblemWorkspaceProps) {
     This is a *fallback*, never a clobber. `useDraft` only shows it when the student has no
     stored draft for this (problem, language) pair, and a draft is written by keystrokes
     alone, never by seeding. So:
-      - first open: the starter appears;
+      - first open: the starter appears, or the code last submitted in this language when there
+        is one (see `lastSentCode` below);
       - switching language: the new language shows its own draft if the student typed in it,
         its own starter if they never did, and the previous language's work stays in its own
         draft either way. Nothing a student typed is ever replaced by a template implicitly;
@@ -94,7 +95,48 @@ export function ProblemWorkspace({ slug }: ProblemWorkspaceProps) {
   const activeStarter =
     problem.data?.starters?.find((entry) => entry.language === activeLanguage)?.code ??
     LANGUAGE_TEMPLATE[activeLanguage];
-  const [source, setSource] = useDraft(slug, activeLanguage, activeStarter);
+
+  const loadHistory = useCallback(() => contestApi.listSubmissions(), []);
+  const history = useResource(loadHistory, scopeKey);
+
+  /*
+    What this student last SENT for this problem in this language, read back from the server.
+
+    A returning student with no draft (a new tab, another laptop, a cleared browser) used to see
+    the starter template, even under a "Solved" badge. Their last submission is a better starting
+    point than the template, so it sits between the draft and the starter. The source route
+    answers only to the submission's owner, and the draft key carries the participant, so no
+    student is ever shown another's code.
+  */
+  const contestProblemId = problem.data?.contestProblemId ?? null;
+  const lastSentId =
+    history.data?.find(
+      (entry) => entry.contestProblemId === contestProblemId && entry.language === activeLanguage,
+    )?.submissionId ?? null;
+  const loadLastSent = useCallback(
+    () =>
+      lastSentId === null ? Promise.resolve(null) : contestApi.getSubmissionSource(lastSentId),
+    [lastSentId],
+  );
+  const lastSent = useResource(loadLastSent, scopeKey);
+  const lastSentCode =
+    lastSent.data !== null && lastSent.data.submissionId === lastSentId
+      ? lastSent.data.sourceCode
+      : null;
+
+  const draftOwner =
+    participant.status === "joined"
+      ? {
+          contestId: participant.participant.contestId,
+          participantId: participant.participant.participantId,
+        }
+      : null;
+  const [source, setSource] = useDraft(
+    draftOwner,
+    slug,
+    activeLanguage,
+    lastSentCode ?? activeStarter,
+  );
 
   const [lastAction, setLastAction] = useState<"samples" | "judged" | null>(null);
   const [sampleResults, setSampleResults] = useState<readonly PublicTestResult[]>([]);
@@ -114,8 +156,6 @@ export function ProblemWorkspace({ slug }: ProblemWorkspaceProps) {
     open. The newest submission for this problem now seeds the panel, so a pending one resumes
     waiting (and the stream picks it up) and a finished one shows its verdict.
   */
-  const loadHistory = useCallback(() => contestApi.listSubmissions(), []);
-  const history = useResource(loadHistory, scopeKey);
   const restored = useMemo(() => {
     if (detail === null || history.data === null) return null;
     return (

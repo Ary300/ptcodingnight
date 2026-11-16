@@ -4,6 +4,7 @@ import type {
   ProblemSummary,
   PublicTestResult,
   StandingsResponse,
+  SubmissionSource,
   SubmissionView,
   SubmitRequest,
 } from "@/lib/schemas/api";
@@ -280,6 +281,7 @@ interface StubSubmission {
   finalVerdict: Verdict;
   finalResults: readonly PublicTestResult[];
   problem: StubProblem;
+  sourceCode: string;
 }
 
 const submissions = new Map<string, StubSubmission>();
@@ -424,6 +426,7 @@ export const stubContestApi: ContestApi = {
       finalVerdict: verdict,
       finalResults: allCases(problem, verdict),
       problem,
+      sourceCode: request.sourceCode,
     });
 
     return view;
@@ -436,6 +439,20 @@ export const stubContestApi: ContestApi = {
       throw new ContestApiError("NOT_FOUND", "That submission could not be found.");
     }
     return progress(record);
+  },
+
+  async getSubmissionSource(submissionId: string): Promise<SubmissionSource> {
+    await sleep(60);
+    const record = submissions.get(submissionId);
+    if (record === undefined) {
+      throw new ContestApiError("NOT_FOUND", "That submission could not be found.");
+    }
+    return {
+      submissionId,
+      contestProblemId: record.view.contestProblemId,
+      language: record.view.language,
+      sourceCode: record.sourceCode,
+    };
   },
 
   async listSubmissions(): Promise<SubmissionView[]> {

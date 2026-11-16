@@ -11,6 +11,7 @@ import type { StandingsResponse } from "@/lib/schemas/api";
 import { contestApi, isStubBackend } from "./data/backend";
 import { clearParticipant, fetchParticipant, useParticipant } from "./data/participant";
 import { useResource } from "./data/useResource";
+import { forgetDrafts } from "./problem/useDraft";
 
 /**
  * The frame every competitor screen sits in.
@@ -246,6 +247,7 @@ export function CompetitorChrome({ children }: { children: ReactNode }) {
         // shared machine must not be held on the page by a failed request.
       } finally {
         clearParticipant();
+        forgetDrafts();
         // Home, not the login form. Signing out is leaving, and the page for someone who has
         // left is the front door - which greets a signed-out visitor properly. Landing a person
         // who just chose to LEAVE on a form asking them to come back reads as a refusal to let go.

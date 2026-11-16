@@ -3,6 +3,7 @@ import type {
   ProblemSummary,
   TeamProblemFeed,
   StandingsResponse,
+  SubmissionSource,
   SubmissionView,
   SubmitRequest,
 } from "@/lib/schemas/api";
@@ -40,6 +41,8 @@ export interface ContestApi {
   submit(request: SubmitRequest): Promise<SubmissionView>;
 
   getSubmission(submissionId: string): Promise<SubmissionView>;
+  /** The caller's own submitted code. Another student's id is a 404. */
+  getSubmissionSource(submissionId: string): Promise<SubmissionSource>;
   listSubmissions(): Promise<SubmissionView[]>;
 
   getStandings(): Promise<StandingsResponse>;

@@ -68,6 +68,11 @@ const PROBES: { name: string; probe: string; method: "GET" | "POST" }[] = [
   { name: "runSamples", probe: API_ROUTES.runSamples, method: "POST" },
   { name: "submissions", probe: API_ROUTES.submissions, method: "GET" },
   { name: "submission", probe: API_ROUTES.submission("no-such-submission"), method: "GET" },
+  {
+    name: "submissionSource",
+    probe: API_ROUTES.submissionSource("no-such-submission"),
+    method: "GET",
+  },
   { name: "adminSession", probe: API_ROUTES.adminSession, method: "POST" },
   { name: "adminFreeze", probe: API_ROUTES.adminFreeze("no-such-contest"), method: "POST" },
   { name: "adminExport", probe: API_ROUTES.adminExport("no-such-contest"), method: "GET" },
