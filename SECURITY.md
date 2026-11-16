@@ -408,3 +408,15 @@ G7 does not prove they ran.
 **Why accepted:** the alternative is a suite that cannot run at all on a fresh clone, which is worse
 for the student maintainer this project is written for. `scripts/verify.sh` prints the precondition,
 and `npm run verify` on a configured machine does run them.
+
+
+## 2026-11-15: forgeable per-test handshake in the judge (fixed)
+
+The batch driver and the worker used result files in `/out` as the per-test handshake. During a
+sample test a student's program could write the next result file itself, making the worker place
+the hidden inputs one after another, then overwrite the sample's output with hidden bytes that the
+worker read only after the container exited and returned in the sample diff snippet. Background
+processes also survived from one test into the next. Fixed by moving the handshake to the
+container's stdin and stdout, reading each test's results once at handover, `kill -9 -1` after
+every test, and clearing leftover inputs before a retry. Pinned structurally in
+`worker/runtime-sync.test.ts`. A G5 fixture that attacks it directly is still worth adding.
