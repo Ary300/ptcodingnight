@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { readdir, rm, stat } from "node:fs/promises";
+import { hostname } from "node:os";
 import path from "node:path";
 
 import {
@@ -21,6 +22,38 @@ import { clampCpus } from "./host";
 
 /** Prefix on every container we create, so a leak can be found and swept. */
 export const CONTAINER_PREFIX = "ptcn-judge-";
+
+/**
+ * Every container a judge process creates carries `ptcn.judge.instance=<its id>`, and its sweep
+ * removes only containers with that id. The sweep used to remove every `ptcn-judge-` container on
+ * the daemon, so a worker starting up — or a gate run from another checkout on the same machine —
+ * removed other workers' containers mid-run. Measured on the shared Mac: one boot sweep removed 70.
+ *
+ * The worker sets a STABLE id (worker/index.ts: `JUDGE_WORKER_ID`, else the hostname, which a
+ * restarted worker container keeps), so a worker that crashed is swept by its successor. Anything
+ * else — a gate, a script — gets hostname and pid, and sweeps only what it made itself.
+ */
+export const INSTANCE_LABEL = "ptcn.judge.instance";
+
+function sanitizeInstance(id: string): string {
+  const clean = id.replace(/[^A-Za-z0-9_.-]/g, "-").slice(0, 120);
+  return clean.length > 0 ? clean : "judge";
+}
+
+let instanceId = sanitizeInstance(`${hostname()}-${String(process.pid)}`);
+
+export function setJudgeInstance(id: string): void {
+  instanceId = sanitizeInstance(id);
+}
+
+export function judgeInstance(): string {
+  return instanceId;
+}
+
+/** The `--label` every judge container is created with. */
+export function instanceLabelArg(): string {
+  return `--label=${INSTANCE_LABEL}=${instanceId}`;
+}
 
 /**
  * Floor for the captured-output cap, used when the expected output size is unknown.
@@ -334,8 +367,9 @@ export async function removeContainer(name: string): Promise<void> {
 }
 
 /**
- * Remove every container this judge created. Used after a fixture run to prove the host is
- * back at baseline, and on worker startup to clear anything a previous crash left behind.
+ * Remove every container THIS judge instance created (see `INSTANCE_LABEL`). Used after a fixture
+ * run to prove the host is back at baseline, and on worker startup to clear anything a previous
+ * crash of the same worker left behind. Never another instance's containers: those may be running.
  */
 export async function sweepJudgeContainers(): Promise<number> {
   const { stdout } = await runDocker([
@@ -343,12 +377,46 @@ export async function sweepJudgeContainers(): Promise<number> {
     "-a",
     "--filter",
     `name=${CONTAINER_PREFIX}`,
+    "--filter",
+    `label=${INSTANCE_LABEL}=${instanceId}`,
     "--format",
     "{{.Names}}",
   ]);
   const names = stdout.split("\n").map((n) => n.trim()).filter((n) => n.length > 0);
   for (const name of names) await removeContainer(name);
   return names.length;
+}
+
+/**
+ * The backstop for an instance that is gone for good — a worker container that was recreated
+ * under a new hostname leaves its orphans to nobody. Removes judge containers of OTHER instances
+ * (or with no label at all, from before labels) only when they EXITED more than `minAgeMs` ago:
+ * a running container, or a created one waiting in another worker's pool, is never touched, and
+ * an exit that old has long since been read by whoever ran it.
+ */
+export async function sweepAbandonedJudgeContainers(minAgeMs = 10 * 60_000): Promise<number> {
+  const { stdout } = await runDocker([
+    "ps",
+    "-a",
+    "--filter",
+    `name=${CONTAINER_PREFIX}`,
+    "--filter",
+    "status=exited",
+    "--format",
+    `{{.Names}}|{{.Label "${INSTANCE_LABEL}"}}`,
+  ]);
+  let removed = 0;
+  for (const line of stdout.split("\n")) {
+    const [name, label] = line.trim().split("|");
+    if (name === undefined || name.length === 0 || label === instanceId) continue;
+    const exit = await readExitState(name);
+    const finished = exit === null ? Number.NaN : Date.parse(exit.finishedAt);
+    if (!Number.isFinite(finished) || exit?.finishedAt.startsWith("0001-") === true) continue;
+    if (Date.now() - finished < minAgeMs) continue;
+    await removeContainer(name);
+    removed += 1;
+  }
+  return removed;
 }
 
 /** Whether the daemon is reachable. The judge refuses to start without it. */
@@ -383,6 +451,7 @@ function containerArgs(spec: ContainerSpec): string[] {
   const extraEnv = spec.env ?? {};
   return [
     `--name=${name}`,
+    instanceLabelArg(),
     ...isolationArgs(limits),
     "--workdir=/work",
     `--volume=${sourceDir}:/work:ro`,

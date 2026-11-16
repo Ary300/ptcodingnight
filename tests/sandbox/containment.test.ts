@@ -6,7 +6,7 @@ import os from "node:os";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import type { JudgeJob, JudgeResult, Verdict } from "@/lib/schemas/judge";
-import { isDockerAvailable, sweepJudgeContainers } from "@/worker/docker";
+import { INSTANCE_LABEL, isDockerAvailable, judgeInstance, sweepJudgeContainers } from "@/worker/docker";
 import { VARIANTS } from "@/lib/judge/runtimes";
 import { ContainerPool } from "@/worker/container-pool";
 import { JavacService } from "@/worker/javac-service";
@@ -105,10 +105,15 @@ function jobFor(entry: Manifest["cases"][number]): JudgeJob {
  * submission ids below, and the pre-created ones carry the pool's `pool-` infix. Counting every
  * container on the host (`docker ps -a`) failed this gate whenever anything else on the machine —
  * another checkout's gates, an MCP server — started or stopped a container meanwhile; the count
- * and the thing it checks have to name the same set (CLAUDE.md).
+ * and the thing it checks have to name the same set (CLAUDE.md). The instance label narrows it to
+ * this process, so another checkout's G5 running at the same time is not counted either.
  */
 function containerCount(): number {
-  const out = execFileSync("docker", ["ps", "-a", "--format", "{{.Names}}"], { encoding: "utf8" });
+  const out = execFileSync(
+    "docker",
+    ["ps", "-a", "--filter", `label=${INSTANCE_LABEL}=${judgeInstance()}`, "--format", "{{.Names}}"],
+    { encoding: "utf8" },
+  );
   return out
     .split("\n")
     .filter((name) => name.startsWith("ptcn-judge-sandbox-") || name.startsWith("ptcn-judge-pool-"))

@@ -4,7 +4,13 @@ import { chmod, cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import type { Runtime } from "@/lib/judge/runtimes";
-import { CONTAINER_PREFIX, isolationArgs, OUTPUT_CAP_FLOOR_BYTES, removeContainer } from "@/worker/docker";
+import {
+  CONTAINER_PREFIX,
+  instanceLabelArg,
+  isolationArgs,
+  OUTPUT_CAP_FLOOR_BYTES,
+  removeContainer,
+} from "@/worker/docker";
 import { SCRATCH_ROOT } from "@/worker/workspace";
 
 /**
@@ -307,6 +313,7 @@ export class JavacService {
         // and not through the worker's process group (`detached` below). See worker/docker.ts.
         "--sig-proxy=false",
         `--name=${lane.name}`,
+        instanceLabelArg(),
         ...isolationArgs(limits),
         tmpfs("/work"),
         tmpfs("/build"),

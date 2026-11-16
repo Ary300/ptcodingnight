@@ -10,7 +10,13 @@ import { startWorkerHeartbeat } from "@/lib/judge/heartbeat";
 import { JudgeJobSchema, type JudgeResult } from "@/lib/schemas/judge";
 import { JUDGE_QUEUE_NAME, MAX_JOB_ATTEMPTS, STALLED_JOB_GRACE_MS } from "@/lib/judge/queue";
 import { parseServerEnv } from "@/lib/schemas/env";
-import { isDockerAvailable, OUTPUT_CAP_FLOOR_BYTES, sweepJudgeContainers } from "@/worker/docker";
+import {
+  isDockerAvailable,
+  OUTPUT_CAP_FLOOR_BYTES,
+  setJudgeInstance,
+  sweepAbandonedJudgeContainers,
+  sweepJudgeContainers,
+} from "@/worker/docker";
 import { defaultJudgeConcurrency, hostCpuCount, hostMemoryMb } from "./host";
 import { RUNTIMES, VARIANTS, type RuntimeId } from "@/lib/judge/runtimes";
 import { describeMissingImages, findMissingImages, requiredImages } from "@/worker/preflight";
@@ -178,11 +184,16 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  // A previous crash may have left containers behind; start from a clean host.
-  // Pooled and pending-removal containers carry the same prefix, so this clears both after a
-  // crash; their workspaces go with them.
+  // A previous crash of THIS worker may have left containers behind; start from a clean slate.
+  // Pooled and pending-removal containers carry the same label, so this clears both after a
+  // crash; their workspaces go with them. Other workers' containers are left alone (see
+  // INSTANCE_LABEL in worker/docker.ts): the id is stable across restarts of this worker, and
+  // JUDGE_WORKER_ID distinguishes two workers that share a hostname.
+  setJudgeInstance(process.env.JUDGE_WORKER_ID ?? hostname());
   const swept = await sweepJudgeContainers();
   if (swept > 0) console.warn(`swept ${swept} judge container(s) left by a previous run`);
+  const abandoned = await sweepAbandonedJudgeContainers();
+  if (abandoned > 0) console.warn(`removed ${abandoned} long-exited judge container(s) of other instances`);
   await removeStaleWorkspaces("pool-");
 
   const pool =
