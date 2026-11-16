@@ -167,6 +167,11 @@ describe("startScript", () => {
       "export PTCN_TESTS=17\nexport PTCN_TIMEOUT=16\nexec /bin/sh /in/driver.sh\n",
     );
     expect(() => startScript({ PTCN_TESTS: "1; rm -rf /" }, ["/bin/sh"])).toThrow();
+    // A per-test kill in seconds to the millisecond is a number too; anything else is not.
+    expect(startScript({ PTCN_TIMEOUT: "8.250" }, ["/bin/sh"])).toContain("export PTCN_TIMEOUT=8.250\n");
+    expect(() => startScript({ PTCN_TIMEOUT: "8.2.5" }, ["/bin/sh"])).toThrow();
+    expect(() => startScript({ PTCN_TIMEOUT: ".5" }, ["/bin/sh"])).toThrow();
+    expect(() => startScript({ PTCN_TIMEOUT: "8.$(id)" }, ["/bin/sh"])).toThrow();
     expect(() => startScript({ "BAD KEY": "1" }, ["/bin/sh"])).toThrow();
   });
 });

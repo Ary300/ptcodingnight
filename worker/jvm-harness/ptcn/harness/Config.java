@@ -14,10 +14,19 @@ final class Config {
   private Config(String[] args) {
     this.classDir = Path.of(args[0]);
     this.mainClass = args[1];
-    this.timeoutMs = Long.parseLong(args[2]) * 1000L;
+    // Seconds, possibly with a fraction: the runner kills a test at its TLE threshold plus a
+    // margin, to the millisecond (worker/runner.ts, TLE_KILL_MARGIN_MS).
+    this.timeoutMs = parseSeconds(args[2]);
     this.inputDir = Path.of(args[3]);
     this.outPath = Path.of(args[4]);
     this.errPath = Path.of(args[5]);
+  }
+
+  private static long parseSeconds(String text) {
+    if (!text.matches("[0-9]{1,6}(\\.[0-9]{1,3})?")) {
+      throw new IllegalArgumentException("timeout must be seconds with at most three decimals");
+    }
+    return new java.math.BigDecimal(text).movePointRight(3).longValueExact();
   }
 
   /** `<classDir> <mainClass> <timeoutSeconds> <inputDir> <stdoutFile> <stderrFile>` */

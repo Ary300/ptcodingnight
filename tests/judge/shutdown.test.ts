@@ -13,7 +13,7 @@ import { isDockerAvailable } from "@/worker/docker";
  * judge then read what was left as results — one trial recorded a TLE submission as RE.
  *
  * Here a judge process that drains on SIGTERM, as the worker does, has its whole process group
- * signalled every five seconds from inside its first test until it exits, through the harness
+ * signalled every three seconds from inside its first test until it exits, through the harness
  * test and the per-process tests after it, where the measured RE came from. Every
  * test has to come back exactly as it does with no signal, down to which path ran it: the first
  * test in the harness, and — because a spinning thread cannot be stopped inside a JVM — the rest
@@ -73,7 +73,7 @@ describe("worker shutdown mid-judge", () => {
         } catch {
           return; // the group has exited
         }
-        await sleep(5_000);
+        await sleep(3_000);
       }
     })();
 
@@ -87,7 +87,7 @@ describe("worker shutdown mid-judge", () => {
       modes: string[];
       signals: string[];
     };
-    // Into the harness test, and through both per-process tests after it (16 s each).
+    // Into the harness test, and through both per-process tests after it (each killed at its 8 s threshold).
     expect(result.signals.length).toBeGreaterThanOrEqual(6);
     expect(new Set(result.signals)).toEqual(new Set(["SIGTERM"]));
     expect(result.verdict).toBe("TLE");

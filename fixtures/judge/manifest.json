@@ -493,6 +493,24 @@
       "sourceFile": "Main.java",
       "expectedVerdict": "CE",
       "expectedCompileErrorContains": "OutOfMemoryError"
+    },
+    {
+      "id": "py-ac-just-under",
+      "language": "PYTHON_312",
+      "sourceFile": "main.py",
+      "expectedVerdict": "AC"
+    },
+    {
+      "id": "java-ac-just-under",
+      "language": "JAVA_21",
+      "sourceFile": "Main.java",
+      "expectedVerdict": "AC"
+    },
+    {
+      "id": "py-tle-crash-after-limit",
+      "language": "PYTHON_312",
+      "sourceFile": "main.py",
+      "expectedVerdict": "TLE"
     }
   ]
 }

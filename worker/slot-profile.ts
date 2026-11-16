@@ -82,7 +82,9 @@ export function specsFor(
  */
 export function startScript(env: Readonly<Record<string, string>>, driver: readonly string[]): string {
   const lines = Object.entries(env).map(([key, value]) => {
-    if (!/^[A-Z][A-Z0-9_]*$/.test(key) || !/^[0-9]+$/.test(value)) {
+    // Digits, or a decimal (a per-test kill in seconds to the millisecond). Nothing a shell reads
+    // as anything but a number.
+    if (!/^[A-Z][A-Z0-9_]*$/.test(key) || !/^[0-9]+(\.[0-9]+)?$/.test(value)) {
       throw new Error(`refusing to write ${key}=${value} into start.sh`);
     }
     return `export ${key}=${value}`;

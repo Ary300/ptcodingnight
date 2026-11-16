@@ -85,6 +85,11 @@ export interface JudgeOptions {
    * the night, without a deploy.
    */
   readonly harness?: boolean;
+  /**
+   * Override for the TLE rule (`tleAtThreshold`). Absent means on, unless the worker runs with
+   * JUDGE_TLE_AT_THRESHOLD=off, which restores the 3x wall-clock kill and the old verdict order.
+   */
+  readonly tleAtThreshold?: boolean;
   readonly onReport?: (report: RunReport) => void;
   /**
    * Containers created ahead of time (worker/container-pool.ts). A submission whose profile has a
@@ -173,6 +178,29 @@ export function slotProfileFor(
   };
 }
 
+function tleAtThresholdOn(options: JudgeOptions | undefined): boolean {
+  if (options?.tleAtThreshold !== undefined) return options.tleAtThreshold;
+  return (process.env.JUDGE_TLE_AT_THRESHOLD ?? "on").toLowerCase() !== "off";
+}
+
+/**
+ * How far past its TLE threshold a test is killed.
+ *
+ * Any kill at or after the threshold leaves every test that finishes under it untouched: the
+ * driver starts its clock before `timeout` (or the harness's watchdog) starts its own, so a test
+ * the kill reaches has already been measured at the kill time or later, and a test measured under
+ * the threshold ran less than that on the kill's clock and is never reached. The margin is for the
+ * measurement, not the program: a JVM that handles the SIGTERM exits 143, and a test measured at
+ * exactly the threshold would not be "over" it. Measured overshoot of the measured time past the
+ * kill, per image, on this Mac: 2 to 118 ms.
+ */
+export const TLE_KILL_MARGIN_MS = 250;
+
+/** `timeout` and the harness take seconds; three decimals keep the kill at millisecond precision. */
+function asSeconds(ms: number): string {
+  return (Math.max(1, ms) / 1000).toFixed(3);
+}
+
 function harnessSwitchedOn(options: JudgeOptions | undefined): boolean {
   if (options?.harness !== undefined) return options.harness;
   return (process.env.JUDGE_JVM_HARNESS ?? "on").toLowerCase() !== "off";
@@ -223,13 +251,23 @@ function epochAnchoredClock(): () => number {
  *  6. Over the problem's time limit even though it finished — TLE. The hard kill sits at 3x
  *     the limit, so a program can finish "successfully" and still be too slow.
  *  7. Compare output.
+ *
+ * With `atThreshold` (the default; worker env JUDGE_TLE_AT_THRESHOLD=off turns it off), a test
+ * whose measured time is past the threshold is TLE whatever ended it — a crash, an output flood
+ * or a memory kill after the threshold — which is the usual contest rule and what lets the test be
+ * killed at the threshold rather than at 3x it. Every test NOT over the threshold goes through the
+ * order above unchanged, and every label this changes is on a test that earns no points under
+ * either rule. A disk-filling batch keeps the old order: the fill is the container's, not the
+ * test's, and its report stays RE.
  */
 function verdictFor(
   run: ContainerRunResult,
   timeLimitMs: number,
   wallClockKillMs: number,
   compare: () => boolean,
+  atThreshold: boolean,
 ): Verdict {
+  if (atThreshold && !run.diskExceeded && overThreshold(run, timeLimitMs)) return "TLE";
   if (run.oomKilled) return "MLE";
   /**
    * Checked before the wall clock, because the watchdog kills the container and the kill then
@@ -247,6 +285,11 @@ function verdictFor(
   if (run.exitCode !== 0) return "RE";
   if (run.durationMs > timeLimitMs) return "TLE";
   return compare() ? "AC" : "WA";
+}
+
+/** Past the TLE threshold by the measured time, or ended by a time kill. */
+function overThreshold(run: ContainerRunResult, timeLimitMs: number): boolean {
+  return run.timedOut || run.exitCode === TIMEOUT_EXIT_CODE || run.durationMs > timeLimitMs;
 }
 
 function containerLimits(job: JudgeJob): ContainerLimits {
@@ -674,6 +717,8 @@ async function runSingleTest(options: {
   ordinal: number;
   cap: number;
   perTestKillMs: number;
+  /** Whether `perTestKillMs` is the threshold kill, written with millisecond precision. */
+  tleAtThreshold: boolean;
   /** This test's input. Inputs are fed one at a time and removed after use, so a retry re-places it. */
   inputText: string;
 }): Promise<ContainerRunResult | null> {
@@ -717,7 +762,9 @@ async function runSingleTest(options: {
       env: {
         PTCN_TESTS: String(job.testCases.length),
         PTCN_ONLY: String(ordinal),
-        PTCN_TIMEOUT: String(Math.max(1, Math.ceil(perTestKillMs / 1000))),
+        PTCN_TIMEOUT: options.tleAtThreshold
+          ? asSeconds(perTestKillMs)
+          : String(Math.max(1, Math.ceil(perTestKillMs / 1000))),
         PTCN_COMPILE_TIMEOUT: String(Math.max(1, Math.ceil(runtime.compileTimeoutMs / 1000))),
         PTCN_CAP: String(cap),
         // The input is already on disk before the container starts, so this is never waited on.
@@ -841,6 +888,9 @@ export async function judge(
   const startupMs = scaledStartupBudgetMs(runtime.startupBudgetMs);
   const timeLimitMs = algorithmMs + startupMs;
   const wallClockKillMs = algorithmMs * 3 + startupMs;
+  const atThreshold = tleAtThresholdOn(options);
+  // Where a test is killed. The container-level host backstops below stay sized for the 3x kill.
+  const testKillMs = atThreshold ? timeLimitMs + TLE_KILL_MARGIN_MS : wallClockKillMs;
 
   const runLimits = containerLimits(job);
 
@@ -1054,11 +1104,12 @@ export async function judge(
     }
 
     const perTestTimeoutS = Math.max(1, Math.ceil(wallClockKillMs / 1000));
+    const testKillS = Math.max(1, Math.ceil(testKillMs / 1000));
     // The driver's parameters reach it through /in/start.sh, not the container's environment: the
     // container may have been created before this submission existed (worker/slot-profile.ts).
     const driverEnv: Record<string, string> = {
       PTCN_TESTS: String(job.testCases.length),
-      PTCN_TIMEOUT: String(perTestTimeoutS),
+      PTCN_TIMEOUT: atThreshold ? asSeconds(testKillMs) : String(perTestTimeoutS),
       PTCN_COMPILE_TIMEOUT: String(Math.max(1, Math.ceil(runtime.compileTimeoutMs / 1000))),
       PTCN_CAP: String(largestCap),
       // How long the driver waits for an input the bell has ALREADY announced. The wait for the
@@ -1073,7 +1124,7 @@ export async function judge(
             PTCN_HARNESS_SETTLE: String(HARNESS_SETTLE_TIMEOUT_S),
             // The harness's own watchdog fires at PTCN_TIMEOUT. This is the driver's backstop for
             // a harness that has stopped answering; past it the test reruns as a process.
-            PTCN_HARNESS_BACKSTOP: String(perTestTimeoutS + HARNESS_BACKSTOP_GRACE_S),
+            PTCN_HARNESS_BACKSTOP: String(testKillS + HARNESS_BACKSTOP_GRACE_S),
           }),
     };
     await writeFile(
@@ -1206,7 +1257,8 @@ export async function judge(
               job,
               ordinal,
               cap: largestCap,
-              perTestKillMs: wallClockKillMs,
+              perTestKillMs: testKillMs,
+              tleAtThreshold: atThreshold,
               inputText: input,
             })
           : null;
@@ -1252,8 +1304,12 @@ export async function judge(
 
       let verdict: Verdict;
       try {
-        verdict = verdictFor(run, timeLimitMs, wallClockKillMs, () =>
-          matches(job.comparator, run.stdout, expected, input),
+        verdict = verdictFor(
+          run,
+          timeLimitMs,
+          wallClockKillMs,
+          () => matches(job.comparator, run.stdout, expected, input),
+          atThreshold,
         );
       } catch (error) {
         if (error instanceof UnknownCheckerError) verdict = "IE";
