@@ -161,6 +161,47 @@ describe("ContainerPool", () => {
   });
 });
 
+describe("ContainerPool during a burst", () => {
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+  it("creates and removes nothing while busy, above the low-water mark", async () => {
+    const docker = fakeDocker();
+    const pool = new ContainerPool({ target: 10, removalBacklog: 100, isBusy: () => true, lowWater: 2 }, docker.ops);
+    await pool.prefill(PYTHON, 6);
+    const before = docker.created.length;
+    for (let i = 0; i < 4; i += 1) {
+      const slot = pool.take(PYTHON);
+      if (slot !== null) pool.retire(slot.names.run);
+    }
+    await pool.maintain();
+    await settle();
+    expect(docker.created.length).toBe(before);
+    expect(docker.removed).toEqual([]);
+    expect(pool.stats()).toEqual({ ready: 2, pendingRemoval: 4 });
+  });
+
+  it("tops up to the low-water mark while busy, one create at a time, and removes nothing", async () => {
+    const docker = fakeDocker();
+    const pool = new ContainerPool({ target: 10, removalBacklog: 100, isBusy: () => true, lowWater: 3 }, docker.ops);
+    await pool.prefill(PYTHON, 3);
+    const slot = pool.take(PYTHON);
+    if (slot !== null) pool.retire(slot.names.run);
+    for (let i = 0; i < 20 && pool.stats().ready < 3; i += 1) await settle();
+    expect(pool.stats()).toEqual({ ready: 3, pendingRemoval: 1 });
+    expect(docker.removed).toEqual([]);
+  });
+
+  it("tops up the profile most in demand", async () => {
+    const docker = fakeDocker();
+    const pool = new ContainerPool({ target: 10, removalBacklog: 100, isBusy: () => true, lowWater: 1 }, docker.ops);
+    pool.take(JAVA);
+    pool.take(JAVA);
+    pool.take(PYTHON); // a miss: demand is 2 Java, 1 Python, and nothing is ready
+    for (let i = 0; i < 20 && pool.stats().ready < 1; i += 1) await settle();
+    expect(docker.created.at(-1)?.image).toBe("ptcn-jdk:21");
+  });
+});
+
 describe("startScript", () => {
   it("exports digits only and execs the driver as PID 1", () => {
     expect(startScript({ PTCN_TESTS: "17", PTCN_TIMEOUT: "16" }, ["/bin/sh", "/in/driver.sh"])).toBe(

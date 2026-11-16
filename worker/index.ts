@@ -3,7 +3,7 @@ import "dotenv/config";
 
 import { hostname } from "node:os";
 
-import { Worker, type Job } from "bullmq";
+import { Queue, Worker, type Job } from "bullmq";
 import IORedis from "ioredis";
 
 import { startWorkerHeartbeat } from "@/lib/judge/heartbeat";
@@ -61,6 +61,9 @@ const POOL_REMOVAL_BACKLOG = Number.parseInt(process.env.JUDGE_POOL_REMOVAL_BACK
 const SLOW_LANE = Number.parseInt(process.env.JUDGE_SLOW_LANE ?? "2", 10);
 const PARKED_MAX = Number.parseInt(process.env.JUDGE_PARKED_MAX ?? "8", 10);
 
+/** Ready slots below which the pool tops itself up even mid-burst (worker/container-pool.ts). */
+const POOL_LOW_WATER = Number.parseInt(process.env.JUDGE_POOL_LOW_WATER ?? "6", 10);
+
 /** How long the queue must have been quiet before the pool spends CPU on creating or removing. */
 const POOL_IDLE_MS = 1_500;
 
@@ -68,9 +71,19 @@ const POOL_IDLE_MS = 1_500;
 let activeJobs = 0;
 let lastJobActivityMs = 0;
 
+/** Set once the lanes exist: how many ordinary (not parked) submissions are being judged. */
+let ordinaryJobs: () => number = () => activeJobs;
+
+/**
+ * Ordinary judging is running or just was. Submissions parked in the slow lane do not count: a TLE
+ * storm can keep them running for minutes, and the pool must not go unrefilled that whole time.
+ */
 function judgeIsBusy(): boolean {
-  return activeJobs > 0 || Date.now() - lastJobActivityMs < POOL_IDLE_MS;
+  return ordinaryJobs() > 0 || Date.now() - lastJobActivityMs < POOL_IDLE_MS;
 }
+
+/** Jobs waiting in the queue, for any worker. Set once the queue exists. */
+let queueWaiting: () => Promise<number> = () => Promise.resolve(0);
 
 /**
  * The profile a typical submission will ask for on this host — Java 21 against a 256 MB problem
@@ -160,7 +173,14 @@ async function processJob(
 /** Once the queue has been quiet for POOL_IDLE_MS, remove finished containers and refill. */
 function scheduleMaintenance(pool: ContainerPool): void {
   setTimeout(() => {
-    if (!judgeIsBusy()) void pool.maintain();
+    if (judgeIsBusy()) return;
+    // Refill and remove only when the QUEUE is empty too: a worker between two jobs is not idle.
+    void queueWaiting().then(
+      (waiting) => {
+        if (waiting === 0 && !judgeIsBusy()) void pool.maintain();
+      },
+      () => undefined,
+    );
   }, POOL_IDLE_MS + 50);
 }
 
@@ -216,6 +236,7 @@ async function main(): Promise<void> {
           target: POOL_SLOTS,
           removalBacklog: POOL_REMOVAL_BACKLOG,
           isBusy: judgeIsBusy,
+          lowWater: POOL_LOW_WATER,
         })
       : null;
 
@@ -263,6 +284,8 @@ async function main(): Promise<void> {
     maxParked: Math.max(0, PARKED_MAX),
     onConcurrency: (n) => {
       if (workerRef !== null) workerRef.concurrency = n;
+      // A submission parking may leave no ordinary judging: the pool may refill meanwhile.
+      if (pool !== null) scheduleMaintenance(pool);
     },
   });
 
@@ -272,6 +295,12 @@ async function main(): Promise<void> {
     ...JUDGE_WORKER_LOCK_OPTIONS,
   });
   workerRef = worker;
+  ordinaryJobs = () => lanes.stats().main;
+  const waitingQueue = new Queue(JUDGE_QUEUE_NAME, { connection });
+  queueWaiting = async () => {
+    const counts = await waitingQueue.getJobCounts("waiting", "prioritized", "delayed");
+    return (counts.waiting ?? 0) + (counts.prioritized ?? 0) + (counts.delayed ?? 0);
+  };
 
   worker.on("failed", (job, error) => {
     console.error(

@@ -47,8 +47,18 @@ export interface PoolOptions {
   readonly target: number;
   /** Finished containers tolerated before they are removed even while judging. */
   readonly removalBacklog: number;
-  /** A judge is running or about to: creation and idle-time removal wait. */
+  /**
+   * Ordinary judging is running, or about to: creation and idle-time removal wait. (The worker
+   * does not count submissions parked in the slow lane, and checks the queue itself is empty
+   * before it calls `maintain`.)
+   */
   readonly isBusy: () => boolean;
+  /**
+   * Below this many ready slots, the pool tops itself up even while judging — one create at a
+   * time, of the profile most in demand — so a long burst cannot drain it and leave submissions
+   * paying an on-demand create in their own critical path. 0 turns it off.
+   */
+  readonly lowWater?: number;
 }
 
 /** How many recent takes decide the share of each profile when the pool is refilled. */
@@ -61,6 +71,7 @@ export class ContainerPool {
   private readonly pending: string[] = [];
   private readonly queued = new Set<string>();
   private maintaining = false;
+  private toppingUp = false;
   private closed = false;
 
   constructor(
@@ -75,6 +86,7 @@ export class ContainerPool {
     this.recent.push(key);
     if (this.recent.length > DEMAND_WINDOW) this.recent.shift();
     const slot = this.ready.get(key)?.pop() ?? null;
+    if (this.stats().ready < (this.options.lowWater ?? 0)) void this.topUp();
     return slot;
   }
 
@@ -129,6 +141,41 @@ export class ContainerPool {
     } finally {
       this.maintaining = false;
     }
+  }
+
+  /**
+   * The low-water path: while fewer than `lowWater` slots are ready, create one at a time, busy or
+   * not, choosing the profile with the most recent demand that has the fewest ready. Never removes.
+   */
+  private async topUp(): Promise<void> {
+    if (this.toppingUp || this.closed) return;
+    this.toppingUp = true;
+    try {
+      while (!this.closed && this.stats().ready < (this.options.lowWater ?? 0)) {
+        const profile = this.neediestProfile();
+        if (profile === null || !(await this.createSlot(profile))) return;
+      }
+    } finally {
+      this.toppingUp = false;
+    }
+  }
+
+  /** Recent demand per profile, divided by one more than its ready slots: the highest wins. */
+  private neediestProfile(): SlotProfile | null {
+    const counts = new Map<string, number>();
+    for (const key of this.recent) counts.set(key, (counts.get(key) ?? 0) + 1);
+    let best: SlotProfile | null = null;
+    let bestScore = 0;
+    for (const [key, seen] of counts) {
+      const profile = this.profiles.get(key);
+      if (profile === undefined) continue;
+      const score = seen / (1 + (this.ready.get(key)?.length ?? 0));
+      if (score > bestScore) {
+        bestScore = score;
+        best = profile;
+      }
+    }
+    return best;
   }
 
   /** Remove everything: ready slots and their workspaces, and every pending removal. */
