@@ -1,5 +1,7 @@
 package ptcn.harness;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.Set;
@@ -21,7 +23,7 @@ import java.util.concurrent.locks.LockSupport;
  */
 public final class Harness {
   /** Bumped whenever the driver protocol changes; the driver refuses a harness that disagrees. */
-  static final int PROTOCOL = 1;
+  static final int PROTOCOL = 2;
 
   private Harness() {}
 
@@ -40,7 +42,9 @@ public final class Harness {
     baseline.addAll(Thread.getAllStackTraces().keySet());
 
     System.setSecurityManager(new Guard(state, main));
-    control.send(Control.READY, PROTOCOL, -1);
+    // The kernel's id for this thread, which runs every test. The driver watches it in /proc to
+    // confirm a test has really ended, so it is sent now, before any student code can exist.
+    control.send(Control.READY, PROTOCOL, mainThreadTid());
 
     for (;;) {
       int ordinal = state.awaitNext();
@@ -119,6 +123,11 @@ public final class Harness {
       // driver's own backstop reruns the test as a process.
       state.quit();
     }
+  }
+
+  /** This thread's id in /proc: `/proc/thread-self` links to `<pid>/task/<tid>`. */
+  private static int mainThreadTid() throws java.io.IOException {
+    return Integer.parseInt(Files.readSymbolicLink(Path.of("/proc/thread-self")).getFileName().toString());
   }
 
   static void parkForever() {

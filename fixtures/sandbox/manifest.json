@@ -132,6 +132,14 @@
       "expectedVerdict": "WA",
       "testCount": 3,
       "why": "Runs inside the JVM that hands its tests over. Forged replies, bells and other tests' results are frozen out by the host and the driver; it prints a wrong answer, so only a forgery that worked could score, and any hidden input it reaches is printed after ESCAPED."
+    },
+    {
+      "id": "java-forged-done-busy",
+      "language": "JAVA_21",
+      "sourceFile": "Main.java",
+      "expectedVerdict": "TLE",
+      "testCount": 2,
+      "why": "Prints the right answer, forges the harness's done/ok replies, then spins and writes past the limit. Per process that is TLE; the driver times only to the output it froze, corroborates done from /proc (the JVM's main thread must be idle), and on any failure reruns the test as a process, so it is TLE here too."
     }
   ]
 }

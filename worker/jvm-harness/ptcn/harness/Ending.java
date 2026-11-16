@@ -55,10 +55,11 @@ final class Ending {
    * Whether the NEXT test can run in this JVM. Anything short of a JVM indistinguishable from the
    * one the previous test started in sends the remaining tests to the per-process path:
    *   - the program created a thread, or anything still runs that the harness did not start;
-   *   - a process other than this JVM and the driver exists;
    *   - the test reported a memory error (the heap may be in any state, and the host will call it
    *     MLE whatever happens next);
    *   - the test was aborted.
+   * Processes are checked by the DRIVER, from /proc, after this reply: it is the one party that
+   * knows which of the processes it sees are its own (it copies the results out while this runs).
    */
   static boolean clean(TestRun run, State state, Set<Thread> baseline) {
     // An exit taken off the main thread implies a thread was created, so it is covered here too.
@@ -68,18 +69,6 @@ final class Ending {
     if (TestRun.extraThreads(baseline, false, null)) {
       return false;
     }
-    if (strayProcesses()) {
-      return false;
-    }
     return !run.reportsMemoryError();
-  }
-
-  private static boolean strayProcesses() {
-    long self = ProcessHandle.current().pid();
-    try {
-      return ProcessHandle.allProcesses().anyMatch(p -> p.pid() != self && p.pid() != 1);
-    } catch (RuntimeException e) {
-      return true;
-    }
   }
 }

@@ -125,20 +125,55 @@ describe("the driver believes the harness only when it says something good", () 
   });
 
   it("records the harness's timeout as timeout's own status, and kills the JVM", () => {
-    expect(harnessTest).toContain('"tle $1")\n      code=124');
-    const tle = harnessTest.indexOf('if [ "$reply" = "tle $1" ]; then');
-    expect(harnessTest.indexOf("harness_stop", tle)).toBeGreaterThan(tle);
+    const tle = harnessTest.slice(harnessTest.indexOf('"tle $1")'), harnessTest.indexOf("    *)"));
+    expect(tle).toContain("code=124");
+    expect(tle).toContain("harness_stop");
   });
 
-  it("falls back on anything else, from the current test onward", () => {
+  it("freezes the output ITSELF at done, and stops the clock only after it is frozen", () => {
+    const done = harnessTest.slice(harnessTest.indexOf('"done $1 "*)'), harnessTest.indexOf('"tle $1")'));
+    const copied = done.indexOf("copy_out");
+    const stopped = done.indexOf("t1=$EPOCHREALTIME");
+    expect(copied).toBeGreaterThan(-1);
+    expect(stopped).toBeGreaterThan(copied);
+  });
+
+  it("keeps a result only after ok for THIS test, no stray process, the same threads, an idle main", () => {
+    const settle = harnessTest.slice(harnessTest.indexOf("# Corroboration."));
+    for (const check of [
+      'read -r -t "$PTCN_HARNESS_SETTLE" -u "$hin" state || return 1',
+      '[ "$state" = "ok $1" ] || return 1',
+      "if stray_processes; then return 1; fi",
+      '[ "$tids" = "$baseline" ] || return 1',
+      "main_idle || return 1",
+    ]) {
+      expect(settle).toContain(check);
+    }
+    // Only after every check does the driver treat the copied results as the test's.
+    expect(settle.indexOf("copied=1")).toBeGreaterThan(settle.indexOf("main_idle || return 1"));
+  });
+
+  it("discards everything on any failure and runs the CURRENT test as a process", () => {
     expect(harnessTest).toMatch(/\*\)\n\s+return 1/);
     expect(JVM_DRIVER).toContain('if [ -n "$hpid" ] && harness_test "$i"; then');
-    expect(JVM_DRIVER).toMatch(/else\n\s+harness_stop\n\s+process_test "\$i"/);
+    expect(JVM_DRIVER).toMatch(/else\n\s+harness_stop\n\s+copied=0\n\s+process_test "\$i"/);
+    expect(JVM_DRIVER).toMatch(/if \[ "\$copied" -eq 0 \]; then\n\s+copy_out/);
   });
 
-  it("keeps the JVM only after ok for this test AND no stray process", () => {
-    expect(harnessTest).toContain('[ "$state" != "ok $1" ]');
-    expect(harnessTest).toContain("elif stray_processes; then");
+  it("decides the main thread is idle from /proc, which nothing in the JVM can forge", () => {
+    const idle = JVM_DRIVER.slice(JVM_DRIVER.indexOf("main_idle() {"), JVM_DRIVER.indexOf("if [ -f /in/harness.sh ]"));
+    expect(idle).toContain('read -r line < "/proc/$hpid/task/$mtid/stat"');
+    expect(idle).toContain('read -r run1 junk < "/proc/$hpid/task/$mtid/schedstat"');
+    expect(idle).toContain('if [ "$st" = S ] && [ $(( run2 - run1 )) -lt 1000000 ]; then return 0; fi');
+    // An unasked line from the harness after "ok" is a forgery.
+    expect(idle).toContain('if read -r -t 0.003 -u "$hin" junk; then return 1; fi');
+    // $(( )) is arithmetic, not a subshell; $( ) and backticks would fork.
+    expect(idle).not.toMatch(/\$\((?!\()|`/);
+  });
+
+  it("takes the main thread's id only from the ready line, said before any student code exists", () => {
+    expect(JVM_DRIVER).toContain('"ready $PTCN_HARNESS_PROTOCOL "*) mtid="${hello##* }" ;;');
+    expect(harnessSource("Harness.java")).toContain("control.send(Control.READY, PROTOCOL, mainThreadTid());");
   });
 
   it("gives the harness JVM no real stdin, stdout or stderr", () => {
@@ -150,7 +185,7 @@ describe("the driver believes the harness only when it says something good", () 
   it("finds stray processes without forking", () => {
     const stray = JVM_DRIVER.slice(
       JVM_DRIVER.indexOf("stray_processes() {"),
-      JVM_DRIVER.indexOf("if [ -f /in/harness.sh ]"),
+      JVM_DRIVER.indexOf("main_idle() {"),
     );
     expect(stray).toContain("for p in /proc/[0-9]*; do");
     expect(stray).not.toMatch(/\$\(|`|\bps\b|\bpgrep\b/);

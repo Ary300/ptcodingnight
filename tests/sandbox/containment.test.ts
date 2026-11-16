@@ -152,6 +152,12 @@ describe("G5 hostile submission containment", () => {
        */
       "disk-fill-out",
       "disk-fill-subdir",
+      /**
+       * The other half of attacking the hand-over: print the right answer, forge "done" so the
+       * clock stops, and keep running past the limit. Per process that is TLE, and so it must be
+       * here — the driver times only to the output it froze and corroborates "done" from /proc.
+       */
+      "forged-done-busy",
       "fork-bomb",
       /**
        * The Java harness runs every test in one JVM, so a program shares a process with the code
