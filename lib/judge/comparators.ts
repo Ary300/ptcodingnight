@@ -11,15 +11,41 @@ import type { Comparator } from "@/lib/schemas/judge";
 /**
  * Trailing whitespace on each line, plus trailing blank lines, plus CRLF, are all
  * insignificant. Leading whitespace is NOT — indentation can be part of a correct answer.
+ *
+ * Exactly the chained definition kept in comparators.normalize.test.ts, in one pass: lines are
+ * found with a native indexOf and only each line's end is examined. The chained version's per-line
+ * `/[ \t]+$/` is quadratic in a run of blanks that does not end the line: 17.7 s for one line of
+ * 200,000 spaces and an "x", on the worker's event loop, and the output cap allows a megabyte.
  */
 function normalize(text: string): string {
-  return text
-    .replace(/\r\n/g, "\n")
-    .split("\n")
-    .map((line) => line.replace(/[ \t]+$/, ""))
-    .join("\n")
-    .replace(/\n+$/, "");
+  const lines: string[] = [];
+  const n = text.length;
+  let start = 0;
+  while (start <= n) {
+    // indexOf is a native scan; only each line's END is then looked at character by character.
+    const found = text.indexOf("\n", start);
+    const i = found === -1 ? n : found;
+    let end = i;
+    // A CR directly before an LF is the CRLF pair, and only that one CR goes.
+    if (i < n && end > start && text.charCodeAt(end - 1) === CR) end -= 1;
+    while (end > start) {
+      const c = text.charCodeAt(end - 1);
+      if (c !== SPACE && c !== TAB) break;
+      end -= 1;
+    }
+    lines.push(text.slice(start, end));
+    start = i + 1;
+  }
+  while (lines.length > 0 && lines[lines.length - 1] === "") lines.pop();
+  return lines.join("\n");
 }
+
+const CR = 13;
+const SPACE = 32;
+const TAB = 9;
+
+/** Exposed for the equivalence test only. */
+export const normalizeForTest = (text: string): string => normalize(text);
 
 function tokenize(text: string): string[] {
   return normalize(text).split(/\s+/).filter((t) => t.length > 0);
@@ -88,10 +114,12 @@ export function matches(
   switch (comparator.kind) {
     case "exact":
       return actual === expected;
+    // Identical strings normalize identically, so an exact match is an answer without building
+    // two normalized copies. Most accepted outputs are byte-identical to the expected file.
     case "whitespace":
-      return normalize(actual) === normalize(expected);
+      return actual === expected || normalize(actual) === normalize(expected);
     case "float":
-      return compareFloat(actual, expected, comparator.epsilon);
+      return actual === expected || compareFloat(actual, expected, comparator.epsilon);
     case "special": {
       const checker = specialCheckers.get(comparator.checkerRef);
       if (checker === undefined) throw new UnknownCheckerError(comparator.checkerRef);
