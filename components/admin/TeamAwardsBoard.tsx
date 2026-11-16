@@ -9,7 +9,8 @@ import {
   teamSafeFilename,
   teamStandingsToGrid,
 } from "@/components/admin/export";
-import { TeamStandingsBoard } from "@/components/leaderboard";
+import { TeamStandingsBoard, type SideActivityLine } from "@/components/leaderboard";
+import { podiumsFor } from "@/components/leaderboard/team-tabs";
 import type { TeamStandingsResponse } from "@/lib/schemas/api";
 
 /**
@@ -60,14 +61,21 @@ const PLACE_LABEL = ["1st", "2nd", "3rd"] as const;
 export interface TeamAwardsBoardProps {
   standings: TeamStandingsResponse;
   contestName: string;
+  /** Each team's typed awards, so an expanded row says where its Puzzle points came from. */
+  sideActivityBreakdown?: ReadonlyMap<string, readonly SideActivityLine[]>;
 }
 
 function formatScore(score: number): string {
   return score.toFixed(2);
 }
 
-export function TeamAwardsBoard({ standings, contestName }: TeamAwardsBoardProps) {
-  const podium = standings.teams.filter((team) => team.rank <= 3);
+export function TeamAwardsBoard({
+  standings,
+  contestName,
+  sideActivityBreakdown,
+}: TeamAwardsBoardProps) {
+  // One podium per division, ranked the way the division's tab ranks it. See `podiumsFor`.
+  const podiums = podiumsFor(standings.divisions, standings.teams);
 
   return (
     <Panel
@@ -75,8 +83,8 @@ export function TeamAwardsBoard({ standings, contestName }: TeamAwardsBoardProps
       level="bare"
       description={
         <>
-          Team score equals the player pool divided by team size, plus side-activity points.
-          Expand a row to see each player&apos;s contribution.
+          Team score equals the player pool divided by team size, plus puzzle and Kahoot points.
+          Expand a row to see each player&apos;s contribution and each puzzle and Kahoot award.
         </>
       }
       aside={
@@ -123,29 +131,50 @@ export function TeamAwardsBoard({ standings, contestName }: TeamAwardsBoardProps
             measures 1.39 on `--paper`, which is unreadable. On ink it is 13.44. Same
             justification as the individual board — not decoration (DESIGN.md §2).
           */}
-          <ol className="mb-group grid gap-3 sm:grid-cols-3">
-            {podium.map((team) => (
-              <li
-                key={team.teamId}
-                className="rounded-panel bg-ink p-4 text-paper"
-                aria-label={`${PLACE_LABEL[team.rank - 1] ?? `${String(team.rank)}th`} place, ${team.name}`}
-              >
-                <div
-                  className="numeric font-display font-bold"
-                  style={{ fontSize: "var(--text-md)", color: "var(--color-gold)" }}
+          {podiums.map((podium) => (
+            <section
+              key={podium.id ?? "all"}
+              aria-label={podium.label === null ? "Podium" : `${podium.label} podium`}
+            >
+              {podium.label !== null && (
+                <h3
+                  className="mb-tight font-display font-bold"
+                  style={{ fontSize: "var(--text-md)" }}
                 >
-                  {PLACE_LABEL[team.rank - 1] ?? `${String(team.rank)}th`}
-                  {team.isTied && <span className="ml-2 text-paper/70">= tied</span>}
-                </div>
-                <div className="mt-tight font-display font-bold" style={{ fontSize: "var(--text-md)" }}>
-                  {team.name}
-                </div>
-                <div className="numeric mt-tight text-paper/70" style={{ fontSize: "var(--text-xs)" }}>
-                  {formatScore(team.score)} points
-                </div>
-              </li>
-            ))}
-          </ol>
+                  {podium.label}
+                </h3>
+              )}
+              <ol className="mb-group grid gap-3 sm:grid-cols-3">
+                {podium.teams.map((team) => (
+                  <li
+                    key={team.teamId}
+                    className="rounded-panel bg-ink p-4 text-paper"
+                    aria-label={`${PLACE_LABEL[team.rank - 1] ?? `${String(team.rank)}th`} place, ${team.name}`}
+                  >
+                    <div
+                      className="numeric font-display font-bold"
+                      style={{ fontSize: "var(--text-md)", color: "var(--color-gold)" }}
+                    >
+                      {PLACE_LABEL[team.rank - 1] ?? `${String(team.rank)}th`}
+                      {team.isTied && <span className="ml-2 text-paper/70">= tied</span>}
+                    </div>
+                    <div
+                      className="mt-tight font-display font-bold"
+                      style={{ fontSize: "var(--text-md)" }}
+                    >
+                      {team.name}
+                    </div>
+                    <div
+                      className="numeric mt-tight text-paper/70"
+                      style={{ fontSize: "var(--text-xs)" }}
+                    >
+                      {formatScore(team.score)} points
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            </section>
+          ))}
 
           {/*
             The full table, and the one everybody in the room has been looking at all night. The
@@ -164,6 +193,7 @@ export function TeamAwardsBoard({ standings, contestName }: TeamAwardsBoardProps
               sets={standings.sets}
               groupPointsInsideMean={standings.groupPointsInsideMean}
               sideActivitiesFlat={standings.sideActivitiesFlat}
+              sideActivityBreakdown={sideActivityBreakdown}
             />
           </div>
         </>

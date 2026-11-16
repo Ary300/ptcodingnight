@@ -174,3 +174,32 @@ export function columnsForTab(
     .filter((set) => set.divisionId === divisionId)
     .map((set) => ({ header: set.label, match: set.qualifiedLabel }));
 }
+
+/** One division's podium on the awards screen. `label` is null for a contest with no divisions. */
+export interface Podium {
+  readonly id: string | null;
+  readonly label: string | null;
+  readonly teams: readonly TeamStandingRow[];
+}
+
+/**
+ * ONE PODIUM PER DIVISION. Each division has its own winner (PRD §6.1), and the payload's rank
+ * runs across the whole contest, so a single podium of ranks 1 to 3 put three Intermediate teams
+ * on it and the Advanced winner nowhere. Each division is re-ranked from 1 by `teamsForTab`, the
+ * same rule its tab on the board uses, so the podium and the tab below it cannot disagree. Ties
+ * stay ties: every team ranked 1 to 3 is on its podium, however many that is.
+ */
+export function podiumsFor(
+  divisions: readonly DivisionOption[],
+  teams: readonly TeamStandingRow[],
+): readonly Podium[] {
+  const tabs = teamTabsFor(divisions, teams);
+  if (tabs.length === 0) {
+    return [{ id: null, label: null, teams: teams.filter((team) => team.rank <= 3) }];
+  }
+  return tabs.map((tab) => ({
+    id: tab.id,
+    label: tab.label,
+    teams: teamsForTab(teams, tab.id).filter((team) => team.rank <= 3),
+  }));
+}
