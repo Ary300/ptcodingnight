@@ -762,14 +762,20 @@ docker compose -f docker-compose.prod.yml up -d --force-recreate --no-deps caddy
 ```
 
 Certificates live in the `caddy_data` volume and survive the recreate. The box's own
-`/srv/ptcn/update.sh` does this automatically when the pull touched the Caddyfile.
+`/srv/ptcn/update.sh` does this automatically when the pull touched the Caddyfile. Since
+2026-11-16 it also rebuilds the judge images before restarting the worker whenever the pull touched
+anything they are built from, and stops without restarting anything if that build fails.
 
 #### If a judge image changed, build it BEFORE restarting the worker
 
 Since 2026-11-15 C++ is judged in `ptcn-gcc:14`, built locally from `docker/gcc/Dockerfile` with a
-precompiled `<bits/stdc++.h>`, like `ptcn-go:1.23`. It is on no registry, and the worker refuses to
-start without it. After pulling a commit that touches `docker/` or `lib/judge/runtimes.ts`, run
-this on the box before `up -d worker`:
+precompiled `<bits/stdc++.h>`, like `ptcn-go:1.23`. Since 2026-11-16 Java 21 is judged in
+`ptcn-jdk:21` (`docker/jdk/Dockerfile`), which carries the one-JVM test harness and the warm javac
+service. None of them is on a registry, and the worker refuses to start without them. An image
+older than the runner is worse than a missing one: the harness cannot read the runner's config,
+and Java silently falls back to the slow per-test path. After pulling a commit that touches
+`docker/`, `worker/jvm-harness/`, `worker/javac-service/` or `lib/judge/runtimes.ts`, run this on
+the box before `up -d worker`:
 
 ```bash
 ./scripts/build-judge-images.sh --verify
