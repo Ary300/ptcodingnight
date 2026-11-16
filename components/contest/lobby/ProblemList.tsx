@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { Rail } from "@/components/ui";
 import type { ProblemSummary } from "@/lib/schemas/api";
+import { formatEventTime } from "@/lib/contest/event-time";
 
 import { problemStatusLabel } from "../verdict/verdict-display";
 
@@ -58,14 +59,14 @@ function StatusMark({ solved, partial }: { solved: boolean; partial: boolean }) 
  *
  * "Opens 7:30 PM" when the server knows when, which it does for a team question held shut by the
  * contest's group clock; a bare "Locked" otherwise. A word in every state, so the badge never
- * relies on its colour alone. Printed in the reader's own zone, since the student compares it with
- * the clock on the wall, not with the ISO string the API speaks in.
+ * relies on its colour alone. Printed in the event's zone, since the student compares it with the
+ * clock on the wall; the laptop's own zone is wrong on any machine set to somewhere else.
  */
 export function lockedLabel(unlockAt: string | null | undefined): string {
   if (unlockAt === null || unlockAt === undefined) return "Locked";
   const at = new Date(unlockAt);
   if (Number.isNaN(at.getTime())) return "Locked";
-  return `Opens ${at.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}`;
+  return `Opens ${formatEventTime(at)}`;
 }
 
 /** The separator between metadata items. U+00B7 is inside the vendored Latin subset. */

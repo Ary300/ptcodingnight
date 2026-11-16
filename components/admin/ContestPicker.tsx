@@ -6,6 +6,7 @@ import { useCallback } from "react";
 import { useResource } from "@/components/contest/data/useResource";
 import type { AdminContestList, AdminContestSummary } from "@/lib/schemas/api";
 import { AdminContestListSchema } from "@/lib/schemas/api";
+import { EVENT_TIME_ZONE } from "@/lib/contest/event-time";
 
 import { ContestStatePill } from "./StatusPill";
 
@@ -124,13 +125,15 @@ const GROUP_LABEL: Record<AdminContestSummary["state"], string> = {
 function whenLabel(startsAt: string, endsAt: string): { starts: string; ends: string } {
   const start = new Date(startsAt);
   const end = new Date(endsAt);
-  const time = { hour: "numeric", minute: "2-digit" } as const;
-  const sameDay = start.toDateString() === end.toDateString();
+  // The event's zone, like every other clock on the site: this renders on a UTC server first.
+  const time = { hour: "numeric", minute: "2-digit", timeZone: EVENT_TIME_ZONE } as const;
+  const day = (when: Date): string => when.toLocaleDateString("en-CA", { timeZone: EVENT_TIME_ZONE });
+  const sameDay = day(start) === day(end);
   return {
-    starts: start.toLocaleString(undefined, { month: "short", day: "numeric", ...time }),
+    starts: start.toLocaleString("en-US", { month: "short", day: "numeric", ...time }),
     ends: sameDay
-      ? `ends ${end.toLocaleTimeString(undefined, time)}`
-      : `ends ${end.toLocaleString(undefined, { month: "short", day: "numeric", ...time })}`,
+      ? `ends ${end.toLocaleTimeString("en-US", time)}`
+      : `ends ${end.toLocaleString("en-US", { month: "short", day: "numeric", ...time })}`,
   };
 }
 

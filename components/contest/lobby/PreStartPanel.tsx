@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { Rail } from "@/components/ui";
+import { formatEventTime } from "@/lib/contest/event-time";
 
 import { ContestClock } from "./ContestClock";
 import type { ContestPhase } from "./phase";
@@ -97,12 +98,12 @@ export function PreStartPanel({ phase }: PreStartPanelProps) {
   }, [waitingToOpen, router]);
 
   const startsAt = new Date(phase.startsAt);
-  // The wall-clock time, in the reader's own zone, next to the countdown. A student comparing the
+  // The wall-clock time, in the event's zone, next to the countdown. A student comparing the
   // screen with the clock on the wall needs the time of day; a student deciding whether to fetch a
   // drink needs the countdown. They are different questions.
   const startLabel = Number.isNaN(startsAt.getTime())
     ? null
-    : startsAt.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+    : formatEventTime(startsAt);
 
   return (
     <div className="grid gap-4">

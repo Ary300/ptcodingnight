@@ -7,6 +7,7 @@ import { Button } from "@/components/ui";
 import { ConfirmButton } from "@/components/admin/ConfirmButton";
 import { Select, TextInput } from "@/components/admin/Field";
 import { Panel } from "@/components/admin/Panel";
+import { eventWallClockToInstant } from "@/lib/contest/event-time";
 import {
   ContestDraftSchema,
   SCORING_PRESETS,
@@ -123,10 +124,11 @@ export function ContestBuilder({ initial = EMPTY_DRAFT }: ContestBuilderProps) {
   /**
    * Create the contest, then go and stand inside it.
    *
-   * `datetime-local` yields wall-clock text with no zone, which is not an instant. `new Date(...)`
-   * on that string resolves it in the BROWSER's zone, which is the organizer's, which is the one
-   * they typed it in. Converting here rather than sending the raw string is what stops a contest
-   * starting an hour early on a server set to UTC.
+   * `datetime-local` yields wall-clock text with no zone, which is not an instant. It used to be
+   * resolved with `new Date(...)`, in the BROWSER's zone, on the reasoning that the organizer typed
+   * it there. Every screen afterwards prints the EVENT's zone, so a laptop set to Central (common
+   * in Indiana) created a 7:00 PM contest that the Setup tab then showed as 8:00 PM. The text is now
+   * read as Indianapolis time, the zone everything else on the site speaks.
    *
    * `busy` is deliberately NOT cleared on the success path: `router.push` is asynchronous, and a
    * form that becomes pressable again during the navigation is a form that can create the contest
@@ -146,12 +148,12 @@ export function ContestBuilder({ initial = EMPTY_DRAFT }: ContestBuilderProps) {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           name: draft.name,
-          startsAt: new Date(draft.startsAtLocal).toISOString(),
-          endsAt: new Date(draft.endsAtLocal).toISOString(),
+          startsAt: wallClockIso(draft.startsAtLocal),
+          endsAt: wallClockIso(draft.endsAtLocal),
           freezeAt:
             draft.freezeAtLocal === ""
               ? null
-              : new Date(draft.freezeAtLocal).toISOString(),
+              : wallClockIso(draft.freezeAtLocal),
           scoringPresetId: draft.scoringPresetId,
           divisions: draft.divisions.map((d) => d.name),
         }),
@@ -228,7 +230,7 @@ export function ContestBuilder({ initial = EMPTY_DRAFT }: ContestBuilderProps) {
             numeric
             value={draft.startsAtLocal}
             error={errors["startsAtLocal"] ?? null}
-            hint="Enter the start in your local time zone."
+            hint="Indianapolis time, whatever zone this laptop is set to."
             onChange={(e) => update("startsAtLocal", e.target.value)}
           />
 
@@ -417,4 +419,12 @@ export function ContestBuilder({ initial = EMPTY_DRAFT }: ContestBuilderProps) {
       </div>
     </form>
   );
+}
+
+/** Wall-clock text from a `datetime-local` field, read in the event's zone, as an ISO instant. */
+function wallClockIso(local: string): string {
+  const instant = eventWallClockToInstant(local);
+  // The schema has already required the shape, so null here means the field changed underneath.
+  if (instant === null) throw new Error("Pick a date and time");
+  return instant.toISOString();
 }

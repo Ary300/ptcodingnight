@@ -3,6 +3,7 @@
 import Link from "next/link";
 
 import { Rail } from "@/components/ui";
+import { EVENT_TIME_ZONE } from "@/lib/contest/event-time";
 
 import type { ContestPhase } from "./phase";
 
@@ -37,7 +38,8 @@ export function ContestEndedPanel({ phase }: ContestEndedPanelProps) {
   const endedAt = new Date(phase.endsAt);
   const endedLabel = Number.isNaN(endedAt.getTime())
     ? null
-    : endedAt.toLocaleString(undefined, {
+    : endedAt.toLocaleString("en-US", {
+        timeZone: EVENT_TIME_ZONE,
         weekday: "long",
         hour: "numeric",
         minute: "2-digit",
