@@ -83,6 +83,8 @@ test.describe("the competitor journey in a browser", () => {
     // leaderboard the same name is on the page twice and strict mode — correctly — refuses to
     // guess which one was meant. The header is the one this assertion is about.
     await expect(page.getByRole("banner").getByText(displayName)).toBeVisible();
+    // Every competitor's account button carries the generated mark, not an initial (2026-11-16).
+    await expect(page.getByRole("banner").locator("svg[data-guest-avatar]")).toHaveCount(1);
 
     /*
       Scoped to the named list, like the filter spec below it.
