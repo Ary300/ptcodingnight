@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { TeamStandingsResponseSchema, type TeamStandingsResponse } from "@/lib/schemas/api";
 
 import { POLL_INTERVAL_MS } from "./constants";
+import { noteServerDate } from "./server-clock";
 
 const POLL_REQUEST_TIMEOUT_MS = 10_000;
 
@@ -100,6 +101,7 @@ export function useTeamStandings(contestId: string | null): UseTeamStandingsResu
           cache: "no-cache",
           headers: { accept: "application/json" },
         });
+        noteServerDate(response.headers.get("date"));
         const body: unknown = await response.json();
         const parsed = parse(body);
 

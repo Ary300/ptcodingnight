@@ -16,6 +16,8 @@ import {
   type SubmitRequest,
 } from "@/lib/schemas/api";
 
+import { noteServerDate } from "@/components/leaderboard/server-clock";
+
 import { ContestApiError, type ContestApi } from "./contest-api";
 import { fetchParticipant, readParticipant } from "./participant";
 import {
@@ -101,6 +103,8 @@ async function request<T extends z.ZodType>(
     );
   }
 
+  // Every answer says what time the server thinks it is; the countdown in the header counts by it.
+  noteServerDate(response.headers.get("date"));
   const body: unknown = await response.json().catch(() => null);
   const envelope = ApiEnvelopeSchema.safeParse(body);
 

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 
 import { COUNTDOWN_URGENT_MS } from "./constants";
+import { serverNow } from "./server-clock";
 import styles from "./leaderboard.module.css";
 
 const PLACEHOLDER = "--:--:--";
@@ -44,8 +45,10 @@ export function Countdown({ endsAt, startsAt }: CountdownProps) {
   useEffect(() => {
     // The first tick rides an animation frame rather than running inline, so the clock is
     // right on the first painted frame without writing state from the effect body.
-    const frame = requestAnimationFrame(() => setNow(Date.now()));
-    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    // Counted against the server's clock (server-clock.ts), so a projector laptop that runs fast
+    // does not show the room "Finished" early.
+    const frame = requestAnimationFrame(() => setNow(serverNow()));
+    const timer = window.setInterval(() => setNow(serverNow()), 1000);
 
     return () => {
       cancelAnimationFrame(frame);

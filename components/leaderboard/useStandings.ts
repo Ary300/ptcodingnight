@@ -7,6 +7,7 @@ import { StandingsResponseSchema, type StandingsResponse } from "@/lib/schemas/a
 import { API_ROUTES } from "@/lib/schemas/api";
 
 import { POLL_INTERVAL_MS } from "./constants";
+import { noteServerDate } from "./server-clock";
 import { PROJECTOR_SAMPLE_STANDINGS } from "./sample-standings";
 
 const POLL_REQUEST_TIMEOUT_MS = 10_000;
@@ -79,6 +80,7 @@ export function useStandings(contestId: string | null): UseStandingsResult {
           cache: "no-cache",
           headers: { accept: "application/json" },
         });
+        noteServerDate(response.headers.get("date"));
         if (!response.ok) throw new Error(`standings responded ${response.status}`);
 
         const parsed = parseStandings(await response.json());

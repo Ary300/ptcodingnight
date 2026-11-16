@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 
+import { serverNow } from "@/components/leaderboard/server-clock";
+
 /**
  * The contest clock.
  *
@@ -70,7 +72,8 @@ export function Countdown({ endsAt, startsAt, label = "Time remaining" }: Countd
     const start = startsAt === undefined ? Number.NaN : new Date(startsAt).getTime();
 
     const tick = () => {
-      const now = Date.now();
+      // The server's clock, not the laptop's: the server decides when submissions close.
+      const now = serverNow();
       const waiting = !Number.isNaN(start) && now < start;
       setBeforeStart(waiting);
       setRemaining(Math.max(0, (waiting ? start : end) - now));
