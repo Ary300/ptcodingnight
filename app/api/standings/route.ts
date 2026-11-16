@@ -2,7 +2,7 @@ import type { NextResponse } from "next/server";
 
 import { prisma } from "@/lib/db";
 import { NotFoundError } from "@/lib/errors";
-import { NO_STORE, handle, jsonOk } from "@/lib/contest/http";
+import { handle, jsonOkRevalidated } from "@/lib/contest/http";
 import { getStandings } from "@/lib/contest/standings";
 import { viewerFromRequest } from "@/lib/contest/viewer";
 
@@ -80,6 +80,6 @@ export async function GET(request: Request): Promise<NextResponse> {
     const contestId = requested !== null && requested.length > 0 ? requested : await currentContestId(now);
     const viewer = await viewerFromRequest(request, now);
 
-    return jsonOk(await getStandings(contestId, viewer, now), NO_STORE);
+    return jsonOkRevalidated(request, await getStandings(contestId, viewer, now));
   });
 }

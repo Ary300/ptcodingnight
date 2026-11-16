@@ -76,8 +76,13 @@ vi.mock("@/lib/scoring", async (importOriginal) => {
 
 const { computeTeamStandings } = await import("@/lib/scoring/team");
 const { computeStandings } = await import("@/lib/scoring");
-const { getStandings, getTeamStandings, invalidateScoringInput, problemStandingsFor } =
-  await import("@/lib/contest/standings");
+const {
+  getStandings,
+  getTeamStandings,
+  invalidateScoringInput,
+  problemStandingsFor,
+  reconcileClockFromBoard,
+} = await import("@/lib/contest/standings");
 const { rankSnapshots } = await import("@/lib/contest/delta");
 type Viewer = import("@/lib/contest/viewer").Viewer;
 
@@ -324,5 +329,23 @@ describe("the frozen public board never shows a post-freeze result through the m
     expect(frozen.frozen).toBe(true);
     expect(frozen.asOf).toBe(freezeAt.toISOString());
     expect(db.contestReads).toBe(1);
+  });
+});
+
+describe("the polled boards check the contest clock against the board's own row", () => {
+  it("a poll in the middle of the contest reads the contest once, for the board", async () => {
+    const now = db.fixture.instants.beforeFreeze;
+    await reconcileClockFromBoard(CONTEST, now);
+    await getTeamStandings(CONTEST, ANONYMOUS, now);
+    expect(db.contestReads).toBe(1);
+  });
+
+  it("a poll after the end time reads the row fresh and lets the real clock decide", async () => {
+    db.fixture.contest.freezeAt = null;
+    const errors = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    await reconcileClockFromBoard(CONTEST, new Date("2026-11-13T20:16:00.000Z"));
+    // One read for the board's input, one fresh read by `reconcileContestClockById`.
+    expect(db.contestReads).toBe(2);
+    errors.mockRestore();
   });
 });

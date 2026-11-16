@@ -2,7 +2,7 @@ import type { NextResponse } from "next/server";
 
 import { prisma } from "@/lib/db";
 import { NotFoundError } from "@/lib/errors";
-import { NO_STORE, handle, jsonOk } from "@/lib/contest/http";
+import { handle, jsonOkRevalidated } from "@/lib/contest/http";
 import { getTeamStandings } from "@/lib/contest/standings";
 import { viewerFromRequest } from "@/lib/contest/viewer";
 
@@ -85,9 +85,8 @@ export async function GET(request: Request): Promise<NextResponse> {
       requested !== null && requested.length > 0 ? requested : await currentContestId(now);
     const viewer = await viewerFromRequest(request, now);
 
-    // NO_STORE, matching both siblings: the response DIFFERS BY VIEWER — an organizer sees through
-    // a freeze and nobody else does — so a shared cache would eventually serve an admin's unfrozen
-    // board to the room.
-    return jsonOk(await getTeamStandings(contestId, viewer, now), NO_STORE);
+    // Never in a SHARED cache, matching both siblings: the response DIFFERS BY VIEWER — an organizer
+    // sees through a freeze and nobody else does. See `jsonOkRevalidated`.
+    return jsonOkRevalidated(request, await getTeamStandings(contestId, viewer, now));
   });
 }

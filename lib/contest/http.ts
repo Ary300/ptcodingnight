@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -145,3 +147,54 @@ export const ProblemParamsSchema = z.object({ id: z.string().min(1), slug: z.str
 export const NO_STORE: ResponseInit = {
   headers: { "Cache-Control": "no-store, no-cache, must-revalidate", Pragma: "no-cache" },
 };
+
+/**
+ * A polled board's response, with an ETag so an unchanged board costs a 304 and no body.
+ *
+ * `data` is a memoised board object (`getStandings`/`getTeamStandings` hand every poll in the same
+ * second the same object), so its serialization and its hash are computed once per object here
+ * rather than once per request.
+ *
+ * Still never in a SHARED cache: the board differs by viewer (an organizer sees through a freeze),
+ * so it is `private`, it must be revalidated on every request (`no-cache`), and it varies on the
+ * cookie that decides the viewer. A browser may keep its own copy only to ask "is this still it?",
+ * and the answer is yes only when the bytes this viewer would be sent now are the same bytes, because
+ * the tag IS a hash of those bytes. A 304 therefore cannot show anyone anything a 200 would not.
+ */
+export const REVALIDATE_EVERY_TIME: Readonly<Record<string, string>> = {
+  "Cache-Control": "private, no-cache, must-revalidate",
+  Vary: "Cookie",
+};
+
+const sharedBodies = new WeakMap<object, { readonly body: string; readonly etag: string }>();
+
+function sharedBody(data: object): { readonly body: string; readonly etag: string } {
+  const cached = sharedBodies.get(data);
+  if (cached !== undefined) return cached;
+  const body = JSON.stringify(ok(data));
+  const etag = `"${createHash("sha256").update(body).digest("base64url").slice(0, 32)}"`;
+  const entry = { body, etag };
+  sharedBodies.set(data, entry);
+  return entry;
+}
+
+/** True when an `If-None-Match` header names this tag (or `*`). Weak tags compare weakly. */
+export function matchesEtag(ifNoneMatch: string | null, etag: string): boolean {
+  if (ifNoneMatch === null) return false;
+  return ifNoneMatch
+    .split(",")
+    .map((tag) => tag.trim().replace(/^W\//, ""))
+    .some((tag) => tag === etag || tag === "*");
+}
+
+export function jsonOkRevalidated(request: Request, data: object): NextResponse {
+  const { body, etag } = sharedBody(data);
+  const headers = { ...REVALIDATE_EVERY_TIME, ETag: etag };
+  if (matchesEtag(request.headers.get("if-none-match"), etag)) {
+    return new NextResponse(null, { status: 304, headers });
+  }
+  return new NextResponse(body, {
+    status: 200,
+    headers: { ...headers, "Content-Type": "application/json" },
+  });
+}

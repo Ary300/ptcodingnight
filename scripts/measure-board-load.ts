@@ -3,12 +3,16 @@
  *
  *   npx tsx scripts/measure-board-load.ts seed
  *   npx tsx scripts/measure-board-load.ts run --base http://localhost:3207 --pid <web pid> \
- *     [--pg-container <name>]
+ *     [--pg-container <name>] [--frozen]
  *
  * `seed` builds one RUNNING contest in the database `.env` points at: 50 participants on 13 teams
- * (twelve of four, one of two), four sets of two problems plus a group problem, about 400 judged submissions with their score
- * revisions, and a Kahoot payout per team. It mints a session per student plus one organizer
- * session and writes the tokens next to this script's output, never to stdout.
+ * (twelve of four, one of two), four sets of two problems plus a group problem, about 400 judged
+ * submissions with their score revisions, and a Kahoot payout per team. It mints a session per
+ * student plus one organizer session and writes the tokens to a file under the system temp
+ * directory (or `MEASURE_OUT_DIR`), never to stdout.
+ *
+ * `--frozen` runs the same load with the public board frozen a minute before the window starts,
+ * which is how the end-of-night burst actually arrives.
  *
  * `run` then plays the night's worst two minutes against a server that is already up:
  *
@@ -343,24 +347,37 @@ async function holdStream(
   }
 }
 
+interface PollCounts {
+  count: number;
+  notModified: number;
+}
+
+/**
+ * One page's poll, behaving like the browser's `cache: "no-cache"` fetch: it remembers the last
+ * ETag and sends it back, so a server that tags its boards can answer 304.
+ */
 async function pollLoop(
   url: string,
   cookie: string | null,
   latencies: number[],
-  failures: { count: number },
+  failures: PollCounts,
   signal: AbortSignal,
 ): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, Math.random() * POLL_MS));
+  let etag: string | null = null;
   while (!signal.aborted) {
     const started = performance.now();
     try {
-      const response = await fetch(url, {
-        headers: cookie === null ? {} : { cookie },
-        signal,
-      });
+      const headers: Record<string, string> = {};
+      if (cookie !== null) headers.cookie = cookie;
+      if (etag !== null) headers["if-none-match"] = etag;
+      const response = await fetch(url, { headers, signal });
       await response.arrayBuffer();
-      if (response.ok) latencies.push(performance.now() - started);
-      else failures.count += 1;
+      if (response.status === 304) failures.notModified += 1;
+      if (response.ok || response.status === 304) {
+        latencies.push(performance.now() - started);
+        etag = response.headers.get("etag") ?? etag;
+      } else failures.count += 1;
     } catch {
       if (!signal.aborted) failures.count += 1;
     }
@@ -383,6 +400,14 @@ async function run(): Promise<void> {
     where: { verdict: null, participant: { contestId: sessions.contestId } },
   });
   await queue.obliterate({ force: true });
+
+  // `--frozen` plays the end of the night: the public board has been frozen since a minute ago
+  // (a scheduled freeze, state still RUNNING) while the burst lands. Without it, no freeze.
+  const frozen = process.argv.includes("--frozen");
+  await prisma.contest.update({
+    where: { id: sessions.contestId },
+    data: { state: "RUNNING", freezeAt: frozen ? new Date(Date.now() - 60_000) : null },
+  });
 
   const random = rng(7);
   const pick = <T,>(items: readonly T[]): T => {
@@ -423,7 +448,7 @@ async function run(): Promise<void> {
   const stats: StreamStats = { verdictArrivals: new Map(), standingsFrames: 0 };
   const studentLatencies: number[] = [];
   const projectorLatencies: number[] = [];
-  const failures = { count: 0 };
+  const failures: PollCounts = { count: 0, notModified: 0 };
   const tasks: Promise<void>[] = [];
 
   for (const student of sessions.students) {
@@ -485,6 +510,7 @@ async function run(): Promise<void> {
   const allPolls = [...studentLatencies, ...projectorLatencies];
 
   const report = {
+    frozen,
     windowSeconds: Number(elapsedS.toFixed(1)),
     webCpuSecondsPerMinute: Number((((cpuAfter - cpuBefore) / elapsedS) * 60).toFixed(2)),
     webCpuPercentOfOneCore: Number((((cpuAfter - cpuBefore) / elapsedS) * 100).toFixed(1)),
@@ -495,6 +521,7 @@ async function run(): Promise<void> {
     dbTransactionsPerSecond: Number(((xactAfter - xactBefore) / elapsedS).toFixed(1)),
     standingsPolls: allPolls.length,
     pollFailures: failures.count,
+    pollsNotModified: failures.notModified,
     standingsP50Ms: Number(percentile(allPolls, 50).toFixed(1)),
     standingsP95Ms: Number(percentile(allPolls, 95).toFixed(1)),
     projectorP50Ms: Number(percentile(projectorLatencies, 50).toFixed(1)),

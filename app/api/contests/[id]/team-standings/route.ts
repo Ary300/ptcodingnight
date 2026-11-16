@@ -1,8 +1,7 @@
 import type { NextResponse } from "next/server";
 
-import { reconcileContestClockById } from "@/lib/contest/contests";
-import { ContestIdParamsSchema, NO_STORE, handle, jsonOk, readParams } from "@/lib/contest/http";
-import { getTeamStandings } from "@/lib/contest/standings";
+import { ContestIdParamsSchema, handle, jsonOkRevalidated, readParams } from "@/lib/contest/http";
+import { getTeamStandings, reconcileClockFromBoard } from "@/lib/contest/standings";
 import { viewerFromRequest } from "@/lib/contest/viewer";
 
 /**
@@ -31,11 +30,12 @@ export async function GET(
 
     // The projector polls this every five seconds, which makes it a clock the room is watching:
     // when the window says the contest should have started or ended, this poll makes it true.
-    await reconcileContestClockById(id, now);
+    await reconcileClockFromBoard(id, now);
 
-    // NO_STORE, matching the individual board: the response DIFFERS BY VIEWER — an organizer sees
-    // through a freeze and nobody else does — so a shared cache would eventually serve an admin's
-    // unfrozen board to the room.
-    return jsonOk(await getTeamStandings(id, viewer, now), NO_STORE);
+    // Never in a SHARED cache, matching the individual board: the response DIFFERS BY VIEWER — an
+    // organizer sees through a freeze and nobody else does. `jsonOkRevalidated` is private,
+    // revalidated on every request and tagged with a hash of this viewer's bytes, so an unchanged
+    // board costs a 304 and nothing else changes.
+    return jsonOkRevalidated(request, await getTeamStandings(id, viewer, now));
   });
 }

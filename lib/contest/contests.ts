@@ -724,6 +724,23 @@ export async function reconcileContestClockById(
   return reconcileContestClock(contest, now);
 }
 
+/**
+ * Could `reconcileContestClock` move this contest now? A cheap SUPERSET of its two conditions,
+ * with no database and no exceptions considered, for callers holding a possibly stale row: false
+ * means there is nothing to do, true means read the row fresh and let the real check decide.
+ */
+export function clockMayMove(
+  contest: { readonly state: string; readonly startsAt: Date; readonly endsAt: Date },
+  now: Date,
+): boolean {
+  const nowMs = now.getTime();
+  if (contest.state === "SCHEDULED") return contest.startsAt.getTime() <= nowMs;
+  if (contest.state === "RUNNING" || contest.state === "FROZEN") {
+    return contest.endsAt.getTime() <= nowMs;
+  }
+  return false;
+}
+
 export async function reconcileContestClock(
   contest: {
     readonly id: string;

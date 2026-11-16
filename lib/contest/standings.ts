@@ -1,4 +1,5 @@
 import { NotFoundError } from "@/lib/errors";
+import { clockMayMove, reconcileContestClockById } from "@/lib/contest/contests";
 import { prisma } from "@/lib/db";
 import { computeStandings } from "@/lib/scoring";
 import { computeTeamStandings } from "@/lib/scoring/team";
@@ -104,6 +105,24 @@ const inputCache = new Map<
 
 export function invalidateScoringInput(contestId: string): void {
   inputCache.delete(contestId);
+}
+
+/**
+ * The polled boards keep the contest clock honest (a poll that sees the window has opened or closed
+ * makes it so), and that used to cost every poll a fresh contest select.
+ *
+ * The board already holds the contest row, at most `INPUT_TTL_MS` old, so it decides whether a move
+ * is even POSSIBLE (`clockMayMove`, a superset of the real conditions). Only then is the row read
+ * fresh and the real `reconcileContestClockById` run, so a transition is never decided on a stale
+ * row; a stale row can only make the check run up to a second later than it would have. A move
+ * that happens drops the board's input, so the next poll shows the new state at once.
+ */
+export async function reconcileClockFromBoard(contestId: string, now: Date): Promise<void> {
+  const { contest } = await loadScoringInput(contestId, now);
+  if (contest.isPractice || !clockMayMove(contest, now)) return;
+  if ((await reconcileContestClockById(contestId, now)) !== "unchanged") {
+    invalidateScoringInput(contestId);
+  }
 }
 
 /**

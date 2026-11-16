@@ -95,7 +95,9 @@ export function useTeamStandings(contestId: string | null): UseTeamStandingsResu
       try {
         const response = await fetch(url, {
           signal: currentRequest.signal,
-          cache: "no-store",
+          // Revalidate every time, never reuse unasked: the browser sends the board's ETag and an
+          // unchanged board comes back as a 304 with no body. See `jsonOkRevalidated`.
+          cache: "no-cache",
           headers: { accept: "application/json" },
         });
         const body: unknown = await response.json();
