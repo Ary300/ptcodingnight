@@ -236,12 +236,23 @@ export function parseMarkdown(source: string): Block[] {
 // Collapsible sections
 // ---------------------------------------------------------------------------
 
-type HeadingBlock = Extract<Block, { kind: "heading" }>;
 
-/** A heading and everything under it, up to the next heading of the same or higher rank. */
+// ---------------------------------------------------------------------------
+// Collapsible sections
+// ---------------------------------------------------------------------------
+
+type HeadingLevel = 2 | 3 | 4 | 5 | 6;
+
+/**
+ * A titled run of blocks folded behind its title: the title, and everything under it up to the
+ * next title of the same or higher rank.
+ *
+ * `level` is the heading rank the title is rendered at inside the disclosure's summary.
+ */
 export interface CollapsedSection {
   readonly kind: "section";
-  readonly heading: HeadingBlock;
+  readonly title: readonly Inline[];
+  readonly level: HeadingLevel;
   readonly body: readonly Block[];
 }
 
@@ -266,51 +277,96 @@ export function inlineText(nodes: readonly Inline[]): string {
     .join("");
 }
 
-/** "Example", "Examples", "Example 1", "Example 2:". Matched on the heading's words. */
+const EXAMPLE_WORDS = /^examples?\b/i;
+
+/**
+ * A block that titles an example: a heading reading "Example", "Examples", "Example 1",
+ * "Example 2:", or a paragraph that is nothing but bold "Example N".
+ *
+ * The paragraph form is how 84 of the 106 authored statements title their examples, under one
+ * `## Example` heading, so ignoring it would fold the whole run as one block and leave a student
+ * no way to open Example 2 without Example 1.
+ */
 export function isExampleHeading(block: Block): boolean {
-  return block.kind === "heading" && /^examples?\b/i.test(inlineText(block.children).trim());
+  if (block.kind === "heading") return EXAMPLE_WORDS.test(inlineText(block.children).trim());
+  if (block.kind !== "paragraph" || block.children.length !== 1) return false;
+  const only = block.children[0];
+  return only?.kind === "strong" && EXAMPLE_WORDS.test(inlineText(only.children).trim());
 }
 
-function sectionEnd(blocks: readonly Block[], start: number, level: number): number {
+/** Rank as a section boundary: a heading's level, a bold pseudo-heading below every heading. */
+const PSEUDO_HEADING_RANK = 7;
+
+function rankOf(block: Block, matches: (block: Block) => boolean): number | null {
+  if (block.kind === "heading") return block.level;
+  return matches(block) ? PSEUDO_HEADING_RANK : null;
+}
+
+function sectionEnd(
+  blocks: readonly Block[],
+  start: number,
+  rank: number,
+  matches: (block: Block) => boolean,
+): number {
   let end = start + 1;
   while (end < blocks.length) {
     const next = blocks[end];
-    if (next !== undefined && next.kind === "heading" && next.level <= level) break;
+    const nextRank = next === undefined ? null : rankOf(next, matches);
+    if (nextRank !== null && nextRank <= rank) break;
     end += 1;
   }
   return end;
 }
 
+function titleOf(block: Block): readonly Inline[] {
+  if (block.kind === "heading") return block.children;
+  if (block.kind === "paragraph") {
+    const only = block.children[0];
+    return only?.kind === "strong" ? only.children : block.children;
+  }
+  return [];
+}
+
+function clampHeading(level: number): HeadingLevel {
+  const clamped = Math.min(6, Math.max(2, level));
+  return clamped === 2 || clamped === 3 || clamped === 4 || clamped === 5 ? clamped : 6;
+}
+
 /**
- * Fold every section whose heading `matches` into one `CollapsedSection`.
+ * Fold every section whose title `matches` into one `CollapsedSection`.
  *
- * A matching section that itself contains a matching sub-heading ("## Examples" over
- * "### Example 1" and "### Example 2") is NOT folded: its heading stays a plain heading and each
- * inner example folds on its own, so a student opens an example with one click rather than
- * opening a fold to find more folds.
+ * A matching section that itself contains a matching title ("## Example" over bold "Example 1"
+ * and "Example 2") is NOT folded: its heading stays a plain heading and each inner example folds
+ * on its own, so a student opens an example with one click rather than opening a fold to find
+ * more folds.
  */
 export function collapseSections(
   blocks: readonly Block[],
   matches: (block: Block) => boolean,
 ): SectionedBlock[] {
   const out: SectionedBlock[] = [];
+  let lastHeadingLevel = 1;
   let i = 0;
   while (i < blocks.length) {
     const block = blocks[i];
     if (block === undefined) break;
-    if (block.kind !== "heading" || !matches(block)) {
+    const rank = rankOf(block, matches);
+    if (rank === null || !matches(block)) {
+      if (block.kind === "heading") lastHeadingLevel = block.level;
       out.push(block);
       i += 1;
       continue;
     }
-    const end = sectionEnd(blocks, i, block.level);
+    const end = sectionEnd(blocks, i, rank, matches);
     const body = blocks.slice(i + 1, end);
     if (body.some(matches)) {
+      if (block.kind === "heading") lastHeadingLevel = block.level;
       out.push(block);
       i += 1;
       continue;
     }
-    out.push({ kind: "section", heading: block, body });
+    const level = block.kind === "heading" ? block.level : clampHeading(lastHeadingLevel + 1);
+    out.push({ kind: "section", title: titleOf(block), level, body });
     i = end;
   }
   return out;

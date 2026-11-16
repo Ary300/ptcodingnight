@@ -44,6 +44,40 @@ describe("collapseSections with isExampleHeading", () => {
     expect(collapseSections(blocks, isExampleHeading)).toEqual(blocks);
   });
 
+  it("folds each bold Example N paragraph under one Example heading on its own", () => {
+    const md = [
+      "## Example",
+      "",
+      "**Example 1**",
+      "",
+      "Input:",
+      "```",
+      "35 48",
+      "```",
+      "",
+      "**Example 2**",
+      "",
+      "Input:",
+      "```",
+      "120 -15",
+      "```",
+      "",
+      "## Notes",
+      "",
+      "after",
+    ].join("\n");
+    const out = collapseSections(parseMarkdown(md), isExampleHeading);
+    expect(shape(out)).toEqual(["heading", "section(2)", "section(2)", "heading", "paragraph"]);
+    const first = out[1];
+    expect(first?.kind === "section" && first.level).toBe(4);
+    expect(first?.kind === "section" && first.title).toEqual([{ kind: "text", value: "Example 1" }]);
+  });
+
+  it("does not treat a paragraph that only starts with bold Example as a title", () => {
+    const [block] = parseMarkdown("**Example 1** shows the smallest case.");
+    expect(block !== undefined && isExampleHeading(block)).toBe(false);
+  });
+
   it("matches the heading by its words, not a substring", () => {
     const [heading] = parseMarkdown("## Counterexample");
     expect(heading !== undefined && isExampleHeading(heading)).toBe(false);

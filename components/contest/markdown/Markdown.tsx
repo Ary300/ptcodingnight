@@ -150,24 +150,24 @@ function renderBlock(block: Block, key: string): ReactNode {
 }
 
 /**
- * An "Example" section folded behind its heading. The heading keeps its rank inside the summary,
- * so the outline still lists it, but drops the block margins it carries in running prose: the
- * disclosure's own row is the spacing now.
+ * An "Example" section folded behind its title. The title is a heading inside the summary, so the
+ * outline still lists it, but without the block margins it carries in running prose: the
+ * disclosure's own row is the spacing now. A bold "Example 1" paragraph is promoted to a heading
+ * one rank below the heading it sits under.
  */
 function renderSection(section: CollapsedSection, key: string): ReactNode {
-  const { heading } = section;
   return (
     <Disclosure
       key={key}
       kind="example"
-      className="my-5"
+      className="my-3"
       summary={createElement(
-        `h${heading.level}`,
+        `h${section.level}`,
         {
           className: "font-display font-bold text-ink",
-          style: { fontSize: heading.level <= 3 ? "var(--text-md)" : "var(--text-sm)" },
+          style: { fontSize: section.level <= 3 ? "var(--text-md)" : "var(--text-sm)" },
         },
-        renderInline(heading.children, `${key}-h`),
+        renderInline(section.title, `${key}-h`),
       )}
     >
       {/* `[&>*:first-child]:mt-0`: the body's first paragraph or code block would otherwise
