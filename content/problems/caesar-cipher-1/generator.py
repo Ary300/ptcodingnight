@@ -8,6 +8,14 @@ printable noise, letters only, wrap-boundary letters, no letters at all, one
 repeated character) and the flavor of k (zero, exact multiples of 26, small,
 enormous), so the test set covers the wrap-around and the k > 26 reduction and
 not just typical text.
+
+The identity answer (output equal to input) belongs to three hand-written edge
+cases only: k = 0 (05), k = 26 (06) and a string with no letters (08). The
+generated shapes all contain letters and every generated k has k mod 26 != 0, so a
+program that echoes its input cannot pass them.
+
+Which seed made which test: 04 = seed 1, 11 = 6, 12 = 12, 13 = 13, 14 = 19,
+15 = 320, 17 = 322. The rest are written by hand.
 """
 
 import random
@@ -44,26 +52,30 @@ def build_string(seed: int, n: int, rng: random.Random) -> str:
         return "".join(rng.choice(BOUNDARY) for _ in range(n))
 
     if shape == 3:
-        # No letters at all: the output must equal the input.
-        return "".join(rng.choice(NON_LETTERS) for _ in range(n))
+        # Mostly punctuation and digits with a sparse sprinkling of letters, and
+        # at least one letter, so the few that must move are easy to miss.
+        chars = [rng.choice(NON_LETTERS) if rng.random() < 0.9 else rng.choice(LETTERS) for _ in range(n)]
+        chars[rng.randrange(n)] = rng.choice(LETTERS)
+        return "".join(chars)
 
-    # shape == 4: one character repeated across the whole string.
-    return rng.choice(PRINTABLE) * n
+    # shape == 4: one letter repeated across the whole string.
+    return rng.choice(LETTERS) * n
 
 
 def choose_k(rng: random.Random) -> int:
     flavor = rng.randrange(6)
     if flavor == 0:
-        return 0
+        return rng.randint(1, 25)
     if flavor == 1:
-        return 26 * rng.randint(1, 5)  # identity in disguise
+        return 26 * rng.randint(1, 5) + rng.randint(1, 25)  # just past a full turn
     if flavor == 2:
         return rng.randint(1, 25)
     if flavor == 3:
         return rng.randint(27, 1000)  # exceeds 26 but stays small
     if flavor == 4:
         return MAX_K
-    return rng.randint(0, MAX_K)
+    k = rng.randint(1, MAX_K)
+    return k if k % 26 != 0 else k - 1
 
 
 def main() -> None:
@@ -75,6 +87,7 @@ def main() -> None:
     assert len(s) == n
     assert all(33 <= ord(c) <= 126 for c in s)
     assert 0 <= k <= MAX_K
+    assert k % 26 != 0 and any(c.isalpha() for c in s), "a generated case must not be the identity"
     out = sys.stdout
     out.write(f"{n}\n{s}\n{k}\n")
 
