@@ -4,7 +4,7 @@ import { useCallback } from "react";
 
 import Link from "next/link";
 
-import { Button, Crumbs, Rail } from "@/components/ui";
+import { Button, Crumbs } from "@/components/ui";
 
 import { contestApi } from "../data/backend";
 import { useParticipant } from "../data/participant";
@@ -168,7 +168,7 @@ export function LobbyView({ phase = null, viewerKind }: LobbyViewProps) {
           A greeting by name, so the student sees straight away that the code they typed was theirs.
           First name only, from the roster. A practice guest ("Guest 4821") has no name to use.
         */}
-        {joined !== null && (
+        {joined !== null && !practiceArena && (
           <p
             className="mt-2 font-display font-bold text-panther"
             style={{ fontSize: "var(--text-md)" }}
@@ -177,7 +177,11 @@ export function LobbyView({ phase = null, viewerKind }: LobbyViewProps) {
           </p>
         )}
         <h1 className="mt-1 font-display font-bold text-[length:var(--text-lg)] sm:text-[length:var(--text-xl)]">
-          {beforeStart && phase !== null ? phase.name : "Problems"}
+          {practiceArena
+            ? "Practice problems"
+            : beforeStart && phase !== null
+              ? phase.name
+              : "Problems"}
         </h1>
 
         {/*
@@ -188,9 +192,7 @@ export function LobbyView({ phase = null, viewerKind }: LobbyViewProps) {
           pressing the button.
         */}
         {practiceArena ? (
-          <p className="mt-1 text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
-            Nothing here is scored.
-          </p>
+          <PracticeIntro />
         ) : phase === null || phase.submissionsOpen ? (
           <p className="mt-1 text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
             You can run the sample tests as often as you like. Only submissions are scored.
@@ -201,12 +203,6 @@ export function LobbyView({ phase = null, viewerKind }: LobbyViewProps) {
               ? "Submissions open when the contest starts."
               : "Submissions are closed."}
           </p>
-        )}
-
-        {practiceArena && (
-          <div className="mt-4">
-            <PracticeArenaNotice />
-          </div>
         )}
 
         {beforeStart && phase !== null && (
@@ -346,36 +342,26 @@ export function LobbyView({ phase = null, viewerKind }: LobbyViewProps) {
 
 
 /**
- * The label that keeps the practice arena from impersonating the contest.
+ * The practice arena's intro, directly under its heading.
  *
- * Sign-in falls back to the arena whenever no real contest is open, so this lobby is what a
- * student sees on any ordinary evening — and without a label it is indistinguishable from the
- * night itself: same list, same judge, same standings. The panel states the three facts that
- * separate them (samples, unscored, automatic hand-off on the night) in the same bordered-paper
- * grammar as `AssignmentNotice`, because it answers the same kind of question: what is this
- * screen, and what should I do about it. A plain labelled section, not a live region and not an
- * alert — being in the arena is the ordinary course of the year, not a fault, and the fact does
- * not change while the student reads it.
+ * It replaces a greeting, a "Nothing here is scored" subtitle and a bordered panel that said the
+ * same things a second time. What is left is the two facts a guest needs: what the problems are
+ * for, and that practice is not how they get in on the night. The heading above already says
+ * this is practice, which is the label that keeps the arena from impersonating the contest.
+ * Plain paragraphs, not a live region: being in the arena is the ordinary course of the year, and
+ * the text does not change while the student reads it.
  */
-function PracticeArenaNotice() {
+function PracticeIntro() {
   return (
-    <section
-      aria-label="Practice arena"
-      className="flex items-stretch overflow-hidden rounded-panel border border-rule-edge bg-paper"
-    >
-      <Rail state="brand" />
-      <div className="min-w-0 flex-1 px-4 py-3">
-        <h2 className="font-display font-bold" style={{ fontSize: "var(--text-sm)" }}>
-          Practice problems
-        </h2>
-        <p className="mt-1" style={{ fontSize: "var(--text-sm)" }}>
-          These problems are for getting used to the site before Coding Night. Nothing here counts.
-        </p>
-        <p className="mt-1 text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
-          Practice closes while the contest is running. On the night, use the join code on your slip.
-        </p>
-      </div>
-    </section>
+    <div data-practice-intro className="mt-2">
+      <p className="text-balance" style={{ fontSize: "var(--text-sm)" }}>
+        Use these unscored problems to try the editor and the judge before Coding Night.
+      </p>
+      <p className="mt-1 text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
+        Practice is closed while the contest is running. On the night, sign in with the join code
+        on your slip.
+      </p>
+    </div>
   );
 }
 
