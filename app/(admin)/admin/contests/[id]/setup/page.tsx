@@ -204,7 +204,13 @@ export default async function ContestSetupPage({
             {setup.state === "ENDED" ? "Reopen the contest" : "Change the end time"}
           </h3>
           <div className="mt-2">
+            {/*
+              Keyed on the state, so End contest remounts it. Without the key the field and the last
+              message survived the refresh, and an ended contest showed "Saved. Submissions close at
+              8:20 PM" under "Reopen the contest". Its own saves update it in place.
+            */}
             <EndTimeControl
+              key={setup.state}
               contestId={setup.contestId}
               endsAt={setup.endsAt.toISOString()}
               state={setup.state}
@@ -243,6 +249,7 @@ export default async function ContestSetupPage({
           </h3>
           <div className="mt-2">
             <FreezeSchedule
+              key={`${setup.state}:${setup.endsAt.toISOString()}:${setup.freezeAt?.toISOString() ?? "none"}`}
               contestId={setup.contestId}
               endsAt={setup.endsAt.toISOString()}
               freezeAt={setup.freezeAt === null ? null : setup.freezeAt.toISOString()}

@@ -105,7 +105,9 @@ export function ContestStateActions({ contestId, state, onChanged }: ContestStat
   if (options.length === 0 && error === null) {
     return (
       <p className="text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
-        This contest is {state.toLowerCase()}. There is nothing further to change.
+        {state === "ENDED"
+          ? "This contest has ended. If it ended by mistake, reopen it under Window below."
+          : `This contest is ${state.toLowerCase()}. There is nothing further to change.`}
       </p>
     );
   }
