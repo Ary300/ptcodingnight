@@ -36,6 +36,13 @@ const NAV = [
   { href: "/submissions", label: "My submissions" },
 ] as const;
 
+/*
+  Tabs with nothing behind them in the practice arena. A practice participant is on no team, so
+  "My team" opens onto an empty state, and puzzles are a team's side points on the night. Hidden
+  only once the session read has said "practice"; a real contest's nav is untouched.
+*/
+const NOT_IN_PRACTICE: ReadonlySet<string> = new Set(["/contest/puzzles", "/team"]);
+
 const PARTICIPANT_REFRESH_TIMEOUT_MS = 10_000;
 
 function StubBanner() {
@@ -382,7 +389,9 @@ export function CompetitorChrome({ children }: { children: ReactNode }) {
             className="order-3 -mx-4 flex w-full overflow-x-auto px-4 sm:-mx-6 sm:px-6 md:order-2 md:mx-0 md:w-auto md:overflow-x-visible md:px-0"
           >
             <ul className="flex items-stretch gap-1">
-              {NAV.map((item) => {
+              {NAV.filter(
+                (item) => !(contestKind === "practice" && NOT_IN_PRACTICE.has(item.href)),
+              ).map((item) => {
                 const active = item.href === currentNavHref;
                 return (
                   <li key={item.href} className="flex shrink-0">
@@ -459,6 +468,7 @@ export function CompetitorChrome({ children }: { children: ReactNode }) {
                 userId={account.userId}
                 avatarVersion={account.avatarVersion}
                 accountKnown={account.known}
+                practice={contestKind === "practice"}
                 onSignOut={leave}
               />
             )}

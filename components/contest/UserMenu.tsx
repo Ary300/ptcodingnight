@@ -47,6 +47,11 @@ export interface UserMenuProps {
    * is a join-code seat with no account behind it, and the menu says so.
    */
   readonly accountKnown?: boolean;
+  /**
+   * Whether this session is in the practice arena. The arena has no teams and no sets, so the menu
+   * drops "My team" and its highlighted slot describes practice instead of promising a team.
+   */
+  readonly practice?: boolean;
   readonly onSignOut: () => void;
 }
 
@@ -65,6 +70,9 @@ const ITEMS = [
  * confirmed there is an account behind this session.
  */
 const ACCOUNT_ONLY_HREFS: ReadonlySet<string> = new Set(["/settings"]);
+
+/** Destinations that lead nowhere in the practice arena, which has no teams. */
+const NOT_IN_PRACTICE_HREFS: ReadonlySet<string> = new Set(["/team"]);
 
 /**
  * The account picture, at a given size.
@@ -124,15 +132,18 @@ export function UserMenu({
   userId = null,
   avatarVersion = null,
   accountKnown = false,
+  practice = false,
   onSignOut,
 }: UserMenuProps) {
   // Practice guests are "Guest 6471" in the database and just "Guest" on screen.
   const name = shownName(displayName);
   const [open, setOpen] = useState(false);
   const hasAccount = userId !== null;
-  const items: readonly { readonly href: string; readonly label: string }[] = hasAccount
-    ? ITEMS
-    : ITEMS.filter((item) => !ACCOUNT_ONLY_HREFS.has(item.href));
+  const items: readonly { readonly href: string; readonly label: string }[] = ITEMS.filter(
+    (item) =>
+      (hasAccount || !ACCOUNT_ONLY_HREFS.has(item.href)) &&
+      !(practice && NOT_IN_PRACTICE_HREFS.has(item.href)),
+  );
   /*
     Where the phone sheet's top edge sits, in viewport pixels — null on `sm` and up, where the
     panel is the ordinary anchored dropdown.
@@ -303,7 +314,16 @@ export function UserMenu({
             The two lines are still distinguished — by weight, which costs no contrast.
           */}
           <div className="bg-panther px-3.5 py-3 text-paper">
-            {teamName === null ? (
+            {practice ? (
+              <>
+                <span className="block font-semibold" style={{ fontSize: "var(--text-sm)" }}>
+                  Practice problems
+                </span>
+                <span className="block" style={{ fontSize: "var(--text-xs)" }}>
+                  Not scored
+                </span>
+              </>
+            ) : teamName === null ? (
               <>
                 <span className="block font-semibold" style={{ fontSize: "var(--text-sm)" }}>
                   Not on a team yet
@@ -383,7 +403,7 @@ export function UserMenu({
             prose and not an item (`aria-required-children` again). Only once the session read
             has confirmed the seat has no account; before that the absence is "not loaded yet".
           */}
-          {accountKnown && !hasAccount && (
+          {accountKnown && !hasAccount && !practice && (
             <p
               className="border-t border-rule-hair px-3.5 py-2.5 text-ink/60"
               style={{ fontSize: "var(--text-xs)" }}
