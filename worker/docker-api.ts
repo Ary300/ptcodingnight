@@ -78,6 +78,12 @@ export interface ContainerExitState {
   readonly oomKilled: boolean;
   readonly startedAt: string;
   readonly finishedAt: string;
+  /**
+   * `State.Status`. "removing" is the one the judge acts on: `docker rm -f` marks a container for
+   * removal BEFORE it kills it, so a container somebody else removed reads as a clean exit with
+   * this status in the moment between its client returning and the removal completing.
+   */
+  readonly status: string;
 }
 
 /**
@@ -101,10 +107,11 @@ export function parseExitState(body: string): ContainerExitState | null {
   if (typeof doc !== "object" || doc === null) return null;
   const state = (doc as { State?: unknown }).State;
   if (typeof state !== "object" || state === null) return null;
-  const { OOMKilled, StartedAt, FinishedAt } = state as Record<string, unknown>;
+  const { OOMKilled, StartedAt, FinishedAt, Status } = state as Record<string, unknown>;
   if (typeof OOMKilled !== "boolean") return null;
   if (typeof StartedAt !== "string" || typeof FinishedAt !== "string") return null;
-  return { oomKilled: OOMKilled, startedAt: StartedAt, finishedAt: FinishedAt };
+  if (typeof Status !== "string") return null;
+  return { oomKilled: OOMKilled, startedAt: StartedAt, finishedAt: FinishedAt, status: Status };
 }
 
 /**

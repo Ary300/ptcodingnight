@@ -629,7 +629,7 @@ async function runSingleTest(options: {
     const retryInput = options.inputText;
     await placeInput(inputDir, ordinal, retryInput);
 
-    await runInContainer({
+    const container = await runInContainer({
       image,
       argv: ["/bin/sh", "/in/driver.sh"],
       sourceDir,
@@ -670,6 +670,9 @@ async function runSingleTest(options: {
       stdin: doorbellFor(ordinal),
     });
 
+    // A container the judge lost says nothing about the program; the caller reports IE.
+    if (container.infrastructureFailure) return container;
+
     const outcome = await readBatchOutcome(resultDir, ordinal, cap);
     if (outcome === null) return null;
 
@@ -685,6 +688,7 @@ async function runSingleTest(options: {
       // A retry that produced a readable `.meta` did not blow the disk budget — the watchdog
       // kills the container before the driver can finish writing one.
       diskExceeded: false,
+      infrastructureFailure: false,
     };
   } finally {
     /**
@@ -827,6 +831,24 @@ export async function judge(
     );
   };
 
+  /**
+   * The judge lost a container, so nothing read from it is evidence about the program: IE, which
+   * the worker requeues (worker/index.ts) and never shows a student as a failure. Reading the
+   * wreckage instead is how a worker shutdown recorded a TLE submission as RE.
+   */
+  const containerLost = (stage: "build" | "run" | "retry", ordinal?: number): JudgeResult => {
+    console.warn(
+      JSON.stringify({
+        level: "warn",
+        event: "judge.container_lost",
+        submissionId: job.submissionId,
+        stage,
+        ...(ordinal === undefined ? {} : { test: ordinal }),
+      }),
+    );
+    return withTimings(aggregate({ submissionId: job.submissionId, results: [], testCases: job.testCases }));
+  };
+
   try {
     await writeFile(path.join(sourceDir, variant.sourceFile), job.sourceCode, "utf8");    await writeFile(path.join(sourceDir, variant.sourceFile), job.sourceCode, "utf8");
 
@@ -873,9 +895,12 @@ export async function judge(
           noteFreshFallback("build");
           pooledCompile = await runInContainer({ ...freshCompileSpec, ...compileOptions });
         }
+        if (pooledCompile.infrastructureFailure) return containerLost("build");
         compile = pooledCompile;
       } else {
-        compile = await runInContainer({ ...freshCompileSpec, ...compileOptions });
+        const freshCompile = await runInContainer({ ...freshCompileSpec, ...compileOptions });
+        if (freshCompile.infrastructureFailure) return containerLost("build");
+        compile = freshCompile;
       }
 
       // The daemon's execution span ends at (roughly) this instant, so subtracting it recovers
@@ -1006,6 +1031,7 @@ export async function judge(
 
     // The container has exited; let any handover it triggered finish before reading results.
     await feed.drained();
+    if (batch.infrastructureFailure) return containerLost("run");
 
     // Clear every input the feeder may have left before any single-test retry starts. A batch
     // that died after a handover leaves the NEXT test's input in `/in`, and a retry container
@@ -1100,6 +1126,7 @@ export async function judge(
 
       // A retry runs a fresh container after the batch, so the run stage genuinely ends later.
       if (outcome === null) lastTestFinishedAtMs = stageClock();
+      if (retried?.infrastructureFailure === true) return containerLost("retry", ordinal);
 
       const run: ContainerRunResult =
         outcome === null
@@ -1116,6 +1143,8 @@ export async function judge(
               // not the judge failing. Carrying the flag through is what keeps it out of `IE` —
               // and `IE` is never shown to a student as a failure (CLAUDE.md).
               diskExceeded: batch.diskExceeded,
+              // Both containers ran to an exit of their own: checked above.
+              infrastructureFailure: false,
             })
           : {
               stdout: outcome.stdout,
@@ -1131,6 +1160,7 @@ export async function judge(
               outputTruncated: outcome.rawBytes > Buffer.byteLength(outcome.stdout, "utf8"),
               durationMs: timingCredible ? outcome.durationMs : batch.durationMs,
               wallMs: timingCredible ? outcome.durationMs : batch.durationMs,
+              infrastructureFailure: false,
             };
 
       let verdict: Verdict;

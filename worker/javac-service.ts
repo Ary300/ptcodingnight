@@ -303,6 +303,9 @@ export class JavacService {
         "run",
         "--rm",
         "--interactive",
+        // Signals aimed at the worker never reach a lane: not through this client's signal proxy,
+        // and not through the worker's process group (`detached` below). See worker/docker.ts.
+        "--sig-proxy=false",
         `--name=${lane.name}`,
         ...isolationArgs(limits),
         tmpfs("/work"),
@@ -319,7 +322,7 @@ export class JavacService {
         "-m",
         "ptcn.javacsvc/ptcn.javac.Service",
       ],
-      { stdio: ["pipe", "pipe", "pipe"] },
+      { stdio: ["pipe", "pipe", "pipe"], detached: true },
     );
     lane.child = child;
     lane.buffered = "";

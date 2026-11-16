@@ -233,6 +233,13 @@ export interface ContainerRunResult {
    * container instead of reading anything from this result.
    */
   readonly neverStarted?: boolean;
+  /**
+   * The judge, not the submission, lost this container: it is gone (somebody removed it), never
+   * started, or was still running when our `docker` client exited (the client was killed). Nothing
+   * a program does inside its container can cause any of these. The caller reports IE — never a
+   * verdict — so the job is rerun cleanly (see `isInfrastructureFailure`).
+   */
+  readonly infrastructureFailure: boolean;
 }
 
 /**
@@ -412,10 +419,16 @@ export async function runInContainer(options: ContainerRunOptions): Promise<Cont
 
   // A pre-created container is started and attached; anything else is created and started in one
   // `docker run`. Both attach stdin, stdout and stderr, and both return the container's exit code.
+  //
+  // `--sig-proxy=false`: a `docker run` client forwards every signal IT receives to the container.
+  // `docker start --attach` has no such switch and always forwards. Either way a SIGTERM aimed at
+  // the worker reached the student's program and killed it mid-test, and the judge then read
+  // the wreckage as a verdict (measured: a TLE submission recorded as RE). Hence also `detached`
+  // below, which keeps the client out of the worker's process group.
   const args =
     options.precreated === true
       ? ["start", "--attach", "--interactive", name]
-      : ["run", ...containerArgs(options)];
+      : ["run", "--sig-proxy=false", ...containerArgs(options)];
 
   const startedAt = Date.now();
 
@@ -427,7 +440,10 @@ export async function runInContainer(options: ContainerRunOptions): Promise<Cont
     truncated: boolean;
     diskExceeded: boolean;
   }>((resolve) => {
-    const child = spawn("docker", args, { stdio: ["pipe", "pipe", "pipe"] });
+    // Detached: its own process group, so a signal sent to the worker's group (Ctrl-C, or a
+    // supervisor signalling the group on shutdown) never reaches the client. The worker drains
+    // its in-flight jobs on SIGTERM, and the containers they are running must survive that.
+    const child = spawn("docker", args, { stdio: ["pipe", "pipe", "pipe"], detached: true });
 
     let stdout = "";
     let stderr = "";
@@ -565,6 +581,7 @@ export async function runInContainer(options: ContainerRunOptions): Promise<Cont
   // A container that never started has the zero time as its StartedAt.
   const neverStarted =
     options.precreated === true && (exit === null || exit.startedAt.startsWith("0001-"));
+  const infrastructureFailure = isInfrastructureFailure(exit);
 
   if (options.retire === undefined) await removeContainer(name);
   else options.retire(name);
@@ -580,7 +597,23 @@ export async function runInContainer(options: ContainerRunOptions): Promise<Cont
     wallMs,
     diskExceeded: result.diskExceeded,
     ...(neverStarted ? { neverStarted } : {}),
+    infrastructureFailure,
   };
+}
+
+/**
+ * Whether the container's own state says the judge lost it. See
+ * `ContainerRunResult.infrastructureFailure`.
+ *
+ * `null` is a container the daemon no longer has, and "removing" or "dead" one it is taking away:
+ * we never pass `--rm` and remove only after this check, so either is somebody else's removal. A
+ * zero StartedAt never ran. A zero FinishedAt after our client returned is still running, which
+ * means the client died rather than the container exiting.
+ */
+export function isInfrastructureFailure(exit: ContainerExitState | null): boolean {
+  if (exit === null) return true;
+  if (exit.status === "removing" || exit.status === "dead") return true;
+  return exit.startedAt.startsWith("0001-") || exit.finishedAt.startsWith("0001-");
 }
 
 /**
@@ -595,11 +628,16 @@ async function readExitState(name: string): Promise<ContainerExitState | null> {
     "inspect",
     name,
     "--format",
-    "{{.State.OOMKilled}}|{{.State.StartedAt}}|{{.State.FinishedAt}}",
+    "{{.State.OOMKilled}}|{{.State.StartedAt}}|{{.State.FinishedAt}}|{{.State.Status}}",
   ]);
   if (inspect.code !== 0) return null;
-  const [oom, started, finished] = inspect.stdout.trim().split("|");
-  return { oomKilled: oom === "true", startedAt: started ?? "", finishedAt: finished ?? "" };
+  const [oom, started, finished, status] = inspect.stdout.trim().split("|");
+  return {
+    oomKilled: oom === "true",
+    startedAt: started ?? "",
+    finishedAt: finished ?? "",
+    status: status ?? "",
+  };
 }
 
 /**

@@ -25,7 +25,12 @@ describe("parseExitState", () => {
       oomKilled: true,
       startedAt: "2026-11-15T20:00:00.123456789Z",
       finishedAt: "2026-11-15T20:00:01.5Z",
+      status: "exited",
     });
+  });
+
+  it("refuses a document with no Status, which is how a removal from outside is recognised", () => {
+    expect(parseExitState(doc({ OOMKilled: false, StartedAt: "a", FinishedAt: "b" }))).toBeNull();
   });
 
   it("refuses a document whose OOMKilled is missing, so the CLI is asked instead", () => {
