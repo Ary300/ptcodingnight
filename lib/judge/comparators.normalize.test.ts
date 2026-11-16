@@ -47,7 +47,7 @@ describe("normalize", () => {
     walk(path.join(root, "content", "problems"));
     expect(files.length).toBeGreaterThan(1000);
     for (const file of files) same(readFileSync(file, "utf8"));
-  });
+  }, 60_000); // Reads every expected output in fixtures and content: about 4 s alone, more beside the full suite.
 
   it("matches the definition on random strings of newlines, CRs, blanks and text", () => {
     const alphabet = ["\n", "\r", " ", "\t", "a", "b", "1", "\r\n", "  "];
