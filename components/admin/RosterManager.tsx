@@ -1086,7 +1086,10 @@ export function RosterManager({ contestId }: RosterManagerProps) {
             className="numeric text-ink/60"
             style={{ fontSize: "var(--text-sm)" }}
           >
-            {roster.teams.length}, max {roster.maxTeamSize}
+            {/* No "max": the cap only ever limited students joining by themselves, which no
+                longer exists, and an organizer may field a team of five. "5/4" beside such a
+                team read as an error on a roster that was right. */}
+            {roster.teams.length} {roster.teams.length === 1 ? "team" : "teams"}
           </span>
         }
       >
@@ -1180,7 +1183,8 @@ export function RosterManager({ contestId }: RosterManagerProps) {
                       className="numeric text-ink/60"
                       style={{ fontSize: "var(--text-xs)" }}
                     >
-                      {team.memberCount}/{team.maxTeamSize}, divisor{" "}
+                      {team.memberCount}{" "}
+                      {team.memberCount === 1 ? "member" : "members"}, divisor{" "}
                       {team.memberCount}
                     </span>
                   </span>
