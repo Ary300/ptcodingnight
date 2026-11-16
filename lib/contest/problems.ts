@@ -22,6 +22,7 @@ import {
   isProblemLive,
   isUnlocked,
 } from "@/lib/contest/gate";
+import { readHandWrittenStarters, resolveStarters } from "@/lib/contest/hand-written-starters";
 import { hostLimits } from "@/lib/contest/host";
 import { resolveTestDataPath } from "@/lib/contest/judge-job";
 import { problemStandingsFor } from "@/lib/contest/standings";
@@ -316,7 +317,7 @@ export async function getProblemDetail(
     assertUnlocked(opensAt, now, contestProblem.problem.slug);
   }
 
-  const [samples, scores, solvedIds, hintsTaken, signature] = await Promise.all([
+  const [samples, scores, solvedIds, hintsTaken, signature, handWritten] = await Promise.all([
     loadSamples(contestProblem.problem.id),
     scope.participantId === null
       ? Promise.resolve(new Map<string, { score: number; hintsTaken: number }>())
@@ -324,6 +325,8 @@ export async function getProblemDetail(
     solvedProblemIds(scope.participantId),
     countHints(scope.participantId, contestProblem.id),
     readProblemSignature(contestProblem.problem.id),
+    // Never rejects: a starter that cannot be read falls back, it does not fail the page.
+    readHandWrittenStarters(contestProblem.problem.slug),
   ]);
 
   return ProblemDetailSchema.parse({
@@ -348,10 +351,16 @@ export async function getProblemDetail(
     samples,
     hintsTaken,
     hintCost: hintCostFor(contestProblem.basePoints),
-    starters: startersFromStoredSignature(
-      signature,
+    // Per allowed language: the hand-written `content/problems/<slug>/starters/` file, then the
+    // starter generated from the signature, then nothing (the client's generic template).
+    starters: resolveStarters(
       contestProblem.problem.allowedLanguages,
-      contestProblem.problem.slug,
+      handWritten,
+      startersFromStoredSignature(
+        signature,
+        contestProblem.problem.allowedLanguages,
+        contestProblem.problem.slug,
+      ),
     ),
   });
 }

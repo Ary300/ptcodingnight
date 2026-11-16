@@ -50,3 +50,7 @@ Hackerrank:CF images for Frontend/
 
 # Output of scripts/measure-host.sh — timestamped, machine-specific, never source.
 measurements/
+
+# A test-only problem folder created and removed by tests/e2e/hand-written-starters.api.spec.ts.
+# Ignored so a run that dies before its cleanup cannot commit it.
+content/problems/e2e-*/
