@@ -270,6 +270,18 @@ export async function editSideActivity(
       select: { ...ROW_SELECT, teamId: true, team: { select: { name: true } } },
     });
     if (before === null || before.teamId !== teamId) throw new NotFoundError("Award");
+    // A puzzle's award is found again by its label when it is removed, which is what un-solves the
+    // puzzle so the team can earn it again. A renamed one would leave the solve behind for good.
+    if (
+      before.enteredBy === "puzzle" &&
+      input.label !== undefined &&
+      input.label !== before.label
+    ) {
+      throw new DomainError(
+        "CONFLICT",
+        "An award from a solved puzzle keeps its name. Change its points, or remove it and the puzzle opens again for that team.",
+      );
+    }
     // Renaming never moves a total, so only a change of points is held back by the freeze.
     if (input.points !== undefined && input.points !== before.points) {
       await assertBoardStaysStill(tx, contestId, before.enteredAt);

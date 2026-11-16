@@ -23,9 +23,20 @@ export interface AwardsLoaderProps {
   readonly contestName: string;
 }
 
+/** How often the open awards screen re-reads the itemised awards, for edits that leave totals alone. */
+const BREAKDOWN_REFRESH_MS = 15_000;
+
 export function AwardsLoader({ contestId, contestName }: AwardsLoaderProps) {
   const { standings, error } = useTeamStandings(contestId);
   const [breakdown, setBreakdown] = useState<ReadonlyMap<string, readonly SideActivityLine[]>>();
+
+  // A label-only edit, or two edits that net to the same total, leave every total unchanged, so the
+  // breakdown is also read again every BREAKDOWN_REFRESH_MS while this screen is open.
+  const [refreshTick, setRefreshTick] = useState(0);
+  useEffect(() => {
+    const timer = window.setInterval(() => setRefreshTick((tick) => tick + 1), BREAKDOWN_REFRESH_MS);
+    return () => window.clearInterval(timer);
+  }, []);
 
   // Changes exactly when a Puzzle total changes, which is when the breakdown is stale.
   const totalsKey =
@@ -62,7 +73,7 @@ export function AwardsLoader({ contestId, contestName }: AwardsLoaderProps) {
     return () => {
       cancelled = true;
     };
-  }, [contestId, totalsKey]);
+  }, [contestId, totalsKey, refreshTick]);
 
   if (standings === null) {
     return (
