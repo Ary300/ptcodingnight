@@ -133,8 +133,17 @@ function BoardPreview() {
         <span className="font-display font-bold" style={{ fontSize: "var(--text-sm)" }}>
           Team standings
         </span>
-        <span className="text-paper/85" style={{ fontSize: "var(--text-xs)" }}>
-          Live
+        {/*
+          "Example", never "Live". These rows are invented, and while a real contest ran the
+          homepage put a Live badge over them, which told a visitor that Panthers, Cubs and Night
+          Owls were the actual leaders. A badge may say Live only over real data.
+        */}
+        <span
+          data-board-preview-badge
+          className="text-paper/85"
+          style={{ fontSize: "var(--text-xs)" }}
+        >
+          Example
         </span>
       </div>
 
