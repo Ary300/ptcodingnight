@@ -177,7 +177,12 @@ export interface ProblemStanding {
   readonly contestProblemId: string;
   /** Best score across this participant's submissions — not the last, not the sum. */
   readonly score: number;
-  /** Rejected submissions before the problem was first scored above zero. */
+  /**
+   * Rejections (WA, TLE, MLE, RE; never CE or IE) sent before the submission that first reached
+   * this problem's best score. On a problem never scored above zero there is no such submission,
+   * and this is every rejection. On a scored problem, `penaltyMinutes` is this times the preset's
+   * per-rejection penalty. docs/SCORING.md §5.1.
+   */
   readonly rejectedCount: number;
   /** Penalty minutes actually charged. Zero when the problem was never scored. */
   readonly penaltyMinutes: number;

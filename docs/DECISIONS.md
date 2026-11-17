@@ -297,6 +297,8 @@ picks must be self-hosted.
 
 ## D12 — "Rejected submission" means non-`AC`, excluding `IE` (Phase 3)
 
+> **Superseded in part by D25 (2026-11-17):** `CE` no longer counts.
+
 **Ambiguous:** PRD §6.1 charges "5 minutes per rejected submission" without ever defining
 *rejected*.
 
@@ -315,6 +317,10 @@ Pinned in `lib/scoring/verdicts.ts` so it is decided in exactly one place.
 ---
 
 ## D13 — Penalty counts *every* rejection on a scored problem, including after (Phase 3)
+
+> **Superseded by D25 (2026-11-17).** The organizer chose the ICPC convention. The arithmetic in
+> the note below predicted `int-a` dropping to 5 on `int-m-a`; under the organizer's wording the
+> 120 is the cutoff and is not charged for itself, so it drops to 0.
 
 **Ambiguous — and this one changes results.** PRD §6.1: "5 minutes per rejected submission
 on a problem that is *eventually* scored above zero." It does not say whether rejections
@@ -534,3 +540,18 @@ The project directory is under `/Users`, which is shared out of the box.
 compile time**, inside the compile container, before any of the run-step reasoning applies.
 The compile step is a code-execution surface, not just a translation step. It runs under the
 same isolation flags for the same reason.
+
+---
+
+## D25 — Penalty counts only rejections before the first best submission, and never CE (2026-11-17)
+
+**Decided by the organizer**, after a live walkthrough where a student got AC for 100, then sent a
+wrong Python and two C++ compile errors to the same problem and finished with 15 penalty minutes.
+
+**Rule:** per problem, the cutoff is the first submission (by `submittedAt`, then submission id)
+whose score equals the problem's final best. Penalty is 5 minutes per `WA`, `TLE`, `MLE` or `RE`
+strictly before it, and nothing on a problem whose score is 0 after hints. `CE` and `IE` never
+count. Overrides and rejudges move the cutoff, because the engine replays effective revisions.
+
+Supersedes D13 and the `CE` half of D12. Full statement, examples and the golden-fixture changes
+are in `docs/SCORING.md` §5.1.

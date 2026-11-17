@@ -1248,7 +1248,9 @@ export const TeamPlayerProblemSchema = z.object({
   /** Best score across this player's submissions, after the hint deduction, floored at zero. */
   score: z.number().int().nonnegative(),
   /**
-   * Rejected submissions on this problem — Codeforces' red `-2`.
+   * Rejected submissions on this problem — Codeforces' red `-2`. Like Codeforces, only the ones
+   * before the solve: rejections after the first submission to reach the best score, and every
+   * compile error, are not counted (`ProblemStanding.rejectedCount`, docs/SCORING.md §5.1).
    *
    * NOT an attempt count, and must never be labelled one: a first-try accept is `0`, exactly the
    * same as never submitting. `score` is what separates those two.

@@ -184,7 +184,9 @@ before assignment.
 - **Partial credit:** test cases carry points. A participant's score for a problem is the best
   score any of their submissions achieved. This preserves the spreadsheet's "partially solved".
 - **Penalty:** 5 minutes per rejected submission on a problem that is *eventually* scored above
-  zero. Rejected submissions on never-scored problems cost nothing.
+  zero. Rejected submissions on never-scored problems cost nothing. *Organizer decision,
+  2026-11-17:* only rejections sent before the first submission that reached the problem's best
+  score count, and compile errors never count (`docs/SCORING.md` §5.1, `docs/DECISIONS.md` D25).
 - **Hints:** each hint taken on a group problem deducts 15% of that problem's base points. Hints
   are earned by solving CodingBat-style warmups — **2 warmups = 1 hint** — and the ledger is
   tracked by the platform, not by an organizer with a clipboard.

@@ -26,7 +26,14 @@ import { isAccepted, isRejection, isScorable } from "@/lib/scoring/verdicts";
 /** Per-problem intermediate state, before hints are applied. */
 interface ProblemAccumulator {
   bestScore: number;
+  /** Every rejection replayed so far on this problem, whenever it was sent. */
   rejections: number;
+  /**
+   * Rejections strictly before the submission that FIRST reached `bestScore`. Re-snapshotted
+   * every time the best rises, so after the replay it is the count before the first submission
+   * that reached the FINAL best — the only rejections Classic charges for (docs/SCORING.md §5.1).
+   */
+  rejectionsBeforeBest: number;
   firstScoredAtMs: number | null;
 }
 
@@ -36,7 +43,7 @@ type ScorableSubmissionRecord = SubmissionRecord & {
 };
 
 function emptyAccumulator(): ProblemAccumulator {
-  return { bestScore: 0, rejections: 0, firstScoredAtMs: null };
+  return { bestScore: 0, rejections: 0, rejectionsBeforeBest: 0, firstScoredAtMs: null };
 }
 
 /**
@@ -137,12 +144,17 @@ function scoreClassic(
     const id = submission.contestProblemId;
     const accumulator = byProblem.get(id) ?? emptyAccumulator();
 
-    if (isRejection(submission.verdict)) accumulator.rejections += 1;
-
+    // The best only rises STRICTLY, so the last time this branch runs for a problem is the
+    // submission that first reached its final best. A later equal score does not move it.
+    // The snapshot is taken before this submission's own verdict is counted: the cutoff is
+    // "strictly before", so a partial-credit WA that IS the best is not charged for itself.
     if (submission.score > accumulator.bestScore) {
       accumulator.bestScore = submission.score;
+      accumulator.rejectionsBeforeBest = accumulator.rejections;
       lastScoreIncreaseMs = submission.submittedAt.getTime();
     }
+
+    if (isRejection(submission.verdict)) accumulator.rejections += 1;
 
     if (submission.score > 0 && accumulator.firstScoredAtMs === null) {
       accumulator.firstScoredAtMs = submission.submittedAt.getTime();
@@ -173,12 +185,20 @@ function scoreClassic(
 
     const problemScore = Math.max(0, accumulator.bestScore - deduction);
 
-    // "5 minutes per rejected submission on a problem that is EVENTUALLY scored above zero.
-    // Rejected submissions on never-scored problems cost nothing." The condition is on the
-    // problem's final score, which is why penalty cannot be accumulated incrementally
-    // during the replay above — it is not knowable until the whole log has been read.
+    // Organizer decision, 2026-11-17 (docs/SCORING.md §5.1): 5 minutes per rejection sent
+    // BEFORE the submission that first reached this problem's final best score, and only if the
+    // problem is scored above zero after hints. Rejections after that submission cost nothing;
+    // CE never counts (`isRejection`). Both conditions depend on the FINAL best, which is why
+    // penalty cannot be charged incrementally during the replay above — it is not knowable until
+    // the whole log has been read.
+    //
+    // `rejectedCount` is the number that penalty is charged on, so `penaltyMinutes` is always
+    // `rejectedCount * 5` on a scored problem. A problem never scored above zero has no cutoff
+    // submission; there it reports every rejection, and charges none.
+    const rejectedCount =
+      accumulator.bestScore > 0 ? accumulator.rejectionsBeforeBest : accumulator.rejections;
     const problemPenalty =
-      problemScore > 0 ? accumulator.rejections * CLASSIC_PRESET.penaltyMinutesPerRejection : 0;
+      problemScore > 0 ? rejectedCount * CLASSIC_PRESET.penaltyMinutesPerRejection : 0;
 
     score += problemScore;
     penaltyMinutes += problemPenalty;
@@ -186,7 +206,7 @@ function scoreClassic(
     problems.push({
       contestProblemId,
       score: problemScore,
-      rejectedCount: accumulator.rejections,
+      rejectedCount,
       penaltyMinutes: problemPenalty,
       hintsTaken,
       hintDeduction: deduction,
@@ -222,7 +242,8 @@ function scoreIcpc(
       }
     } else if (isRejection(submission.verdict) && !alreadySolved) {
       // Attempts after the solve are free — under binary scoring there is nothing left to
-      // gain, so they cannot be attempts "on the way to" the result.
+      // gain, so they cannot be attempts "on the way to" the result. This is the same cutoff
+      // Classic uses, because the first AC is the first submission that reached the final best.
       accumulator.rejections += 1;
     }
 

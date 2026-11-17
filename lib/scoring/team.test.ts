@@ -217,7 +217,7 @@ describe("group problems use one team event timeline", () => {
   it("charges each teammate's Classic rejection once when the team eventually scores", () => {
     const standings = runEvents([
       submission("a1-wa", "a1", 5, "WA", 0),
-      submission("a2-ce", "a2", 6, "CE", 0),
+      submission("a2-re", "a2", 6, "RE", 0),
       submission("a2-ac", "a2", 10, "AC", 100),
     ]);
     const alpha = standings.find((team) => team.teamId === "alpha");
@@ -226,6 +226,30 @@ describe("group problems use one team event timeline", () => {
     // Group penalties are a team fact, just like group points. They are not attributed to an
     // arbitrary player's individual contribution row.
     expect(alpha?.players.map((player) => player.penaltyMinutes)).toEqual([0, 0]);
+  });
+
+  it("charges a team nothing for a teammate's compile error (organizer decision, 2026-11-17)", () => {
+    // Before 2026-11-17 this log cost 10: the CE counted as a rejection.
+    const standings = runEvents([
+      submission("a1-wa", "a1", 5, "WA", 0),
+      submission("a2-ce", "a2", 6, "CE", 0),
+      submission("a2-ac", "a2", 10, "AC", 100),
+    ]);
+
+    expect(standings.find((team) => team.teamId === "alpha")?.penaltyMinutes).toBe(5);
+  });
+
+  it("charges a team nothing for a teammate's wrong answer after the team's solve", () => {
+    // The cutoff is the TEAM's first submission to reach the best, whoever sent it. a2 never
+    // solved it personally, but the team already had, so a2's later attempts are free.
+    const standings = runEvents([
+      submission("a1-wa", "a1", 5, "WA", 0),
+      submission("a1-ac", "a1", 10, "AC", 100),
+      submission("a2-wa", "a2", 20, "WA", 0),
+      submission("a2-tle", "a2", 25, "TLE", 0),
+    ]);
+
+    expect(standings.find((team) => team.teamId === "alpha")?.penaltyMinutes).toBe(5);
   });
 
   it("applies ICPC's post-solve rule to the team, not separately to each teammate", () => {
@@ -314,6 +338,9 @@ describe("config variants", () => {
         expect(got.playerPoolPoints, `${name}/${want.teamId} pool`).toBe(want.playerPoolPoints);
         expect(got.groupPoints, `${name}/${want.teamId} group`).toBe(want.groupPoints);
         expect(got.rank, `${name}/${want.teamId} rank`).toBe(want.rank);
+        expect(got.penaltyMinutes, `${name}/${want.teamId} penaltyMinutes`).toBe(
+          want.penaltyMinutes,
+        );
       }
     });
   }

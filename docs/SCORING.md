@@ -156,6 +156,73 @@ Any remaining tie is **displayed as a genuine tie**, never broken arbitrarily. T
 equally well on every tiebreaker did equally well, and inventing a winner would be a lie the
 projector tells the room.
 
+The team penalty in key 2 is the sum of each member's individual penalty plus the team's penalty
+on the group problem, which is replayed as one attempt log for the whole team.
+
+### 5.1 Penalty minutes
+
+**Organizer decision, 2026-11-17.** Penalty counts only the wrong attempts made before the student
+solved the problem, and compile errors never count. It replaced the literal PRD §6.3 reading
+(every rejection on a problem eventually scored, CE included; `docs/DECISIONS.md` D12 and D13).
+In the live walkthrough a student got AC for 100, then sent a wrong Python and two C++ compile
+errors to the same problem, and finished with 15 penalty minutes. Under this rule that is 0.
+
+For each problem, per student (or per team, on the group problem):
+
+1. Replay that problem's submissions oldest first, by `submittedAt`, with the submission id
+   breaking a same-instant tie.
+2. The **cutoff** is the first submission whose score equals the problem's final best score.
+   A later submission that only equals the best does not move it.
+3. A **rejection** is a verdict of `WA`, `TLE`, `MLE` or `RE`. A `WA` that earned partial points
+   is still a rejection. `CE` and `IE` are never rejections.
+4. Penalty is **5 minutes per rejection strictly before the cutoff**. The cutoff submission is
+   never charged for itself, even when it is a partial-credit `WA`. Rejections after it are free.
+5. A problem whose score is 0 after hints costs nothing, whatever was sent.
+
+There is no time-to-solve component; penalty is purely a count of rejections. The time of the last
+score-increasing submission is the separate third ranking key and did not change.
+
+Overrides and rejudges are already in the log as revisions of a submission, and the engine picks
+each submission's effective revision before any of the above runs. So an override that raises an
+earlier submission to the best score moves the cutoff earlier, an override that takes the cutoff
+submission down moves it later, and the frozen board, which never saw a post-freeze override,
+keeps the cutoff it had.
+
+| Log for one problem | Penalty |
+|---|---|
+| AC, then WA, then CE | 0 |
+| WA, then AC | 5 |
+| CE, then AC | 0 |
+| WA, partial 50, WA, then 100 | 15 (three rejections before the first 100) |
+| WA, then 100, then WA | 5 |
+| WA, TLE, RE, never scored | 0 |
+| partial 120, then partial 80 | 0 (the 120 is the cutoff) |
+
+The per-problem `rejectedCount` shown on the board is the number charged for, so a scored problem
+always shows `penaltyMinutes = rejectedCount × 5`. On a problem never scored there is no cutoff, and
+it shows every rejection while charging none.
+
+The ICPC preset already stopped counting at the first `AC`, which is its first submission to reach
+the final best, so the cutoff there is unchanged. It drops `CE` too, as ICPC itself does.
+
+**What it changed in the golden contest** (`fixtures/expected-standings.json`). No score and no
+rank moved.
+
+| Player | Problem | Log | Before | After | Why |
+|---|---|---|---|---|---|
+| `int-a` | `int-m-a` | WA 120, then WA 80 | 10 | 0 | the 120 is the cutoff and the 80 came after it |
+| `int-c` | `int-h-c` | WA 150 alone | 5 | 0 | the only submission is the cutoff |
+| `int-d` | `int-m-d` | CE, then AC | 5 | 0 | CE is not a rejection |
+| `adv-d` | `adv-m-d` | WA 50 alone | 5 | 0 | the only submission is the cutoff |
+
+Totals: `int-a` 15 to 5, `int-c` 5 to 0, `int-d` 5 to 0, `adv-d` 15 to 10. `int-b` and `int-d` now
+tie on 300 points and 0 penalty, and `int-b` still ranks ahead on the earlier last score increase
+(18:35 against 19:05).
+
+The team fixture's `penaltyMinutes` of 0 for both teams was already written for this reading
+(`pan-2` and `cub-1` each have one partial WA that is their best) and was never asserted. The
+config-variant test now asserts it.
+
 ---
 
 ## 6. Fixture variants
