@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { submissionsClosedAt } from "@/lib/contest/board-freeze-copy";
 import { formatEventTime } from "@/lib/contest/event-time";
 
 import {
@@ -14,6 +15,7 @@ import { CrestWatermark } from "./CrestWatermark";
 import { DivisionTabs } from "./DivisionTabs";
 import { FrozenPlate } from "./FrozenPlate";
 import styles from "./leaderboard.module.css";
+import { serverNow } from "./server-clock";
 import { StandingsBoard } from "./StandingsBoard";
 import { useReducedMotion } from "./useReducedMotion";
 import { useRevealSequence, isCrowned, isFrozenLook } from "./useRevealSequence";
@@ -111,6 +113,7 @@ export function ProjectorScreen({ contestId }: ProjectorScreenProps) {
                 lifting={phase === "lifting"}
                 liftMs={timings.plateLiftMs}
                 asOfLabel={timeOfDay(standings.asOf)}
+                submissionsClosed={submissionsClosedAt({ endsAt: standings.endsAt, isPractice: false }, serverNow())}
               />
             ) : null}
           </div>

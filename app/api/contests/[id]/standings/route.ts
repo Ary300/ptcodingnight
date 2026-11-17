@@ -3,6 +3,7 @@ import type { NextResponse } from "next/server";
 import { ContestIdParamsSchema, handle, jsonOkRevalidated, readParams } from "@/lib/contest/http";
 import { getStandings, reconcileClockFromBoard } from "@/lib/contest/standings";
 import { boardViewerFromRequest } from "@/lib/contest/viewer";
+import { standingsForViewer } from "@/lib/contest/standings-visibility";
 
 /**
  * `GET /api/contests/{id}/standings` — the leaderboard.
@@ -29,6 +30,8 @@ export async function GET(
     // window says the contest should have started or ended, the poll makes it true.
     await reconcileClockFromBoard(id, now);
 
-    return jsonOkRevalidated(request, await getStandings(id, viewer, now));
+    // A student reads this board without its rows: individual scores are shown only inside the
+    // student's own team (`standingsForViewer`). The projector and organizers are unchanged.
+    return jsonOkRevalidated(request, standingsForViewer(await getStandings(id, viewer, now), viewer));
   });
 }

@@ -60,6 +60,12 @@ export interface UseTeamStandingsOptions {
    * room the live scores through a freeze. Awards and the console leave it off and see through it.
    */
   readonly publicView?: boolean;
+  /**
+   * False means do not poll at all. A null id already means "whichever contest is running", so a
+   * caller that has no contest to ask about yet (the lobby, before the session names one, or the
+   * practice arena, which has no team board) needs a separate way to say "nothing".
+   */
+  readonly enabled?: boolean;
 }
 
 /** Accepts the API envelope or a bare body, same as the individual board's reader. */
@@ -109,11 +115,13 @@ export function useTeamStandings(
   options: UseTeamStandingsOptions = {},
 ): UseTeamStandingsResult {
   const publicView = options.publicView === true;
+  const enabled = options.enabled !== false;
   const [standings, setStandings] = useState<TeamStandingsResponse | null>(null);
   const [source, setSource] = useState<TeamStandingsSource>("pending");
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!enabled) return undefined;
     let cancelled = false;
     let timer: number | null = null;
     let requestController: AbortController | null = null;
@@ -176,7 +184,7 @@ export function useTeamStandings(
       requestController?.abort();
       if (timer !== null) window.clearTimeout(timer);
     };
-  }, [contestId, publicView]);
+  }, [contestId, publicView, enabled]);
 
   return { standings, source, error };
 }

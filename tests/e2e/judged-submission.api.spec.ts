@@ -127,7 +127,10 @@ test.describe("judged submission (requires the worker and Docker)", () => {
     test.setTimeout(VERDICT_BUDGET_MS + 30_000);
     const live = liveProblem(seeded);
 
-    const before = await competitor.standings();
+    // The individual board as the room sees it. A competitor's own read of it carries no rows
+    // (individual scores are shown only inside the student's own team), so read the public view.
+    expect((await competitor.standings()).divisions.flatMap((division) => division.rows)).toEqual([]);
+    const before = await competitor.projectorStandings(true);
     const beforeScore =
       before.divisions
         .flatMap((division) => division.rows)
@@ -145,7 +148,7 @@ test.describe("judged submission (requires the worker and Docker)", () => {
     expect(judged.score).toBe(live.basePoints);
     expect(judged.runtimeMs).not.toBeNull();
 
-    const after = await competitor.standings();
+    const after = await competitor.projectorStandings(true);
     const afterRow = after.divisions
       .flatMap((division) => division.rows)
       .find((row) => row.displayName === "E2E Judged Competitor");

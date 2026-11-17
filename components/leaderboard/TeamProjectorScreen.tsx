@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { submissionsClosedAt } from "@/lib/contest/board-freeze-copy";
 import { formatEventTime } from "@/lib/contest/event-time";
 
 import { Countdown } from "./Countdown";
@@ -15,6 +16,7 @@ import {
 import { resolveTabId, teamTabsFor, teamsForTab } from "./team-tabs";
 import { FrozenPlate } from "./FrozenPlate";
 import styles from "./leaderboard.module.css";
+import { serverNow } from "./server-clock";
 import { rosterBlockRows } from "./projector-rows";
 import { TeamDivisionTabs } from "./TeamDivisionTabs";
 import { TeamStandingsBoard } from "./TeamStandingsBoard";
@@ -348,7 +350,12 @@ export function TeamProjectorScreen({
 
         <div className={styles.teamPlateBand}>
           {frozen && standings !== null && (
-            <FrozenPlate lifting={false} liftMs={0} asOfLabel={timeOfDay(standings.asOf)} />
+            <FrozenPlate
+              lifting={false}
+              liftMs={0}
+              asOfLabel={timeOfDay(standings.asOf)}
+              submissionsClosed={submissionsClosedAt(standings, serverNow())}
+            />
           )}
         </div>
 

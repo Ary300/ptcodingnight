@@ -1,7 +1,7 @@
 import type { ContestPhase, ContestPhaseName } from "@/components/contest/lobby/phase";
 import { prisma } from "@/lib/db";
 import { reconcileContestClock } from "@/lib/contest/contests";
-import { assertCanReadProblems, assertCanSubmit } from "@/lib/contest/gate";
+import { assertCanReadProblems, assertCanSubmit, isPublicBoardFrozen } from "@/lib/contest/gate";
 import { viewerFromCookies } from "@/lib/contest/viewer";
 
 /**
@@ -118,6 +118,8 @@ export async function loadContestPhase(): Promise<ContestPhase | null> {
     */
     teamSize: participant?.team?._count.members ?? null,
     setLabel: participant?.chosenSet?.label ?? null,
+    boardFrozen: isPublicBoardFrozen(contest, now),
+    freezeAt: contest.freezeAt?.toISOString() ?? null,
   };
 }
 

@@ -4,7 +4,10 @@ import { useCallback } from "react";
 
 import Link from "next/link";
 
+import { useTeamStandings } from "@/components/leaderboard";
+import { serverNow } from "@/components/leaderboard/server-clock";
 import { Button, Crumbs } from "@/components/ui";
+import { submissionsClosedAt } from "@/lib/contest/board-freeze-copy";
 
 import { contestApi } from "../data/backend";
 import { useParticipant } from "../data/participant";
@@ -15,8 +18,8 @@ import { PracticeProgressCard } from "./PracticeProgressCard";
 import { PreStartPanel } from "./PreStartPanel";
 import { ProblemBrowser } from "./ProblemBrowser";
 import { ProblemList } from "./ProblemList";
+import { MyTeamCard } from "./MyTeamCard";
 import { SignInRequired } from "./SignInRequired";
-import { StandingsCard } from "./StandingsCard";
 import type { ContestPhase } from "./phase";
 
 /**
@@ -69,23 +72,28 @@ export function LobbyView({ phase = null, viewerKind }: LobbyViewProps) {
     participant.status === "joined" ? participant.scopeKey : participant.status;
 
   /*
-    The practice arena never asks for standings. Its board is a column of other guests, all tied on
-    zero, and the arena's card is built from the problem list instead (`PracticeProgressCard`). Not
-    fetching it means no other guest's row reaches this lobby at all. The phase is a prop the page
-    keys this component on, so it cannot change under a mounted lobby.
+    The practice arena never asks for a board. Its card is built from the problem list instead
+    (`PracticeProgressCard`). The phase is a prop the page keys this component on, so it cannot
+    change under a mounted lobby.
   */
   const practiceArena = phase !== null && phase.isPractice;
 
   const loadProblems = useCallback(() => contestApi.listProblems(), []);
-  const loadStandings = useCallback(
-    () => (practiceArena ? Promise.resolve(null) : contestApi.getStandings()),
-    [practiceArena],
-  );
 
   // Assignment is authorization scope, not only a label. Passing it as an explicit resource key
-  // forces both reads to leave their pre-assignment snapshot behind when the session poll changes.
+  // forces the read to leave its pre-assignment snapshot behind when the session poll changes.
   const problems = useResource(loadProblems, assignmentKey);
-  const standings = useResource(loadStandings, assignmentKey);
+
+  /*
+    The student's own team, from the SIGNED-IN team board: the same response /team reads, frozen
+    for a student exactly as it is there. This replaced a ranked board of every individual in the
+    contest; individual scores are shown only inside the viewer's own team. The ended panel reads
+    the same poll, so a reveal changes its wording without a reload.
+  */
+  const boardContestId = participant.status === "joined" ? participant.participant.contestId : null;
+  const board = useTeamStandings(boardContestId, {
+    enabled: boardContestId !== null && !practiceArena && viewerKind !== "admin",
+  });
 
   // An organizer took the "View as a student" link and has no competitor identity to show. That
   // is not a sign-in failure, so it does not get the sign-in panel; it gets a true sentence and a
@@ -156,9 +164,8 @@ export function LobbyView({ phase = null, viewerKind }: LobbyViewProps) {
     /*
       "Checking your sign-in…" is replaced by the whole lobby in one client-side swap. The
       rise on the arriving grid makes that swap followable. TRANSFORM ONLY is load-bearing
-      here: StandingsCard inside is bg-ink full of text-paper/50-60, and a wrapper opacity
-      fade would drag all of it below its contrast floor mid-animation (the measured 4.16:1
-      failure).
+      here: a wrapper opacity fade would drag every muted line below its contrast floor
+      mid-animation (the measured 4.16:1 failure).
     */
     <div className="motion-swap-in grid gap-8 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
       <section className="min-w-0">
@@ -224,7 +231,11 @@ export function LobbyView({ phase = null, viewerKind }: LobbyViewProps) {
 
         {afterEnd && phase !== null && (
           <div className="mt-4">
-            <ContestEndedPanel phase={phase} />
+            <ContestEndedPanel
+              phase={phase}
+              boardFrozen={board.standings === null ? null : board.standings.frozen}
+              frozenAt={board.standings?.frozen === true ? board.standings.asOf : null}
+            />
           </div>
         )}
 
@@ -341,11 +352,16 @@ export function LobbyView({ phase = null, viewerKind }: LobbyViewProps) {
         {practiceArena && problems.status === "ready" && (
           <PracticeProgressCard problems={visibleProblems} />
         )}
-        {!practiceArena && standings.status === "ready" && standings.data !== null && (
-          <StandingsCard
-            standings={standings.data}
-            participantId={
-              participant.status === "joined" ? participant.participant.participantId : null
+        {!practiceArena && joined !== null && (
+          <MyTeamCard
+            standings={board.standings}
+            error={board.error}
+            participantId={joined.participantId}
+            submissionsClosed={
+              // The server's phase settles it on first paint; the poll catches a close that
+              // happens while the lobby is open.
+              afterEnd ||
+              (board.standings !== null && submissionsClosedAt(board.standings, serverNow()))
             }
           />
         )}
