@@ -26,7 +26,7 @@ output.
 
 ## Constraints
 
-- $1 \le n \le 1000$
+- $1 \le n \le 10^4$
 - $0 \le a_i \le 99$
 
 ## Example
