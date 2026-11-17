@@ -208,7 +208,8 @@ test.describe("Java, the IntelliJ reflexes that used to misfire", () => {
     await textarea.fill("System.out.println(x)");
     await textarea.evaluate((element) => (element as HTMLTextAreaElement).setSelectionRange(20, 20));
     await page.keyboard.press(`${mod}+Shift+Enter`);
-    await expect(textarea).toHaveValue("System.out.println(x);");
+    // The statement is finished, so the caret goes on to a new line.
+    await expect(textarea).toHaveValue("System.out.println(x);\n");
     await page.keyboard.press("Control+Shift+Enter");
     await page.waitForTimeout(300);
     expect(submissions).toEqual([]);
@@ -227,9 +228,11 @@ test.describe("Java, the IntelliJ reflexes that used to misfire", () => {
     await expect(textarea).toHaveValue("int n = 5;\nint x = n\n");
   });
 
-  test("fori: Tab fills the bound, the next Tab lands inside the loop", async ({ page }) => {
+  test("fori: Tab visits the index, then the bound, and the next Tab lands inside the loop", async ({ page }) => {
     const textarea = await openEmptyEditor(page, "Java 21");
     await page.keyboard.type("fori");
+    await page.keyboard.press("Tab");
+    // IntelliJ's order: the index first, then the bound.
     await page.keyboard.press("Tab");
     await page.keyboard.type("10");
     await page.keyboard.press("Tab");

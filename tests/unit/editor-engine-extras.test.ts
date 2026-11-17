@@ -344,10 +344,11 @@ describe("Move Statement", () => {
     expect(one("    if (x) {\n        a▮();\n    }", up)).toBe("    a▮();\n    if (x) {\n    }");
   });
 
-  it("moves a Python block and keeps a statement inside its own block", () => {
+  it("moves a Python block, and the first statement of a block up out of it, as PyCharm does", () => {
     const text = "x = 1▮\nfor i in r:\n    a = i\ny = 2";
     expect(one(text, down, PYTHON)).toBe("for i in r:\n    a = i\nx = 1▮\ny = 2");
-    expect(one("for i in r:\n    a▮ = i", up, PYTHON)).toBe("for i in r:\n    a▮ = i");
+    expect(one("for i in r:\n    a▮ = i", up, PYTHON)).toBe("a▮ = i\nfor i in r:");
+    expect(one("for i in a:\n    pr▮int(i)\n    x = 1", up, PYTHON)).toBe("pr▮int(i)\nfor i in a:\n    x = 1");
   });
 });
 

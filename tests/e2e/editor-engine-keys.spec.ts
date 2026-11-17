@@ -77,7 +77,8 @@ test.describe("Java keys", () => {
 
     await textarea.fill("        System.out.println(x");
     await page.keyboard.press("ControlOrMeta+Shift+Enter");
-    await expect(textarea).toHaveValue("        System.out.println(x);");
+    // The statement is finished, so the caret goes on to a new line at the same indent.
+    await expect(textarea).toHaveValue("        System.out.println(x);\n        ");
     // Still on the problem page with nothing judged: the chord is not the submit key.
     await expect(page.getByRole("heading", { level: 1, name: title })).toBeVisible();
     await expect(textarea).toBeFocused();

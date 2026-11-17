@@ -4,8 +4,8 @@
  * Unlike Move Line, the unit is a statement: a line, or a header with its whole block (braces in
  * Java and C++, the deeper-indented lines in Python), and it moves past the neighbouring statement
  * or block as a whole. In Java and C++ the first statement of a block moving up (or the last moving
- * down) leaves the block and takes the indent of the block's header. Python statements stay in
- * their block, since leaving would change what the code means.
+ * down) leaves the block and takes the indent of the block's header. In Python, as PyCharm does,
+ * the first statement of a block moving up leaves it above its header at the header's indent.
  */
 
 import { scanCode } from "./scan";
@@ -110,7 +110,10 @@ function pythonNeighbour(lines: Lines, unit: Unit, up: boolean): Neighbour {
     const prev = unit.first - 1;
     if (prev < 0) return null;
     if (blank(lines, prev)) return { kind: "swap", unit: { first: prev, last: prev } };
-    if (width(lines, prev) < own) return null;
+    if (width(lines, prev) < own) {
+      // The block's header: the statement leaves the block and goes above it, one level out.
+      return (lines.lines[prev] ?? "").trimEnd().endsWith(":") ? { kind: "leave", line: prev } : null;
+    }
     let first = prev;
     while (first > 0 && (blank(lines, first) || width(lines, first) > own)) first -= 1;
     return { kind: "swap", unit: { first, last: prev } };
