@@ -67,9 +67,31 @@ async function migrationsThrough(name: string): Promise<string[]> {
     .sort();
 }
 
+/**
+ * Prisma's own bookkeeping table, in the shape `migrate deploy` creates. One earlier migration
+ * reads it (it repairs only contests created before a named migration finished), so a replay
+ * without it fails on that file rather than on the one under test.
+ */
+const PRISMA_MIGRATIONS_TABLE = `
+CREATE TABLE "_prisma_migrations" (
+  "id" VARCHAR(36) PRIMARY KEY NOT NULL,
+  "checksum" VARCHAR(64) NOT NULL,
+  "finished_at" TIMESTAMPTZ,
+  "migration_name" VARCHAR(255) NOT NULL,
+  "logs" TEXT,
+  "rolled_back_at" TIMESTAMPTZ,
+  "started_at" TIMESTAMPTZ NOT NULL DEFAULT now(),
+  "applied_steps_count" INTEGER NOT NULL DEFAULT 0
+)`;
+
 async function apply(client: Client, name: string): Promise<void> {
   // The simple query protocol runs a multi-statement file as one batch, as `migrate deploy` does.
   await client.query(await readFile(join(MIGRATIONS, name, "migration.sql"), "utf8"));
+  await client.query(
+    `INSERT INTO "_prisma_migrations" ("id", "checksum", "finished_at", "migration_name", "applied_steps_count")
+     VALUES (gen_random_uuid()::text, 'replay', clock_timestamp(), $1, 1)`,
+    [name],
+  );
 }
 
 async function plant(client: Client): Promise<void> {
@@ -109,6 +131,7 @@ async function main(): Promise<number> {
     const db = new Client({ connectionString: urlFor(base, scratch) });
     await db.connect();
     try {
+      await db.query(PRISMA_MIGRATIONS_TABLE);
       const before = (await migrationsThrough(TARGET)).filter((name) => name !== TARGET);
       for (const name of before) await apply(db, name);
       console.log(`applied ${String(before.length)} migrations through ${before.at(-1) ?? "none"}`);
@@ -127,7 +150,7 @@ async function main(): Promise<number> {
         if (!ok) failures += 1;
         console.log(
           `${ok ? "PASS" : "FAIL"}  ${contest.id.padEnd(16)} ${contest.state.padEnd(9)} ` +
-            `5 -> ${String(got)} (expected ${String(contest.expected)}): ${contest.why}`,
+            `${String(contest.maxTeamSize)} -> ${String(got)} (expected ${String(contest.expected)}): ${contest.why}`,
         );
       }
 
