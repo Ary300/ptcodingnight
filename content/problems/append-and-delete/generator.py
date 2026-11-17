@@ -1,25 +1,29 @@
 """Append and Delete -- input generator.
 
 Usage: python3 generator.py <seed>
-       python3 generator.py lcp-parity | burn-line
+       python3 generator.py last-letter | no-prefix
 
 Deterministic per seed. Length grows with the seed, and seed % 6 picks the shape
-of the pair so the test set covers the decision boundaries (k exactly at the
-minimum cost, one press over it, either side of the burn-everything threshold
-|s| + |t|, identical strings, pure prefix relationships) rather than just
-uniform noise, where random k is almost always a comfortable Yes or No.
+of the pair so the test set covers the decision boundary (k exactly at the
+minimum cost, one press short of it, one over it, identical strings, pure prefix
+relationships) rather than just uniform noise, where random k is almost always
+a comfortable Yes or No. The rule is "at most k operations", so the minimum
+cost (|s| - p) + (|t| - p), with p the longest common prefix, is the only line
+that matters.
 
 Sizes are kept moderate for a casual contest: strings of at most 1,000 letters
 and k at most 10^5, so every value a solution computes is a small int.
 
 Where each test came from:
   01-03  hand-written samples (shown in the statement)
-  04-14  hand-written edge cases (single letters, pure prefix, parity, k far
-         past the burn line in 14)
+  04-14  hand-written edge cases (single letters, pure prefix both ways, k one
+         short of and exactly at the minimum cost, equal strings, a shared
+         suffix that a position-by-position comparison would trust, k far past
+         the cost in 14)
   15     seed 9     16  seed 16     17  seed 25     18  seed 32     19  seed 36
-  20     lcp-parity: 1,000-letter strings that differ only in the last letter,
-         k = |s| + |t| - 1 (one short of the burn line, wrong parity) -> No
-  21     burn-line: 1,000-letter strings with no common prefix,
+  20     last-letter: 1,000-letter strings that differ only in the last letter,
+         k = 1, one short of the cost of 2 -> No
+  21     no-prefix: 1,000-letter strings with no common prefix,
          k = |s| + |t| exactly -> Yes
 """
 
@@ -45,14 +49,14 @@ def build_pair(seed: int, n: int, rng: random.Random) -> tuple[str, str, int]:
     shape = seed % 6
 
     if shape == 0:
-        # Independent random strings, k anywhere up to a bit past the burn line.
+        # Independent random strings, k anywhere up to a little past |s| + |t|.
         s = rand_word(rng, rng.randint(1, n), alphabet)
         t = rand_word(rng, rng.randint(1, n), alphabet)
         k = rng.randint(1, len(s) + len(t) + 4)
         return s, t, k
 
     if shape == 1:
-        # Identical strings: minimum cost is zero, everything rides on parity.
+        # Identical strings: minimum cost is zero, so any k is enough.
         s = rand_word(rng, n, alphabet)
         k = rng.choice([1, 2, rng.randint(1, 2 * n + 2), 2 * n - 1, 2 * n])
         return s, s, max(1, k)
@@ -81,10 +85,14 @@ def build_pair(seed: int, n: int, rng: random.Random) -> tuple[str, str, int]:
         return s, t, k
 
     if shape == 4:
-        # k straddling the burn-everything threshold |s| + |t|.
+        # k straddling the true minimum cost, measured on the real common prefix.
         s = rand_word(rng, rng.randint(1, n), alphabet)
         t = rand_word(rng, rng.randint(1, n), alphabet)
-        k = max(1, len(s) + len(t) + rng.choice([-2, -1, 0, 1]))
+        p = 0
+        while p < min(len(s), len(t)) and s[p] == t[p]:
+            p += 1
+        cost = (len(s) - p) + (len(t) - p)
+        k = max(1, cost + rng.choice([-2, -1, 0, 1]))
         return s, t, k
 
     # shape == 5: enormous k, always Yes regardless of the strings.
@@ -95,11 +103,11 @@ def build_pair(seed: int, n: int, rng: random.Random) -> tuple[str, str, int]:
 
 def named_case(name: str) -> tuple[str, str, int]:
     """The two hand-designed full-size cases, 20 and 21."""
-    if name == "lcp-parity":
+    if name == "last-letter":
         s = "ab" * (MAX_LEN // 2)
         t = s[:-1] + "c"
-        return s, t, len(s) + len(t) - 1
-    if name == "burn-line":
+        return s, t, 1
+    if name == "no-prefix":
         s = "qr" * (MAX_LEN // 2)
         t = "st" * (MAX_LEN // 2)
         return s, t, len(s) + len(t)
