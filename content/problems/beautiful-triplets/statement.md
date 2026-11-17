@@ -29,7 +29,7 @@ $a_j - a_i = a_k - a_j = d$.
 
 ## Constraints
 
-- $1 \le n \le 1000$
+- $1 \le n \le 200$
 - $1 \le d \le 10^6$
 - $0 \le a_i \le 10^6$
 - $a_1 < a_2 < \dots < a_n$
