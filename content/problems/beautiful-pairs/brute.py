@@ -1,16 +1,16 @@
 """Beautiful Pairs -- brute force.
 
-Exhaustively enumerates every possible single change instead of reasoning
-about it: for each value currently present in b and each different
-replacement value in [1, 100], apply the change and recompute the matching
-from scratch. The matching size depends only on the value multisets, so which
+Exhaustively enumerates every possible choice instead of reasoning about it:
+leave b unchanged, or, for each value currently present in b and each
+different replacement value in [1, 100], apply the change and recompute the
+matching from scratch. The matching size depends only on the value multisets, so which
 position holds a given value is irrelevant and enumerating (old value,
 new value) covers every distinct change.
 
 The matching itself is recomputed per candidate as the sum over values of
 min(count_a, count_b'), with the counts rebuilt for each candidate. At most
 100 * 99 candidates, each O(100), so this passes even the maximum test, but
-it embodies none of the +1 / -1 case analysis the reference uses.
+it embodies none of the case analysis the reference uses.
 """
 
 import sys
@@ -35,7 +35,7 @@ def main() -> None:
     for value in b:
         count_b[value] += 1
 
-    best = -1
+    best = matching_size(count_a, count_b)
     for old in range(1, MAX_VALUE + 1):
         if count_b[old] == 0:
             continue
