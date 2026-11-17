@@ -14,13 +14,32 @@ Deterministic per argument tuple. Shapes:
   bounds    every coordinate pinned to 0, 1, max_coord-1, or max_coord
 
 Every shape guarantees 0 <= s < e <= max_coord.
+
+Bounds are sized for a casual contest: n <= 1000 and every coordinate
+<= 10^6, so the peak, every endpoint and the covered-minute total all fit a
+signed 32-bit int. Tests 01 and 02 are the hand-written samples. The rest
+were made with seed = 3997 + test number:
+
+  test  seed  n     max_coord  shape     what it exercises
+  03    4000  1     1000000    nested    single booking spanning [0, max]
+  04    4001  1000  1000000    allequal  every booking identical (duplicates)
+  05    4002  500   1000000    tiling    back-to-back chain, peak 1
+  06    4003  1000  1000000    reverse   input in decreasing start order
+  07    4004  800   100000     nested    russian-doll tower, peak = n
+  08    4005  100   20         random    tiny coordinates, heavy overlap
+  09    4006  1000  1000000    random    general case
+  10    4007  200   1000000    bounds    endpoints pinned to 0, 1, max-1, max
+  11    4008  1000  1000000    pyramid   all bookings share one moment
+  12    4009  1000  1000000    random    general case, largest n
+  13    4010  1000  1000       random    dense, many duplicate endpoints
+  14    4011  1000  1000000    tiling    long back-to-back chain, peak 1
 """
 
 import random
 import sys
 
-MAX_N = 100000
-MAX_COORD = 10**9
+MAX_N = 1000
+MAX_COORD = 10**6
 
 
 def one_interval(rng: random.Random, max_coord: int) -> tuple[int, int]:

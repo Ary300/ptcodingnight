@@ -8,14 +8,25 @@ all-equal prices, the unshared item first or last, zero overcharge, maximal
 overcharge, sorted and reverse-sorted receipts) and not just uniform noise.
 Every emitted input satisfies the published constraints, including the
 guarantee that the shared sum is even and that b is at least the fair charge.
+
+Sizes are kept moderate for a casual contest: at most 1,000 items, prices up
+to 10^4, and a charge up to 10^7, so every sum, charge and answer fits in a
+signed 32-bit int with plenty of room.
+
+Which seed made which test:
+  01, 02  hand-written samples (shown in statement.md)
+  03-07   hand-written edge cases (two items, all zero, b at its maximum,
+          all prices equal at the maximum)
+  08 = 30   09 = 25   10 = 44   11 = 51   12 = 16   13 = 17
+  14 = 40   15 = 99   16 = 21   17 = 14   18 = 84
 """
 
 import random
 import sys
 
-MAX_N = 100000
+MAX_N = 1000
 MAX_PRICE = 10000
-MAX_B = 10**9
+MAX_B = 10**7
 
 
 def choose_n(seed: int, rng: random.Random) -> int:

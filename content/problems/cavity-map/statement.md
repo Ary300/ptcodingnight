@@ -28,7 +28,7 @@ replaced by `X` and all other characters unchanged.
 
 ## Constraints
 
-- $1 \le n \le 500$
+- $1 \le n \le 100$
 - $1 \le d_{i,j} \le 9$
 
 ## Example

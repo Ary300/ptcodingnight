@@ -2,21 +2,37 @@
 
 Usage: python3 generator.py <seed>
 
-Deterministic per seed. Small seeds produce tiny boards; large seeds push n
-and m to the constraint ceiling. The seed also selects a shape so the test set
-covers degenerate cases (a one-score board, an all-equal board, a board with
-every score distinct, queries that all miss or all clear the board, boundary
-values 0 and 10^9) and not just uniform noise. The board is always emitted in
-non-increasing order and the queries in non-decreasing order, exactly as the
-statement guarantees.
+Deterministic per seed. Small seeds produce tiny boards; seeds of 32 and up
+reach the size cap of 1,000 scores on the board and 1,000 queries. The seed
+also selects a shape so the test set covers degenerate cases (a one-score
+board, an all-equal board, a board with every score distinct, queries that all
+miss or all clear the board, boundary values 0 and the score cap) and not just
+uniform noise. The board is always emitted in non-increasing order and the
+queries in non-decreasing order, exactly as the statement guarantees.
+
+Sizes are deliberately moderate for a casual contest: the largest test is
+about 13 KB, and a student who recounts the distinct scores for every query
+(O(n * m), one million steps) still finishes well inside the time limit.
+Generated scores stay at or below 10^6; the statement's 10^9 ceiling is
+exercised by the hand-written tests 04 and 09.
+
+Which seed made which test (tests 01-11 are hand-written):
+
+    12  seed 10   shape 2, every score distinct, n = 86
+    13  seed 27   shape 3, heavy duplication
+    14  seed 33   shape 1, one score repeated across the whole board
+    15  seed 36   shape 4, queries that often land exactly on board scores
+    16  seed 38   shape 6, full board, a handful of queries
+    17  seed 39   shape 7, tiny board, a flood of queries
+    18  seed 106  shape 2, every score distinct, n = 863 and m = 1,000
 """
 
 import random
 import sys
 
-MAX_N = 200000
-MAX_M = 200000
-MAX_SCORE = 10**9
+MAX_N = 1000
+MAX_M = 1000
+MAX_SCORE = 10**6
 
 
 def sizes(seed: int, rng: random.Random) -> tuple[int, int]:

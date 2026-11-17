@@ -29,9 +29,9 @@ wins, or `Gavin` if the second player wins.
 ## Constraints
 
 - $1 \le g \le 100$
-- $1 \le n \le 10^5$
-- The total number of tiles across all games is at most $2 \cdot 10^5$
-- $1 \le a_i \le 10^9$
+- $1 \le n \le 1000$
+- The total number of tiles across all games is at most $2000$
+- $1 \le a_i \le 10^6$
 - Within a single game, all tile values are distinct
 
 ## Example

@@ -8,6 +8,14 @@ palindromes (always funny), constructed funny strings that are NOT palindromes,
 near-funny strings broken at exactly one mirrored jump pair, monotone runs,
 alternating pairs, and uniform noise. Large seeds push every string to the
 length ceiling.
+
+The ceiling is 1,000 characters per string, so a full batch of 20 strings is
+about 20 KB. That keeps the large tests friendly for a casual contest while
+the shapes above still run long enough to hide a break deep in the middle.
+
+Seeds behind the committed tests (01-08 are hand-written):
+  09 <- 5     10 <- 11    11 <- 47    12 <- 123   13 <- 250
+  14 <- 401   15 <- 555   16 <- 777   17 <- 919   18 <- 939
 """
 
 import random
@@ -15,7 +23,7 @@ import string
 import sys
 
 MAX_Q = 20
-MAX_LEN = 100000
+MAX_LEN = 1000
 LO, HI = ord("a"), ord("z")
 
 

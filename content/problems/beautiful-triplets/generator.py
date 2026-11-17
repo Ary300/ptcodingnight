@@ -15,18 +15,22 @@ for the hand-written edge cases (a lone tree, a gap wider than the row).
 Which seed made which test: 04 = seed 3, 06 = 6, 09 = 9,
 10 = 13, 11 = 14, 12 = 16, 13 = 17, 14 = 18, 15 = 33, 16 = 40, 17 = 47, 18 = 49.
 01-03, 05, 07 and 08 are written by hand.
+
+Bounds are kept small for a casual contest: n <= 1000 and every value and d
+<= 10^6, so a + 2d stays far inside a signed 32-bit int and no program needs a
+64-bit type.
 """
 
 import random
 import sys
 
-MAX_N = 2000
-MAX_VALUE = 10**9
-MAX_D = 10**9
+MAX_N = 1000
+MAX_VALUE = 10**6
+MAX_D = 10**6
 
 
 def choose_n(seed: int) -> int:
-    """Grow with the seed: seed 1 -> 1 element, seed >= 45 -> the ceiling."""
+    """Grow with the seed: seed 1 -> 1 element, seed >= 32 -> the ceiling."""
     return max(1, min(MAX_N, seed * seed))
 
 
@@ -88,7 +92,7 @@ def build_case(seed: int, n: int, rng: random.Random) -> tuple[int, list[int]]:
     if shape == 4:
         # Decoy pairs: many gaps of exactly d, but each pair is fenced off so no
         # third element lands d beyond it. Blocks of (x, x + d) spaced > 2d apart.
-        d = rng.randint(1, 1000)
+        d = rng.randint(1, max(1, MAX_VALUE // (2 * max(n, 2))))
         values: list[int] = []
         x = rng.randint(0, 10 * d)
         while len(values) + 2 <= n and x + d <= MAX_VALUE:

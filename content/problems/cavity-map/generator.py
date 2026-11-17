@@ -3,22 +3,41 @@
 Usage: python3 generator.py <seed>
 
 Deterministic per seed. The seed picks both the grid side length (small seeds
-give tiny grids, large seeds reach the n = 500 ceiling) and the grid shape, so
+give tiny grids, large seeds reach the n = 100 ceiling) and the grid shape, so
 the test set covers degenerate and adversarial layouts, not just uniform
 noise: grids with no interior at all (n = 1, 2), a single constant digit,
 plateau grids drawn from two adjacent digits (equality everywhere, so
 strictness matters), sorted and reverse-sorted rows, and a lattice that packs
 in the maximum possible number of cavities.
+
+The ceiling is 100 so the largest grid is about 10 KB, a size a casual contest
+reads comfortably; every shape still appears at full size.
+
+Which seed made which test (tests 01-06 are written by hand: 01 and 02 are the
+statement's samples, 03 is n = 1, 04 is n = 2, 05 and 06 are n = 3):
+
+    07: seed 7  (n = 49,  constant digit)
+    08: seed 9  (n = 81,  rows ascending)
+    09: seed 10 (n = 100, rows descending)
+    10: seed 11 (n = 100, max-cavity lattice)
+    11: seed 8  (n = 64,  two-digit plateau)
+    12: seed 6  (n = 36,  uniform noise)
+    13: seed 12 (n = 100, uniform noise)
+    14: seed 14 (n = 100, two-digit plateau)
+    15: seed 17 (n = 100, max-cavity lattice)
+    16: seed 26 (n = 100, two-digit plateau)
+    17: seed 27 (n = 100, rows ascending)
+    18: seed 24 (n = 100, uniform noise)
 """
 
 import random
 import sys
 
-MAX_N = 500
+MAX_N = 100
 
 
 def choose_n(seed: int) -> int:
-    """Grow with the seed: seed 1 -> n = 1, seed >= 23 -> the ceiling."""
+    """Grow with the seed: seed 1 -> n = 1, seed >= 10 -> the ceiling."""
     return max(1, min(MAX_N, seed * seed))
 
 

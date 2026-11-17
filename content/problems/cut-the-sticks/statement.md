@@ -22,8 +22,8 @@ away and is not counted on later passes.
 
 ## Constraints
 
-- $1 \le n \le 200000$
-- $1 \le a_i \le 10^9$
+- $1 \le n \le 1000$
+- $1 \le a_i \le 10^6$
 
 ## Example
 

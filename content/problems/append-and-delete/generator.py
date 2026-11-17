@@ -1,23 +1,37 @@
 """Append and Delete -- input generator.
 
 Usage: python3 generator.py <seed>
+       python3 generator.py lcp-parity | burn-line
 
 Deterministic per seed. Length grows with the seed, and seed % 6 picks the shape
 of the pair so the test set covers the decision boundaries (k exactly at the
 minimum cost, one press over it, either side of the burn-everything threshold
 |s| + |t|, identical strings, pure prefix relationships) rather than just
 uniform noise, where random k is almost always a comfortable Yes or No.
+
+Sizes are kept moderate for a casual contest: strings of at most 1,000 letters
+and k at most 10^5, so every value a solution computes is a small int.
+
+Where each test came from:
+  01-03  hand-written samples (shown in the statement)
+  04-14  hand-written edge cases (single letters, pure prefix, parity, k far
+         past the burn line in 14)
+  15     seed 9     16  seed 16     17  seed 25     18  seed 32     19  seed 36
+  20     lcp-parity: 1,000-letter strings that differ only in the last letter,
+         k = |s| + |t| - 1 (one short of the burn line, wrong parity) -> No
+  21     burn-line: 1,000-letter strings with no common prefix,
+         k = |s| + |t| exactly -> Yes
 """
 
 import random
 import sys
 
-MAX_LEN = 10 ** 4
-MAX_K = 10 ** 9
+MAX_LEN = 10 ** 3
+MAX_K = 10 ** 5
 
 
 def choose_len(seed: int) -> int:
-    """Grow with the seed: small seeds tiny, seed >= 100 at the ceiling."""
+    """Grow with the seed: small seeds tiny, seed >= 32 at the ceiling."""
     return max(1, min(MAX_LEN, seed * seed))
 
 
@@ -79,11 +93,28 @@ def build_pair(seed: int, n: int, rng: random.Random) -> tuple[str, str, int]:
     return s, t, MAX_K
 
 
+def named_case(name: str) -> tuple[str, str, int]:
+    """The two hand-designed full-size cases, 20 and 21."""
+    if name == "lcp-parity":
+        s = "ab" * (MAX_LEN // 2)
+        t = s[:-1] + "c"
+        return s, t, len(s) + len(t) - 1
+    if name == "burn-line":
+        s = "qr" * (MAX_LEN // 2)
+        t = "st" * (MAX_LEN // 2)
+        return s, t, len(s) + len(t)
+    raise SystemExit(f"unknown case {name!r}")
+
+
 def main() -> None:
-    seed = int(sys.argv[1])
-    rng = random.Random(seed)
-    n = choose_len(seed)
-    s, t, k = build_pair(seed, n, rng)
+    arg = sys.argv[1]
+    if arg.isdigit():
+        seed = int(arg)
+        rng = random.Random(seed)
+        n = choose_len(seed)
+        s, t, k = build_pair(seed, n, rng)
+    else:
+        s, t, k = named_case(arg)
     assert 1 <= len(s) <= MAX_LEN and 1 <= len(t) <= MAX_LEN
     assert 1 <= k <= MAX_K
     assert s.islower() and t.islower()

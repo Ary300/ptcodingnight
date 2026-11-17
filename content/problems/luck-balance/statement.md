@@ -31,7 +31,7 @@ negative.
 
 ## Constraints
 
-- $1 \le n \le 10^5$
+- $1 \le n \le 1000$
 - $0 \le k \le n$
 - $1 \le L_i \le 10^4$
 - $T_i \in \{0, 1\}$

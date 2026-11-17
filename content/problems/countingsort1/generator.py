@@ -7,17 +7,31 @@ the constraint ceiling. The seed also picks the shape of the list so the test
 set covers degenerate cases (a single value, every entry identical, only the
 extremes 0 and 99, a fully sorted or reverse-sorted list, every value exactly
 once) and not just uniform noise.
+
+The ceiling is kept small on purpose (n <= 1000, about 3 KB of input): this is
+a casual contest, and a bigger list tests nothing a 1000-value list does not.
+
+Which seed made which test (tests 01-07 are hand-written, 01-02 are samples):
+  08  seed 9   n=81    only the extremes 0 and 99
+  09  seed 12  n=144   a narrow band of four values
+  10  seed 24  n=576   fully sorted, values cycling 0..99
+  11  seed 21  n=441   uniform noise
+  12  seed 27  n=729   one dominant value buried in noise
+  13  seed 60  n=1000  reverse sorted, at the ceiling
+  14  seed 70  n=1000  uniform noise, at the ceiling
+  15  seed 36  n=1000  every entry identical, at the ceiling
+  16  seed 41  n=1000  one dominant value buried in noise, at the ceiling
 """
 
 import random
 import sys
 
-MAX_N = 100000
+MAX_N = 1000
 MAX_VALUE = 99
 
 
 def choose_n(seed: int) -> int:
-    """Grow with the seed: seed 1 -> 1 value, seed >= 317 -> the ceiling."""
+    """Grow with the seed: seed 1 -> 1 value, seed >= 32 -> the ceiling."""
     return max(1, min(MAX_N, seed * seed))
 
 

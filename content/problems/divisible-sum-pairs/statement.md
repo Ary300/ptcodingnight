@@ -16,11 +16,9 @@ Print a single integer: the number of index pairs $(i, j)$ with $1 \le i < j \le
 
 ## Constraints
 
-- $2 \le n \le 200{,}000$
+- $2 \le n \le 1{,}000$
 - $1 \le k \le 100$
-- $1 \le t_i \le 1{,}000{,}000{,}000$ for every $i$
-
-The answer can exceed the range of a 32-bit integer, so Java solutions should use `long`.
+- $1 \le t_i \le 1{,}000{,}000$ for every $i$
 
 ## Example
 

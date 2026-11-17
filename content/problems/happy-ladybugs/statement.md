@@ -32,8 +32,8 @@ made happy and `NO` otherwise, one word per line.
 ## Constraints
 
 - $1 \le g \le 100$
-- $1 \le n \le 10^5$
-- The total number of cells across all boards in one input is at most $5 \times 10^5$
+- $1 \le n \le 3000$
+- The total number of cells across all boards in one input is at most $15000$
 - $b$ contains only the characters `A` through `Z` and `_`
 
 ## Example

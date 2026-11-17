@@ -31,7 +31,7 @@ person holds an even number. If no sequence of handoffs can make every count eve
 
 ## Constraints
 
-- $1 \le n \le 10^5$
+- $1 \le n \le 1000$
 - $1 \le B_i \le 1000$
 
 ## Example

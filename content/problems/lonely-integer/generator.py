@@ -2,22 +2,41 @@
 
 Usage: python3 generator.py <seed>
 
-Deterministic per seed. Small seeds produce tiny lists; large seeds push n to
-the constraint ceiling (n is always odd). The seed also selects a layout so
-the test set covers adversarial shapes (lonely value first or last, sorted and
-reverse-sorted input, matched pairs adjacent, pairs split across the halves,
-values clustered at the constraint extremes) and not just uniform noise.
+Deterministic per seed. Small seeds produce tiny lists; seeds >= 32 push n to
+the constraint ceiling of 999 (n is always odd). The seed also selects a
+layout so the test set covers adversarial shapes (lonely value first or last,
+sorted and reverse-sorted input, matched pairs adjacent, pairs split across
+the halves, values clustered at the constraint extremes) and not just uniform
+noise.
+
+The ceiling is kept moderate on purpose (n <= 999, values <= 10^6) for a
+casual contest: every value fits a 32-bit int, and a student who counts each
+value with a nested loop still finishes well inside the time limit.
+
+Which seed made which test:
+
+    tests/13  seed 10   n = 99   shape 2 (lonely value last)
+    tests/14  seed 23   n = 529  shape 7 (values hug 0 and 10^6)
+    tests/15  seed 100  n = 999  shape 4 (sorted descending)
+    tests/16  seed 203  n = 999  shape 3 (sorted ascending)
+    tests/17  seed 317  n = 999  shape 5 (matched pairs adjacent)
+    tests/18  seed 448  n = 999  shape 0 (fully shuffled)
+
+Tests 01-12 are written by hand (01 and 02 are the statement samples). Tests
+04, 09, 10 and 12 were rescaled into the 10^6 value range when the bounds
+shrank: every value v became v // 1000 (still distinct, so each test keeps its
+layout) and the old 10^9 maximum became 10^6.
 """
 
 import random
 import sys
 
-MAX_N = 100000
-MAX_VALUE = 10**9
+MAX_N = 1000
+MAX_VALUE = 10**6
 
 
 def choose_n(seed: int) -> int:
-    """Grow with the seed: seed 1 -> 1 entry, seed >= 317 -> the odd ceiling."""
+    """Grow with the seed: seed 1 -> 1 entry, seed >= 32 -> the odd ceiling 999."""
     n = max(1, min(MAX_N - 1, seed * seed))
     return n if n % 2 == 1 else n - 1
 

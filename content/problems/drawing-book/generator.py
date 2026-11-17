@@ -6,19 +6,30 @@ Sizing tiers (small seeds -> tiny inputs, large seeds -> constraint ceiling):
 
     seed <  10        n = seed, q = n                         (degenerate/tiny)
     seed <  1000      n up to 1000, q up to 50                (small)
-    seed <  100000    n up to 10^7, q up to 10^4              (medium)
-    seed >= 100000    n within 10 of 10^9, q = 10^5           (ceiling)
+    seed <  100000    n up to 5000, q up to 500               (medium)
+    seed >= 100000    n within 10 of 5000, q = 500            (ceiling)
+
+The ceiling is sized for a casual contest: every value fits comfortably in a
+32-bit int, and a student who simulates the flips one at a time for every
+query still finishes well inside the time limit.
 
 Every input always includes the interesting boundary pages: 1, n, and the two
 pages either side of the middle spread, so degenerate shapes are exercised even
 inside the random tiers.
+
+Tests 01 and 02 are the hand-written samples from the statement. The rest:
+
+    03 seed 1        04 seed 2        05 seed 4        06 seed 9
+    07 seed 137      08 seed 512      09 seed 999
+    10 seed 4321     11 seed 60000    12 seed 99999
+    13 seed 100000   14 seed 1000002   (n = 4999 odd, n = 5000 even)
 """
 
 import random
 import sys
 
-MAX_PAGES = 10 ** 9
-MAX_QUERIES = 10 ** 5
+MAX_PAGES = 5000
+MAX_QUERIES = 500
 
 
 def choose_size(rng: random.Random, seed: int) -> "tuple[int, int]":
@@ -29,8 +40,8 @@ def choose_size(rng: random.Random, seed: int) -> "tuple[int, int]":
         pages = rng.randint(1, 1000)
         return pages, rng.randint(1, 50)
     if seed < 100000:
-        pages = rng.randint(10 ** 4, 10 ** 7)
-        return pages, rng.randint(100, 10 ** 4)
+        pages = rng.randint(1000, MAX_PAGES)
+        return pages, rng.randint(100, MAX_QUERIES)
     pages = MAX_PAGES - rng.randint(0, 10)
     return pages, MAX_QUERIES
 

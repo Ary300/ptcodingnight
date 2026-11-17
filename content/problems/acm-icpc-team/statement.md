@@ -30,8 +30,8 @@ unordered pairs that know that maximum number of topics.
 
 ## Constraints
 
-- $2 \le n \le 300$
-- $1 \le m \le 300$
+- $2 \le n \le 120$
+- $1 \le m \le 120$
 - Each checklist has exactly $m$ characters, and every character is `0` or `1`.
 
 ## Example

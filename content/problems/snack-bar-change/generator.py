@@ -2,19 +2,22 @@
 
 Usage: python3 generator.py <seed>
 
-Deterministic per seed. Small seeds give one short game; larger seeds give up to five games
-at the 10^5 ceiling. Each game is drawn from one of several shapes so the test set covers
-lines that fail at the very front, lines that never fail, lines where only the greedy order
-of change survives (lots of 5s arriving after a mix of 1s and 2s), big floats that make a
-run of 5s serviceable, and lines made of a single kind of bill.
+Deterministic per seed. Seeds 3-4 give one short game, seeds 5-8 give up to three games of
+at most 500 students, seeds 9-11 give two to five games of 200 to 800 students, and seeds
+12-16 give five games at the 1,000-student ceiling. Tests 01 and 02 are the hand-written
+samples from the statement; test NN for NN >= 03 is `python3 generator.py NN`. Each game
+is drawn from one of several shapes so the test set covers lines that fail at the very
+front, lines that never fail, lines where only the greedy order of change survives (lots of
+5s arriving after a mix of 1s and 2s), big floats that make a run of 5s serviceable, and
+lines made of a single kind of bill.
 """
 
 import random
 import sys
 
 MAX_T = 5
-MAX_N = 100_000
-MAX_FLOAT = 100_000
+MAX_N = 1_000
+MAX_FLOAT = 1_000
 
 
 def choose_t_and_n(seed, rng):
@@ -23,7 +26,7 @@ def choose_t_and_n(seed, rng):
     if seed <= 8:
         return rng.randint(1, 3), rng.randint(20, 500)
     if seed <= 11:
-        return rng.randint(2, MAX_T), rng.randint(5_000, 40_000)
+        return rng.randint(2, MAX_T), rng.randint(200, 800)
     return MAX_T, MAX_N
 
 
@@ -44,7 +47,7 @@ def build_game(shape, n, rng):
         head = [rng.choice([1, 1, 1, 2]) for _ in range(n - tail)]
         return rng.randint(0, 5), rng.randint(0, 5), head + [5] * tail
     if shape == 4:
-        # Huge float: even a line of all 5s can be served for a while.
+        # Big float: even a line of mostly 5s can be served for a while.
         ones = rng.randint(0, MAX_FLOAT)
         twos = rng.randint(0, MAX_FLOAT)
         return ones, twos, [rng.choice([5, 5, 5, 2]) for _ in range(n)]

@@ -23,8 +23,8 @@ tallest letter in that word.
 ## Constraints
 
 - $1 \le h_j \le 20$ for every $j$
-- $1 \le q \le 500$
-- Each word has length between $1$ and $500$ and contains only characters `a`–`z`
+- $1 \le q \le 150$
+- Each word has length between $1$ and $200$ and contains only characters `a`–`z`
 
 ## Example
 

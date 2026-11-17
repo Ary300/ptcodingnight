@@ -36,8 +36,8 @@ from $1$ at the front of the line.
 ## Constraints
 
 - $1 \le t \le 5$
-- $1 \le n \le 10^5$
-- $0 \le p, q \le 10^5$
+- $1 \le n \le 1000$
+- $0 \le p, q \le 1000$
 - Each $b_i$ is $1$, $2$ or $5$.
 
 ## Example

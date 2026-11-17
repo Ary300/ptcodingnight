@@ -31,8 +31,8 @@ transformed into $1, 2, \dots, n$ by the operation, and `NO` otherwise.
 ## Constraints
 
 - $1 \le q \le 30$
-- $1 \le n \le 10^5$
-- The sum of $n$ over all shelves in one input does not exceed $3 \times 10^5$
+- $1 \le n \le 1000$
+- The sum of $n$ over all shelves in one input does not exceed $4000$
 - Each shelf is a permutation of $1$ through $n$: every integer in that range appears exactly once
 
 ## Example

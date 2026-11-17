@@ -14,7 +14,7 @@ Print a single integer: the minimum number of moves needed to travel from panel 
 
 ## Constraints
 
-- $2 \le n \le 200000$
+- $2 \le n \le 1000$
 - $p_i \in \{0, 1\}$ for every $i$
 - $p_1 = 0$ and $p_n = 0$ (the two ends are always safe)
 - No two taped panels are adjacent, so the walk is always possible

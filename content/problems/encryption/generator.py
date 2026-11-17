@@ -1,10 +1,26 @@
+"""Test generator for Encryption.
+
+Usage: python3 generator.py <seed>
+
+Which test came from where:
+  01, 02  the two statement samples, written by hand
+  03-06   hand-written edge cases: one-letter key and message, 20-letter keys
+          sorted forward and backward, all-equal keys, a max-length message
+          under a one-letter key (06)
+  07  seed 1     08  seed 3     09  seed 17    10  seed 42
+  11  seed 99    12  seed 250   13  seed 500   14  seed 777
+  15  seed 1000  16  seed 4242
+
+Sizes are kept casual on purpose: at most 50 secrets of at most 400 letters,
+so the largest input stays near 20 KB.
+"""
 import random
 import string
 import sys
 
-MAX_N = 100
+MAX_N = 50
 MAX_KEY = 20
-MAX_MSG = 2000
+MAX_MSG = 400
 
 LETTERS = string.ascii_lowercase
 

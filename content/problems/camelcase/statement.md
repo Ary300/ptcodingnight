@@ -23,7 +23,7 @@ Print a single integer: the number of words in $s$.
 
 ## Constraints
 
-- $1 \le |s| \le 10^5$
+- $1 \le |s| \le 10^4$
 - $s$ consists only of English letters (`a`-`z` and `A`-`Z`)
 - The first character of $s$ is a lowercase letter
 

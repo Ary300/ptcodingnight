@@ -4,26 +4,38 @@ Usage: python3 generator.py <seed>
 
 Deterministic per seed. Small seeds produce small inputs; large seeds push the
 input toward the constraint ceiling. Seeds divisible by 5 produce edge-case-only
-inputs (minimum bounds, maximum bounds, exact wraps, all-equal rows).
+inputs (minimum bounds, maximum bounds, exact wraps, all-equal rows). Seeds
+divisible by 7 (and not by 5) repeat one random row on every line.
+
+The ceiling is sized for a casual contest: at most 500 tables, at most 1,000
+seats and at most 5,000 slices, so even a slice-by-slice simulation finishes
+well inside the time limit and every value fits a 32-bit int.
+
+Which seed made which test (tests 01 and 02 are the hand-written samples):
+
+    03 seed 1      04 seed 5      05 seed 7      06 seed 42
+    07 seed 10     08 seed 123    09 seed 55     10 seed 777
+    11 seed 1000   12 seed 9999   13 seed 31337  14 seed 4242
+    15 seed 2012
 """
 
 import random
 import sys
 
-MAX_Q = 100000
-MAX_N = 10**9
-MAX_M = 10**9
+MAX_Q = 500
+MAX_N = 1000
+MAX_M = 5000
 
 
-def size_profile(seed: int) -> tuple[int, int]:
-    """Return (max_q, max_n) for this seed's size tier."""
+def size_profile(seed: int) -> tuple[int, int, int]:
+    """Return (max_q, max_n, max_m) for this seed's size tier."""
     if seed <= 5:
-        return 3, 10
+        return 3, 10, 30
     if seed <= 50:
-        return 40, 1000
+        return 40, 1000, 3000
     if seed <= 500:
-        return 2000, 10**6
-    return MAX_Q, MAX_N
+        return 200, MAX_N, MAX_M
+    return MAX_Q, MAX_N, MAX_M
 
 
 def edge_rows(max_n: int, max_m: int) -> list[tuple[int, int, int]]:
@@ -56,8 +68,7 @@ def random_row(rng: random.Random, max_n: int, max_m: int) -> tuple[int, int, in
 
 def build_rows(seed: int) -> list[tuple[int, int, int]]:
     rng = random.Random(seed * 7919 + 13)
-    max_q, max_n = size_profile(seed)
-    max_m = MAX_M if max_n >= 10**6 else max(1, max_n * 3)
+    max_q, max_n, max_m = size_profile(seed)
 
     pool = edge_rows(max_n, max_m)
 

@@ -21,7 +21,7 @@ such that $n + x = n \oplus x$.
 
 ## Constraints
 
-- $0 \le n \le 10^9$
+- $0 \le n \le 10^6$
 
 ## Example
 

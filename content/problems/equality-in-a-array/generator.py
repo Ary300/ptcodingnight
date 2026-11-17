@@ -11,6 +11,14 @@ Modes:
   bounds <seed> <n>                values drawn only from {1, 100}
   tie <seed> <n> <k>               two values each appearing k times, rest random
   outlier <seed> <n>               one value n-1 times plus a single different value
+
+Tests 14-18 were regenerated at a casual-contest size (n <= 1000, values in
+[1, 100]) with these exact calls:
+  14: random 14 800 1 100      every grade present, no dominant value
+  15: random 15 1000 1 3       only three grades, so the counts are large
+  16: tie 16 1000 200          two grades tie at 200 copies, the rest fewer
+  17: random 17 1000 1 100     the largest n, uniform over the full range
+  18: outlier 18 1000          999 copies of one grade and a single stray
 """
 
 import random

@@ -7,23 +7,44 @@ to the constraint ceiling. Each query's shape is drawn per seed so the test
 set covers adversarial cases (sums exactly on the threshold, exactly one
 unit short, extreme values, all-equal arrays, presorted arrays) and not just
 uniform noise.
+
+The ceilings are kept moderate on purpose: values stay at or below 10^6, so
+every sum fits comfortably in a 32-bit int, and the total n across one file
+is capped at MAX_TOTAL_N so the largest input stays under about 20 KB. A
+file with several queries therefore gets smaller queries; a single-query
+file can reach n = MAX_N.
+
+Seeds behind the committed tests (01-10 are hand-written edge cases, 01-02
+are the statement samples):
+
+    11  seed 3      4 queries, n up to 9
+    12  seed 7      8 queries, n up to 49
+    13  seed 12     3 queries, n up to 144
+    14  seed 25     6 queries, n up to 200 (total-n cap)
+    15  seed 58     9 queries, n up to 133 (total-n cap)
+    16  seed 77     8 queries, n up to 150 (total-n cap)
+    17  seed 149    10 queries, n up to 120 (total-n cap)
+    18  seed 1060   1 query at the ceiling, n = 1000, every sum exactly k
 """
 
 import random
 import sys
 
 MAX_Q = 10
-MAX_N = 10**4
-MAX_V = 10**9
+MAX_N = 1000
+MAX_TOTAL_N = 1200
+MAX_V = 10**6
 MAX_K = 2 * MAX_V
 
 
-def choose_n(seed: int, rng: random.Random) -> int:
+def choose_n(seed: int, q: int, rng: random.Random) -> int:
     """Grow with the seed: seed 1 -> a handful, seed >= 1000 -> always the
-    ceiling (so a large seed produces a guaranteed maximum-size input)."""
+    ceiling (so a large seed produces a guaranteed maximum-size input). The
+    ceiling is shared across the file's q queries so the file stays small."""
+    file_ceiling = max(1, min(MAX_N, MAX_TOTAL_N // q))
     if seed >= 1000:
-        return MAX_N
-    ceiling = max(1, min(MAX_N, seed * seed))
+        return file_ceiling
+    ceiling = max(1, min(file_ceiling, seed * seed))
     return rng.randint(1, ceiling)
 
 
@@ -88,7 +109,7 @@ def main() -> None:
     q = 1 + seed % MAX_Q
     lines = [str(q)]
     for _ in range(q):
-        n = choose_n(seed, rng)
+        n = choose_n(seed, q, rng)
         k, a, b = build_query(rng, n)
         assert 1 <= n <= MAX_N
         assert 0 <= k <= MAX_K

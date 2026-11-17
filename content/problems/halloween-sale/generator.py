@@ -7,15 +7,29 @@ seeds push q, p, d and b up to the constraint ceiling.  The seed also picks a
 shape per shopper so the generated data covers the degenerate cases: p == m
 (price never moves), d >= p (price drops to the floor immediately), b == 0
 (broke shopper) and b at the maximum (the division branch dominates).
+
+The ceilings are sized for a casual contest: b stays at or below 100,000, so a
+student who simulates one keychain at a time finishes every test quickly, and
+every count, price and running total fits comfortably in a 32-bit int.
+
+Which seed made which test:
+  01, 02  the two samples from the statement, written by hand
+  03      written by hand: a broke shopper at the smallest prices
+  04      written by hand: every ceiling at once (p, d and b at the maximum,
+          m at 1 and at p, and p == 1)
+  05      written by hand: b just below, at and just above a single price
+  06 = seed 1     07 = seed 2     08 = seed 4     09 = seed 9
+  10 = seed 17    11 = seed 33    12 = seed 58    13 = seed 95
+  14 = seed 140   15 = seed 500
 """
 
 import random
 import sys
 
 MAX_Q = 20
-MAX_P = 100000
-MAX_D = 100000
-MAX_B = 10**9
+MAX_P = 1000
+MAX_D = 1000
+MAX_B = 100000
 
 
 def scale(seed: int) -> float:

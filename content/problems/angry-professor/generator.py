@@ -3,14 +3,25 @@
 Usage: python3 generator.py <seed>
 
 Small seeds produce small inputs; large seeds push toward the constraint ceiling
-(T = 100, N = 1000, arrivals spanning the full [-60, 60] range).
+(T = 20, N = 500, arrivals spanning the full [-60, 60] range). The ceiling is kept
+moderate on purpose so the largest input stays under about 20 KB.
+
+Seeds behind the committed tests (01-08 are hand-written edge cases, 01-02 are the
+statement samples):
+
+    09  seed 3        tiny, a full roster that is entirely late
+    10  seed 42       small tier
+    11  seed 777      small tier
+    12  seed 5150     middle tier (10-20 sessions, N up to 150)
+    13  seed 123456   ceiling tier (20 sessions, N up to 500)
+    14  seed 999999   ceiling tier (20 sessions, N up to 500)
 """
 
 import random
 import sys
 
-MAX_T = 100
-MAX_N = 1000
+MAX_T = 20
+MAX_N = 500
 MIN_ARRIVAL = -60
 MAX_ARRIVAL = 60
 
@@ -22,7 +33,7 @@ def pick_scale(seed: int, rng: random.Random) -> tuple[int, int]:
     if seed < 1000:
         return rng.randint(2, 20), 60
     if seed < 100000:
-        return rng.randint(20, 60), 300
+        return rng.randint(10, 20), 150
     return MAX_T, MAX_N
 
 

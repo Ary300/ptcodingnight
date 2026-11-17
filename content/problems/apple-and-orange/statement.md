@@ -18,10 +18,10 @@ Two lines. Line 1 is the number of apples that landed on the tarp. Line 2 is the
 
 ## Constraints
 
-- $1 \le s \le t \le 10^7$
-- $1 \le a \le 10^7$ and $1 \le b \le 10^7$
-- $1 \le n \le 10^5$ and $1 \le m \le 10^5$
-- every offset is an integer in $[-10^7, 10^7]$
+- $1 \le s \le t \le 10^6$
+- $1 \le a \le 10^6$ and $1 \le b \le 10^6$
+- $1 \le n \le 1000$ and $1 \le m \le 1000$
+- every offset is an integer in $[-10^6, 10^6]$
 
 ## Example
 

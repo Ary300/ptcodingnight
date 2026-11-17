@@ -25,7 +25,7 @@ number of students counted across those days. If no spirit day met the goal, pri
 
 ## Constraints
 
-- $1 \le n \le 10^5$
+- $1 \le n \le 1000$
 - $1 \le g \le 5000$
 - $0 \le c_i \le 5000$
 

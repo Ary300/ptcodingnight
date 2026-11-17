@@ -1,12 +1,32 @@
 """Gemstones -- input generator.
 
-Usage: python3 generator.py <seed>
+Usage: python3 generator.py <seed> [--full]
 
 Deterministic per seed. Small seeds produce tiny trays; large seeds push n and
 the string lengths toward the constraint ceilings. The seed also selects the
 shape of the tray so the test set covers degenerate cases (one rock, identical
 rocks, disjoint alphabets, a single letter shared by everything, heavy
 repetition inside one string) and not just uniform noise.
+
+With --full, every rock is exactly MAX_LEN long and n is MAX_N, which is the
+largest input the constraints allow. Each rock is drawn from its own 15-letter
+alphabet: two letters chosen once for the whole tray are planted in every rock,
+and the other 13 vary, so the answer is exactly 2.
+
+The ceilings are sized for a casual contest: the largest tray is 100 rocks of
+150 letters, about 15 KB, and every answer is at most 26.
+
+Which command made which test:
+  01, 02   hand-written samples (shown in statement.md)
+  03       hand-written: one rock of one letter
+  04       hand-written: one rock, a pangram repeated
+  05       hand-written: two identical rocks, every letter distinct
+  06       seed 43        07  seed 44        08  seed 41
+  09, 10   hand-written: 100 one-letter rocks, all equal / cycling a..z
+  11       seed 39        12  seed 46        13  seed 6
+  14       seed 24        15  seed 48        16  seed 57
+  17       seed 63
+  18       seed 18 --full
 """
 
 import random
@@ -14,7 +34,7 @@ import string
 import sys
 
 MAX_N = 100
-MAX_LEN = 1000
+MAX_LEN = 150
 LETTERS = string.ascii_lowercase
 
 
@@ -61,7 +81,8 @@ def build_tray(seed: int, n: int, rng: random.Random) -> list[str]:
         rest = [c for c in LETTERS if c != shared]
         rocks = []
         for _ in range(n):
-            body = random_rock(rng, "".join(rng.sample(rest, 8)), max_len)
+            # One short of max_len, so planting the shared letter stays in bounds.
+            body = random_rock(rng, "".join(rng.sample(rest, 8)), max(1, max_len - 1))
             pos = rng.randint(0, len(body))
             rocks.append(body[:pos] + shared + body[pos:])
         return rocks
@@ -85,11 +106,29 @@ def build_tray(seed: int, n: int, rng: random.Random) -> list[str]:
     return rocks
 
 
+def full_tray(rng: random.Random) -> list[str]:
+    """Largest input: MAX_N rocks of exactly MAX_LEN letters, 2 shared letters."""
+    shared = rng.sample(LETTERS, 2)
+    rest = [c for c in LETTERS if c not in shared]
+    rocks = []
+    for _ in range(MAX_N):
+        alphabet = shared + rng.sample(rest, 13)
+        rock = [rng.choice(alphabet) for _ in range(MAX_LEN)]
+        for letter, pos in zip(shared, rng.sample(range(MAX_LEN), 2)):
+            rock[pos] = letter
+        rocks.append("".join(rock))
+    return rocks
+
+
 def main() -> None:
     seed = int(sys.argv[1])
     rng = random.Random(seed)
-    n = choose_n(seed, rng)
-    tray = build_tray(seed, n, rng)
+    if "--full" in sys.argv[2:]:
+        n = MAX_N
+        tray = full_tray(rng)
+    else:
+        n = choose_n(seed, rng)
+        tray = build_tray(seed, n, rng)
     assert len(tray) == n
     assert all(1 <= len(r) <= MAX_LEN for r in tray)
     assert all(all(c in LETTERS for c in r) for r in tray)

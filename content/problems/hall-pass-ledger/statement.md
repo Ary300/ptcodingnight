@@ -29,7 +29,7 @@ holds the name, a space, and the total number of minutes that student spent out.
 
 ## Constraints
 
-- $1 \le n \le 10^5$
+- $1 \le n \le 1000$
 - $1 \le c \le 1440$
 - $0 \le m_i \le c$ for every $i$
 - Each name has between $1$ and $12$ lowercase letters.

@@ -27,7 +27,8 @@ the string, and `NO` otherwise.
 ## Constraints
 
 - $1 \le q \le 20$
-- $1 \le |s| \le 10^5$ for every query string
+- $1 \le |s| \le 10^4$ for every query string
+- the total length of all query strings is at most $2 \times 10^4$
 - every string consists only of lowercase English letters `a` through `z`
 
 ## Example

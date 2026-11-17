@@ -1,9 +1,32 @@
+"""Test generator for Divisible Sum Pairs.
+
+Usage: python3 generator.py <seed>
+
+Which test came from where:
+  01, 02  the two samples, hand-written (shown in statement.md)
+  03      hand-written: n = 2, k = 100, no pair works
+  04      hand-written: five identical gears, k = 2, every pair works
+  05      hand-written: n = 2, k = 1, both gears at T_MAX
+  06      seed 7     k = 1, tight value range
+  07      seed 1     k = 100, every gear identical, answer 0
+  08      seed 3     every gear a multiple of k
+  09      seed 42    n = 347, k = 1, tight value range
+  10      seed 101   moderate n, every gear identical, answer 0
+  11      seed 555   moderate n, fully random
+  12      seed 1009  largest n, k = 100, only two remainder classes (50 and another)
+  13      seed 1238  largest n, k = 64, every gear a multiple of k
+  14      seed 1001  largest n, k = 1, every gear identical, every pair works
+
+Bounds are sized for a casual contest: n stays at most 1,000 so the
+obvious double loop over all pairs is fast, and tooth counts stay at most
+1,000,000 so every sum and the answer (at most 499,500) fit in a 32-bit int.
+"""
 import random
 import sys
 
-N_MIN, N_MAX = 2, 200000
+N_MIN, N_MAX = 2, 1000
 K_MIN, K_MAX = 1, 100
-T_MIN, T_MAX = 1, 1000000000
+T_MIN, T_MAX = 1, 1000000
 
 
 def choose_n(seed, rng):
@@ -13,8 +36,8 @@ def choose_n(seed, rng):
     if seed <= 99:
         return rng.randint(20, 400)
     if seed <= 999:
-        return rng.randint(1000, 30000)
-    return rng.randint(N_MAX - 500, N_MAX)
+        return rng.randint(400, 800)
+    return rng.randint(N_MAX - 50, N_MAX)
 
 
 def choose_k(seed, rng):
