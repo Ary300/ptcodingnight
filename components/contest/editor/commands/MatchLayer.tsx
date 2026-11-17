@@ -73,7 +73,11 @@ export const MatchLayer = forwardRef<HTMLPreElement, MatchLayerProps>(function M
           <mark
             key={index}
             data-current={piece.current ? "true" : undefined}
-            className={`rounded-[2px] text-transparent ${piece.current ? "bg-gold/55" : "bg-gold/25"}`}
+            // The current match is told apart by a gold ring as well as a stronger tint, because
+            // gold past 40% under paper text drops below 4.5:1 (55% measured 4.05:1).
+            className={`rounded-[2px] text-transparent ${
+              piece.current ? "bg-gold/40 shadow-[inset_0_0_0_1px_var(--color-gold)]" : "bg-gold/25"
+            }`}
           >
             {piece.value}
           </mark>
