@@ -697,7 +697,7 @@ export function CodeEditorSurface({
             // Shorter on a phone: 22rem of editor plus the statement above it is a lot of
             // scrolling to reach Submit, and the box is resizable anyway. In full screen the
             // band's height is the layout's decision, so the resize handle and the caps go.
-            className={`relative block w-full overflow-auto bg-transparent p-3 font-mono text-transparent caret-gold outline-none selection:bg-paper/25 disabled:cursor-not-allowed ${
+            className={`relative block w-full overflow-auto bg-transparent p-3 font-mono text-transparent caret-gold outline-none focus-visible:outline-1! focus-visible:outline-gold/45! focus-visible:outline-offset-[-1px]! selection:bg-paper/25 disabled:cursor-not-allowed ${
               isFullscreen ? "h-full" : "max-h-[70vh] min-h-[16rem] resize-y sm:min-h-[22rem]"
             }`}
             style={{ ...SHARED_TEXT }}

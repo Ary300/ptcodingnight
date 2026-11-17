@@ -84,15 +84,15 @@ export function SampleIO({ samples }: SampleIOProps) {
   return (
     <div className="space-y-3">
       {/*
-        Each sample folds behind its own heading. The first starts open because it is the one a
-        student reads before writing anything; the rest start closed so a problem with six samples
-        does not push the editor three screens down.
+        Each sample folds behind its own heading, and every one starts closed, the first included:
+        the organizers asked that nothing open by itself, so the page stays short and the student
+        opens what they want to read.
       */}
       {samples.map((sample, index) => (
         <Disclosure
           key={sample.ordinal}
           kind="sample"
-          defaultOpen={index === 0}
+          defaultOpen={false}
           summary={
             <h3 className="font-display font-bold" style={{ fontSize: "var(--text-sm)" }}>
               Sample {index + 1}
