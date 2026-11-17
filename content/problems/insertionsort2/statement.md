@@ -27,7 +27,7 @@ sorted prefix. If $n = 1$ there are no insertions to perform, so print nothing.
 
 ## Constraints
 
-- $1 \le n \le 1000$
+- $1 \le n \le 100$
 - $-10^6 \le a_i \le 10^6$
 
 ## Example
