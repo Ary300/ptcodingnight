@@ -25,6 +25,9 @@ import { SampleIO } from "./SampleIO";
 import { TeamActivity } from "./TeamActivity";
 import { useDraft } from "./useDraft";
 import { initialLanguageFor, rememberLanguage, rememberedLanguageStore } from "./default-language";
+import { LayoutToggle } from "./LayoutToggle";
+import { SplitPanes } from "./SplitPanes";
+import { layoutStore, rememberLayout, wideViewportStore } from "./split-preference";
 
 /**
  * The problem view: statement, samples, editor, run and submit (PRD §9.1).
@@ -38,8 +41,11 @@ import { initialLanguageFor, rememberLanguage, rememberedLanguageStore } from ".
  *
  * ## Layout
  *
- * One column below 1024px — students are on phones, and a side-by-side editor at 360px is
- * unusable. Statement on the left, work on the right above that.
+ * Two layouts, chosen with the toggle at the end of the Problem / My submissions strip and
+ * remembered in this browser. "Stacked", the default, gives the statement the full measure and
+ * puts the editor below it. "Side by side" is HackerRank's split, statement left and editor right
+ * with a draggable divider (`SplitPanes`). Below 1024px the page is always stacked and the toggle
+ * is not offered: a side-by-side editor at 360px is unusable, and students are on phones.
  */
 
 export interface ProblemWorkspaceProps {
@@ -154,6 +160,19 @@ export function ProblemWorkspace({ slug }: ProblemWorkspaceProps) {
   const [submitBusy, setSubmitBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [seed, setSeed] = useState<SubmissionView | null>(null);
+
+  // The layout preference holds on every width; it only takes effect where two panes fit.
+  const layout = useSyncExternalStore(
+    layoutStore.subscribe,
+    layoutStore.getSnapshot,
+    layoutStore.getServerSnapshot,
+  );
+  const wide = useSyncExternalStore(
+    wideViewportStore.subscribe,
+    wideViewportStore.getSnapshot,
+    wideViewportStore.getServerSnapshot,
+  );
+  const sideBySide = wide && layout === "side";
 
   const detail = problem.data;
 
@@ -293,6 +312,229 @@ export function ProblemWorkspace({ slug }: ProblemWorkspaceProps) {
 
   const judging = stream.status === "waiting";
 
+  /* The three blocks both layouts arrange: statement, details rail, and the solution. */
+  const statement = (
+    <>
+      {/*
+        `max-w-none` lifts Markdown's default 70ch measure INSIDE this column only. The grid
+        already bounds the statement at `minmax(0,1fr)` next to a 16rem rail, so the 640px cap
+        was a second, tighter limit that left a ~190px dead gutter at 1440 — the reference
+        runs its statement to the column edge. Every other Markdown call site keeps the 70ch
+        default, because nothing else gives it a column that is already a measure.
+      */}
+      {/*
+        Students are not shown a Constraints section, at the organizers' request: the
+        statement's own `## Constraints` is cut here, and the separate `constraints` column
+        is not rendered at all. The content files and the organizer's editor keep both.
+      */}
+      <Markdown
+        source={statementWithoutConstraints(
+          statementWithoutRepeatedTitle(detail.statementMd, detail.title),
+        )}
+        // Flush with the editor's top edge in the split, so the two panes start level.
+        className={sideBySide ? "max-w-none" : "mt-5 max-w-none"}
+        collapseExamples
+      />
+
+      {/*
+        Input and Output are separate columns on `Problem`, and an author who has already
+        written them into the statement leaves them empty. Rendering the heading anyway
+        printed bold words with nothing under them, which reads as content that failed to load
+        rather than as content that was never there.
+      */}
+      <StatementSection title="Input" source={detail.inputSpec} />
+      <StatementSection title="Output" source={detail.outputSpec} />
+
+      <section className="mt-8">
+        <h2 className="mb-3 font-display font-bold" style={{ fontSize: "var(--text-md)" }}>
+          Samples
+        </h2>
+        <SampleIO samples={detail.samples} />
+      </section>
+    </>
+  );
+
+  const rail = (
+    <>
+      <ProblemMetaRail detail={detail} />
+      {/*
+        The shared attempt log, group problems only. The route 404s for individual problems,
+        so the gate here is not merely cosmetic - but it IS the reason a student never sees
+        a "team activity" panel on a problem where teammates' verdicts would be answer
+        sharing.
+      */}
+      {detail.isGroupProblem && <TeamActivity slug={slug} />}
+    </>
+  );
+
+  const solution = (
+    <>
+      {/*
+        No `overflow-hidden` on this box, deliberately. It would tidy the dark band's corners
+        and it would also crop the editor's focus ring, which is drawn 2px OUTSIDE the textarea
+        and therefore outside this border — and a focus ring that is only mostly visible is the
+        one part of this panel that has to be exactly visible (G9, keyboard-only submit).
+        The header bar and the status strip cover the rounded corners on their own.
+      */}
+      <div
+        className={`rounded-panel border border-rule-edge bg-paper${
+          // In the split the panel takes the height the actions and verdict leave, and never
+          // less than 24rem: past that the pane scrolls instead of squeezing the editor.
+          // `min-h-0` is load-bearing. Without it the flex floor is the CONTENT height, and the
+          // gutter's one div per line made that the whole file, so the editor grew to fit the
+          // code and pushed Submit below the window.
+          sideBySide ? " flex min-h-0 flex-[1_0_24rem] flex-col" : ""
+        }`}
+      >
+        {/*
+          ONE toolbar, not two. The picker sits in the editor surface's own `toolbarStart` seat,
+          so the selector is on the left of the same tinted strip that carries the reset and
+          full-screen icons on the right, which is HackerRank's arrangement.
+
+          It used to be a separate header bar stacked above the surface's strip: two tinted rows
+          doing one row's job, and the picker was left behind whenever the editor went full
+          screen, which is exactly when a student is most likely to want it.
+        */}
+        <CodeEditor
+          value={source}
+          onChange={setSource}
+          language={activeLanguage}
+          // The same starter the draft was seeded from, so the surface's reset control
+          // restores THIS problem's template and its pristine check measures against it.
+          template={activeStarter}
+          disabled={submitBusy}
+          onSubmitShortcut={() => void submit()}
+          label={`Solution for ${detail.title}`}
+          fill={sideBySide}
+          toolbarStart={
+            <LanguagePicker
+              value={activeLanguage}
+              allowed={detail.allowedLanguages}
+              onChange={chooseLanguage}
+              disabled={submitBusy || judging}
+            />
+          }
+        />
+      </div>
+
+      {/*
+        The action row sits BELOW the panel, not inside it — HackerRank's arrangement, upload on
+        the left and the two run controls on the right.
+
+        The two buttons are not the same button and must not look it. `secondary` is an outline
+        and `primary` is filled panther, which is the same grey/accent pair HackerRank uses, and
+        the judged one restates what it does in its own label. On a phone they wrap to their
+        own row and Submit stays last, so the button nearest the thumb is still the deliberate
+        one rather than the accidental one.
+
+        `whitespace-nowrap` on both labels: HackerRank's Run Code / Submit Code never break
+        mid-label at any width, and ours did at phone widths — the flex-wrap on the row is the
+        intended reflow, a two-line button is not. The buttons wrap as whole units instead.
+      */}
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 border-t border-rule-edge pt-3">
+        <UploadCode
+          language={activeLanguage}
+          disabled={submitBusy || sampleBusy}
+          onLoaded={setSource}
+        />
+
+        <div className="flex flex-wrap items-center gap-3">
+          {/*
+            Both buttons are sized by their WIDEST label, not their current one. "Submit for
+            judging" collapsing to the shorter "Submitting…" mid-press resized the control under
+            the student's cursor, which is the loudest possible layout jump: the thing being
+            touched. An invisible copy of the long label holds the width; the visible label swaps
+            on top of it.
+          */}
+          <Button
+            type="button"
+            variant="secondary"
+            className="relative whitespace-nowrap"
+            onClick={() => void runSamples()}
+            disabled={sampleBusy || submitBusy}
+          >
+            <span aria-hidden="true" className="invisible">Run samples</span>
+            <span className="absolute inset-0 flex items-center justify-center">
+              {sampleBusy ? "Running…" : "Run samples"}
+            </span>
+          </Button>
+          <Button
+            type="button"
+            className="relative whitespace-nowrap"
+            onClick={() => void submit()}
+            disabled={submitBusy || sampleBusy || judging}
+          >
+            <span aria-hidden="true" className="invisible">Submit for judging</span>
+            <span className="absolute inset-0 flex items-center justify-center">
+              {submitBusy ? "Submitting…" : "Submit for judging"}
+            </span>
+          </Button>
+        </div>
+      </div>
+
+      <p className="mt-2 text-right text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
+        Running samples is free. Submitting counts.
+      </p>
+
+      <div className="mt-4 space-y-4">
+        {actionError !== null && (
+          <p role="alert" className="text-panther" style={{ fontSize: "var(--text-xs)" }}>
+            {actionError}
+          </p>
+        )}
+
+        {shownAction === "samples" && (
+          <VerdictPanel
+            mode="samples"
+            verdict={null}
+            score={null}
+            results={sampleResults}
+            compileError={null}
+            busy={sampleBusy}
+            language={activeLanguage}
+            source={source}
+          />
+        )}
+
+        {shownAction === "judged" && (
+          <VerdictPanel
+            mode="judged"
+            verdict={stream.submission?.verdict ?? null}
+            score={stream.submission?.score ?? null}
+            results={stream.submission?.testResults ?? []}
+            compileError={stream.submission?.compileError ?? null}
+            busy={submitBusy || judging}
+            transport={stream.transport}
+            error={stream.error}
+            queuePosition={stream.submission?.queuePosition ?? null}
+            submittedAt={stream.submission?.submittedAt ?? null}
+            language={stream.submission?.language ?? null}
+            source={source}
+          />
+        )}
+
+        {/*
+          The Hints card is not rendered, and its absence is the fix.
+
+          `HintPanel` still exists and is still correct — what it had nothing to render against
+          is the API. `http-backend.ts` rejects `getHintBalance()` with `NOT_IMPLEMENTED` because
+          there is no hint endpoint, so the panel took its "no balance" branch on every problem,
+          for every student, every time: a bordered card headed "Hints" whose entire content was
+          "Hints are not available in this contest." It sat directly below Submit and was the
+          last thing on the busiest screen in the product, so every problem page ended by
+          announcing a feature that is not there.
+
+          An empty state is for a container that will sometimes have contents. This one never
+          will until docs/TODO.md T1 decides what a hint IS — no field in the schema holds hint
+          text — and a section that can only ever say "nothing here" should not be a section.
+
+          Restoring it is one line, and `HintPanel` is deliberately left in the tree so that
+          restoring it is one line.
+        */}
+      </div>
+    </>
+  );
+
   return (
     /*
       "Loading problem…" is replaced by the whole workspace in one client-side swap, after the
@@ -322,227 +564,53 @@ export function ProblemWorkspace({ slug }: ProblemWorkspaceProps) {
         </h1>
         <ProblemStatusPill detail={detail} />
       </div>
-      <ProblemTabs slug={slug} />
+      <ProblemTabs
+        slug={slug}
+        trailing={wide ? <LayoutToggle value={layout} onChange={rememberLayout} /> : undefined}
+      />
 
-      {/*
-        Statement across the measure with a metadata rail beside it, and the editor as a full-width
-        panel BELOW — HackerRank's challenge layout, rather than the side-by-side split this had.
-
-        The difference is not cosmetic. A statement in a half-width column wraps at roughly 45
-        characters once the samples' code blocks are in it, and a student reads the problem once
-        and then works in the editor for forty minutes. Giving the prose the full measure and the
-        editor the full width fits what each is actually for. Below `lg` both stack, statement
-        first, which is the order a student needs them in.
-      */}
-      <div className="mt-6 grid gap-8 lg:grid-cols-[minmax(0,1fr)_16rem]">
-        {/* ---- statement ---- */}
-        <article className="min-w-0">
+      {sideBySide ? (
+        /*
+          Side by side, HackerRank's split: the statement on the left, the editor, run and submit
+          on the right, each pane scrolling by itself. The details rail drops under the statement,
+          because a 16rem column beside it in a half-width pane leaves the prose about 40
+          characters wide.
+        */
+        <SplitPanes
+          className="mt-6"
+          startLabel="Problem statement"
+          endLabel="Your solution"
+          start={
+            <article className="min-w-0">
+              {statement}
+              <div className="mt-8 border-t border-rule-edge pt-4">{rail}</div>
+            </article>
+          }
+          end={solution}
+        />
+      ) : (
+        <>
           {/*
-            `max-w-none` lifts Markdown's default 70ch measure INSIDE this column only. The grid
-            already bounds the statement at `minmax(0,1fr)` next to a 16rem rail, so the 640px cap
-            was a second, tighter limit that left a ~190px dead gutter at 1440 — the reference
-            runs its statement to the column edge. Every other Markdown call site keeps the 70ch
-            default, because nothing else gives it a column that is already a measure.
+            Stacked, the default: the statement across the measure with a metadata rail beside it,
+            and the editor as a full-width panel BELOW. The split is one click away on the toggle.
+
+            The difference is not cosmetic. A statement in a half-width column wraps at roughly 45
+            characters once the samples' code blocks are in it, and a student reads the problem once
+            and then works in the editor for forty minutes. Giving the prose the full measure and the
+            editor the full width fits what each is actually for. Below `lg` both stack, statement
+            first, which is the order a student needs them in.
           */}
-          {/*
-            Students are not shown a Constraints section, at the organizers' request: the
-            statement's own `## Constraints` is cut here, and the separate `constraints` column
-            is not rendered at all. The content files and the organizer's editor keep both.
-          */}
-          <Markdown
-            source={statementWithoutConstraints(
-              statementWithoutRepeatedTitle(detail.statementMd, detail.title),
-            )}
-            className="mt-5 max-w-none"
-            collapseExamples
-          />
-
-          {/*
-            Input and Output are separate columns on `Problem`, and an author who has already
-            written them into the statement leaves them empty. Rendering the heading anyway
-            printed bold words with nothing under them, which reads as content that failed to load
-            rather than as content that was never there.
-          */}
-          <StatementSection title="Input" source={detail.inputSpec} />
-          <StatementSection title="Output" source={detail.outputSpec} />
-
-          <section className="mt-8">
-            <h2 className="mb-3 font-display font-bold" style={{ fontSize: "var(--text-md)" }}>
-              Samples
-            </h2>
-            <SampleIO samples={detail.samples} />
-          </section>
-        </article>
-
-        {/* ---- metadata rail ---- */}
-        <aside className="min-w-0">
-          <ProblemMetaRail detail={detail} />
-          {/*
-            The shared attempt log, group problems only. The route 404s for individual problems,
-            so the gate here is not merely cosmetic - but it IS the reason a student never sees
-            a "team activity" panel on a problem where teammates' verdicts would be answer
-            sharing.
-          */}
-          {detail.isGroupProblem && <TeamActivity slug={slug} />}
-        </aside>
-      </div>
-
-      {/* ---- the editor panel, full width, below the statement ---- */}
-      <section aria-label="Your solution" className="mt-8">
-        {/*
-          No `overflow-hidden` on this box, deliberately. It would tidy the dark band's corners
-          and it would also crop the editor's focus ring, which is drawn 2px OUTSIDE the textarea
-          and therefore outside this border — and a focus ring that is only mostly visible is the
-          one part of this panel that has to be exactly visible (G9, keyboard-only submit).
-          The header bar and the status strip cover the rounded corners on their own.
-        */}
-        <div className="rounded-panel border border-rule-edge bg-paper">
-          {/*
-            ONE toolbar, not two. The picker sits in the editor surface's own `toolbarStart` seat,
-            so the selector is on the left of the same tinted strip that carries the reset and
-            full-screen icons on the right, which is HackerRank's arrangement.
-
-            It used to be a separate header bar stacked above the surface's strip: two tinted rows
-            doing one row's job, and the picker was left behind whenever the editor went full
-            screen, which is exactly when a student is most likely to want it.
-          */}
-          <CodeEditor
-            value={source}
-            onChange={setSource}
-            language={activeLanguage}
-            // The same starter the draft was seeded from, so the surface's reset control
-            // restores THIS problem's template and its pristine check measures against it.
-            template={activeStarter}
-            disabled={submitBusy}
-            onSubmitShortcut={() => void submit()}
-            label={`Solution for ${detail.title}`}
-            toolbarStart={
-              <LanguagePicker
-                value={activeLanguage}
-                allowed={detail.allowedLanguages}
-                onChange={chooseLanguage}
-                disabled={submitBusy || judging}
-              />
-            }
-          />
-        </div>
-
-        {/*
-          The action row sits BELOW the panel, not inside it — HackerRank's arrangement, upload on
-          the left and the two run controls on the right.
-
-          The two buttons are not the same button and must not look it. `secondary` is an outline
-          and `primary` is filled panther, which is the same grey/accent pair HackerRank uses, and
-          the judged one restates what it does in its own label. On a phone they wrap to their
-          own row and Submit stays last, so the button nearest the thumb is still the deliberate
-          one rather than the accidental one.
-
-          `whitespace-nowrap` on both labels: HackerRank's Run Code / Submit Code never break
-          mid-label at any width, and ours did at phone widths — the flex-wrap on the row is the
-          intended reflow, a two-line button is not. The buttons wrap as whole units instead.
-        */}
-        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 border-t border-rule-edge pt-3">
-          <UploadCode
-            language={activeLanguage}
-            disabled={submitBusy || sampleBusy}
-            onLoaded={setSource}
-          />
-
-          <div className="flex flex-wrap items-center gap-3">
-            {/*
-              Both buttons are sized by their WIDEST label, not their current one. "Submit for
-              judging" collapsing to the shorter "Submitting…" mid-press resized the control under
-              the student's cursor, which is the loudest possible layout jump: the thing being
-              touched. An invisible copy of the long label holds the width; the visible label swaps
-              on top of it.
-            */}
-            <Button
-              type="button"
-              variant="secondary"
-              className="relative whitespace-nowrap"
-              onClick={() => void runSamples()}
-              disabled={sampleBusy || submitBusy}
-            >
-              <span aria-hidden="true" className="invisible">Run samples</span>
-              <span className="absolute inset-0 flex items-center justify-center">
-                {sampleBusy ? "Running…" : "Run samples"}
-              </span>
-            </Button>
-            <Button
-              type="button"
-              className="relative whitespace-nowrap"
-              onClick={() => void submit()}
-              disabled={submitBusy || sampleBusy || judging}
-            >
-              <span aria-hidden="true" className="invisible">Submit for judging</span>
-              <span className="absolute inset-0 flex items-center justify-center">
-                {submitBusy ? "Submitting…" : "Submit for judging"}
-              </span>
-            </Button>
+          <div className="mt-6 grid gap-8 lg:grid-cols-[minmax(0,1fr)_16rem]">
+            <article className="min-w-0">{statement}</article>
+            <aside className="min-w-0">{rail}</aside>
           </div>
-        </div>
 
-        <p className="mt-2 text-right text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
-          Running samples is free. Submitting counts.
-        </p>
-
-        <div className="mt-4 space-y-4">
-          {actionError !== null && (
-            <p role="alert" className="text-panther" style={{ fontSize: "var(--text-xs)" }}>
-              {actionError}
-            </p>
-          )}
-
-          {shownAction === "samples" && (
-            <VerdictPanel
-              mode="samples"
-              verdict={null}
-              score={null}
-              results={sampleResults}
-              compileError={null}
-              busy={sampleBusy}
-              language={activeLanguage}
-              source={source}
-            />
-          )}
-
-          {shownAction === "judged" && (
-            <VerdictPanel
-              mode="judged"
-              verdict={stream.submission?.verdict ?? null}
-              score={stream.submission?.score ?? null}
-              results={stream.submission?.testResults ?? []}
-              compileError={stream.submission?.compileError ?? null}
-              busy={submitBusy || judging}
-              transport={stream.transport}
-              error={stream.error}
-              queuePosition={stream.submission?.queuePosition ?? null}
-              submittedAt={stream.submission?.submittedAt ?? null}
-              language={stream.submission?.language ?? null}
-              source={source}
-            />
-          )}
-
-          {/*
-            The Hints card is not rendered, and its absence is the fix.
-
-            `HintPanel` still exists and is still correct — what it had nothing to render against
-            is the API. `http-backend.ts` rejects `getHintBalance()` with `NOT_IMPLEMENTED` because
-            there is no hint endpoint, so the panel took its "no balance" branch on every problem,
-            for every student, every time: a bordered card headed "Hints" whose entire content was
-            "Hints are not available in this contest." It sat directly below Submit and was the
-            last thing on the busiest screen in the product, so every problem page ended by
-            announcing a feature that is not there.
-
-            An empty state is for a container that will sometimes have contents. This one never
-            will until docs/TODO.md T1 decides what a hint IS — no field in the schema holds hint
-            text — and a section that can only ever say "nothing here" should not be a section.
-
-            Restoring it is one line, and `HintPanel` is deliberately left in the tree so that
-            restoring it is one line.
-          */}
-        </div>
-      </section>
+          {/* ---- the editor panel, full width, below the statement ---- */}
+          <section aria-label="Your solution" className="mt-8">
+            {solution}
+          </section>
+        </>
+      )}
     </div>
   );
 }
