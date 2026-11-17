@@ -34,6 +34,8 @@ const NAV = [
   // one surface the organizer added it for.
   { href: "/contest/puzzles", label: "Puzzles" },
   { href: "/team", label: "My team" },
+  // Every team, as the projector shows it, for students working in rooms without the projector.
+  { href: "/standings", label: "Standings" },
   { href: "/submissions", label: "My submissions" },
 ] as const;
 
@@ -42,7 +44,7 @@ const NAV = [
   "My team" opens onto an empty state, and puzzles are a team's side points on the night. Hidden
   only once the session read has said "practice"; a real contest's nav is untouched.
 */
-const NOT_IN_PRACTICE: ReadonlySet<string> = new Set(["/contest/puzzles", "/team"]);
+const NOT_IN_PRACTICE: ReadonlySet<string> = new Set(["/contest/puzzles", "/team", "/standings"]);
 
 const PARTICIPANT_REFRESH_TIMEOUT_MS = 10_000;
 

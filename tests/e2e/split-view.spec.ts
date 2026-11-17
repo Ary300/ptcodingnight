@@ -121,7 +121,7 @@ test.describe("on a wide window", () => {
     await expect(heading).toHaveText(/^\S+ \(.+\)$/);
     const size = await heading.evaluate((el) => parseFloat(getComputedStyle(el).fontSize));
     expect(size).toBeLessThanOrEqual(20);
-    await expect(statementPane.getByRole("navigation", { name: "Problem views" })).toBeVisible();
+    await expect(statementPane.getByRole("tablist", { name: "Problem views" })).toBeVisible();
     await expect(statementPane.getByRole("group", { name: "Layout" })).toBeVisible();
 
     // Language tabs on top of the editor pane, Run and Submit pinned to its bottom edge.

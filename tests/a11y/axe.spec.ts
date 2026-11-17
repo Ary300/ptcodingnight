@@ -151,6 +151,33 @@ test.describe("axe-core: zero critical or serious", () => {
     await auditPage(page, "/submissions");
   });
 
+  // The problem page's own "My submissions" tab: a tab widget, a tabpanel, and the history table
+  // inside the statement pane while the editor stays on screen.
+  test("problem workspace on its My submissions tab", async ({ page }) => {
+    await openProblem(page);
+    await page
+      .getByRole("tablist", { name: "Problem views" })
+      .getByRole("tab", { name: "My submissions", exact: true })
+      .click();
+    const panel = page.getByRole("tabpanel", { name: "My submissions" });
+    await expect(panel).toBeVisible();
+    await expect(panel.getByRole("status")).toHaveCount(0, { timeout: 30_000 });
+    await auditPage(page, "/contest/[slug]?tab=submissions");
+  });
+
+  // The team board on a student's laptop, with every breakdown open.
+  test("student standings", async ({ page }) => {
+    await openLobby(page);
+    await page
+      .getByRole("navigation", { name: "Competitor" })
+      .getByRole("link", { name: "Standings", exact: true })
+      .click();
+    await page.waitForURL("**/standings");
+    await expect(page.getByTestId("standings-state")).toBeVisible({ timeout: 30_000 });
+    await page.getByRole("button", { name: "Expand all" }).click();
+    await auditPage(page, "/standings");
+  });
+
   /**
    * The heading is `Team standings`, not `Park Tudor Coding Night`.
    *

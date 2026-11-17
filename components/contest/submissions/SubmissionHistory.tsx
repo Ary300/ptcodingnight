@@ -16,6 +16,7 @@ import { LANGUAGE_LABEL } from "../editor/types";
 import { SignInRequired } from "../lobby/SignInRequired";
 import { problemLabel } from "../problem/problem-label";
 import { TONE_COLOR, VERDICT_DISPLAY } from "../verdict/verdict-display";
+import { forProblem, mergeLiveSubmissions } from "./live-rows";
 import { OverriddenMarker } from "./OverriddenMarker";
 import { recallSource } from "./source-cache";
 
@@ -184,9 +185,20 @@ interface RowProps {
   readonly title: string | null;
   readonly open: boolean;
   readonly onToggle: () => void;
+  /**
+   * The problem page's own tab: every row is the same problem, so the row is named by its time
+   * instead, and the separate Time column goes.
+   */
+  readonly scoped: boolean;
 }
 
-function Row({ submission, title, open, onToggle }: RowProps) {
+/** The row's toggle label: the problem's name in display type, or the time in tabular figures. */
+function titleClassFor(title: string | null, scoped: boolean): string {
+  if (title === null) return "text-ink/60";
+  return scoped ? "numeric font-semibold" : "font-display font-bold";
+}
+
+function Row({ submission, title, open, onToggle, scoped }: RowProps) {
   const detailId = `submission-detail-${submission.submissionId}`;
 
   return (
@@ -211,11 +223,11 @@ function Row({ submission, title, open, onToggle }: RowProps) {
             aria-expanded={open}
             aria-controls={detailId}
             onClick={onToggle}
-            className={
+            className={`-my-2.5 py-2.5 text-left ${titleClassFor(title, scoped)}${
               title === null
-                ? "-my-2.5 py-2.5 text-left text-ink/60"
-                : "-my-2.5 py-2.5 text-left font-display font-bold transition-colors duration-[var(--motion-press)] hover:text-panther"
-            }
+                ? ""
+                : " transition-colors duration-[var(--motion-press)] hover:text-panther"
+            }`}
             style={{ fontSize: "var(--text-sm)" }}
           >
             {/*
@@ -256,17 +268,19 @@ function Row({ submission, title, open, onToggle }: RowProps) {
         >
           {submission.score}
         </td>
-        <td
-          className="numeric whitespace-nowrap px-3 py-2.5 text-right sm:px-4"
-          style={{ fontSize: "var(--text-sm)" }}
-        >
-          {formatTime(submission.submittedAt)}
-        </td>
+        {!scoped && (
+          <td
+            className="numeric whitespace-nowrap px-3 py-2.5 text-right sm:px-4"
+            style={{ fontSize: "var(--text-sm)" }}
+          >
+            {formatTime(submission.submittedAt)}
+          </td>
+        )}
       </tr>
 
       {open && (
         <tr id={detailId} className="bg-ink/[0.02]">
-          <td colSpan={5} className="px-3 pt-2 pb-3 sm:px-4">
+          <td colSpan={scoped ? 4 : 5} className="px-3 pt-2 pb-3 sm:px-4">
             {/*
               The rise lives on a div INSIDE the cell, never on the tr. A transformed table row
               breaks row painting in some engines (borders and backgrounds detach from the
@@ -291,7 +305,7 @@ function Row({ submission, title, open, onToggle }: RowProps) {
  * per submission instead: verdict chip and title, then language, score and time as one quiet
  * metadata run. Same toggle, same `openId`, same detail panel as the table.
  */
-function Card({ submission, title, open, onToggle }: RowProps) {
+function Card({ submission, title, open, onToggle, scoped }: RowProps) {
   const detailId = `submission-card-detail-${submission.submissionId}`;
 
   return (
@@ -326,12 +340,7 @@ function Card({ submission, title, open, onToggle }: RowProps) {
           ) : (
             <VerdictChip verdict={submission.verdict} />
           )}
-          <span
-            className={
-              title === null ? "min-w-0 text-ink/60" : "min-w-0 font-display font-bold"
-            }
-            style={{ fontSize: "var(--text-sm)" }}
-          >
+          <span className={`min-w-0 ${titleClassFor(title, scoped)}`} style={{ fontSize: "var(--text-sm)" }}>
             {title ?? "Problem name unavailable"}
           </span>
         </span>
@@ -345,7 +354,7 @@ function Card({ submission, title, open, onToggle }: RowProps) {
           {submission.verdict !== null && <span>{VERDICT_DISPLAY[submission.verdict].label}</span>}
           {submission.overridden === true && <OverriddenMarker />}
           <span className="numeric">score {submission.score}</span>
-          <span className="numeric">{formatTime(submission.submittedAt)}</span>
+          {!scoped && <span className="numeric">{formatTime(submission.submittedAt)}</span>}
         </span>
       </button>
 
@@ -358,11 +367,35 @@ function Card({ submission, title, open, onToggle }: RowProps) {
   );
 }
 
-export function SubmissionHistory() {
+export interface SubmissionHistoryProps {
+  /**
+   * Only this contest problem's submissions, as the problem page's "My submissions" tab shows
+   * them. Absent on `/submissions`, which lists every problem.
+   */
+  readonly contestProblemId?: string | null;
+  /**
+   * Copies the verdict stream delivered after the list was read, so a submission made or judged
+   * while the tab is open appears without another read. See `live-rows.ts`.
+   */
+  readonly live?: readonly SubmissionView[];
+}
+
+const NO_ROWS: readonly SubmissionView[] = [];
+const NO_PROBLEMS: ProblemSummary[] = [];
+
+export function SubmissionHistory({
+  contestProblemId = null,
+  live = NO_ROWS,
+}: SubmissionHistoryProps = {}) {
   const participant = useParticipant();
   const scopeKey = participant.status === "joined" ? participant.scopeKey : participant.status;
+  const scoped = contestProblemId !== null;
   const loadSubmissions = useCallback(() => contestApi.listSubmissions(), []);
-  const loadProblems = useCallback(() => contestApi.listProblems(), []);
+  // Scoped to one problem, every row is that problem, so the titles join is not needed.
+  const loadProblems = useCallback(
+    () => (scoped ? Promise.resolve(NO_PROBLEMS) : contestApi.listProblems()),
+    [scoped],
+  );
 
   const submissions = useResource(loadSubmissions, scopeKey);
   const problems = useResource(loadProblems, scopeKey);
@@ -370,11 +403,20 @@ export function SubmissionHistory() {
 
   const titleById = useMemo(() => {
     const map = new Map<string, string>();
-    for (const problem of problems.data ?? ([] as ProblemSummary[])) {
+    for (const problem of problems.data ?? NO_PROBLEMS) {
       map.set(problem.contestProblemId, problemLabel(problem.slotLabel, problem.title));
     }
     return map;
   }, [problems.data]);
+
+  const rows = useMemo(
+    () => forProblem(mergeLiveSubmissions(submissions.data ?? NO_ROWS, live), contestProblemId),
+    [submissions.data, live, contestProblemId],
+  );
+  const titleFor = (submission: SubmissionView): string | null =>
+    scoped
+      ? formatTime(submission.submittedAt)
+      : (titleById.get(submission.contestProblemId) ?? null);
 
   // BOTH reads gate the render. Gating on `submissions` alone is what put database keys on the
   // screen: the rows arrived, the titles had not, and the fallback was the id.
@@ -429,7 +471,19 @@ export function SubmissionHistory() {
     );
   }
 
-  if (submissions.data.length === 0) {
+  if (rows.length === 0 && scoped) {
+    return (
+      <p
+        className="motion-swap-in rounded-panel border border-dashed border-rule-edge bg-paper px-4 py-10 text-center text-ink/70"
+        style={{ fontSize: "var(--text-sm)" }}
+      >
+        You have not submitted this problem yet. Running samples is free and unjudged, so sample
+        runs never appear here.
+      </p>
+    );
+  }
+
+  if (rows.length === 0) {
     return (
       /*
         HackerRank's empty state exactly: a dashed hairline box with one centred sentence, and a
@@ -494,11 +548,12 @@ export function SubmissionHistory() {
         aria-label="Submissions"
         className="rounded-panel border border-rule-edge bg-paper sm:hidden"
       >
-        {submissions.data.map((submission) => (
+        {rows.map((submission) => (
           <Card
             key={submission.submissionId}
             submission={submission}
-            title={titleById.get(submission.contestProblemId) ?? null}
+            title={titleFor(submission)}
+            scoped={scoped}
             open={openId === submission.submissionId}
             onToggle={() =>
               setOpenId((current) =>
@@ -522,7 +577,7 @@ export function SubmissionHistory() {
         aria-label="Submissions table"
         className="hidden overflow-x-auto rounded-panel border border-rule-edge bg-paper sm:block"
       >
-        <table aria-label="Submissions" className="w-full min-w-[560px] border-collapse">
+        <table aria-label="Submissions" className={`w-full border-collapse ${scoped ? "min-w-[440px]" : "min-w-[560px]"}`}>
           {/*
             The header is the same tinted bar TabStrip uses (`bg-ink/[0.04]`): one piece of
             furniture, recognised everywhere. Left-aligned over text columns, right-aligned over
@@ -535,7 +590,7 @@ export function SubmissionHistory() {
                 className="px-3 py-2 text-left font-semibold sm:px-4"
                 style={{ fontSize: "var(--text-xs)" }}
               >
-                Problem
+                {scoped ? "Submitted" : "Problem"}
               </th>
               <th
                 scope="col"
@@ -558,21 +613,24 @@ export function SubmissionHistory() {
               >
                 Score
               </th>
-              <th
-                scope="col"
-                className="px-3 py-2 text-right font-semibold sm:px-4"
-                style={{ fontSize: "var(--text-xs)" }}
-              >
-                Time
-              </th>
+              {!scoped && (
+                <th
+                  scope="col"
+                  className="px-3 py-2 text-right font-semibold sm:px-4"
+                  style={{ fontSize: "var(--text-xs)" }}
+                >
+                  Time
+                </th>
+              )}
             </tr>
           </thead>
           <tbody>
-            {submissions.data.map((submission) => (
+            {rows.map((submission) => (
               <Row
                 key={submission.submissionId}
                 submission={submission}
-                title={titleById.get(submission.contestProblemId) ?? null}
+                title={titleFor(submission)}
+                scoped={scoped}
                 open={openId === submission.submissionId}
                 onToggle={() =>
                   setOpenId((current) =>

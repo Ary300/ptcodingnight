@@ -590,7 +590,7 @@ test.describe("the account menu", () => {
     // toBeVisible() is the assertion that would have caught white-on-white: an element with no
     // colour contrast is still "visible" to Playwright, so the items are checked for a real
     // computed colour as well.
-    for (const label of ["Problems", "My team", "My submissions", "Live standings"]) {
+    for (const label of ["Problems", "My team", "My submissions", "Standings"]) {
       await expect(menu.getByRole("menuitem", { name: label })).toBeVisible();
     }
     const colour = await menu

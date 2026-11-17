@@ -1,4 +1,4 @@
-import { Crumbs, TabStrip } from "@/components/ui";
+import { Crumbs } from "@/components/ui";
 
 import type { ProblemDetail } from "@/lib/schemas/api";
 
@@ -23,11 +23,11 @@ import { problemLabel } from "./problem-label";
  * editorial, and "download problem statement". Every one of those is either a thing we do not
  * have or a thing we must not offer mid-contest — an editorial link during a live round is a
  * cheating vector, not a convenience. Its social share row goes for the same reason: a student
- * tweeting the problem mid-round is publishing it. The tab strip is Problem / Submissions and
- * stops there.
+ * tweeting the problem mid-round is publishing it. The tab strip is Problem / My submissions and
+ * stops there; it is `ProblemTabs`, beside this file.
  *
- * The strip and the breadcrumb are `components/ui`'s, not this file's. They are shared with the
- * organizer console on purpose — a student and an organizer should recognise the same furniture.
+ * The breadcrumb is `components/ui`'s, not this file's. It is shared with the organizer console
+ * on purpose: a student and an organizer should recognise the same furniture.
  */
 
 const DIFFICULTY_LABEL: Record<string, string> = { E: "Easy", M: "Medium", H: "Hard" };
@@ -118,35 +118,6 @@ export function ProblemBreadcrumb({ slotLabel, title }: { slotLabel: string; tit
   return (
     <Crumbs
       trail={[{ href: "/contest", label: "Problems" }, { label: problemLabel(slotLabel, title) }]}
-    />
-  );
-}
-
-/**
- * The folder-tab strip. Two tabs, like HackerRank's challenge screen.
- *
- * The second tab is a real destination rather than a client-side panel, because a student who
- * wants their history mid-contest wants the full list, not a truncated preview of it. The
- * standings are one click away in the account menu and in the top bar, so a third tab here would
- * be a third route into the same board.
- *
- * **It is labelled "My submissions", not "Submissions", and the difference is not pedantry.**
- * HackerRank's tab of that name is scoped to the challenge you are reading; ours goes to the
- * whole history across every problem. A tab strip is a promise that the tabs are facets of the
- * one thing named above them, so the short label promised a per-problem view and then quietly
- * navigated the student off the problem. "My submissions" is the exact wording the top bar uses
- * for that same destination, so the label now names where the click lands.
- */
-export function ProblemTabs({ slug, trailing }: { slug: string; trailing?: React.ReactNode }) {
-  return (
-    <TabStrip
-      label="Problem views"
-      trailing={trailing}
-      pathname={`/contest/${slug}`}
-      items={[
-        { href: `/contest/${slug}`, label: "Problem" },
-        { href: "/submissions", label: "My submissions" },
-      ]}
     />
   );
 }

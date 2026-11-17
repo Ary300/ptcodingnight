@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useRef } from "react";
 
 import { Delta, Rail, railStateForDelta } from "@/components/ui";
@@ -267,6 +268,15 @@ export function StandingsCard({ standings, participantId }: StandingsCardProps) 
             Board frozen
           </span>
         )}
+        {/* This card is each player's own score; the team board, which is what ranks the night,
+            is its own page. Paper on ink, underlined so it is never colour alone. */}
+        <Link
+          href="/standings"
+          className="ml-auto text-paper underline underline-offset-2"
+          style={{ fontSize: "var(--text-xs)" }}
+        >
+          Team standings
+        </Link>
       </header>
 
       {standings.frozen && (

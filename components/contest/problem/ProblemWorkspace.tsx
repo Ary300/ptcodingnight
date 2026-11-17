@@ -22,7 +22,11 @@ import { SignInRequired } from "../lobby/SignInRequired";
 import { Markdown } from "../markdown/Markdown";
 import { rememberSource } from "../submissions/source-cache";
 import { VerdictPanel } from "../verdict/VerdictPanel";
-import { ProblemBreadcrumb, ProblemMetaRail, ProblemStatusPill, ProblemTabs } from "./ProblemMeta";
+import { SubmissionHistory } from "../submissions/SubmissionHistory";
+import { rememberStreamed } from "../submissions/live-rows";
+import { ProblemBreadcrumb, ProblemMetaRail, ProblemStatusPill } from "./ProblemMeta";
+import { problemTabStore, selectProblemTab } from "./problem-tab";
+import { ProblemTabs, problemPanelId, problemTabId } from "./ProblemTabs";
 import { SampleIO } from "./SampleIO";
 import { TeamActivity } from "./TeamActivity";
 import { useDraft } from "./useDraft";
@@ -245,6 +249,28 @@ export function ProblemWorkspace({ slug, window: contestWindow = null }: Problem
   }, [detail, history.data]);
 
   const stream = useVerdictStream(seed ?? restored);
+
+  /*
+    The "My submissions" tab: which tab shows, from the address, and every copy of a submission
+    the verdict stream has delivered on this page.
+
+    The stream follows one submission at a time, so the copies are kept here, on the component
+    that stays mounted, rather than in the tab's panel: a student who submits, switches to the
+    tab, submits again and switches back still sees both verdicts arrive without a reload. Kept by
+    adjusting state during render, which is React's documented way to follow a changing value
+    without an effect; the `includes` check stops it after one extra render per new copy.
+  */
+  const activeTab = useSyncExternalStore(
+    problemTabStore.subscribe,
+    problemTabStore.getSnapshot,
+    problemTabStore.getServerSnapshot,
+  );
+  const tabsIdBase = useId();
+  const [streamed, setStreamed] = useState<readonly SubmissionView[]>([]);
+  const latestStreamed = stream.submission;
+  if (latestStreamed !== null && !streamed.includes(latestStreamed)) {
+    setStreamed(rememberStreamed(streamed, latestStreamed));
+  }
 
   /*
     The page opens on its last verdict in BOTH layouts, so side by side the drawer starts open
@@ -634,7 +660,73 @@ export function ProblemWorkspace({ slug, window: contestWindow = null }: Problem
   );
 
   const toggle = wide ? <LayoutToggle value={layout} onChange={rememberLayout} /> : undefined;
-  const tabs = <ProblemTabs slug={slug} trailing={toggle} />;
+  const tabs = (
+    <ProblemTabs
+      active={activeTab}
+      onSelect={selectProblemTab}
+      idBase={tabsIdBase}
+      trailing={toggle}
+    />
+  );
+
+  /*
+    The two panels under the tabs. Only this pane switches; the editor is a sibling of the whole
+    pane and is never inside either panel, so a switch cannot reach the student's code.
+
+    The Problem panel stays mounted while hidden, so the statement does not re-render its Markdown
+    on every switch. The submissions panel mounts only while it is showing: each visit reads the
+    list afresh, and the stream's copies keep it current while it stays open.
+  */
+  const problemPanel = sideBySide ? (
+    <article className="min-w-0">
+      {statement}
+      {/* Below the samples rather than beside them: a 16rem rail in a 40% pane would
+          leave the prose about 40 characters wide. */}
+      <div className="mt-8 border-t border-rule-edge pt-4">{rail}</div>
+    </article>
+  ) : (
+    /*
+      Stacked: the statement across the measure with the rail beside it, and the editor as
+      a full-width panel BELOW. A statement in a half-width column wraps at roughly 45
+      characters once the samples' code blocks are in it, so on a narrower laptop the prose
+      gets the full measure and the editor the full width. Below `lg` both stack, statement
+      first, which is the order a student needs them in.
+    */
+    <div className="mt-6 grid gap-8 lg:grid-cols-[minmax(0,1fr)_16rem]">
+      <article className="min-w-0">{statement}</article>
+      <aside className="min-w-0">{rail}</aside>
+    </div>
+  );
+
+  const panels = (
+    <>
+      <div
+        role="tabpanel"
+        id={problemPanelId(tabsIdBase, "problem")}
+        aria-labelledby={problemTabId(tabsIdBase, "problem")}
+        hidden={activeTab !== "problem"}
+      >
+        {problemPanel}
+      </div>
+      <div
+        role="tabpanel"
+        id={problemPanelId(tabsIdBase, "submissions")}
+        aria-labelledby={problemTabId(tabsIdBase, "submissions")}
+        hidden={activeTab !== "submissions"}
+        className={sideBySide ? undefined : "mt-6"}
+      >
+        {activeTab === "submissions" && (
+          <>
+            <p className="mb-3 text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
+              Your judged submissions for this problem, newest first. Open one to see its tests.
+              Every problem&apos;s history is under My submissions in the top bar.
+            </p>
+            <SubmissionHistory contestProblemId={detail.contestProblemId} live={streamed} />
+          </>
+        )}
+      </div>
+    </>
+  );
 
   /*
     ONE tree for both layouts. `SideBySideWorkspace` arranges the stacked page too, so the editor
@@ -673,28 +765,7 @@ export function ProblemWorkspace({ slug, window: contestWindow = null }: Problem
       label={problemLabel(detail.slotLabel, detail.title)}
       status={<ProblemStatusPill detail={detail} />}
       tabs={tabs}
-      statement={
-        sideBySide ? (
-          <article className="min-w-0">
-            {statement}
-            {/* Below the samples rather than beside them: a 16rem rail in a 40% pane would
-                leave the prose about 40 characters wide. */}
-            <div className="mt-8 border-t border-rule-edge pt-4">{rail}</div>
-          </article>
-        ) : (
-          /*
-            Stacked: the statement across the measure with the rail beside it, and the editor as
-            a full-width panel BELOW. A statement in a half-width column wraps at roughly 45
-            characters once the samples' code blocks are in it, so on a narrower laptop the prose
-            gets the full measure and the editor the full width. Below `lg` both stack, statement
-            first, which is the order a student needs them in.
-          */
-          <div className="mt-6 grid gap-8 lg:grid-cols-[minmax(0,1fr)_16rem]">
-            <article className="min-w-0">{statement}</article>
-            <aside className="min-w-0">{rail}</aside>
-          </div>
-        )
-      }
+      statement={panels}
       editor={editor}
       results={
         sideBySide ? (
