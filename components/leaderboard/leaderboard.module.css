@@ -692,25 +692,30 @@
  * Consecutive `<tbody>` elements let one team own a row group without nesting another table. The
  * discrete display transition keeps the closing rows in layout until their opacity has finished,
  * while older browsers simply fall back to an immediate close and the same correct final state.
+ *
+ * Opacity only, never a transform. The panel used to rise in from `translateY(-0.25em)`, which
+ * drew it over the bottom of its own team row for the length of the transition. An open breakdown
+ * takes its height in normal flow and pushes every row below it down; nothing about opening one
+ * may paint over a neighbour, even for 180ms.
  */
 .rosterRows {
   display: none;
   pointer-events: none;
-  transform: translateY(-0.25em);
+  opacity: 0;
   transition:
-    transform 180ms ease,
+    opacity 180ms ease,
     display 180ms allow-discrete;
 }
 
 .rosterRowsOpen {
   display: table-row-group;
   pointer-events: auto;
-  transform: translateY(0);
+  opacity: 1;
 }
 
 @starting-style {
   .rosterRowsOpen {
-    transform: translateY(-0.25em);
+    opacity: 0;
   }
 }
 
