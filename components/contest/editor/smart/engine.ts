@@ -57,6 +57,7 @@ import {
   toggleCase,
 } from "./line-edits";
 import { moveStatement } from "./move-statement";
+import { reindentLines } from "./reindent";
 import { isInside, regionAt, regions, scanCode, skipString, type Region } from "./scan";
 import { extendSelection, shrinkSelection } from "./selection";
 import { renderTemplate, templateParts } from "./template";
@@ -102,6 +103,10 @@ export function handleKey(state: EditState, input: KeyInput, profile: LanguagePr
   // Windows and Linux report AltGr as Ctrl+Alt, and that is how many layouts type "{" and "[".
   const altGr = !input.isMac && input.ctrlKey && input.altKey && !input.metaKey;
 
+  // Ctrl+Alt+L and Ctrl+Alt+I are Reformat and Auto-Indent off a Mac. An AltGr layout that types a
+  // character on those keys reports that character, never the plain letter, so it still types.
+  const reformat = reformatKey(input);
+  if (reformat !== null) return reindentLines(state, profile, reformat === "file");
   if (altGr && input.key.length === 1) return handleTyped(range, input.key, profile);
   if (mod) return input.altKey ? handleModAltKey(range, input, profile) : handleModKey(state, range, input, profile);
   if (input.isMac && input.ctrlKey && !input.metaKey) return handleMacCtrlKey(range, input, profile);
@@ -122,6 +127,27 @@ export function handleKey(state: EditState, input: KeyInput, profile: LanguagePr
     default:
       return input.key.length === 1 ? handleTyped(range, input.key, profile) : null;
   }
+}
+
+/**
+ * IntelliJ's Reformat Code (Cmd+Option+L, Ctrl+Alt+L) and Auto-Indent Lines (Ctrl+Option+I,
+ * Ctrl+Alt+I). On a Mac, Option turns the letter into a symbol, so the chord matches on `code`.
+ * Cmd+Option+L is Chrome's Downloads page on a Mac, so taking it also keeps the student here.
+ */
+function reformatKey(input: KeyInput): "file" | "lines" | null {
+  if (!input.altKey || input.shiftKey) return null;
+  const letter = input.code === undefined ? input.key.toLowerCase() : input.code.replace(/^Key/, "").toLowerCase();
+  const plain = input.isMac || input.key.toLowerCase() === letter;
+  if (!plain) return null;
+  if (input.isMac) {
+    if (input.metaKey && !input.ctrlKey && letter === "l") return "file";
+    if (input.ctrlKey && !input.metaKey && letter === "i") return "lines";
+    return null;
+  }
+  if (!input.ctrlKey || input.metaKey) return null;
+  if (letter === "l") return "file";
+  if (letter === "i") return "lines";
+  return null;
 }
 
 /**
@@ -266,13 +292,15 @@ function completeStatement(range: Range, profile: LanguageProfile): Edit {
     const header = PYTHON_HEADER.test(code);
     const completed = header && !code.endsWith(":") ? `${code}:` : code;
     if (!header && completed === line) return replace(`${line}\n${indent}`, line.length + 1 + indent.length);
+    // A header opens its indented body; a plain statement moves to a new line, as IntelliJ's does.
     const below = header ? indent + unit : indent;
-    const insert = header ? `${completed}\n${below}` : completed;
+    const insert = `${completed}\n${below}`;
     return replace(insert, insert.length);
   }
 
   const opensBody =
     trimmed.endsWith("{") ||
+    TYPE_HEADER.test(trimmed) ||
     BRACE_BARE_CONTROL.has(trimmed) ||
     (BRACE_CONTROL.test(trimmed) && trimmed.endsWith(")")) ||
     isMethodSignature(trimmed, braceDepthBefore(text, lineStart, profile), profile);
@@ -287,9 +315,12 @@ function completeStatement(range: Range, profile: LanguageProfile): Edit {
 
   const needsSemicolon = !/[;{}]$/.test(trimmed) && !/^(?:#|\/\/|\/\*|\*|@)/.test(trimmed);
   const completed = needsSemicolon ? `${code};` : code;
-  if (completed === line) return replace(`${line}\n${indent}`, line.length + 1 + indent.length);
-  return replace(completed, completed.length);
+  // The statement is finished, so the caret goes on to a new line below it.
+  return replace(`${completed}\n${indent}`, completed.length + 1 + indent.length);
 }
+
+/** `struct P`, `class Node`, `enum Color`: a type with no body yet, which Complete Statement opens. */
+const TYPE_HEADER = /^(?:(?:public|private|protected|static|final|abstract)\s+)*(?:struct|class|union|enum|interface|record)\s+[A-Za-z_$][\w$]*(?:\s+(?:extends|implements)\s+[\w$.<>, ]+)?$/;
 
 /**
  * `void f(int a)` or `static int gcd(int a, int b) throws X`: a declaration whose body Complete
@@ -384,6 +415,7 @@ function handleTyped(range: Range, ch: string, profile: LanguageProfile): Edit |
 
   if (profile.dedentOnType.includes(ch)) return dedentOnType(range, ch, profile);
   if (ch === ":" && profile.alignOnColon !== undefined) return alignClause(range, profile.alignOnColon);
+  if (ch === ":" && BRACE_LANGUAGES.has(profile.id)) return alignCaseLabel(range, profile);
   return null;
 }
 
@@ -398,6 +430,31 @@ function typeAngle(range: Range, ch: string, profile: LanguageProfile): Edit | n
   if (ch === ">") return text[caret] === ">" && hasOpenAngle(lineBefore, profile) ? caretOnly(caret, caret + 1) : null;
   if (isWordChar(text[caret]) || !opensAngle(lineBefore, profile)) return null;
   return { from: caret, to: caret, insert: "<>", selectionStart: caret + 1, selectionEnd: caret + 1 };
+}
+
+/**
+ * IntelliJ and CLion put a `case X:` or `default:` label one level inside its switch, whatever
+ * indent the line had: after `break;` + Enter the line sits with the statements, and the ":" of
+ * `default:` snaps it back to the labels.
+ */
+function alignCaseLabel(range: Range, profile: LanguageProfile): Edit | null {
+  const { text, start: caret } = range;
+  const lineStart = lineStartAt(text, caret);
+  if (text.slice(caret, lineEndAt(text, caret)).trim() !== "") return null;
+  const before = text.slice(lineStart, caret);
+  if (!/^\s*(?:case\b.*|default\s*)$/.test(before) || before.trimEnd().endsWith(":")) return null;
+  const open = findUnmatchedOpener(text, lineStart, "{", profile);
+  if (open === null) return null;
+  const switchLine = text.slice(lineStartAt(text, open), open);
+  if (!/\bswitch\s*\(/.test(switchLine)) return null;
+  const switchIndent = leadingSpace(switchLine);
+  const unit = switchIndent.includes("\t") ? "\t" : profile.indentUnit;
+  const target = switchIndent + unit;
+  const indent = leadingSpace(before);
+  if (indent === target) return null;
+  const insert = `${target}${before.slice(indent.length)}:`;
+  const after = lineStart + insert.length;
+  return { from: lineStart, to: caret, insert, selectionStart: after, selectionEnd: after };
 }
 
 /**

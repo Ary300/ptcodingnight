@@ -584,6 +584,33 @@ export function acceptsOnCharacter(
   return false;
 }
 
+/**
+ * IntelliJ's Tab in the lookup: Replace, where Enter inserts. The rest of the identifier after the
+ * caret goes too, and a call already written there keeps its own parentheses, so `sc.next|Int();`
+ * with nextLine() becomes `sc.nextLine()|;` and `input().s|trip()` with split() `input().split(|)`.
+ */
+export function applyCompletionReplacing(
+  state: EditState,
+  ctx: CompletionContext,
+  item: CompletionItem,
+  profile: LanguageProfile,
+): Edit {
+  let wordEnd = ctx.replaceTo;
+  while (wordEnd < state.text.length && /[A-Za-z0-9_$]/.test(state.text[wordEnd] ?? "")) wordEnd += 1;
+  if (wordEnd === ctx.replaceTo || item.kind === "snippet") return applyCompletion(state, ctx, item, profile);
+  const edit = applyCompletion(state, { ...ctx, replaceTo: wordEnd }, item, profile);
+  const call = /\([^()]*\)$/.exec(item.insertText);
+  if (call === null || state.text[wordEnd] !== "(" || !edit.insert.endsWith(item.insertText)) return edit;
+  // Keep the call that is already there: drop the item's own "(...)" and land in or after it.
+  const insert = edit.insert.slice(0, edit.insert.length - call[0].length);
+  const shift = insert.length - (edit.to - edit.from);
+  const open = wordEnd + shift;
+  const close = state.text.indexOf(")", wordEnd);
+  const wantsInside = (item.caretOffset ?? item.insertText.length) < item.insertText.length;
+  const caret = wantsInside || close === -1 ? open + 1 : close + 1 + shift;
+  return { ...edit, insert, selectionStart: caret, selectionEnd: caret };
+}
+
 /** Kinds whose accept, when the name is typed in full, would add nothing a student wants. */
 const SETTLED_KINDS: ReadonlySet<string> = new Set(["keyword", "variable", "field", "type"]);
 

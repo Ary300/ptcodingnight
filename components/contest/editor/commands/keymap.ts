@@ -213,6 +213,18 @@ const GUARDED_MOD_SHIFT_LETTERS: ReadonlySet<string> = new Set(["r", "a"]);
  */
 export function isGuardedChord(chord: Chord): boolean {
   if (bare(chord) && ["F1", "F3", "F5", "F12"].includes(chord.key)) return true;
+  // Alt+Left and Alt+Right are Back and Forward off a Mac, and IntelliJ's switch-tab reflex there.
+  if (
+    !chord.isMac &&
+    chord.altKey &&
+    !chord.ctrlKey &&
+    !chord.metaKey &&
+    !chord.shiftKey &&
+    (chord.key === "ArrowLeft" || chord.key === "ArrowRight")
+  ) {
+    return true;
+  }
+  if (chord.isMac && macNavigationChord(chord)) return true;
   if (!modOnly(chord) || chord.altKey) return false;
   // Mac Cmd+[ and Cmd+] are Back and Forward, and Cmd+[ is IntelliJ's own Back.
   if (chord.code === "BracketLeft" || chord.code === "BracketRight" || chord.key === "[" || chord.key === "]") {
@@ -224,6 +236,19 @@ export function isGuardedChord(chord: Chord): boolean {
     return GUARDED_MOD_SHIFT_LETTERS.has(letter) || chord.key === "Delete";
   }
   return GUARDED_MOD_LETTERS.has(letter);
+}
+
+/**
+ * IntelliJ's navigation chords on a Mac that Chrome would act on: Cmd+Shift+O (Go to File, the
+ * bookmark manager), Cmd+1 to Cmd+9 (the tool windows, Chrome's tab switch), Cmd+Option+B (Go to
+ * Implementation, bookmarks) and Cmd+Shift+8 (column selection).
+ */
+function macNavigationChord(chord: Chord): boolean {
+  if (!chord.metaKey || chord.ctrlKey) return false;
+  const letter = letterOf(chord);
+  if (chord.shiftKey && !chord.altKey && (letter === "o" || chord.code === "Digit8")) return true;
+  if (chord.altKey && !chord.shiftKey && letter === "b") return true;
+  return !chord.shiftKey && !chord.altKey && /^Digit[1-9]$/.test(chord.code);
 }
 
 /** Never prevented, whatever a future table says: the page cannot stop them, or must not. */

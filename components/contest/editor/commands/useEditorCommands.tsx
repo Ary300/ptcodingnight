@@ -567,6 +567,9 @@ export function useEditorCommands(options: EditorCommandsOptions): EditorCommand
   const onPointerDown = useCallback(() => {
     endSession();
     setInfo(null);
+    // A click back into the code closes Context Actions and Surround With, as in IntelliJ, so a later
+    // Alt+Enter opens a fresh menu that has the focus.
+    setMenu(null);
     pendingRestore.current = null;
   }, [endSession]);
 

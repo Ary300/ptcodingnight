@@ -11,6 +11,7 @@ import { applyNativeEdit } from "./native-edit";
 import {
   acceptsOnCharacter,
   applyCompletion,
+  applyCompletionReplacing,
   autoPopupSuppressed,
   completionContext,
   completionsFor,
@@ -64,7 +65,7 @@ export interface Completion {
    * The edit that accepting row `index` performs against the textarea as it is NOW, or null when
    * there is nothing to complete there any more or the accept would change nothing.
    */
-  readonly editFor: (element: HTMLTextAreaElement, index: number) => Edit | null;
+  readonly editFor: (element: HTMLTextAreaElement, index: number, replace?: boolean) => Edit | null;
   /** Whether row `index` is the name the student already typed in full, so Enter is a newline. */
   readonly typedInFull: (element: HTMLTextAreaElement, index: number) => boolean;
   /**
@@ -228,7 +229,7 @@ export function useCompletion(
   }, []);
 
   const editFor = useCallback(
-    (element: HTMLTextAreaElement, index: number): Edit | null => {
+    (element: HTMLTextAreaElement, index: number, replace = false): Edit | null => {
       if (profile === null || popup === null) return null;
       const shown = popup.items[index];
       const ctx = contextAt(element, profile);
@@ -245,7 +246,8 @@ export function useCompletion(
         selectionEnd: element.selectionEnd,
       };
       // The profile, not just its indent: an accepted class brings its import in the same edit.
-      const edit = applyCompletion(state, ctx, item, profile);
+      // Tab replaces the rest of the word after the caret; Enter inserts in front of it.
+      const edit = replace ? applyCompletionReplacing(state, ctx, item, profile) : applyCompletion(state, ctx, item, profile);
       return isNoOpEdit(state.text, edit) ? null : edit;
     },
     [popup, profile],

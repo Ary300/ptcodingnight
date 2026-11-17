@@ -113,6 +113,23 @@ function candidates(text: string, pos: number, profile: LanguageProfile): readon
   return found.filter((span) => span.start <= span.end && span.start >= 0 && span.end <= text.length);
 }
 
+/**
+ * The steps Extend took, so Shrink walks back down the same ones as IntelliJ's does: from the
+ * statement back to `Math.max(a, b)`, not to whatever word starts the statement. Any edit or
+ * other selection starts a new trail, since the trail is kept only while the text and the
+ * selection are exactly what the last step left.
+ */
+interface Trail {
+  readonly text: string;
+  readonly steps: readonly Span[];
+}
+
+let trail: Trail | null = null;
+
+function sameSpan(a: Span | undefined, start: number, end: number): boolean {
+  return a !== undefined && a.start === start && a.end === end;
+}
+
 /** The selection one step larger, or null when it already covers the whole file. */
 export function extendSelection(state: EditState, profile: LanguageProfile): Span | null {
   const { text, start, end } = normalise(state);
@@ -120,6 +137,11 @@ export function extendSelection(state: EditState, profile: LanguageProfile): Spa
   const all = [...candidates(text, start, profile), lines];
   const containing = all.filter((span) => span.start <= start && span.end >= end && span.end - span.start > end - start);
   const best = containing.reduce<Span | null>((min, span) => (min === null || span.end - span.start < min.end - min.start ? span : min), null);
+  if (best !== null) {
+    const continues = trail !== null && trail.text === text && sameSpan(trail.steps[trail.steps.length - 1], start, end);
+    const steps = continues && trail !== null ? trail.steps : [{ start, end }];
+    trail = { text, steps: [...steps, best] };
+  }
   return best;
 }
 
@@ -127,6 +149,12 @@ export function extendSelection(state: EditState, profile: LanguageProfile): Spa
 export function shrinkSelection(state: EditState, profile: LanguageProfile): Span | null {
   const { text, start, end } = normalise(state);
   if (start === end) return null;
+  if (trail !== null && trail.text === text && trail.steps.length > 1 && sameSpan(trail.steps[trail.steps.length - 1], start, end)) {
+    const steps = trail.steps.slice(0, -1);
+    trail = { text, steps };
+    const previous = steps[steps.length - 1];
+    if (previous !== undefined) return previous;
+  }
   const firstCode = start + leadingSpace(text.slice(start, end)).length;
   const all = [...candidates(text, start, profile), ...candidates(text, firstCode, profile)];
   const inside = all.filter(

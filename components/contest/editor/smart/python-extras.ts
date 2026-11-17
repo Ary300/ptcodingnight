@@ -77,6 +77,13 @@ export const PYTHON_IMPORTABLES: readonly CompletionItem[] = [
   imported("itertools", call("accumulate", "function", "itertools", "iterable", "Running totals.")),
   imported("functools", call("lru_cache", "function", "functools", "maxsize=128", "A decorator that remembers results. Use maxsize=None for memoisation.")),
   imported("functools", call("reduce", "function", "functools", "function, iterable", "Folds the items into one value.")),
+  imported("math", call("sqrt", "function", "math", "x", "The square root of x, as a float.")),
+  imported("math", call("isqrt", "function", "math", "n", "The whole-number square root of n.")),
+  imported("math", call("gcd", "function", "math", "a, b", "The greatest common divisor of a and b.")),
+  imported("math", call("ceil", "function", "math", "x", "The smallest whole number at least x.")),
+  imported("math", call("floor", "function", "math", "x", "The largest whole number at most x.")),
+  imported("math", bare("inf", "variable", "math", "Positive infinity, a float larger than every number.")),
+  imported("math", bare("pi", "variable", "math", "The ratio of a circle's circumference to its diameter.")),
 ];
 
 const MODULE_DOCS: Readonly<Record<string, string>> = {

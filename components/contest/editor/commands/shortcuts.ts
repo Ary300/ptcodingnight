@@ -69,7 +69,10 @@ function completion({ isMac, smart }: ShortcutOptions): ShortcutGroup | null {
     title: "Completion",
     rows: [
       { keys: ["Ctrl + Space"], action: "Show suggestions" },
-      { keys: [`${alt} + Space`], action: "Show suggestions (when Ctrl + Space switches keyboards)" },
+      // Alt+Space is the window menu on Windows, so the fallback is listed on a Mac only.
+      ...(isMac
+        ? [{ keys: [`${alt} + Space`], action: "Show suggestions (when Ctrl + Space switches keyboards)" }]
+        : []),
       { keys: ["Enter"], action: "Insert the suggestion" },
       { keys: ["Tab"], action: "Replace the word with the suggestion" },
       { keys: [`${mod} + P`], action: "Parameter info" },

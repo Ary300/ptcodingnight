@@ -28,7 +28,11 @@ export function engineShortcuts(isMac: boolean, profile: LanguageProfile): reado
       keys: [isMac ? "Option + Up / Down" : "Alt + Shift + Right / Left"],
       action: "Extend or shrink the selection",
     },
-    { keys: ["Ctrl + Shift + J"], action: "Join lines" },
+    // Ctrl+Shift+J opens Chrome's console off a Mac and no page can stop it, so it is listed only
+    // where it works.
+    ...(isMac ? [{ keys: ["Ctrl + Shift + J"], action: "Join lines" }] : []),
+    { keys: [isMac ? "Cmd + Option + L" : "Ctrl + Alt + L"], action: "Reformat the code" },
+    { keys: [isMac ? "Ctrl + Option + I" : "Ctrl + Alt + I"], action: "Indent the lines" },
     { keys: [`${mod} + Shift + U`], action: "Toggle case" },
     { keys: [isMac ? "Ctrl + M" : "Ctrl + Shift + M"], action: "Jump to the matching bracket" },
     { keys: [isMac ? "Cmd + Left" : "Home"], action: "First character of the line, then column 0" },

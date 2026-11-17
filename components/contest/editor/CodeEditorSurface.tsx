@@ -338,10 +338,32 @@ export function CodeEditorSurface({
     [commands.fontPx],
   );
 
+  /*
+    The editor is disabled while a submission is sent, and a disabled textarea loses focus, so the
+    student who pressed Mod+Enter found every key after it going nowhere. A submission sent from
+    the keyboard gives the focus back once the editor is enabled again.
+  */
+  const refocusAfterSubmit = useRef(false);
+  const submitFromKeys = useMemo(
+    () =>
+      onSubmitShortcut === undefined
+        ? undefined
+        : () => {
+            refocusAfterSubmit.current = true;
+            onSubmitShortcut();
+          },
+    [onSubmitShortcut],
+  );
+  useEffect(() => {
+    if (disabled || !refocusAfterSubmit.current) return;
+    refocusAfterSubmit.current = false;
+    textareaRef.current?.focus();
+  }, [disabled]);
+
   const { handleKeyDown, completion, profile, isMac, applyKeyEdit, tabMovesFocus, endTemplate } = useEditorKeys({
     textareaRef,
     language,
-    onSubmitShortcut,
+    onSubmitShortcut: submitFromKeys,
     syncCaret,
     commands: commands.hooks,
   });
@@ -845,7 +867,7 @@ export function CodeEditorSurface({
             {tabMovesFocus
               ? "Tab now moves to the next control."
               : "Tab indents. Press Escape twice, then Tab, to move focus out of the editor."}{" "}
-            Control or Command plus Enter submits.
+            {isMac ? "Command plus Enter submits." : "Control plus Enter submits."}
           </p>
           <EditorStatusBar
             line={caret.line}

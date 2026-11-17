@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, type KeyboardEvent, type RefObject } from "react";
+import { useId, useRef, type KeyboardEvent, type RefObject } from "react";
 
 /**
  * IntelliJ's find bar, above the code: Find (Mod+F) and, with Replace (Cmd+R, Ctrl+R), a second
@@ -51,10 +51,22 @@ function Toggle({ pressed, label, short, onToggle }: { pressed: boolean; label: 
 export function FindBar({ findInputRef, ...props }: FindBarProps) {
   const findId = useId();
   const replaceId = useId();
+  const replaceInputRef = useRef<HTMLInputElement | null>(null);
   const { isMac } = props;
 
   const onFieldKey = (event: KeyboardEvent<HTMLInputElement>, replaceField: boolean) => {
     const mod = isMac ? event.metaKey : event.ctrlKey;
+    // IntelliJ's Tab goes from Find straight to Replace and Shift+Tab back, past the toggles, so
+    // a replacement typed after Tab lands in the Replace field.
+    if (event.key === "Tab" && !mod && !event.altKey && props.showReplace && event.shiftKey === replaceField) {
+      const target = replaceField ? findInputRef.current : replaceInputRef.current;
+      if (target !== null) {
+        event.preventDefault();
+        target.focus();
+        target.select();
+        return;
+      }
+    }
     if (event.key === "Escape") {
       event.preventDefault();
       props.onClose();
@@ -129,6 +141,7 @@ export function FindBar({ findInputRef, ...props }: FindBarProps) {
           </label>
           <input
             id={replaceId}
+            ref={replaceInputRef}
             type="text"
             value={props.replacement}
             placeholder="Replace"

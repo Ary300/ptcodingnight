@@ -24,7 +24,8 @@ import { useCompletion, type Completion } from "./useCompletion";
  *      Info, Quick Documentation, Context Actions, Save, Run, font size, occurrences. An open
  *      bar or info panel is closed by Escape here, before Escape counts toward leaving.
  *   4. Escape twice arms "Tab leaves the editor" (one Escape is an IntelliJ reflex and must not
- *      change what Tab does); plain Ctrl/Cmd + Enter submits, and with Shift it never does;
+ *      change what Tab does); plain Mod + Enter submits (Cmd on a Mac, Ctrl elsewhere), and with
+ *      Shift it never does;
  *      Ctrl + Space opens completion; an armed Tab leaves.
  *   5. The smart engine (smart/engine.ts) answers IntelliJ's keys for Java, Python and C++.
  *   5a. Browser chords IntelliJ habits press (print, reload, bookmark, Back) that nothing above
@@ -253,7 +254,7 @@ export function useEditorKeys({
           return true;
         }
       }
-      const edit = completion.editFor(element, popup.activeIndex);
+      const edit = completion.editFor(element, popup.activeIndex, viaTab);
       completion.close();
       if (edit === null) return false;
       applyKeyEdit(element, edit);
@@ -334,6 +335,19 @@ export function useEditorKeys({
           escapeOnce.current = true;
           return;
         }
+        // In a template field, Tab moves to the next field unless the student picked a row with the
+        // arrows: `fori`, Tab, `n`, Tab must not turn the bound into `not` or `new`.
+        if (
+          event.key === "Tab" &&
+          !event.shiftKey &&
+          completion.popup.activeIndex === 0 &&
+          template.current !== null &&
+          nextTemplateField(element)
+        ) {
+          event.preventDefault();
+          if (tabMovesFocus) setTabMovesFocus(false);
+          return;
+        }
         // A name typed in full (`sys.stdin.readline`) keeps Enter a newline: the popup never eats one.
         const keepsNewline =
           event.key === "Enter" && completion.typedInFull(element, completion.popup.activeIndex);
@@ -395,13 +409,18 @@ export function useEditorKeys({
         }
       }
 
-      if (event.key === "Enter" && (event.metaKey || event.ctrlKey) && !event.altKey) {
+      // Mod + Enter submits: Cmd on a Mac, Ctrl elsewhere. A Mac's Ctrl+Enter is IntelliJ's Generate,
+      // an IDE reflex, and must never send a judged submission.
+      const modHeld = isMac ? event.metaKey : event.ctrlKey;
+      if (event.key === "Enter" && modHeld && !event.altKey) {
         if (!event.shiftKey) {
           event.preventDefault();
           completion.close();
           onSubmitShortcut?.();
           return;
         }
+        // With the popup open, the row is accepted first, then the statement is completed.
+        if (completion.popup !== null && profile !== null) acceptCompletion(element, false);
         // Ctrl/Cmd + Shift + Enter is IntelliJ's Complete Current Statement, a reflex in the middle
         // of a line, so it must never submit. The engine completes the statement; with no
         // profile it does nothing at all.

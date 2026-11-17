@@ -112,7 +112,16 @@ function pythonImport(text: string, importLine: string): TextChange | null {
   }
   const existing = lines(text, PY_IMPORT_LINE);
   const last = existing[existing.length - 1];
-  if (last === undefined) return placeAtTop(text, importLine, true);
+  if (last === undefined) {
+    // A module docstring stays the first statement, as PyCharm keeps it: the import goes under it.
+    const docstring = /^(?:[ \t]*(?:#[^\n]*)?\n)*[rRuU]?("""|''')[\s\S]*?\1[ \t]*(?:\n|$)/.exec(text);
+    if (docstring !== null) {
+      const at = docstring.index + docstring[0].length;
+      const lead = text[at - 1] === "\n" ? "" : "\n";
+      return { from: at, to: at, insert: `${lead}${importLine}\n` };
+    }
+    return placeAtTop(text, importLine, true);
+  }
   return placeAfter(text, last.start, importLine);
 }
 

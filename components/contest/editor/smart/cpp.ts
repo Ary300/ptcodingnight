@@ -367,7 +367,8 @@ export const CPP: LanguageProfile = {
   keywords: KEYWORDS,
   globals: GLOBALS.map(withInclude),
   members: {
-    std: STD_NAMES,
+    // `std::vec` brings its #include in as bare `vec` does: GCC's <iostream> does not supply vector.
+    std: STD_NAMES.map(withInclude),
     "*": ANY_MEMBER,
   },
   keywordTails: CPP_KEYWORD_TAILS,

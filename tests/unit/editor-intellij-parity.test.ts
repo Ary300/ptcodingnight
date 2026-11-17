@@ -354,19 +354,22 @@ describe("Mod+Shift+Enter is Complete Current Statement", () => {
   const completePc = key("Enter", { ctrl: true, shift: true });
 
   it("adds the missing semicolon and closers", () => {
-    expect(typeKeys("System.out.println(x▮)", [completeMac], JAVA)).toBe("System.out.println(x);▮");
-    expect(typeKeys("System.out.println(x▮", [completePc], JAVA)).toBe("System.out.println(x);▮");
-    expect(typeKeys("    int a = f(g(1▮", [completePc], CPP)).toBe("    int a = f(g(1));▮");
+    expect(typeKeys("System.out.println(x▮)", [completeMac], JAVA)).toBe("System.out.println(x);\n▮");
+    expect(typeKeys("System.out.println(x▮", [completePc], JAVA)).toBe("System.out.println(x);\n▮");
+    expect(typeKeys("    int a = f(g(1▮", [completePc], CPP)).toBe("    int a = f(g(1));\n    ▮");
+    expect(typeKeys("    int x = 5▮", [completePc], CPP)).toBe("    int x = 5;\n    ▮");
   });
 
   it("opens the block of a control statement", () => {
     expect(typeKeys("    if (x > 0▮", [completePc], JAVA)).toBe("    if (x > 0) {\n        ▮\n    }");
-    expect(typeKeys("struct P▮", [completePc], CPP)).toBe("struct P;▮");
+    // A type with no body yet gets one, and CLion's "};" after a struct.
+    expect(typeKeys("struct P▮", [completePc], CPP)).toBe("struct P {\n    ▮\n};");
   });
 
   it("ends a Python header with a colon and starts its body", () => {
     expect(typeKeys("if x > 0▮", [completePc], PYTHON)).toBe("if x > 0:\n    ▮");
-    expect(typeKeys("print(x▮", [completePc], PYTHON)).toBe("print(x)▮");
+    expect(typeKeys("print(x▮", [completePc], PYTHON)).toBe("print(x)\n▮");
+    expect(typeKeys("print(max(a, b▮", [completePc], PYTHON)).toBe("print(max(a, b))\n▮");
   });
 
   it("starts a new line when the statement is already complete", () => {

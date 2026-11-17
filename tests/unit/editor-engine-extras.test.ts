@@ -172,7 +172,8 @@ describe("Complete Current Statement", () => {
   const complete = key("Enter", { ctrl: true, shift: true });
 
   it("closes the call and adds the semicolon", () => {
-    expect(one("        System.out.println(x▮", complete)).toBe("        System.out.println(x);▮");
+    // The statement is done, so the caret goes on to a new line at the same indent.
+    expect(one("        System.out.println(x▮", complete)).toBe("        System.out.println(x);\n        ▮");
   });
 
   it("opens a block after if, for and while", () => {
@@ -259,12 +260,20 @@ describe("Extend and Shrink Selection", () => {
     expect(press("    total += Math.max(a▮b, c);", [grow, grow, grow, shrink], JAVA)).toBe(
       "    total += Math.max(«ab, c»);",
     );
-    expect(press("x = f(a▮b);", [grow, shrink])).toBe("x = f(▮ab);");
+    // Retracing ends where Extend started: the caret back where it was.
+    expect(press("x = f(a▮b);", [grow, shrink])).toBe("x = f(a▮b);");
+  });
+
+  it("retraces Extend from a call back to the call, not to the statement's first word", () => {
+    expect(press("        int total = Math.ma▮x(a, b);", [grow, grow, grow, shrink], JAVA)).toBe(
+      "        int total = «Math.max(a, b)»;",
+    );
   });
 
   it("uses Alt+Shift+Right and Left off a Mac, since Ctrl+W closes the tab", () => {
     expect(one("x = a▮b;", key("ArrowRight", { alt: true, shift: true }))).toBe("x = «ab»;");
-    expect(one("x = «ab»;", key("ArrowLeft", { alt: true, shift: true }))).toBe("x = ▮ab;");
+    // A selection Extend did not make shrinks to the largest step inside it.
+    expect(one("y = «ab»;", key("ArrowLeft", { alt: true, shift: true }))).toBe("y = ▮ab;");
     expect(one("x = a▮b;", key("ArrowUp", { alt: true }))).toBe("null");
   });
 });
