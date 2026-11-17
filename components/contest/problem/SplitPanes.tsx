@@ -53,6 +53,15 @@ export interface SplitPanesProps {
   readonly startLabel: string;
   readonly endLabel: string;
   readonly className?: string;
+  /**
+   * One pane above the other, with no divider: the "Stacked" layout. It is a mode of this
+   * component rather than a different tree on purpose. The end pane holds the editor, and if the
+   * two layouts were different trees, every switch (the toggle, the window crossing 1024px, a
+   * browser zoom) would rebuild the textarea: focus to <body> mid-word, the caret to 0, and the
+   * browser's undo history gone, since Chrome drops a node's undo steps when it leaves the page.
+   * Here the end pane is the same element in both layouts, and only its classes change.
+   */
+  readonly stacked?: boolean;
 }
 
 function documentTop(element: HTMLElement): number {
@@ -97,7 +106,7 @@ function useSplitBox(rootRef: RefObject<HTMLDivElement | null>): SplitBox | null
   return box;
 }
 
-export function SplitPanes({ start, end, startLabel, endLabel, className }: SplitPanesProps) {
+export function SplitPanes({ start, end, startLabel, endLabel, className, stacked = false }: SplitPanesProps) {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const startId = useId();
   const box = useSplitBox(rootRef);
@@ -155,64 +164,71 @@ export function SplitPanes({ start, end, startLabel, endLabel, className }: Spli
     <div
       ref={rootRef}
       data-split-root=""
-      className={`flex ${dragging ? "cursor-col-resize select-none" : ""} ${className ?? ""}`}
-      style={{
-        height: box === null ? undefined : `${box.height}px`,
-        marginLeft: box === null ? undefined : `${-box.bleed}px`,
-        marginRight: box === null ? undefined : `${-box.bleed}px`,
-      }}
+      data-layout={stacked ? "stacked" : "split"}
+      className={`${stacked ? "" : "flex"} ${dragging ? "cursor-col-resize select-none" : ""} ${className ?? ""}`}
+      style={
+        stacked || box === null
+          ? undefined
+          : { height: `${box.height}px`, marginLeft: `${-box.bleed}px`, marginRight: `${-box.bleed}px` }
+      }
     >
       <section
         id={startId}
         aria-label={startLabel}
         data-split-pane="start"
-        className="min-w-0 shrink-0 overflow-y-auto overscroll-contain pt-1 pr-4 pb-6"
-        style={{ flexBasis: `${split}%` }}
+        className={stacked ? "min-w-0" : "min-w-0 shrink-0 overflow-y-auto overscroll-contain pt-1 pr-4 pb-6"}
+        style={stacked ? undefined : { flexBasis: `${split}%` }}
       >
         {start}
       </section>
 
-      <div
-        role="separator"
-        tabIndex={0}
-        aria-orientation="vertical"
-        aria-controls={startId}
-        aria-label="Resize the problem and the editor"
-        aria-valuenow={split}
-        aria-valuemin={SPLIT_MIN}
-        aria-valuemax={SPLIT_MAX}
-        aria-valuetext={`Problem ${split}%, editor ${100 - split}%`}
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={endDrag}
-        onPointerCancel={endDrag}
-        onLostPointerCapture={endDrag}
-        onKeyDown={onKeyDown}
-        className="group relative flex w-3 shrink-0 cursor-col-resize touch-none justify-center"
-      >
-        {/* The rule, full height. Firm while dragged or focused so the student sees what moves. */}
-        <span
-          aria-hidden="true"
-          className={`h-full w-px transition-colors duration-[var(--motion-press)] group-hover:bg-panther group-focus-visible:bg-panther ${
-            dragging ? "bg-panther" : "bg-rule-edge"
-          }`}
-        />
-        {/* The grip, so the rule reads as something to take hold of rather than a border. */}
-        <span
-          aria-hidden="true"
-          className={`absolute top-1/2 h-10 w-1.5 -translate-y-1/2 rounded-chip border transition-colors duration-[var(--motion-press)] group-hover:border-panther group-hover:bg-panther group-focus-visible:border-panther group-focus-visible:bg-panther ${
-            dragging ? "border-panther bg-panther" : "border-rule-firm bg-paper"
-          }`}
-        />
-      </div>
+      {/* Absent when stacked, but its slot stays, so the end pane after it is never rebuilt. */}
+      {stacked ? null : (
+        <div
+          role="separator"
+          tabIndex={0}
+          aria-orientation="vertical"
+          aria-controls={startId}
+          aria-label="Resize the problem and the editor"
+          aria-valuenow={split}
+          aria-valuemin={SPLIT_MIN}
+          aria-valuemax={SPLIT_MAX}
+          aria-valuetext={`Problem ${split}%, editor ${100 - split}%`}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={endDrag}
+          onPointerCancel={endDrag}
+          onLostPointerCapture={endDrag}
+          onKeyDown={onKeyDown}
+          className="group relative flex w-3 shrink-0 cursor-col-resize touch-none justify-center"
+        >
+          {/* The rule, full height. Firm while dragged or focused so the student sees what moves. */}
+          <span
+            aria-hidden="true"
+            className={`h-full w-px transition-colors duration-[var(--motion-press)] group-hover:bg-panther group-focus-visible:bg-panther ${
+              dragging ? "bg-panther" : "bg-rule-edge"
+            }`}
+          />
+          {/* The grip, so the rule reads as something to take hold of rather than a border. */}
+          <span
+            aria-hidden="true"
+            className={`absolute top-1/2 h-10 w-1.5 -translate-y-1/2 rounded-chip border transition-colors duration-[var(--motion-press)] group-hover:border-panther group-hover:bg-panther group-focus-visible:border-panther group-focus-visible:bg-panther ${
+              dragging ? "border-panther bg-panther" : "border-rule-firm bg-paper"
+            }`}
+          />
+        </div>
+      )}
 
       <section
         aria-label={endLabel}
         data-split-pane="end"
         // A flex column, so the editor panel inside can take the height the actions and the
         // verdict leave. `px-1` and `pt-1` keep the editor's focus ring, drawn 2px outside the
-        // textarea, inside this pane's scroll box where it cannot be clipped.
-        className="flex min-w-0 flex-1 flex-col overflow-y-auto overscroll-contain pt-1 pr-1 pb-6 pl-4"
+        // textarea, inside this pane's scroll box where it cannot be clipped. Stacked, it is the
+        // full-width panel below the statement.
+        className={
+          stacked ? "mt-8" : "flex min-w-0 flex-1 flex-col overflow-y-auto overscroll-contain pt-1 pr-1 pb-6 pl-4"
+        }
       >
         {end}
       </section>

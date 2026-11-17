@@ -199,6 +199,72 @@ test.describe("on a wide window", () => {
     await expect(textarea).toHaveValue("int answer = 42;");
     await expect(textarea).toBeFocused();
   });
+
+  test("crossing 1024px keeps the same editor: focus, caret and undo survive", async ({ page }) => {
+    await page.setViewportSize({ width: 1100, height: 800 });
+    await openProblemAsGuest(page);
+    await layoutButton(page, "Side by side").click();
+    await expect(divider(page)).toBeVisible();
+
+    const textarea = editor(page);
+    await textarea.click();
+    await textarea.fill("");
+    await page.keyboard.type("int a = 1;");
+    // Tag the node: a rebuilt textarea would not carry the mark.
+    await textarea.evaluate((element) => element.setAttribute("data-probe", "same-node"));
+
+    // Snapping the window to half a screen drops it below the split's breakpoint.
+    await page.setViewportSize({ width: 1000, height: 800 });
+    await expect(divider(page)).toHaveCount(0);
+    await expect(textarea).toHaveAttribute("data-probe", "same-node");
+    await expect(textarea).toBeFocused();
+    expect(await textarea.evaluate((element) => (element as HTMLTextAreaElement).selectionStart)).toBe(
+      "int a = 1;".length,
+    );
+
+    // Undo still reaches what was typed BEFORE the switch: a rebuilt textarea has no history.
+    await page.keyboard.press("ControlOrMeta+z");
+    await expect(textarea).not.toHaveValue("int a = 1;");
+  });
+
+  test("the toggle keeps the editor's undo history", async ({ page }) => {
+    await openProblemAsGuest(page);
+    await layoutButton(page, "Side by side").click();
+    const textarea = editor(page);
+    await textarea.click();
+    await textarea.fill("");
+    await page.keyboard.type("int b = 2;");
+
+    await layoutButton(page, "Stacked").click();
+    await expect(divider(page)).toHaveCount(0);
+    await textarea.click();
+    await page.keyboard.press("End");
+    await page.keyboard.press("ControlOrMeta+z");
+    await expect(textarea).not.toHaveValue("int b = 2;");
+  });
+
+  test("samples fit the problem pane at the divider's narrowest", async ({ page }) => {
+    await page.setViewportSize({ width: 1024, height: 768 });
+    await openProblemAsGuest(page);
+    await layoutButton(page, "Side by side").click();
+    await divider(page).focus();
+    await page.keyboard.press("Home");
+    await expect(divider(page)).toHaveAttribute("aria-valuenow", "30");
+
+    const pane = page.getByRole("region", { name: "Problem statement" });
+    await pane.getByText("Sample 1", { exact: true }).click();
+    const copy = pane.getByRole("button", { name: /^Copy sample 1/ });
+    await expect(copy.first()).toBeVisible();
+
+    // Nothing in the pane spills sideways, and each Copy button sits inside it.
+    const overflow = await pane.evaluate((element) => element.scrollWidth - element.clientWidth);
+    expect(overflow).toBeLessThanOrEqual(1);
+    const paneBox = await box(pane);
+    for (const button of await copy.all()) {
+      const buttonBox = await box(button);
+      expect(buttonBox.x + buttonBox.width).toBeLessThanOrEqual(paneBox.x + paneBox.width + 1);
+    }
+  });
 });
 
 test.describe("on a narrow window", () => {

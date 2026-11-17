@@ -569,48 +569,42 @@ export function ProblemWorkspace({ slug }: ProblemWorkspaceProps) {
         trailing={wide ? <LayoutToggle value={layout} onChange={rememberLayout} /> : undefined}
       />
 
-      {sideBySide ? (
-        /*
-          Side by side, HackerRank's split: the statement on the left, the editor, run and submit
-          on the right, each pane scrolling by itself. The details rail drops under the statement,
-          because a 16rem column beside it in a half-width pane leaves the prose about 40
-          characters wide.
-        */
-        <SplitPanes
-          className="mt-6"
-          startLabel="Problem statement"
-          endLabel="Your solution"
-          start={
+      {/*
+        ONE tree for both layouts, so the editor is never rebuilt when the layout changes (see
+        `stacked` on SplitPanes): the same end pane holds the solution either way.
+
+        Side by side, HackerRank's split: the statement on the left, the editor, run and submit on
+        the right, each pane scrolling by itself. The details rail drops under the statement,
+        because a 16rem column beside it in a half-width pane leaves the prose about 40 characters
+        wide.
+
+        Stacked, the default: the statement across the measure with a metadata rail beside it, and
+        the editor as a full-width panel BELOW. The difference is not cosmetic. A statement in a
+        half-width column wraps at roughly 45 characters once the samples' code blocks are in it,
+        and a student reads the problem once and then works in the editor for forty minutes.
+        Giving the prose the full measure and the editor the full width fits what each is actually
+        for. Below `lg` both stack, statement first, which is the order a student needs them in.
+      */}
+      <SplitPanes
+        className="mt-6"
+        stacked={!sideBySide}
+        startLabel="Problem statement"
+        endLabel="Your solution"
+        start={
+          sideBySide ? (
             <article className="min-w-0">
               {statement}
               <div className="mt-8 border-t border-rule-edge pt-4">{rail}</div>
             </article>
-          }
-          end={solution}
-        />
-      ) : (
-        <>
-          {/*
-            Stacked, the default: the statement across the measure with a metadata rail beside it,
-            and the editor as a full-width panel BELOW. The split is one click away on the toggle.
-
-            The difference is not cosmetic. A statement in a half-width column wraps at roughly 45
-            characters once the samples' code blocks are in it, and a student reads the problem once
-            and then works in the editor for forty minutes. Giving the prose the full measure and the
-            editor the full width fits what each is actually for. Below `lg` both stack, statement
-            first, which is the order a student needs them in.
-          */}
-          <div className="mt-6 grid gap-8 lg:grid-cols-[minmax(0,1fr)_16rem]">
-            <article className="min-w-0">{statement}</article>
-            <aside className="min-w-0">{rail}</aside>
-          </div>
-
-          {/* ---- the editor panel, full width, below the statement ---- */}
-          <section aria-label="Your solution" className="mt-8">
-            {solution}
-          </section>
-        </>
-      )}
+          ) : (
+            <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_16rem]">
+              <article className="min-w-0">{statement}</article>
+              <aside className="min-w-0">{rail}</aside>
+            </div>
+          )
+        }
+        end={solution}
+      />
     </div>
   );
 }
