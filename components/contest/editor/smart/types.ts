@@ -47,6 +47,12 @@ export interface Edit {
    */
   readonly tabStops?: readonly TabStop[];
   /**
+   * Copies of the FIRST field (the one selected after the edit) elsewhere in the template, as
+   * ranges in the NEW text: the `i` of `for (int i = 0; i < n; i++)` written three times. Leaving
+   * the field writes what was typed into each copy, as IntelliJ's linked template variables do.
+   */
+  readonly mirrors?: readonly TabStop[];
+  /**
    * The direction to give the selection after the edit, for Shift+Home extending leftwards from
    * its anchor. Absent means "forward"; the surface passes it to setSelectionRange.
    */
@@ -57,6 +63,8 @@ export interface Edit {
 export interface TabStop {
   readonly from: number;
   readonly to: number;
+  /** Copies of this field later in the template, kept equal to it (see `Edit.mirrors`). */
+  readonly mirrors?: readonly TabStop[];
 }
 
 /** The key as the surface saw it. `isMac` decides whether Cmd or Ctrl is the IntelliJ modifier. */
@@ -95,6 +103,11 @@ export interface LiveTemplate {
    * (see template-context.ts).
    */
   readonly context?: TemplateContext;
+  /**
+   * The body to use when a macro the main body needs finds nothing in the file (`itar` with no
+   * array declared), see template-macros.ts.
+   */
+  readonly fallback?: string;
 }
 
 export type TemplateContext = "statement" | "toplevel" | "classbody" | "declaration";

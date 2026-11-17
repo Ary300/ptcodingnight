@@ -9,11 +9,14 @@ import { insideStringOrComment, isNoOpEdit, stepIndex } from "./completion-sessi
 import { tokenizeCached } from "./highlight";
 import { applyNativeEdit } from "./native-edit";
 import {
+  acceptsOnCharacter,
   applyCompletion,
   autoPopupSuppressed,
   completionContext,
   completionsFor,
+  inDeclarationName,
   insertsSingleSuggestion,
+  typedInFull,
 } from "./smart/completion";
 import type { CompletionContext, CompletionItem, Edit, LanguageProfile } from "./smart/types";
 
@@ -62,6 +65,15 @@ export interface Completion {
    * there is nothing to complete there any more or the accept would change nothing.
    */
   readonly editFor: (element: HTMLTextAreaElement, index: number) => Edit | null;
+  /** Whether row `index` is the name the student already typed in full, so Enter is a newline. */
+  readonly typedInFull: (element: HTMLTextAreaElement, index: number) => boolean;
+  /**
+   * The accept that typing `ch` ("(" or ".") performs first, as IntelliJ's lookup does for
+   * `printl(` and `Sys.`, or null when the character is only typed.
+   */
+  readonly acceptOnCharacter: (element: HTMLTextAreaElement, ch: string) => Edit | null;
+  /** PageDown and PageUp: a screenful of rows at a time, stopping at either end. */
+  readonly page: (direction: 1 | -1) => void;
 }
 
 function contextAt(element: HTMLTextAreaElement, profile: LanguageProfile): CompletionContext | null {
@@ -110,6 +122,11 @@ export function useCompletion(
     const text = element.value;
     // The overlay has tokenized this exact text already, so this is a cache hit, not a second pass.
     if (insideStringOrComment(tokenizeCached(text, language), ctx)) {
+      setPopup(null);
+      return;
+    }
+    // A new variable's name (`int n`, `Scanner sc`) gets no keyword or template list while typing.
+    if (!explicit && inDeclarationName(text, ctx, profile)) {
       setPopup(null);
       return;
     }
@@ -234,8 +251,43 @@ export function useCompletion(
     [popup, profile],
   );
 
+  const isTypedInFull = useCallback(
+    (element: HTMLTextAreaElement, index: number): boolean => {
+      if (profile === null || popup === null) return false;
+      const shown = popup.items[index];
+      const ctx = contextAt(element, profile);
+      return shown !== undefined && ctx !== null && typedInFull(ctx, shown);
+    },
+    [popup, profile],
+  );
+
+  const acceptOnCharacter = useCallback(
+    (element: HTMLTextAreaElement, ch: string): Edit | null => {
+      if (profile === null || popup === null) return null;
+      const shown = popup.items[popup.activeIndex];
+      const ctx = contextAt(element, profile);
+      if (shown === undefined || ctx === null) return null;
+      const current = completionsFor(ctx, element.value, profile);
+      const item = current.find((candidate) => sameItem(candidate, shown));
+      if (item === undefined || !acceptsOnCharacter(ch, ctx, current, item)) return null;
+      const state = { text: element.value, selectionStart: element.selectionStart, selectionEnd: element.selectionEnd };
+      const edit = applyCompletion(state, ctx, item, profile);
+      return isNoOpEdit(state.text, edit) ? null : edit;
+    },
+    [popup, profile],
+  );
+
+  const page = useCallback((direction: 1 | -1) => {
+    setPopup((current) => {
+      if (current === null) return null;
+      const last = current.items.length - 1;
+      const next = Math.max(0, Math.min(last, current.activeIndex + direction * VISIBLE_ROWS));
+      return { ...current, activeIndex: next };
+    });
+  }, []);
+
   return useMemo(
-    () => ({ popup, schedule, close, move, setActive, editFor }),
-    [close, editFor, move, popup, schedule, setActive],
+    () => ({ popup, schedule, close, move, setActive, editFor, typedInFull: isTypedInFull, acceptOnCharacter, page }),
+    [acceptOnCharacter, close, editFor, isTypedInFull, move, page, popup, schedule, setActive],
   );
 }

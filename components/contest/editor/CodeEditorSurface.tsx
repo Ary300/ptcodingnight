@@ -27,7 +27,7 @@ import { useDecorations } from "./decorations/useDecorations";
 import { EditorGutter } from "./gutter";
 import { EditorStatusBar } from "./EditorStatusBar";
 import { tokenizeCached, type TokenKind } from "./highlight";
-import { applyNativeEdit } from "./native-edit";
+import { applyNativeEdit, keepTypingUndoable } from "./native-edit";
 import { profileFor, type Edit } from "./smart";
 import { engineShortcuts } from "./smart/shortcuts";
 import { LANGUAGE_LABEL, LANGUAGE_TEMPLATE, type CodeEditorProps } from "./types";
@@ -265,6 +265,8 @@ export function CodeEditorSurface({
    * is correct before the next key is processed.
    */
   useLayoutEffect(() => {
+    // A typed run is one undo step, as in a plain textarea (see native-edit.ts). Idempotent.
+    if (textareaRef.current !== null) keepTypingUndoable(textareaRef.current);
     const pending = pendingSelection.current;
     if (pending === null) return;
     pendingSelection.current = null;
@@ -753,6 +755,8 @@ export function CodeEditorSurface({
               commands.onPointerDown();
             }}
             onPaste={commands.onPaste}
+            onCopy={commands.onCopy}
+            onCut={commands.onCut}
             onBlur={completion.close}
             disabled={disabled}
             spellCheck={false}

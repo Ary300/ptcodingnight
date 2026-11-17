@@ -162,9 +162,18 @@ describe("a name typed in full is never swapped for a keyword", () => {
 });
 
 describe("live templates walk their fields with Tab, as IntelliJ's do", () => {
-  it("Java fori: the bound, then the indented line inside the braces", () => {
-    expect(typeKeys("    ▮", ["fori", "Tab", "10", "Tab"], JAVA)).toBe(
+  it("Java fori: the index, then the bound, then the indented line inside the braces", () => {
+    expect(typeKeys("    ▮", ["fori", "Tab", "Tab", "10", "Tab"], JAVA)).toBe(
       "    for (int i = 0; i < 10; i++) {\n        ▮\n    }",
+    );
+  });
+
+  it("Java fori: a renamed index is written into its other two places on the way out", () => {
+    expect(typeKeys("    ▮", ["fori", "Tab", "j", "Tab", "n", "Tab"], JAVA)).toBe(
+      "    for (int j = 0; j < n; j++) {\n        ▮\n    }",
+    );
+    expect(typeKeys("    ▮", ["fori", "Tab", "idx", "Tab", "n", "Tab"], JAVA)).toBe(
+      "    for (int idx = 0; idx < n; idx++) {\n        ▮\n    }",
     );
   });
 
@@ -174,6 +183,10 @@ describe("live templates walk their fields with Tab, as IntelliJ's do", () => {
 
   it("iter: the iterable first, then the element type it does not force, then the name", () => {
     expect(typeKeys("▮", ["iter", "Tab", "list", "Tab"], JAVA)).toBe("for («int» x : list) {\n    \n}");
+    // With an array declared above, it is the iterable already and the element reads from it.
+    expect(typeKeys("int[] arr = new int[3];\n▮", ["iter", "Tab", "Tab", "Tab", "Tab"], JAVA)).toBe(
+      "int[] arr = new int[3];\nfor (int i : arr) {\n    ▮\n}",
+    );
     expect(typeKeys("▮", ["iter", "Tab", "list", "Tab", "String", "Tab", "Tab"], JAVA)).toBe(
       "for (String x : list) {\n    ▮\n}",
     );
@@ -191,8 +204,17 @@ describe("live templates walk their fields with Tab, as IntelliJ's do", () => {
     const item = completionsFor(ctx, current.text, JAVA).find((candidate) => candidate.label === "fori");
     if (item === undefined) throw new Error("fori not offered");
     const edit = applyCompletion(current, ctx, item, JAVA.indentUnit);
-    expect(draw(apply(current, edit))).toBe("for (int i = 0; i < ▮; i++) {\n    \n}");
-    expect(edit.tabStops).toEqual([{ from: "for (int i = 0; i < ; i++) {\n    ".length, to: "for (int i = 0; i < ; i++) {\n    ".length }]);
+    expect(draw(apply(current, edit))).toBe("for (int «i» = 0; i < ; i++) {\n    \n}");
+    const bound = "for (int i = 0; i < ".length;
+    const body = "for (int i = 0; i < ; i++) {\n    ".length;
+    expect(edit.tabStops).toEqual([
+      { from: bound, to: bound },
+      { from: body, to: body },
+    ]);
+    expect(edit.mirrors).toEqual([
+      { from: "for (int i = 0; ".length, to: "for (int i = 0; i".length },
+      { from: "for (int i = 0; i < ; ".length, to: "for (int i = 0; i < ; i".length },
+    ]);
   });
 });
 
@@ -391,8 +413,11 @@ describe("a template session", () => {
     if (session === null) throw new Error("no session");
     // The caret moved to the start of the file: outside the bound field.
     expect(nextTemplateStop(session, { ...after, selectionStart: 0, selectionEnd: 0 })).toBeNull();
-    // Inside it, Tab moves on, and the last stop ends the session.
-    expect(nextTemplateStop(session, after)?.session).toBeNull();
+    // Inside it, Tab moves on (index, then bound), and the last stop ends the session.
+    const bound = nextTemplateStop(session, after);
+    if (bound?.session === undefined || bound.session === null) throw new Error("no bound field");
+    const atBound = { ...after, selectionStart: bound.edit.selectionStart, selectionEnd: bound.edit.selectionEnd };
+    expect(nextTemplateStop(bound.session, atBound)?.session).toBeNull();
   });
 
   it("is not started by an edit with no fields", () => {

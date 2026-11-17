@@ -26,16 +26,18 @@ export interface TemplateSession {
 export function startTemplateSession(textAfter: string, edit: Edit): TemplateSession | null {
   const stops = edit.tabStops ?? [];
   if (stops.length === 0) return null;
-  return {
-    textLength: textAfter.length,
-    field: { from: edit.selectionStart, to: edit.selectionEnd },
-    stops,
-  };
+  const field: TabStop =
+    edit.mirrors === undefined || edit.mirrors.length === 0
+      ? { from: edit.selectionStart, to: edit.selectionEnd }
+      : { from: edit.selectionStart, to: edit.selectionEnd, mirrors: edit.mirrors };
+  return { textLength: textAfter.length, field, stops };
 }
 
 /**
  * The move to the next stop, and the session after it (null once $END$ is reached). Null when
  * the caret has left the current field, which means the session is over and the key is not ours.
+ * A field with copies writes what was typed into each of them on the way out, in the same edit,
+ * so the move is still one undo step.
  */
 export function nextTemplateStop(
   session: TemplateSession,
@@ -47,13 +49,39 @@ export function nextTemplateStop(
   const end = Math.max(state.selectionStart, state.selectionEnd);
   if (fieldEnd < session.field.from || start < session.field.from || end > fieldEnd) return null;
 
-  const moved = session.stops.map((stop) =>
-    stop.from >= session.field.to ? { from: stop.from + delta, to: stop.to + delta } : stop,
-  );
-  const [next, ...rest] = moved;
-  if (next === undefined || next.to > state.text.length) return null;
+  // Everything after the field moved by what was typed in it.
+  const afterTyping = (pos: number): number => (pos >= session.field.to ? pos + delta : pos);
+  const typed = state.text.slice(session.field.from, fieldEnd);
+  const mirrors = (session.field.mirrors ?? []).map((mirror) => ({ from: afterTyping(mirror.from), to: afterTyping(mirror.to) }));
+  const stale = mirrors.filter((mirror) => state.text.slice(mirror.from, mirror.to) !== typed);
+  // Then by what each mirror grew, for everything after that mirror.
+  const grown = (pos: number): number =>
+    pos + stale.filter((mirror) => mirror.to <= pos).reduce((sum, mirror) => sum + typed.length - (mirror.to - mirror.from), 0);
+  const place = (stop: TabStop): TabStop => {
+    const from = grown(afterTyping(stop.from));
+    const to = grown(afterTyping(stop.to));
+    return stop.mirrors === undefined ? { from, to } : { from, to, mirrors: stop.mirrors.map(place) };
+  };
 
-  const edit: Edit = { from: start, to: start, insert: "", selectionStart: next.from, selectionEnd: next.to };
-  const after = rest.length === 0 ? null : { textLength: state.text.length, field: next, stops: rest };
+  const moved = session.stops.map(place);
+  const [next, ...rest] = moved;
+  const growth = grown(state.text.length) - state.text.length;
+  if (next === undefined || next.to > state.text.length + growth) return null;
+
+  const first = stale[0];
+  const last = stale[stale.length - 1];
+  let edit: Edit;
+  if (first === undefined || last === undefined) {
+    edit = { from: start, to: start, insert: "", selectionStart: next.from, selectionEnd: next.to };
+  } else {
+    let insert = "";
+    let cursor = first.from;
+    for (const mirror of stale) {
+      insert += state.text.slice(cursor, mirror.from) + typed;
+      cursor = mirror.to;
+    }
+    edit = { from: first.from, to: last.to, insert, selectionStart: next.from, selectionEnd: next.to };
+  }
+  const after = rest.length === 0 ? null : { textLength: state.text.length + growth, field: next, stops: rest };
   return { edit, session: after };
 }

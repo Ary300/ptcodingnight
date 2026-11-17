@@ -28,6 +28,8 @@ export interface RenderedTemplate {
   readonly selectionEnd: number;
   /** Where Tab goes after the first field, in order, ending at $END$. Empty with no fields. */
   readonly tabStops: readonly TabStop[];
+  /** Copies of the first field, which leaving it keeps equal to it. */
+  readonly mirrors: readonly TabStop[];
 }
 
 interface Field {
@@ -77,15 +79,46 @@ export function renderTemplate(
 
   const finish: TabStop = { from: end ?? text.length, to: end ?? text.length };
   const ordered = [...fields].sort((a, b) => a.order - b.order || a.from - b.from);
-  const first = ordered[0];
-  if (first === undefined) {
-    return { text, selectionStart: finish.from, selectionEnd: finish.to, tabStops: [] };
+  // A number written twice is one field: the first copy is visited, the others mirror it.
+  const stops: TabStop[] = [];
+  let lastOrder: number | null = null;
+  for (const field of ordered) {
+    const previous = stops[stops.length - 1];
+    if (field.order === lastOrder && previous !== undefined) {
+      stops[stops.length - 1] = { ...previous, mirrors: [...(previous.mirrors ?? []), { from: field.from, to: field.to }] };
+    } else {
+      stops.push({ from: field.from, to: field.to });
+    }
+    lastOrder = field.order;
   }
-  const rest = ordered.slice(1).map(({ from, to }): TabStop => ({ from, to }));
-  return { text, selectionStart: first.from, selectionEnd: first.to, tabStops: [...rest, finish] };
+  const first = stops[0];
+  if (first === undefined) {
+    return { text, selectionStart: finish.from, selectionEnd: finish.to, tabStops: [], mirrors: [] };
+  }
+  return {
+    text,
+    selectionStart: first.from,
+    selectionEnd: first.to,
+    tabStops: [...stops.slice(1), finish],
+    mirrors: first.mirrors ?? [],
+  };
 }
 
 /** Shifts tab stops by `offset`, turning offsets into the insert into offsets into the text. */
 export function shiftStops(stops: readonly TabStop[], offset: number): readonly TabStop[] {
-  return stops.map((stop) => ({ from: stop.from + offset, to: stop.to + offset }));
+  return stops.map((stop) =>
+    stop.mirrors === undefined
+      ? { from: stop.from + offset, to: stop.to + offset }
+      : { from: stop.from + offset, to: stop.to + offset, mirrors: shiftStops(stop.mirrors, offset) },
+  );
+}
+
+/** The template parts of an Edit: its later stops and the first field's mirrors, if any. */
+export function templateParts(
+  rendered: RenderedTemplate,
+  offset: number,
+): { readonly tabStops?: readonly TabStop[]; readonly mirrors?: readonly TabStop[] } {
+  if (rendered.tabStops.length === 0) return {};
+  const tabStops = shiftStops(rendered.tabStops, offset);
+  return rendered.mirrors.length === 0 ? { tabStops } : { tabStops, mirrors: shiftStops(rendered.mirrors, offset) };
 }

@@ -39,6 +39,30 @@ export interface SessionEdit {
   readonly edit: Edit;
 }
 
+/** The modifier state of a key press, as the surface saw it. */
+export interface OccurrenceKeyPress {
+  readonly key: string;
+  readonly altKey: boolean;
+  readonly ctrlKey: boolean;
+  readonly metaKey: boolean;
+  readonly shiftKey: boolean;
+}
+
+/**
+ * What a key press does to the picked occurrences: type a character, Backspace or Delete, or null
+ * when it is not an edit. Off a Mac, Alt with a letter is a chord and never a character (AltGr
+ * arrives as Ctrl+Alt), so the second Alt+J of Select Next Occurrence adds the next copy instead of
+ * typing "j" over every one. On a Mac, Option types characters, so it is still an insert there.
+ */
+export function occurrenceKeyOf(press: OccurrenceKeyPress, isMac: boolean): OccurrenceKey | null {
+  if (press.ctrlKey || press.metaKey) return null;
+  if (press.key === "Backspace" && !press.altKey && !press.shiftKey) return { kind: "backspace" };
+  if (press.key === "Delete" && !press.altKey && !press.shiftKey) return { kind: "delete" };
+  if (press.altKey && !isMac) return null;
+  if (press.key.length === 1) return { kind: "insert", text: press.key };
+  return null;
+}
+
 export type OccurrenceKey =
   | { readonly kind: "insert"; readonly text: string }
   | { readonly kind: "backspace" }

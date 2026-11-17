@@ -76,12 +76,13 @@ describe("JAVA live templates", () => {
     expect(body("psvm")).toBe("public static void main(String[] args) {\n    $END$\n}");
     expect(body("main")).toBe(body("psvm"));
     // Fields first (${n}), then $END$ on the indented line inside the braces, as IntelliJ's Tab walks them.
-    expect(body("fori")).toBe("for (int i = 0; i < ${1}; i++) {\n\t$END$\n}");
-    // The element type is a field holding `int`, never forced: typing `String` replaces it.
-    expect(body("foreach")).toBe("for (${2:int} ${3:x} : ${1}) {\n\t$END$\n}");
+    // The index first, written three times and kept equal, then the bound, as IntelliJ's Tab walks them.
+    expect(body("fori")).toBe("for (int ${1:i} = 0; ${1:i} < ${2}; ${1:i}++) {\n\t$END$\n}");
+    // The iterable, element type and name are read from the file, never forced: typing replaces each.
+    expect(body("foreach")).toBe("for (${2:$ELEMENT_TYPE$} ${3:$ELEMENT_NAME$} : ${1:$ITERABLE$}) {\n\t$END$\n}");
     expect(body("iter")).toBe(body("foreach"));
-    expect(body("ifn")).toBe("if (${1} == null) {\n\t$END$\n}");
-    expect(body("inn")).toBe("if (${1} != null) {\n\t$END$\n}");
+    expect(body("ifn")).toBe("if (${1:$VAR_REF$} == null) {\n\t$END$\n}");
+    expect(body("inn")).toBe("if (${1:$VAR_REF$} != null) {\n\t$END$\n}");
     expect(body("soutv")).toContain("System.out.println(");
     expect(body("scanner")).toContain("Scanner sc = new Scanner(System.in);");
   });

@@ -192,9 +192,12 @@ describe("quotes", () => {
     expect(press("x1▮", '"')).toBeNull();
   });
 
-  it("does not close a quote typed after a backslash", () => {
-    expect(press('"a\\▮"', '"')).toBe('"a\\"▮');
+  it("types an escaped quote after a backslash and keeps the closing one", () => {
+    // IntelliJ and CLion: `"say \|"` plus `"` is `"say \"|"`, never a step over the closer.
+    expect(press('"a\\▮"', '"')).toBeNull();
     expect(press('"a\\▮ b', '"')).toBeNull();
+    // An escaped backslash does not escape the quote after it.
+    expect(press('"a\\\\▮"', '"')).toBe('"a\\\\"▮');
   });
 
   it("does not close a quote typed before a word", () => {
@@ -450,15 +453,19 @@ describe("Mod+/ line comment", () => {
     expect(press("▮", ctrl("/"))).toBe("//▮");
   });
 
-  it("writes and removes '# ' in Python", () => {
-    expect(press("    x = 1▮", ctrl("/"), PYTHON)).toBe("#     x = 1▮");
+  it("writes '# ' at the code's indent in Python and removes it", () => {
+    // PyCharm comments at the block's indent; IntelliJ and CLion at column 0.
+    expect(press("    x = 1▮", ctrl("/"), PYTHON)).toBe("    # x = 1▮");
     expect(press("#     x = 1▮", ctrl("/"), PYTHON)).toBe("    x = 1▮");
     expect(press("    #x = 1▮", ctrl("/"), PYTHON)).toBe("    x = 1▮");
   });
 
   it("keeps the caret column when moving down, clamped to the shorter line", () => {
     expect(press("abcdef▮\nab", ctrl("/"))).toBe("//abcdef\nab▮");
-    expect(press("ab▮cd\nwxyz", ctrl("/"))).toBe("//abcd\nwx▮yz");
+    // The column moves with the "//" that went in, then drops a line, as IntelliJ does.
+    expect(press("ab▮cd\nwxyz", ctrl("/"))).toBe("//abcd\nwxyz▮");
+    expect(press("ab▮cd\nwxyzuv", ctrl("/"))).toBe("//abcd\nwxyz▮uv");
+    expect(press("//ab▮cd\nwxyzuv", ctrl("/"))).toBe("abcd\nwx▮yzuv");
   });
 
   it("accepts Shift held for layouts where / is a shifted key", () => {

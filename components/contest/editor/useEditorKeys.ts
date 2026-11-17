@@ -282,9 +282,10 @@ export function useEditorKeys({
   const pressEscape = useCallback(() => {
     completion.close();
     if (template.current !== null) {
-      // IntelliJ's Escape ends the template and leaves the caret where it is.
+      // IntelliJ's Escape ends the template and leaves the caret where it is. It counts as the first
+      // of the two Escapes, so Esc, Esc, Tab leaves from inside a template too.
       template.current = null;
-      escapeOnce.current = false;
+      escapeOnce.current = true;
       return;
     }
     if (escapeOnce.current) {
@@ -320,18 +321,40 @@ export function useEditorKeys({
           completion.move(event.key === "ArrowDown" ? 1 : -1);
           return;
         }
-        if (event.key === "Escape") {
-          // Closes the list and nothing else: dismissing it is not a step toward leaving.
+        if (event.key === "PageDown" || event.key === "PageUp") {
           event.preventDefault();
-          completion.close();
-          escapeOnce.current = false;
+          completion.page(event.key === "PageDown" ? 1 : -1);
           return;
         }
-        if ((event.key === "Enter" || event.key === "Tab") && !event.shiftKey) {
+        if (event.key === "Escape") {
+          // Closes the list, and counts as the first of the two Escapes that arm "Tab leaves", so
+          // the documented Esc, Esc, Tab still leaves while the list is open.
+          event.preventDefault();
+          completion.close();
+          escapeOnce.current = true;
+          return;
+        }
+        // A name typed in full (`sys.stdin.readline`) keeps Enter a newline: the popup never eats one.
+        const keepsNewline =
+          event.key === "Enter" && completion.typedInFull(element, completion.popup.activeIndex);
+        if ((event.key === "Enter" || event.key === "Tab") && !event.shiftKey && !keepsNewline) {
           if (acceptCompletion(element, event.key === "Tab")) {
             event.preventDefault();
             if (tabMovesFocus) setTabMovesFocus(false);
             return;
+          }
+        }
+        // "(" and "." accept the row they continue: `printl(` is `println(|)`, `Sys.` is `System.`.
+        if (event.key === "(" || event.key === ".") {
+          const accepted = completion.acceptOnCharacter(element, event.key);
+          if (accepted !== null) {
+            completion.close();
+            applyKeyEdit(element, accepted);
+            if (event.key === "(" && accepted.insert.includes("(")) {
+              // The accept already wrote the call's parentheses with the caret inside them.
+              event.preventDefault();
+              return;
+            }
           }
         }
       }
@@ -447,7 +470,8 @@ export function useEditorKeys({
         }
       }
 
-      if (tabMovesFocus) setTabMovesFocus(false);
+      // A modifier on its own (the Shift of Shift+Tab) keeps "Tab leaves" armed.
+      if (tabMovesFocus && !MODIFIER_KEYS.has(event.key)) setTabMovesFocus(false);
     },
     [
       acceptCompletion,

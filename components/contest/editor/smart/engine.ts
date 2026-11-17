@@ -57,9 +57,10 @@ import {
   toggleCase,
 } from "./line-edits";
 import { moveStatement } from "./move-statement";
-import { regionAt, scanCode, skipString } from "./scan";
+import { isInside, regionAt, regions, scanCode, skipString, type Region } from "./scan";
 import { extendSelection, shrinkSelection } from "./selection";
-import { renderTemplate, shiftStops } from "./template";
+import { renderTemplate, templateParts } from "./template";
+import { resolveMacros } from "./template-macros";
 import { templateFits } from "./template-context";
 import {
   BRACE_LANGUAGES,
@@ -75,7 +76,7 @@ import {
   type LineSpan,
   type Range,
 } from "./text";
-import type { Edit, EditState, KeyInput, LanguageProfile } from "./types";
+import type { Edit, EditState, KeyInput, LanguageProfile, LiveTemplate } from "./types";
 
 const TRAILING_WORD = /[A-Za-z0-9_$]+$/;
 const TRAILING_INLINE_SPACE = /[ \t]+$/;
@@ -365,10 +366,17 @@ function handleTyped(range: Range, ch: string, profile: LanguageProfile): Edit |
   if (profile.quotes.includes(ch)) return typeQuote(range, ch, profile);
   if (ch === "<" || ch === ">") return typeAngle(range, ch, profile);
 
-  const closes = profile.pairs.some(([, close]) => close === ch);
-  if (closes && next === ch) return caretOnly(caret, caret + 1);
-
+  const closing = profile.pairs.find(([, close]) => close === ch);
   const pair = profile.pairs.find(([open]) => open === ch);
+  // In a string or a comment a bracket is only a character: IntelliJ, PyCharm and CLion neither
+  // pair it nor step over one, so `"(" + a + ")"` types exactly as written.
+  if ((closing !== undefined || pair !== undefined) && regionAt(text, caret, profile) !== "code") return null;
+  // A closer steps over the one after the caret only when that one is this bracket's partner. In
+  // `Math.max(a, Math.min(b, c|);` the ")" after the caret closes max, so ")" is typed.
+  if (closing !== undefined && next === ch && lineBalance(text, caret, closing, profile) <= 0) {
+    return caretOnly(caret, caret + 1);
+  }
+
   if (pair !== undefined) {
     if (isWordChar(next)) return null;
     return { from: caret, to: caret, insert: pair[0] + pair[1], selectionStart: caret + 1, selectionEnd: caret + 1 };
@@ -423,6 +431,8 @@ function enclosingOpenerIndent(
   words: readonly string[],
 ): string | null {
   let end = lineStart - 1;
+  // A statement at the clause's own indent ends any chance of an opener at that indent above it.
+  let sameLevelOpen = true;
   while (end >= 0) {
     const start = lineStartAt(text, end);
     const line = text.slice(start, end);
@@ -430,9 +440,17 @@ function enclosingOpenerIndent(
     const code = line.trim();
     if (code === "" || code.startsWith("#")) continue;
     const indent = leadingSpace(line);
-    if (indent.length >= width) continue;
     const first = /^[a-z]+/.exec(code)?.[0];
-    return first !== undefined && words.includes(first) ? indent : null;
+    const opener = first !== undefined && words.includes(first);
+    if (indent.length === width && sameLevelOpen) {
+      // `else` typed under an `if` at its own indent already belongs to it, even inside a loop
+      // whose for/else it could also continue: PyCharm leaves it there.
+      if (opener) return indent;
+      sameLevelOpen = false;
+      continue;
+    }
+    if (indent.length >= width) continue;
+    return opener ? indent : null;
   }
   return null;
 }
@@ -458,9 +476,21 @@ function typeQuote(range: Range, quote: string, profile: LanguageProfile): Edit 
   const prev = text[caret - 1];
   const next = text[caret];
 
-  // Only a CLOSING quote is typed over. In front of a string's opening quote, as in `f(|"abc")`,
-  // the key types one quote and leaves the existing literal alone, as IntelliJ does.
-  if (next === quote) return insideStringOnLine(text, caret, quote) ? caretOnly(caret, caret + 1) : null;
+  const region = regionContaining(text, caret, profile);
+  // A quote in a comment is prose (`// don't`, `# print the "debug" values`).
+  if (region?.kind === "comment") return null;
+  if (region?.kind === "string") {
+    // The other quote kind is a character of this string, and so is an escaped quote: `"b's"`,
+    // `'say "hi"'`, `"a\"b"`, `'\''`. Only the string's own closing delimiter is typed over, one
+    // quote at a time, so `"""Return it."""` typed in full ends exactly where it should.
+    if (text[region.from] !== quote || escapedAt(text, caret)) return null;
+    const closing = region.closed && caret >= region.to - region.openLength && next === quote;
+    return closing ? caretOnly(caret, caret + 1) : null;
+  }
+
+  // In code, a quote in front of a string's opening quote, as in `f(|"abc")`, types one quote and
+  // leaves the existing literal alone, as IntelliJ does.
+  if (next === quote) return null;
   if (prev === "\\" || isWordChar(next)) return null;
   if (isWordChar(prev) && !followsStringPrefix(text, caret, profile)) return null;
 
@@ -468,6 +498,33 @@ function typeQuote(range: Range, quote: string, profile: LanguageProfile): Edit 
   const opensTriple = caret >= 2 && text.slice(caret - 2, caret) === quote + quote && text[caret - 3] !== quote;
   const insert = opensTriple ? quote.repeat(4) : quote + quote;
   return { from: caret, to: caret, insert, selectionStart: caret + 1, selectionEnd: caret + 1 };
+}
+
+/** The string or comment `pos` sits inside, if any (see `isInside`). */
+function regionContaining(text: string, pos: number, profile: LanguageProfile): Region | undefined {
+  return regions(text, profile, pos).find((candidate) => isInside(candidate, pos));
+}
+
+/** Whether the character at `pos` is escaped: an odd run of backslashes sits right before it. */
+function escapedAt(text: string, pos: number): boolean {
+  let count = 0;
+  for (let i = pos - 1; i >= 0 && text[i] === "\\"; i -= 1) count += 1;
+  return count % 2 === 1;
+}
+
+/**
+ * Openers minus closers of one bracket pair in the code of the caret's line. Positive means the
+ * line still owes a closer, so the closer after the caret belongs to an outer call.
+ */
+function lineBalance(text: string, caret: number, pair: readonly [string, string], profile: LanguageProfile): number {
+  const lineStart = lineStartAt(text, caret);
+  let balance = 0;
+  scanCode(text, lineEndAt(text, caret), profile, (ch, pos) => {
+    if (pos < lineStart) return;
+    if (ch === pair[0]) balance += 1;
+    else if (ch === pair[1]) balance -= 1;
+  });
+  return balance;
 }
 
 /**
@@ -536,8 +593,10 @@ function deleteEmptyPair(range: Range, profile: LanguageProfile): Edit | null {
 
   const prev = text[caret - 1];
   const next = text[caret];
+  const bracket = profile.pairs.find(([open, close]) => open === prev && close === next);
   const isPair =
-    profile.pairs.some(([open, close]) => open === prev && close === next) ||
+    // `Math.abs((|);`: the ")" closes abs, so Backspace takes only the "(".
+    (bracket !== undefined && regionAt(text, caret, profile) === "code" && lineBalance(text, caret, bracket, profile) <= 0) ||
     (prev !== undefined && prev === next && profile.quotes.includes(prev)) ||
     (prev === "<" && next === ">" && opensAngle(text.slice(lineStartAt(text, caret), caret - 1), profile));
   if (!isPair) return unindent(range, profile);
@@ -862,11 +921,17 @@ function toggleLineComment(range: Range, profile: LanguageProfile): Edit {
   const filled = lines.filter((line) => line.trim() !== "");
   const isCommented = (line: string) => line.trimStart().startsWith(marker);
   const comment = filled.length === 0 || filled.some((line) => !isCommented(line));
+  // IntelliJ and CLion comment at column 0. PyCharm comments at the block's own indent, the
+  // smallest indent among the lines, so `    print(x)` becomes `    # print(x)`.
+  const commentCol =
+    profile.id === "python" && filled.length > 0
+      ? Math.min(...filled.map((line) => leadingSpace(line).length))
+      : 0;
 
   const changes = lines.map((line): LineChange => {
     if (comment) {
       const skip = filled.length > 0 && line.trim() === "";
-      return { col: 0, removed: 0, inserted: skip ? "" : prefix };
+      return { col: skip ? 0 : commentCol, removed: 0, inserted: skip ? "" : prefix };
     }
     const col = leadingSpace(line).length;
     if (!isCommented(line)) return { col, removed: 0, inserted: "" };
@@ -883,7 +948,9 @@ function toggleLineComment(range: Range, profile: LanguageProfile): Edit {
 
   const map = (pos: number, stickLeft: boolean) => mapThroughLines(text, span, changes, block, pos, stickLeft);
   const [selectionStart, selectionEnd] =
-    start === end ? caretAfterComment(text, span, block, start, map) : [map(start, true), map(end, false)];
+    start === end
+      ? caretAfterComment(text, span, block, start, changes[0], map)
+      : [map(start, true), map(end, false)];
   return { from: span.start, to: span.end, insert: block, selectionStart, selectionEnd };
 }
 
@@ -893,6 +960,7 @@ function caretAfterComment(
   span: LineSpan,
   block: string,
   caret: number,
+  change: LineChange | undefined,
   map: (pos: number, stickLeft: boolean) => number,
 ): [number, number] {
   if (span.end >= text.length) {
@@ -901,7 +969,10 @@ function caretAfterComment(
   }
   const nextStart = span.end + 1;
   const nextLength = lineEndAt(text, nextStart) - nextStart;
-  const column = Math.min(caret - span.start, nextLength);
+  // The column the caret had on the toggled line AFTER the toggle: two to the right of where it
+  // was once "//" goes in, two to the left once it comes out.
+  const toggled = change === undefined ? caret - span.start : mapColumn(caret - span.start, change, false);
+  const column = Math.min(toggled, nextLength);
   const landed = span.start + block.length + 1 + column;
   return [landed, landed];
 }
@@ -1010,7 +1081,7 @@ function expandTemplate(range: Range, profile: LanguageProfile): Edit | null {
 
   const template = profile.templates.find((candidate) => candidate.abbreviation === word);
   if (template === undefined || !templateFits(text, wordStart, start, template, profile)) return null;
-  return templateEdit(wordStart, start, template.body, leadingSpace(lineBefore), profile);
+  return templateEdit(wordStart, start, templateBodyAt(template, text, wordStart), leadingSpace(lineBefore), profile);
 }
 
 /**
@@ -1024,11 +1095,17 @@ function expandPostfix(range: Range, word: string, wordStart: number, profile: L
   if (isWordChar(text[start]) || regionAt(text, wordStart, profile) !== "code") return null;
   const lineStart = lineStartAt(text, start);
   const dot = wordStart - 1;
-  const exprStart = expressionStart(text, lineStart, dot);
+  const exprStart = statementExpressionStart(text, lineStart, dot, word) ?? expressionStart(text, lineStart, dot);
   if (exprStart === null) return null;
   const expression = text.slice(exprStart, dot);
   const indent = leadingSpace(text.slice(lineStart, start));
-  return templateEdit(exprStart, start, template.body, indent, profile, expression);
+  const body = resolveMacros(template.body, text, exprStart, expression) ?? template.fallback ?? template.body;
+  return templateEdit(exprStart, start, body, indent, profile, expression);
+}
+
+/** A live template's body with its variables read from the file (template-macros.ts). */
+export function templateBodyAt(template: LiveTemplate, text: string, at: number): string {
+  return resolveMacros(template.body, text, at) ?? resolveMacros(template.fallback ?? template.body, text, at) ?? template.body;
 }
 
 function templateEdit(
@@ -1049,7 +1126,7 @@ function templateEdit(
     selectionStart: from + rendered.selectionStart,
     selectionEnd: from + rendered.selectionEnd,
   };
-  return rendered.tabStops.length === 0 ? edit : { ...edit, tabStops: shiftStops(rendered.tabStops, from) };
+  return { ...edit, ...templateParts(rendered, from) };
 }
 
 /** The member separator ("." "::" "->") that ends exactly at `at`, if any. */
@@ -1080,6 +1157,37 @@ function expressionStart(text: string, lineStart: number, end: number): number |
     if (i > lineStart && text[i - 1] === ".") i -= 1;
     else return i;
   }
+}
+
+/** Postfix templates that take the whole statement when it is one expression, `a + b.sout`. */
+const STATEMENT_POSTFIX: ReadonlySet<string> = new Set([
+  "sout", "serr", "soutv", "souf", "print", "return", "if", "else", "while", "var", "par", "try",
+  "switch", "nn", "notnull", "null", "ifn", "ifnn", "for", "fore", "iter", "fori", "forr", "len", "arg",
+]);
+const STATEMENT_KEYWORD = /^(?:return|if|for|while|else|case|throw|do|try|catch|switch|elif|def|class|import|from|yield|assert|del|raise|print\s)/;
+
+/**
+ * IntelliJ and PyCharm offer the whole expression a postfix template follows, not only its last
+ * operand: `a + b.sout` prints `a + b`, and `n > 0.if` checks `n > 0`. Taken when the line up to
+ * the dot is one expression on its own: balanced, with no assignment, no ";" or braces, and not
+ * started by a keyword. Otherwise null, and the last operand is used as before.
+ */
+function statementExpressionStart(text: string, lineStart: number, dot: number, word: string): number | null {
+  if (!STATEMENT_POSTFIX.has(word)) return null;
+  const line = text.slice(lineStart, dot);
+  const start = lineStart + leadingSpace(line).length;
+  const expression = text.slice(start, dot);
+  // One operand needs no widening, except a literal string, which the operand scan cannot read.
+  if (!/[\s+\-*/%<>=!&|^?:]/.test(expression.trim()) && !/^["']/.test(expression)) return null;
+  if (/[;{}]/.test(expression) || STATEMENT_KEYWORD.test(expression)) return null;
+  if (/(?:^|[^=!<>])=(?!=)/.test(expression)) return null;
+  let depth = 0;
+  for (const ch of expression) {
+    if (ch === "(" || ch === "[") depth += 1;
+    else if (ch === ")" || ch === "]") depth -= 1;
+    if (depth < 0) return null;
+  }
+  return depth === 0 && /[\w)\]"']$/.test(expression) ? start : null;
 }
 
 /** Index of the opener matching the closer at `close`, scanning no further back than `lineStart`. */

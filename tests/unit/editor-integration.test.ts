@@ -148,6 +148,10 @@ describe("applyNativeEdit", () => {
     value: string;
     selection: [number, number];
     events: string[];
+    readonly selectionStart: number;
+    readonly selectionEnd: number;
+    listeners: ((event: Event) => void)[];
+    addEventListener: (type: string, listener: (event: Event) => void) => void;
     setSelectionRange: (start: number, end: number) => void;
     setRangeText: (insert: string, start: number, end: number, mode: string) => void;
     dispatchEvent: (event: Event) => boolean;
@@ -158,6 +162,16 @@ describe("applyNativeEdit", () => {
       value,
       selection: [0, 0],
       events: [],
+      get selectionStart() {
+        return element.selection[0];
+      },
+      get selectionEnd() {
+        return element.selection[1];
+      },
+      listeners: [],
+      addEventListener(type, listener) {
+        if (type === "input") element.listeners.push(listener);
+      },
       setSelectionRange(start, end) {
         element.selection = [start, end];
       },
@@ -178,6 +192,34 @@ describe("applyNativeEdit", () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  it("puts the caret back where it was when the browser undoes a smart edit", () => {
+    const element = fakeTextarea("int a = 1;");
+    element.selection = [5, 5];
+    stubDocument((_command, _ui, value) => {
+      const [start, end] = element.selection;
+      element.value = element.value.slice(0, start) + (value ?? "") + element.value.slice(end);
+      return true;
+    });
+    applyNativeEdit(element as unknown as HTMLTextAreaElement, {
+      from: 0,
+      to: 10,
+      insert: "//int a = 1;",
+      selectionStart: 12,
+      selectionEnd: 12,
+    });
+    // The browser's undo restores the text and SELECTS the range it put back.
+    element.value = "int a = 1;";
+    element.selection = [0, 10];
+    const undo = Object.assign(new Event("input"), { inputType: "historyUndo" });
+    for (const listener of element.listeners) listener(undo);
+    expect(element.selection).toEqual([5, 5]);
+    element.value = "//int a = 1;";
+    element.selection = [0, 12];
+    const redo = Object.assign(new Event("input"), { inputType: "historyRedo" });
+    for (const listener of element.listeners) listener(redo);
+    expect(element.selection).toEqual([12, 12]);
   });
 
   it("replaces the range through insertText so the browser records an undo step", () => {

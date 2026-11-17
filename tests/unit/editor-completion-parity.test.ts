@@ -137,19 +137,16 @@ const SUITES: readonly (readonly [string, LanguageProfile])[] = [
 ];
 
 /**
- * This file owns the completion and template data, so it replays those behaviours. Keystroke
- * behaviours (pairs, Enter, comments, Backspace, move and duplicate) are the engine's and are
- * replayed by its own suite. ifn and inn need the engine's template expansion to pre-fill the
- * nearest variable, which the template data alone cannot express.
+ * Every case in the three keys is replayed, keystroke behaviours (pairs, Enter, comments,
+ * Backspace, move and duplicate) as well as completion and templates: a key that only some of its
+ * cases were held to let pairs inside strings, escaped quotes and PyCharm's indented comment fail
+ * for weeks while this file stayed green.
  */
-const OWNED_BEHAVIOURS: ReadonlySet<string> = new Set(["completion", "template"]);
-const NEEDS_ENGINE_VARIABLE: ReadonlySet<string> = new Set(["template-ifn", "template-inn"]);
+const NEEDS_ENGINE_VARIABLE: ReadonlySet<string> = new Set<string>();
 
 for (const [name, profile] of SUITES) {
   describe(`${name} parity key`, () => {
-    const cases = load(name).filter(
-      (testCase) => OWNED_BEHAVIOURS.has(testCase.behavior) && !NEEDS_ENGINE_VARIABLE.has(testCase.id),
-    );
+    const cases = load(name).filter((testCase) => !NEEDS_ENGINE_VARIABLE.has(testCase.id));
     it("covers every completion case in the key", () => {
       expect(cases.filter((testCase) => testCase.behavior === "completion").length).toBeGreaterThanOrEqual(17);
     });

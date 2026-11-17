@@ -76,7 +76,10 @@ function javaOpensBlock(lineBeforeCaret: string): boolean {
 const SWITCH_LABEL = /^\s*(?:case\b.*|default\s*):$/;
 
 const MAIN_BODY = "public static void main(String[] args) {\n    $END$\n}";
-const ITERATE = "for (${2:int} ${3:x} : ${1}) {\n\t$END$\n}";
+// The iterable first, then the element type and name, which is IntelliJ's order. Each is read from
+// the nearest array or collection declared above (template-macros.ts), so `iter` beside
+// `int[] arr` is `for (int i : arr)`.
+const ITERATE = "for (${2:$ELEMENT_TYPE$} ${3:$ELEMENT_NAME$} : ${1:$ITERABLE$}) {\n\t$END$\n}";
 
 /**
  * IntelliJ's postfix templates, typed after an expression and a dot: `x.sout` prints x, `n.fori`
@@ -89,17 +92,29 @@ const POSTFIX: readonly LiveTemplate[] = [
     description: "Prints the expression with its name",
     body: 'System.out.println("$EXPR$ = " + $EXPR$);$END$',
   },
-  { abbreviation: "fori", description: "Counts up to the expression", body: "for (int i = 0; i < $EXPR$; i++) {\n\t$END$\n}" },
-  { abbreviation: "forr", description: "Counts down from the expression", body: "for (int i = $EXPR$ - 1; i >= 0; i--) {\n\t$END$\n}" },
-  { abbreviation: "for", description: "Iterates over the expression", body: "for (${1:int} ${2:x} : $EXPR$) {\n\t$END$\n}" },
-  { abbreviation: "iter", description: "Iterates over the expression", body: "for (${1:int} ${2:x} : $EXPR$) {\n\t$END$\n}" },
+  { abbreviation: "serr", description: "Prints the expression to System.err", body: "System.err.println($EXPR$);$END$" },
+  { abbreviation: "souf", description: "Prints the expression with a format", body: 'System.out.printf("$END$", $EXPR$);' },
+  // An array counts to its length and a collection to its size, as IntelliJ's postfix fori does.
+  { abbreviation: "fori", description: "Counts up to the expression", body: "for (int i = 0; i < $EXPR_BOUND$; i++) {\n\t$END$\n}" },
+  { abbreviation: "forr", description: "Counts down from the expression", body: "for (int i = $EXPR_BOUND$ - 1; i >= 0; i--) {\n\t$END$\n}" },
+  { abbreviation: "for", description: "Iterates over the expression", body: "for (${1:$ELEMENT_TYPE$} ${2:$ELEMENT_NAME$} : $EXPR$) {\n\t$END$\n}" },
+  { abbreviation: "iter", description: "Iterates over the expression", body: "for (${1:$ELEMENT_TYPE$} ${2:$ELEMENT_NAME$} : $EXPR$) {\n\t$END$\n}" },
   { abbreviation: "if", description: "Checks the expression", body: "if ($EXPR$) {\n\t$END$\n}" },
   { abbreviation: "else", description: "Checks the expression is false", body: "if (!$EXPR$) {\n\t$END$\n}" },
   { abbreviation: "while", description: "Loops while the expression holds", body: "while ($EXPR$) {\n\t$END$\n}" },
   { abbreviation: "nn", description: "Checks the expression is not null", body: "if ($EXPR$ != null) {\n\t$END$\n}" },
+  { abbreviation: "notnull", description: "Checks the expression is not null", body: "if ($EXPR$ != null) {\n\t$END$\n}" },
   { abbreviation: "null", description: "Checks the expression is null", body: "if ($EXPR$ == null) {\n\t$END$\n}" },
   { abbreviation: "not", description: "Negates the expression", body: "!$EXPR$$END$" },
   { abbreviation: "return", description: "Returns the expression", body: "return $EXPR$;$END$" },
+  // `sc.nextInt().var` is `int i = sc.nextInt();` with the name selected to rename.
+  { abbreviation: "var", description: "Declares a variable holding the expression", body: "$EXPR_TYPE$ ${1:$EXPR_NAME$} = $EXPR$;$END$" },
+  { abbreviation: "par", description: "Puts the expression in parentheses", body: "($EXPR$)$END$" },
+  { abbreviation: "arg", description: "Passes the expression to a call", body: "${1}($EXPR$)$END$" },
+  { abbreviation: "new", description: "Creates an instance of the class", body: "new $EXPR$($END$)" },
+  { abbreviation: "cast", description: "Casts the expression", body: "((${1})$EXPR$)$END$" },
+  { abbreviation: "switch", description: "Switches on the expression", body: "switch ($EXPR$) {\n\t$END$\n}" },
+  { abbreviation: "try", description: "Wraps the statement in try and catch", body: "try {\n\t$EXPR$;\n} catch (Exception e) {\n\t$END$\n}" },
 ];
 
 const TEMPLATES: readonly LiveTemplate[] = [
@@ -112,22 +127,48 @@ const TEMPLATES: readonly LiveTemplate[] = [
   {
     abbreviation: "soutv",
     description: "Prints a value to System.out",
-    body: 'System.out.println("" + $END$);',
+    // The nearest variable with its name, `System.out.println("total = " + total);`, or an empty
+    // string to add to when nothing is declared above.
+    body: 'System.out.println("$VAR$ = " + $VAR$);$END$',
+    fallback: 'System.out.println("" + $END$);',
+  },
+  {
+    abbreviation: "soutm",
+    description: "Prints the class and method name",
+    body: 'System.out.println("$CLASS_METHOD$");$END$',
+  },
+  {
+    abbreviation: "soutp",
+    description: "Prints the method's parameters",
+    body: "System.out.println($PARAMS$);$END$",
   },
   { abbreviation: "serr", description: "Prints a string to System.err", body: "System.err.println($END$);" },
   { abbreviation: "psvm", description: "Declares the main method", body: MAIN_BODY },
   { abbreviation: "main", description: "Declares the main method", body: MAIN_BODY },
   {
+    // IntelliJ's order: the index first (written three times, kept equal), then the bound.
     abbreviation: "fori",
     description: "Creates an indexed for loop",
-    body: "for (int i = 0; i < ${1}; i++) {\n\t$END$\n}",
+    body: "for (int ${1:i} = 0; ${1:i} < ${2}; ${1:i}++) {\n\t$END$\n}",
   },
   // The iterable first, then the element type and name, which is IntelliJ's order. The editor
   // cannot infer the element type, so it is a field holding `int` that typing `String` replaces.
   { abbreviation: "foreach", description: "Creates a for-each loop", body: ITERATE },
   { abbreviation: "iter", description: "Iterates over an array or a collection", body: ITERATE },
-  { abbreviation: "ifn", description: "Inserts an if null statement", body: "if (${1} == null) {\n\t$END$\n}" },
-  { abbreviation: "inn", description: "Inserts an if not null statement", body: "if (${1} != null) {\n\t$END$\n}" },
+  // The nearest object declared above, `s` in `len(String s)`, so the check compiles as it stands.
+  { abbreviation: "ifn", description: "Inserts an if null statement", body: "if (${1:$VAR_REF$} == null) {\n\t$END$\n}" },
+  { abbreviation: "inn", description: "Inserts an if not null statement", body: "if (${1:$VAR_REF$} != null) {\n\t$END$\n}" },
+  {
+    abbreviation: "mn",
+    description: "Sets a variable to the smaller of it and a value",
+    body: "${1:$VAR_NUM$} = Math.min(${1:$VAR_NUM$}, $END$);",
+  },
+  {
+    abbreviation: "mx",
+    description: "Sets a variable to the larger of it and a value",
+    body: "${1:$VAR_NUM$} = Math.max(${1:$VAR_NUM$}, $END$);",
+  },
+  { abbreviation: "lst", description: "Gets the last element of an array", body: "$ARRAY$[$ARRAY$.length - 1]$END$", fallback: "${1}[${1}.length - 1]$END$" },
   {
     abbreviation: "scanner",
     description: "Creates a Scanner that reads standard input",
@@ -142,7 +183,30 @@ const TEMPLATES: readonly LiveTemplate[] = [
   {
     abbreviation: "itar",
     description: "Iterates over the elements of an array by index",
-    body: "for (int i = 0; i < ${1}.length; i++) {\n\t$END$\n}",
+    body: "for (int i = 0; i < $ARRAY$.length; i++) {\n\t$ELEMENT_TYPE$ $ELEMENT_NAME_I$ = $ARRAY$[i];\n\t$END$\n}",
+    fallback: "for (int i = 0; i < ${1}.length; i++) {\n\t$END$\n}",
+  },
+  {
+    abbreviation: "ritar",
+    description: "Iterates over the elements of an array in reverse order",
+    body: "for (int i = $ARRAY$.length - 1; i >= 0; i--) {\n\t$ELEMENT_TYPE$ $ELEMENT_NAME_I$ = $ARRAY$[i];\n\t$END$\n}",
+    fallback: "for (int i = ${1}.length - 1; i >= 0; i--) {\n\t$END$\n}",
+  },
+  {
+    abbreviation: "itli",
+    description: "Iterates over the elements of a list by index",
+    body: "for (int i = 0; i < $LIST$.size(); i++) {\n\t$ELEMENT_TYPE$ $ELEMENT_NAME_I$ = $LIST$.get(i);\n\t$END$\n}",
+    fallback: "for (int i = 0; i < ${1}.size(); i++) {\n\t$END$\n}",
+  },
+  {
+    abbreviation: "itm",
+    description: "Iterates over the entries of a map",
+    body: "for (Map.Entry<$KEY_TYPE$, $VALUE_TYPE$> entry : ${1:$MAP$}.entrySet()) {\n\t$END$\n}",
+  },
+  {
+    abbreviation: "ittok",
+    description: "Iterates over the tokens of a string",
+    body: "for (StringTokenizer st = new StringTokenizer(${1}); st.hasMoreTokens(); ) {\n\tString token = st.nextToken();\n\t$END$\n}",
   },
 ];
 

@@ -16,7 +16,9 @@
 import { withImport } from "./imports";
 import { inferType } from "./infer";
 import { fileMembers } from "./members";
-import { renderTemplate, shiftStops } from "./template";
+import { renderTemplate, templateParts } from "./template";
+import { templateFits } from "./template-context";
+import { resolveMacros } from "./template-macros";
 import type { CompletionContext, CompletionItem, Edit, EditState, LanguageProfile } from "./types";
 
 /** Matches IntelliJ's popup, which shows about a dozen rows before it scrolls. */
@@ -420,7 +422,9 @@ function topLevelCandidates(
 ): CompletionItem[] {
   const constructors = constructorCandidates(ctx, text, profile);
   if (constructors.length > 0) return constructors;
-  const keywords: CompletionItem[] = profile.keywords.map((word) => keywordItem(word, profile));
+  const keywords: CompletionItem[] = profile.keywords
+    .filter((word) => !(profile.id === "java" && NEVER_OFFERED_JAVA.has(word)))
+    .map((word) => keywordItem(word, profile));
   const importables = profile.importables ?? [];
   const functions = fileFunctions(text, profile);
   const known = new Set<string>([
@@ -432,7 +436,10 @@ function topLevelCandidates(
   const declared: CompletionItem[] = fileIdentifiers(text, ctx)
     .filter((name) => !known.has(name))
     .map((name) => ({ label: name, insertText: name, kind: "variable" }));
-  const templates: CompletionItem[] = profile.templates.map((template) => ({
+  // A template is offered only where Tab would expand it: never `psvm` inside a method body.
+  const templates: CompletionItem[] = profile.templates
+    .filter((template) => templateFits(text, ctx.replaceFrom, ctx.replaceTo, template, profile))
+    .map((template) => ({
     label: template.abbreviation,
     insertText: template.body,
     kind: "snippet",
@@ -513,6 +520,70 @@ export function completionsFor(
   return rank(ctx.prefix, candidates, limit);
 }
 
+/**
+ * Java words IntelliJ never completes in contest code: `const` and `goto` are reserved and unused,
+ * and `yield` is only a keyword inside a switch expression, so `x = y` + Enter must not become
+ * `x = yield`.
+ */
+const NEVER_OFFERED_JAVA: ReadonlySet<string> = new Set(["const", "goto", "yield"]);
+
+/** Type names written in lower case in front of a variable name. */
+const LOWERCASE_TYPES: ReadonlySet<string> = new Set([
+  "int", "long", "double", "float", "char", "boolean", "bool", "short", "byte", "var", "auto",
+  "void", "unsigned", "signed", "string", "size_t", "ll", "ull", "ld",
+]);
+
+/** `int`, `Scanner`, `List<Integer>`, `int[]`, `Node*` right before the word being typed. */
+const DECLARED_TYPE = /(?:^|[\s(,;{])([A-Za-z_$][\w$]*(?:(?:\.|::)[A-Za-z_$][\w$]*)*)(<[^;=(){}]*>)?((?:\s*\[\s*\])*)([*&]*)\s+[*&]*$/;
+
+/**
+ * Whether the word being typed names a new variable (`int n|`, `Scanner sc|`, `vector<int> v|`).
+ * IntelliJ and CLion offer no keyword or template there, so the popup stays shut and Enter stays a
+ * newline: `int n` + Enter used to become `int new`, and `Scanner sc` + Enter the scanner template.
+ */
+export function inDeclarationName(text: string, ctx: CompletionContext, profile: LanguageProfile): boolean {
+  if (profile.id === "python" || ctx.qualifier !== null || ctx.scope !== undefined) return false;
+  const lineStart = text.lastIndexOf("\n", ctx.replaceFrom - 1) + 1;
+  const match = DECLARED_TYPE.exec(text.slice(lineStart, ctx.replaceFrom));
+  if (match === null) return false;
+  const name = match[1] ?? "";
+  if ((match[2] ?? "") !== "" || (match[3] ?? "") !== "" || (match[4] ?? "") !== "") return true;
+  const last = name.split(/\.|::/).pop() ?? "";
+  return LOWERCASE_TYPES.has(name) || /^[A-Z]/.test(last);
+}
+
+/**
+ * Whether accepting `item` would only add what follows a name the student has typed in full
+ * (`readline` to `readline()`). Enter is then a newline: the popup must never eat one.
+ */
+export function typedInFull(ctx: CompletionContext, item: CompletionItem): boolean {
+  return ctx.prefix !== "" && matchKey(item) === ctx.prefix;
+}
+
+/** Kinds a "(" typed with the popup open completes: the call it starts. */
+const CALLABLE_KINDS: ReadonlySet<string> = new Set(["method", "function"]);
+/** Kinds a "." typed with the popup open completes: the thing it qualifies. */
+const QUALIFIABLE_KINDS: ReadonlySet<string> = new Set(["type", "variable", "field"]);
+
+/**
+ * Whether typing `ch` with the popup open first accepts `item`, as IntelliJ's lookup does for
+ * `printl(` (println) and `Sys.` (System). Only for a real prefix of the item's name, never for a
+ * name the file already has spelled exactly as typed (`sc.` stays `sc.`), and never a template.
+ */
+export function acceptsOnCharacter(
+  ch: string,
+  ctx: CompletionContext,
+  items: readonly CompletionItem[],
+  item: CompletionItem,
+): boolean {
+  if (ctx.prefix.length < 2 || ctx.scope !== undefined) return false;
+  if (items.some((candidate) => matchKey(candidate) === ctx.prefix)) return false;
+  if (!matchKey(item).startsWith(ctx.prefix)) return false;
+  if (ch === "(") return CALLABLE_KINDS.has(item.kind) || (item.kind === "type" && item.insertText.endsWith(")"));
+  if (ch === ".") return QUALIFIABLE_KINDS.has(item.kind) && !item.insertText.includes("(");
+  return false;
+}
+
 /** Kinds whose accept, when the name is typed in full, would add nothing a student wants. */
 const SETTLED_KINDS: ReadonlySet<string> = new Set(["keyword", "variable", "field", "type"]);
 
@@ -580,7 +651,12 @@ export function applyCompletion(
   const indentUnit = typeof indentOrProfile === "string" ? indentOrProfile : indentOrProfile.indentUnit;
   if (item.kind === "snippet") {
     const indent = indentAt(state.text, ctx.replaceFrom);
-    const rendered = renderTemplate(item.insertText, indent, indent.includes("\t") ? "\t" : indentUnit);
+    const template = profile?.templates.find((candidate) => candidate.abbreviation === item.label);
+    const body =
+      resolveMacros(item.insertText, state.text, ctx.replaceFrom) ??
+      (template?.fallback === undefined ? null : resolveMacros(template.fallback, state.text, ctx.replaceFrom)) ??
+      item.insertText;
+    const rendered = renderTemplate(body, indent, indent.includes("\t") ? "\t" : indentUnit);
     const edit: Edit = {
       from: ctx.replaceFrom,
       to: ctx.replaceTo,
@@ -588,9 +664,7 @@ export function applyCompletion(
       selectionStart: ctx.replaceFrom + rendered.selectionStart,
       selectionEnd: ctx.replaceFrom + rendered.selectionEnd,
     };
-    return rendered.tabStops.length === 0
-      ? edit
-      : { ...edit, tabStops: shiftStops(rendered.tabStops, ctx.replaceFrom) };
+    return { ...edit, ...templateParts(rendered, ctx.replaceFrom) };
   }
   const { insertText, caretOffset } = shapedInsert(state.text, ctx, item, profile);
   const offset = caretOffset ?? insertText.length;

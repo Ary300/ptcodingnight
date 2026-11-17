@@ -1,4 +1,5 @@
 import type { Edit } from "./smart/types";
+import { clampSelection, createSelectionMemory, type SelectionMemory } from "./undo-selection";
 
 /**
  * Apply one `Edit` to the textarea the way typing would, so Ctrl/Cmd + Z undoes it in one step.
@@ -21,6 +22,7 @@ export function applyNativeEdit(element: HTMLTextAreaElement, edit: Edit): void 
   // A replacement with identical text (Shift+Tab on lines with no indent) would still push an
   // empty step onto the undo stack, and the student's next Ctrl + Z would appear to do nothing.
   const before = element.value;
+  const beforeSelection = [element.selectionStart, element.selectionEnd] as const;
   const changes = before.slice(edit.from, edit.to) !== edit.insert;
   if (changes) {
     element.setSelectionRange(edit.from, edit.to);
@@ -31,10 +33,59 @@ export function applyNativeEdit(element: HTMLTextAreaElement, edit: Edit): void 
         : document.execCommand("insertText", false, edit.insert);
     if (!reported || !landed(element.value, before, edit)) {
       fallBack(element, before, edit);
+    } else {
+      memoryOf(element).record(before, beforeSelection, element.value, [edit.selectionStart, edit.selectionEnd]);
     }
   }
   // Shift+Home leaves the moving end at selectionStart, so the next Shift+Home extends from the anchor.
   element.setSelectionRange(edit.selectionStart, edit.selectionEnd, edit.selectionDirection);
+}
+
+const memories = new WeakMap<HTMLTextAreaElement, SelectionMemory>();
+
+/**
+ * The element's undo selection memory (undo-selection.ts), created with the one `input` listener
+ * that puts the caret back after the browser's own undo or redo of a smart edit.
+ */
+function memoryOf(element: HTMLTextAreaElement): SelectionMemory {
+  const known = memories.get(element);
+  if (known !== undefined) return known;
+  const memory = createSelectionMemory();
+  memories.set(element, memory);
+  element.addEventListener("input", (event) => {
+    const inputType = "inputType" in event ? event.inputType : null;
+    const selection =
+      inputType === "historyUndo"
+        ? memory.afterUndo(element.value)
+        : inputType === "historyRedo"
+          ? memory.afterRedo(element.value)
+          : null;
+    if (selection === null) return;
+    const [start, end] = clampSelection(selection, element.value.length);
+    element.setSelectionRange(start, end);
+  });
+  return memory;
+}
+
+/**
+ * Keeps a typed run one undo step in a React-controlled textarea.
+ *
+ * React writes `defaultValue` on every change to a controlled textarea, which replaces the
+ * element's child text node, and Chrome closes its open typing command on that mutation. So every
+ * letter became its own undo step: Cmd+Z after typing "hello world" gave "hello worl", where a plain
+ * textarea (and IntelliJ) takes the whole run back. Nothing here reads `defaultValue` (no form is
+ * reset), so on this one element it is kept as a plain field and React's write touches no DOM.
+ */
+export function keepTypingUndoable(element: HTMLTextAreaElement): void {
+  if (Object.prototype.hasOwnProperty.call(element, "defaultValue")) return;
+  let shadow = element.defaultValue;
+  Object.defineProperty(element, "defaultValue", {
+    configurable: true,
+    get: () => shadow,
+    set: (next: string) => {
+      shadow = next;
+    },
+  });
 }
 
 /** The text the edit should have produced from `before`. */

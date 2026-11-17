@@ -28,6 +28,7 @@ import { caretKey, clampFontSize, readCaret, readFontSize, writeCaret, writeFont
 import { nextDiagnostic } from "./errors";
 import { offsetOf, type MatchRange } from "./find";
 import { FindBar } from "./FindBar";
+import { lineCopyOf, lineCutOf, linePasteOf } from "./line-clipboard";
 import { GoToLineBar } from "./GoToLineBar";
 import { docParts, InfoPopup, type InfoContent } from "./InfoPopup";
 import type { CommandId } from "./keymap";
@@ -39,7 +40,7 @@ import {
   secondaryCarets,
   startOccurrences,
   typeInOccurrences,
-  type OccurrenceKey,
+  occurrenceKeyOf,
   type OccurrenceSession,
   type SessionStep,
 } from "./occurrences";
@@ -105,6 +106,9 @@ export interface EditorCommands {
   readonly notice: string | null;
   /** The textarea's paste handler. */
   readonly onPaste: (event: ClipboardEvent<HTMLTextAreaElement>) => void;
+  /** The textarea's copy and cut handlers: a bare caret copies or cuts its whole line. */
+  readonly onCopy: (event: ClipboardEvent<HTMLTextAreaElement>) => void;
+  readonly onCut: (event: ClipboardEvent<HTMLTextAreaElement>) => void;
   /** A click in the code: ends occurrences and closes info panels. */
   readonly onPointerDown: () => void;
   /** Remember the caret and scroll for this problem and language (debounced). */
@@ -128,14 +132,6 @@ interface InfoState {
 
 function stateOf(element: HTMLTextAreaElement): EditState {
   return { text: element.value, selectionStart: element.selectionStart, selectionEnd: element.selectionEnd };
-}
-
-function occurrenceKeyOf(event: KeyboardEvent<HTMLTextAreaElement>): OccurrenceKey | null {
-  if (event.ctrlKey || event.metaKey) return null;
-  if (event.key === "Backspace" && !event.altKey && !event.shiftKey) return { kind: "backspace" };
-  if (event.key === "Delete" && !event.altKey && !event.shiftKey) return { kind: "delete" };
-  if (event.key.length === 1) return { kind: "insert", text: event.key };
-  return null;
 }
 
 const MODIFIER_KEYS: ReadonlySet<string> = new Set(["Shift", "Control", "Alt", "Meta", "CapsLock", "AltGraph"]);
@@ -165,6 +161,8 @@ export function useEditorCommands(options: EditorCommandsOptions): EditorCommand
   const [session, setSessionState] = useState<OccurrenceSession | null>(null);
   const sessionRef = useRef<OccurrenceSession | null>(null);
   const rawPaste = useRef(false);
+  // The last line a bare-caret Copy or Cut put on the clipboard, so its paste goes in as a line.
+  const copiedLine = useRef<string | null>(null);
   const expandRun = useRef<ExpandWordRun | null>(null);
 
   const setSession = useCallback((next: OccurrenceSession | null) => {
@@ -452,7 +450,7 @@ export function useEditorCommands(options: EditorCommandsOptions): EditorCommand
         showStep(element, step);
         return true;
       }
-      const key = occurrenceKeyOf(event);
+      const key = occurrenceKeyOf(event, isMac);
       if (key === null) {
         // Occurrence chords keep the session; everything else ends it and acts as usual.
         const keepsSession =
@@ -500,6 +498,13 @@ export function useEditorCommands(options: EditorCommandsOptions): EditorCommand
       }
       const element = event.currentTarget;
       const clipboard = event.clipboardData.getData("text/plain");
+      const asLine = linePasteOf(stateOf(element), clipboard, copiedLine.current);
+      if (asLine !== null) {
+        event.preventDefault();
+        applyInEditor(element, asLine);
+        syncCaret(element);
+        return;
+      }
       const edit = reindentPaste(element.value, clipboard, stateOf(element), profile);
       // Nothing to clean or re-base: the browser pastes it as it is.
       if (pastesAsIs(element, clipboard, edit)) return;
@@ -508,6 +513,55 @@ export function useEditorCommands(options: EditorCommandsOptions): EditorCommand
       syncCaret(element);
     },
     [endSession, profile, syncCaret],
+  );
+
+  /*
+    Chrome and Safari only fire `copy` and `cut` for a bare caret when `beforecopy` / `beforecut`
+    is cancelled first; without that the shortcut does nothing and the line clipboard never runs.
+    Cancelling it with something selected would change nothing, so it is only done for a caret.
+  */
+  useEffect(() => {
+    const element = textareaRef.current;
+    if (element === null) return undefined;
+    const enable = (event: Event) => {
+      if (element.selectionStart === element.selectionEnd) event.preventDefault();
+    };
+    element.addEventListener("beforecopy", enable);
+    element.addEventListener("beforecut", enable);
+    return () => {
+      element.removeEventListener("beforecopy", enable);
+      element.removeEventListener("beforecut", enable);
+    };
+  }, [textareaRef]);
+
+  const onCopy = useCallback((event: ClipboardEvent<HTMLTextAreaElement>) => {
+    const line = lineCopyOf(stateOf(event.currentTarget));
+    if (line === null) {
+      copiedLine.current = null;
+      return;
+    }
+    event.preventDefault();
+    event.clipboardData.setData("text/plain", line.text);
+    copiedLine.current = line.text;
+  }, []);
+
+  const onCut = useCallback(
+    (event: ClipboardEvent<HTMLTextAreaElement>) => {
+      const element = event.currentTarget;
+      const line = lineCopyOf(stateOf(element));
+      const cut = lineCutOf(stateOf(element));
+      if (line === null || cut === null) {
+        copiedLine.current = null;
+        return;
+      }
+      endSession();
+      event.preventDefault();
+      event.clipboardData.setData("text/plain", line.text);
+      copiedLine.current = line.text;
+      applyInEditor(element, cut);
+      syncCaret(element);
+    },
+    [endSession, syncCaret],
   );
 
   const onPointerDown = useCallback(() => {
@@ -618,6 +672,8 @@ export function useEditorCommands(options: EditorCommandsOptions): EditorCommand
     fontPx,
     notice,
     onPaste,
+    onCopy,
+    onCut,
     onPointerDown,
     rememberCaret,
     describedBy: info === null ? undefined : infoId,

@@ -143,6 +143,10 @@ const POSTFIX: readonly LiveTemplate[] = [
   { abbreviation: "not", description: "Negates the expression", body: "not $EXPR$$END$" },
   { abbreviation: "return", description: "Returns the expression", body: "return $EXPR$$END$" },
   { abbreviation: "len", description: "The length of the expression", body: "len($EXPR$)$END$" },
+  { abbreviation: "fore", description: "Iterates with an index", body: "for ${1:i}, ${2:x} in enumerate($EXPR$):\n    $END$" },
+  { abbreviation: "par", description: "Puts the expression in parentheses", body: "($EXPR$)$END$" },
+  { abbreviation: "ifn", description: "Checks the expression is None", body: "if $EXPR$ is None:\n    $END$" },
+  { abbreviation: "ifnn", description: "Checks the expression is not None", body: "if $EXPR$ is not None:\n    $END$" },
 ];
 
 /**
