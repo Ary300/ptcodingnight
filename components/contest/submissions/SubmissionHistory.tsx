@@ -16,6 +16,7 @@ import { LANGUAGE_LABEL } from "../editor/types";
 import { SignInRequired } from "../lobby/SignInRequired";
 import { problemLabel } from "../problem/problem-label";
 import { TONE_COLOR, VERDICT_DISPLAY } from "../verdict/verdict-display";
+import { OverriddenMarker } from "./OverriddenMarker";
 import { recallSource } from "./source-cache";
 
 /**
@@ -244,7 +245,10 @@ function Row({ submission, title, open, onToggle }: RowProps) {
           {LANGUAGE_LABEL[submission.language]}
         </td>
         <td className="px-3 py-2.5 sm:px-4">
-          <VerdictToken verdict={submission.verdict} />
+          <span className="flex flex-wrap items-center gap-1.5">
+            <VerdictToken verdict={submission.verdict} />
+            {submission.overridden === true && <OverriddenMarker />}
+          </span>
         </td>
         <td
           className="numeric whitespace-nowrap px-3 py-2.5 text-right sm:px-4"
@@ -339,6 +343,7 @@ function Card({ submission, title, open, onToggle }: RowProps) {
           <span>{LANGUAGE_LABEL[submission.language]}</span>
           {/* The word rides here so the verdict is never the coloured chip alone. */}
           {submission.verdict !== null && <span>{VERDICT_DISPLAY[submission.verdict].label}</span>}
+          {submission.overridden === true && <OverriddenMarker />}
           <span className="numeric">score {submission.score}</span>
           <span className="numeric">{formatTime(submission.submittedAt)}</span>
         </span>

@@ -31,7 +31,7 @@ divisions.
 | 7:00 to 7:30 | Individual stretch. Each student works their own three problems. Paper puzzles handed out. | Everyone | Nothing to press |
 | 7:30 | Teammates may start helping each other. Announce it. | Sameer announces | Nothing to press; the site has no switch for this |
 | 7:30 to 8:15 | Collaboration, in person. Each problem is still submitted by its owner. | Everyone | Live console open, judge bar watched. Enter puzzle points as teams finish |
-| 8:00 | Public board freezes on its own. Judging continues. | Nobody | Projector shows the frozen plate. Do not press End contest |
+| 8:00 | Public board freezes on its own. Judging continues. | Nobody | Projector shows the frozen plate. End contest is not needed; if pressed, it only closes submissions |
 | 8:15 | Submissions close by the clock. Say so. Clean rooms. | Sameer, teacher | Nothing to press. The board stays frozen |
 | 8:25 | Kahoot, 5 to 10 minutes. | Sameer hosts | Kahoot on the wall |
 | 8:35 | Enter Kahoot placings as side-activity points. | Aryav | `/admin/contests/{id}/side-activities`, Kahoot preset |
@@ -47,14 +47,21 @@ A private browser window for the wall also works, since it carries no session at
 fine habit to keep.
 
 Two warnings about the lifecycle buttons. **Open now** moves the whole window to the instant you
-press it, so pressing it at 6:58 closes submissions at 8:13. **End contest** turns the public board
-into the final board the moment you press it, which is the reveal with nobody watching. Leave the
-contest alone through Kahoot and let the unfreeze do the ending.
+press it, so pressing it at 6:58 closes submissions at 8:13. It asks first, and the confirmation states how many minutes the window
+will run from the press.
+**End contest** depends on the board. On a frozen board it closes submissions now and nothing else:
+the board stays frozen, the console keeps its **Unfreeze and reveal** plate, and the confirmation
+says so in those words. On a board that is not frozen it ends the contest and the final standings
+become public at once, which is the reveal with nobody watching, and the confirmation says that
+instead. Read the sentence under **End it now** before pressing it. On the night there is no reason
+to press End at all, because the clock closes submissions at 8:15.
 
 Both are recoverable on the Setup tab's Window panel. **Change the end time** gives the room 5, 10
 or 15 more minutes, or takes an exact Indianapolis time, and a scheduled freeze moves with the end.
 On an ended contest the same place reads **Reopen the contest**: type the end time, confirm, then
-press the 15 minute freeze preset again, because ending early erased the freeze.
+press the 15 minute freeze preset again, because ending an unfrozen contest early erased the freeze.
+A frozen contest that End closed also reads **Reopen the contest**, and reopening it keeps the
+board frozen.
 
 The clock will not spoil this for you. Once the board is frozen, the site stops accepting
 submissions at 8:15 and otherwise waits: it does not end a frozen contest on its own, because an
@@ -237,7 +244,8 @@ player pool, and check they add up to the Puzzle column.
 The freeze at 8:00 keeps the mystery. Everyone has seen the board as it stood at 8:00 and nobody
 has seen the last fifteen minutes, the puzzles solved since, or the Kahoot points. Judging and
 entry carry on behind the frozen plate the whole time, and the clock leaves a frozen contest alone
-past 8:15 instead of ending it, so the plate stays up until you press the reveal.
+past 8:15 instead of ending it, so the plate stays up until you press the reveal. End contest on a
+frozen board follows the same rule: it closes submissions and the plate stays up.
 
 **Before the reveal, check the judge bar reads 0 queued and 0 judging now.** A submission made
 before 8:15 still counts if the judge finishes it after 8:15, and the reveal does not wait for it:

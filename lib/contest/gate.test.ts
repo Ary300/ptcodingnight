@@ -13,6 +13,8 @@ import {
   effectiveUnlockAt,
   isPublicBoardFrozen,
   clockShouldEnd,
+  FROZEN_ROSTER_MESSAGE,
+  planEndNow,
   isUnlocked,
   assertCanListProblems,
   standingsCutoff,
@@ -236,6 +238,16 @@ describe("assertCanMutateStandingsInputs", () => {
     ).toThrow(/public board is frozen/i);
   });
 
+  it("says the move waits for the reveal, and never tells the organizer to unfreeze", () => {
+    // "Unfreeze it before changing teams" sent an organizer to spoil the reveal to fix a seat.
+    expect(() =>
+      assertCanMutateStandingsInputs(contest({ state: "FROZEN", freezeAt: FREEZE }), ENDS),
+    ).toThrow(FROZEN_ROSTER_MESSAGE);
+    expect(FROZEN_ROSTER_MESSAGE).toMatch(/locked while the public board is frozen/);
+    expect(FROZEN_ROSTER_MESSAGE).toMatch(/after the reveal/);
+    expect(FROZEN_ROSTER_MESSAGE).not.toMatch(/unfreeze/i);
+  });
+
   it("refuses mutations while manually frozen and allows them again after unfreeze", () => {
     expect(() =>
       assertCanMutateStandingsInputs(contest({ state: "FROZEN", freezeAt: FREEZE }), ENDS),
@@ -328,5 +340,59 @@ describe("clockShouldEnd", () => {
     for (const state of ["DRAFT", "SCHEDULED", "ENDED", "ARCHIVED"] as const) {
       expect(clockShouldEnd(contest({ state }), ENDS)).toBe(false);
     }
+  });
+});
+
+describe("planEndNow", () => {
+  // 8:05: the freeze fired at 8:00, the window runs to 8:15, and the organizer presses End.
+  const PRESSED = new Date(FREEZE.getTime() + 5 * 60_000);
+
+  /*
+    The walkthrough's finding: End on a frozen contest set ENDED, and ENDED is never frozen, so the
+    projector and every student screen showed the final standings with post-freeze points the
+    moment End was pressed, before the Kahoot points were entered.
+  */
+  it("closes submissions on a pressed freeze and keeps the board frozen", () => {
+    const frozen = contest({ state: "FROZEN", freezeAt: FREEZE });
+    const plan = planEndNow(frozen, PRESSED);
+
+    expect(plan).toEqual({
+      state: "FROZEN",
+      endsAt: PRESSED,
+      freezeAt: FREEZE,
+      boardStaysFrozen: true,
+    });
+    const after = { ...frozen, state: plan.state, endsAt: plan.endsAt, freezeAt: plan.freezeAt };
+    const later = new Date(PRESSED.getTime() + 1);
+    expect(isPublicBoardFrozen(after, later)).toBe(true);
+    expect(standingsCutoff(after, later, false)).toEqual(FREEZE);
+    expect(() => assertCanSubmit(after, later)).toThrow("This contest is over");
+    // And the clock does not reveal it behind the organizer's back either.
+    expect(clockShouldEnd(after, later)).toBe(false);
+  });
+
+  it("keeps a fired scheduled freeze frozen too, still RUNNING on paper", () => {
+    const plan = planEndNow(contest({ state: "RUNNING", freezeAt: FREEZE }), PRESSED);
+    expect(plan.state).toBe("RUNNING");
+    expect(plan.freezeAt).toEqual(FREEZE);
+    expect(plan.endsAt).toEqual(PRESSED);
+    expect(plan.boardStaysFrozen).toBe(true);
+  });
+
+  it("ends an unfrozen contest, which makes the final standings public", () => {
+    const plan = planEndNow(contest({ state: "RUNNING" }), PRESSED);
+    expect(plan).toEqual({ state: "ENDED", endsAt: PRESSED, freezeAt: null, boardStaysFrozen: false });
+  });
+
+  it("erases a scheduled freeze that had not happened yet", () => {
+    const early = new Date(FREEZE.getTime() - 60_000);
+    const plan = planEndNow(contest({ state: "RUNNING", freezeAt: FREEZE }), early);
+    expect(plan.state).toBe("ENDED");
+    expect(plan.freezeAt).toBeNull();
+  });
+
+  it("never moves an end that has already passed", () => {
+    const late = new Date(ENDS.getTime() + 60_000);
+    expect(planEndNow(contest({ state: "FROZEN", freezeAt: FREEZE }), late).endsAt).toEqual(ENDS);
   });
 });

@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 
+import { testDb } from "../e2e/helpers/seed";
 import { auditPage } from "./helpers/audit";
 import { openLobby } from "./helpers/journey";
 
@@ -18,6 +19,28 @@ import { openLobby } from "./helpers/journey";
  */
 
 test.describe("axe-core: the puzzle board", () => {
+  /*
+    `seed-puzzles` creates every puzzle HIDDEN since the night moved to paper puzzles (organizer
+    decision, 2026-11-16), so a freshly seeded database has an empty board and this audit would
+    have nothing to look at. Show the seeded puzzles for the length of this file, and put back
+    exactly the ones that were hidden, so the audit never changes what an organizer chose.
+  */
+  let shown: string[] = [];
+
+  test.beforeAll(async () => {
+    const hidden = await testDb().puzzle.findMany({ where: { active: false }, select: { id: true } });
+    shown = hidden.map((row) => row.id);
+    if (shown.length > 0) {
+      await testDb().puzzle.updateMany({ where: { id: { in: shown } }, data: { active: true } });
+    }
+  });
+
+  test.afterAll(async () => {
+    if (shown.length > 0) {
+      await testDb().puzzle.updateMany({ where: { id: { in: shown } }, data: { active: false } });
+    }
+  });
+
   test("the list, reached by clicking rather than by URL", async ({ page }) => {
     await openLobby(page);
     await page.getByRole("link", { name: "Puzzles" }).click();

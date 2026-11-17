@@ -75,6 +75,35 @@ import {
 type Difficulty = "E" | "M" | "H";
 
 /*
+ * The deal on screen before anything is built, kept across loads.
+ *
+ * With no stored plan the preview asked for a fresh seed on every load, so the Sets tab showed a
+ * different deal and a different deal code each time it was opened, and an organizer who noted a
+ * code could not find it again. The seed the server dealt from is remembered per contest in this
+ * browser, and only "Deal again" replaces it. Once a plan is built the stored seed wins.
+ * Storage can be unavailable (a private window with storage blocked); the screen then deals fresh
+ * on each load as it used to, which is a worse screen but not a broken one.
+ */
+const PREVIEW_SEED_PREFIX = "ptcn:set-preview-seed:";
+
+function readPreviewSeed(contestId: string): string | null {
+  try {
+    return window.localStorage.getItem(PREVIEW_SEED_PREFIX + contestId);
+  } catch (error: unknown) {
+    console.warn("The set preview's deal could not be read back.", error);
+    return null;
+  }
+}
+
+function writePreviewSeed(contestId: string, seed: string): void {
+  try {
+    window.localStorage.setItem(PREVIEW_SEED_PREFIX + contestId, seed);
+  } catch (error: unknown) {
+    console.warn("The set preview's deal could not be remembered.", error);
+  }
+}
+
+/*
  * Not imported from `lib/contest/set-plan.ts`, which owns the canonical copy: that module imports
  * `node:crypto` for its seeded shuffle, and a client component that pulls it in fails to bundle.
  * Three words restated is the cheaper cost, and the same call `ProblemMeta`, `ProblemList` and
@@ -531,7 +560,9 @@ export function SetPlanner({
           setCounts(adopted);
         }
         setGroupCountText(String(data.groupCount));
-        seedRef.current = data.seed;
+        // A built plan's seed wins. Before anything is built, the last deal this browser was
+        // shown is reused, so the preview does not re-deal (and change its deal code) on every load.
+        seedRef.current = data.seed ?? readPreviewSeed(contestId);
         setDirty(false);
         setLoaded(true);
       } catch {
@@ -582,6 +613,7 @@ export function SetPlanner({
           // Hold on to the seed the server dealt from, so the apply that follows reproduces this
           // exact split. A refusal deals nothing and returns null, and the next preview mints one.
           seedRef.current = data.seed;
+          if (data.seed !== null) writePreviewSeed(contestId, data.seed);
           setPreview(data);
           setPreviewError(null);
         } catch {

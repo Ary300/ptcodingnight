@@ -1,8 +1,10 @@
 import { randomUUID } from "node:crypto";
 
+import type { ContestState } from "@prisma/client";
+
 import { NotFoundError, ValidationError } from "@/lib/errors";
 import { prisma } from "@/lib/db";
-import { clockShouldEnd } from "@/lib/contest/gate";
+import { clockShouldEnd, planEndNow } from "@/lib/contest/gate";
 import { lockContestMutations, lockProblemMutations } from "@/lib/contest/locks";
 import {
   problemDivisionConflicts,
@@ -437,6 +439,9 @@ export async function setContestProblems(
  *   SCHEDULED -> RUNNING open it now, regardless of the clock (the rehearsal case)
  *   RUNNING -> ENDED     stop it early
  *
+ * Ending a contest whose public board is FROZEN closes submissions and leaves the state alone
+ * (`planEndNow`): ENDED is what reveals the final board, and the reveal is "Unfreeze and reveal".
+ *
  * FROZEN is deliberately absent: freezing is `setFrozen`, it is reversible, and it belongs to the
  * live console rather than to a lifecycle dropdown. Two ways to reach one state is how a board
  * ends up frozen with nothing able to unfreeze it.
@@ -461,7 +466,7 @@ export async function setContestState(
      */
     readonly onlyFromState?: "SCHEDULED" | "RUNNING" | "FROZEN";
   } = {},
-): Promise<{ state: string }> {
+): Promise<{ state: string; boardStaysFrozen: boolean }> {
   return prisma.$transaction(async (tx) => {
   await lockContestMutations(tx, contestId);
 
@@ -482,7 +487,7 @@ export async function setContestState(
   if (contest === null) throw new NotFoundError("Contest");
 
   if (options.onlyFromState !== undefined && contest.state !== options.onlyFromState) {
-    return { state: contest.state };
+    return { state: contest.state, boardStaysFrozen: false };
   }
 
   /*
@@ -632,9 +637,11 @@ export async function setContestState(
 
     Ending early pulls endsAt back to now for the same invariant, stated once: THE STORED WINDOW
     DESCRIBES WHAT ACTUALLY HAPPENED. Scoring cutoffs and the review lobby both read it.
-    A freeze that never happened before the early end is erased rather than left dangling after
-    the contest's own end.
+    `planEndNow` (gate.ts) owns the rest of End: a frozen board keeps its state and its cutoff and
+    only the window closes, because ENDED is what reveals the final standings.
   */
+  let nextState: ContestState = next;
+  let boardStaysFrozen = false;
   const window: { startsAt?: Date; endsAt?: Date; freezeAt?: Date | null } = {};
   if (next === "RUNNING") {
     const duration = contest.endsAt.getTime() - contest.startsAt.getTime();
@@ -646,30 +653,42 @@ export async function setContestState(
     window.endsAt = new Date(now.getTime() + duration);
     if (freezeOffset !== null) window.freezeAt = new Date(now.getTime() + freezeOffset);
   }
-  if (next === "ENDED" && contest.endsAt.getTime() > now.getTime()) {
-    window.endsAt = now;
-    if (contest.freezeAt !== null && contest.freezeAt.getTime() > now.getTime()) {
-      window.freezeAt = null;
+  if (next === "ENDED") {
+    const plan = planEndNow(contest, now);
+    nextState = plan.state;
+    boardStaysFrozen = plan.boardStaysFrozen;
+    window.endsAt = plan.endsAt;
+    window.freezeAt = plan.freezeAt;
+    // Pressing End twice on a frozen board changes nothing, and writes nothing.
+    if (
+      boardStaysFrozen &&
+      plan.endsAt.getTime() === contest.endsAt.getTime()
+    ) {
+      return { state: contest.state, boardStaysFrozen };
     }
   }
 
   const updated = await tx.contest.update({
     where: { id: contestId },
-    data: { state: next, ...window },
-    select: { state: true },
+    data: { state: nextState, ...window },
+    select: { state: true, endsAt: true },
   });
   await writeAudit(
     {
       actor: audit.actor,
       action: AUDIT_ACTIONS.contestStateSet,
       entity: `Contest:${contestId}`,
-      before: { state: contest.state },
-      after: { state: updated.state },
+      before: { state: contest.state, endsAt: contest.endsAt.toISOString() },
+      after: {
+        state: updated.state,
+        endsAt: updated.endsAt.toISOString(),
+        ...(boardStaysFrozen ? { submissionsClosed: true, boardStaysFrozen: true } : {}),
+      },
       reason: audit.reason,
     },
     tx,
   );
-  return { state: updated.state };
+  return { state: updated.state, boardStaysFrozen };
   });
 }
 

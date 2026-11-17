@@ -89,7 +89,7 @@ async function messageOf(response: Response): Promise<string> {
  * emphatic one — it is the state an organiser must not mistake for a finished contest — and the
  * word carries the meaning; the border colour is a second channel, never the only one.
  */
-function BoardStateToken({ frozen }: { frozen: boolean }) {
+function BoardStateToken({ frozen, ended }: { frozen: boolean; ended: boolean }) {
   return (
     <span
       className={`inline-flex items-center rounded-chip border px-2 py-0.5 font-semibold whitespace-nowrap ${
@@ -97,7 +97,7 @@ function BoardStateToken({ frozen }: { frozen: boolean }) {
       }`}
       style={{ fontSize: "var(--text-xs)" }}
     >
-      {frozen ? "FROZEN" : "LIVE"}
+      {frozen ? "FROZEN" : ended ? "FINAL" : "LIVE"}
     </span>
   );
 }
@@ -276,7 +276,7 @@ export function LiveConsole({ contestId }: LiveConsoleProps) {
     );
   }
 
-  const { frozen, submissions, total, health } = view;
+  const { frozen, ended, submissions, total, health } = view;
   const windowed = total > submissions.length;
 
   return (
@@ -381,7 +381,7 @@ export function LiveConsole({ contestId }: LiveConsoleProps) {
               >
                 Public board
               </span>
-              <BoardStateToken frozen={frozen} />
+              <BoardStateToken frozen={frozen} ended={ended} />
             </div>
             <p
               className="min-w-0 flex-1 basis-52 text-ink/60"
@@ -389,12 +389,15 @@ export function LiveConsole({ contestId }: LiveConsoleProps) {
             >
               {frozen
                 ? "Unfreeze from the notice above, when the room is watching."
-                : "Freezing holds the public standings in place while judging continues. You will still see live results here."}
+                : ended
+                  ? "The contest has ended, so the final standings are public. There is nothing to freeze."
+                  : "Freezing holds the public standings in place while judging continues. You will still see live results here."}
             </p>
             {/* Unfreezing puts this button back in the same frame the plate above vanishes; the
                 rise is on a wrapper so the arm/disarm swap inside ConfirmButton keeps its own
-                (single) entrance. */}
-            {!frozen && (
+                (single) entrance. Not offered once the contest has ended: its board is the final
+                board, and the API refuses to freeze it. */}
+            {!frozen && !ended && (
               <span className="motion-swap-in inline-block">
                 <ConfirmButton
                   label="Freeze the public board"

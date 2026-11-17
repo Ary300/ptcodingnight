@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui";
-import { Panel } from "@/components/admin/Panel";
+import { AlertPlate, Panel } from "@/components/admin/Panel";
 import { Select, TextInput } from "@/components/admin/Field";
 import {
   API_ROUTES,
@@ -88,7 +88,17 @@ function errorFrom(body: unknown): string {
 
 export interface RosterManagerProps {
   contestId: string;
+  /**
+   * Set while the public board is frozen: the sentence the API refuses a move with
+   * (`FROZEN_ROSTER_MESSAGE`). The page says it before the organizer opens the move form, and the
+   * move buttons are disabled with it as their description, rather than a form that is filled in
+   * and then refused.
+   */
+  lockedReason?: string | null;
 }
+
+/** The id the disabled move buttons point their description at. */
+const ROSTER_LOCKED_NOTE_ID = "roster-locked-note";
 
 /**
  * "The organizer has not chosen a destination yet."
@@ -110,7 +120,8 @@ const SEARCH_DEBOUNCE_MS = 250;
 /** Which team-level form is open, if any. Only ever one, so a stray Enter cannot hit the other. */
 type TeamForm = { kind: "dissolve" | "rename"; teamId: string } | null;
 
-export function RosterManager({ contestId }: RosterManagerProps) {
+export function RosterManager({ contestId, lockedReason = null }: RosterManagerProps) {
+  const movesLocked = lockedReason !== null;
   const [roster, setRoster] = useState<Roster | null>(null);
   const [attempt, setAttempt] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -378,7 +389,9 @@ export function RosterManager({ contestId }: RosterManagerProps) {
           type="button"
           variant="quiet"
           className="justify-start text-left"
-          disabled={busy}
+          disabled={busy || movesLocked}
+          aria-describedby={movesLocked ? ROSTER_LOCKED_NOTE_ID : undefined}
+          title={lockedReason ?? undefined}
           onClick={() => {
             closeEveryForm();
             onMove();
@@ -610,6 +623,13 @@ export function RosterManager({ contestId }: RosterManagerProps) {
        rise makes that swap followable (the same call LobbyView documents for its own
        loading-to-lobby swap). Transform only, per the entrance rule. */
     <div className="motion-swap-in flex min-w-0 flex-col gap-section">
+      {lockedReason !== null && (
+        <div id={ROSTER_LOCKED_NOTE_ID} data-testid="roster-locked-note">
+          <AlertPlate tone="notice" title="Team moves are locked" live={false}>
+            {lockedReason}
+          </AlertPlate>
+        </div>
+      )}
       <Panel
         title="Add a student"
         level="framed"

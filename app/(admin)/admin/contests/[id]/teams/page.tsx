@@ -1,4 +1,7 @@
 import { RosterManager } from "@/components/admin/RosterManager";
+import { FROZEN_ROSTER_MESSAGE, isPublicBoardFrozen } from "@/lib/contest/gate";
+
+import { contestSetup } from "../contest-setup";
 
 /**
  * The roster, scoped by the path rather than by `?contest=`.
@@ -13,6 +16,13 @@ export default async function ContestTeamsPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
+  const setup = await contestSetup(id);
+  // The same predicate the refusal uses, so the notice and the API cannot disagree. An ENDED
+  // contest is refused for its own reason by the API and is not "locked until the reveal".
+  const lockedReason =
+    setup !== null && setup.state !== "ENDED" && isPublicBoardFrozen(setup, new Date())
+      ? FROZEN_ROSTER_MESSAGE
+      : null;
 
   return (
     <div className="flex flex-col gap-6">
@@ -28,7 +38,7 @@ export default async function ContestTeamsPage({
         </p>
       </header>
 
-      <RosterManager contestId={id} />
+      <RosterManager contestId={id} lockedReason={lockedReason} />
     </div>
   );
 }
