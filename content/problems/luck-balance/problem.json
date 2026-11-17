@@ -1,7 +1,7 @@
 {
   "slug": "luck-balance",
   "title": "Luck Balance",
-  "difficulty": "E",
+  "difficulty": "M",
   "timeLimitMs": 2000,
   "memoryLimitMb": 256,
   "allowedLanguages": [
