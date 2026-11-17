@@ -2,8 +2,9 @@
 
 Usage: python3 generator.py <seed>
 
-Deterministic per seed. Small seeds produce tiny strings; seeds >= 100 hit the
-constraint ceiling. The seed also selects the shape of the string so the test
+Deterministic per seed. Small seeds produce tiny strings; seeds >= 32 hit the
+constraint ceiling of n = 1000, small enough that a beginner's pair-by-pair
+filter with string concatenation finishes well inside the limit. The seed also selects the shape of the string so the test
 set covers degenerate cases (one letter only, doubled blocks that invalidate
 every pair, a pure two-letter alternation where the whole string survives, all
 26 letters in play) and not just uniform noise.
@@ -15,14 +16,17 @@ letters the noise does not use, and the 26-letter shape plants two of different
 lengths so a solution has to keep the longer one.
 
 Which seed made which test: 06 = seed 2, 07 = 8, 12 = 6, 13 = 7, 14 = 20, 15 = 21,
-16 = 22, 17 = 23, 20 = 106. The rest are written by hand.
+16 = 22, 17 = 23, 20 = 106. The rest are written by hand. Of those, 18 and 19 sit
+at the ceiling: 18 is a pure `sg` alternation of length 1000 (answer 1000), and 19
+is a `wo` alternation of length 750 with 250 other letters inserted at positions
+drawn from random.Random(19) (answer 750).
 """
 
 import random
 import string
 import sys
 
-MAX_N = 10000
+MAX_N = 1000
 
 
 def choose_n(seed: int) -> int:
