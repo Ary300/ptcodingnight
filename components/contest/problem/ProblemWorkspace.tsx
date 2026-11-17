@@ -9,6 +9,7 @@ import { statementWithoutConstraints, statementWithoutRepeatedTitle } from "@/li
 import type { Language } from "@/lib/schemas/judge";
 
 import { contestApi, errorMessageOf } from "../data/backend";
+import { draftKey, readDraft } from "../data/draft-storage";
 import { useParticipant } from "../data/participant";
 import { useResource } from "../data/useResource";
 import { useVerdictStream } from "../data/useVerdictStream";
@@ -321,16 +322,21 @@ export function ProblemWorkspace({ slug, window: contestWindow = null }: Problem
   const [keptSource, setKeptSource] = useState<string | null>(null);
   const unsaved =
     source !== activeStarter && source !== lastSentCode && source !== keptSource;
+  // Every keystroke is written to local storage (`useDraft`), so a reload restores the code and a
+  // prompt on it was noise. The prompt now fires only when that write did not land.
+  const draftStorageKey =
+    draftOwner === null ? null : draftKey(draftOwner, slug, activeLanguage);
   useEffect(() => {
     if (!unsaved) return undefined;
     const onBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (draftStorageKey !== null && readDraft(draftStorageKey) === source) return;
       event.preventDefault();
       // Older Chrome and Safari still need returnValue set to show the prompt.
       event.returnValue = "";
     };
     window.addEventListener("beforeunload", onBeforeUnload);
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
-  }, [unsaved]);
+  }, [unsaved, draftStorageKey, source]);
 
   const submit = useCallback(async () => {
     // Ctrl+Enter calls this directly, past the disabled button.
