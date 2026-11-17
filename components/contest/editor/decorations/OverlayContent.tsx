@@ -1,6 +1,7 @@
 import type { TokenKind } from "../highlight";
 import type { IndentGuide } from "./indent-guides";
 import type { MarkedSegment, MarkKind } from "./marks";
+import { rowsLength } from "./row-metrics";
 
 /**
  * What the overlay `<pre>` holds: the coloured code with its marks, and two layers behind it.
@@ -19,9 +20,13 @@ import type { MarkedSegment, MarkKind } from "./marks";
  * mark lands on it. The error colour is `--fall`, which is 9.60:1 on ink (DESIGN.md §2).
  */
 
-/** Positions in the `<pre>`'s own metrics: `p-3` padding, `1.3` line height, monospace columns. */
+/**
+ * Positions in the `<pre>`'s own metrics: `p-3` padding, the shared row pitch, monospace columns.
+ * The pitch is the px value the `<pre>` itself is laid out with (row-metrics.ts), never a ratio
+ * recomputed here: a ratio and a laid-out line box disagree by a fraction of a pixel a row, and
+ * the difference adds up down the file.
+ */
 const PAD = "0.75rem";
-const LINE = 1.3;
 
 export const MARK_CLASS: Readonly<Record<MarkKind, string>> = {
   usage: "rounded-[2px] bg-paper/[0.14]",
@@ -37,20 +42,22 @@ export interface OverlayContentProps {
   readonly guides: readonly IndentGuide[];
   /** 1-based; null hides the row tint (a selection is showing). */
   readonly caretLine: number | null;
+  /** The whole-pixel row pitch every layer is laid out with; null before it is measured. */
+  readonly rowPx: number | null;
 }
 
-function rowTop(line: number): string {
-  return `calc(${PAD} + ${(line - 1) * LINE}em)`;
+function rowTop(line: number, rowPx: number | null): string {
+  return `calc(${PAD} + ${rowsLength(line - 1, rowPx)})`;
 }
 
-export function OverlayContent({ segments, tokenClass, guides, caretLine }: OverlayContentProps) {
+export function OverlayContent({ segments, tokenClass, guides, caretLine, rowPx }: OverlayContentProps) {
   return (
     <>
       {caretLine !== null && (
         <span
           data-caret-row={caretLine}
           className="pointer-events-none absolute left-0 -z-10 block w-[1000ch] bg-paper/[0.06]"
-          style={{ top: rowTop(caretLine), height: `${LINE}em` }}
+          style={{ top: rowTop(caretLine, rowPx), height: rowsLength(1, rowPx) }}
         />
       )}
       {guides.map((guide) => (
@@ -59,9 +66,9 @@ export function OverlayContent({ segments, tokenClass, guides, caretLine }: Over
           data-indent-guide={guide.column}
           className="pointer-events-none absolute -z-10 block w-px bg-paper/[0.12]"
           style={{
-            top: rowTop(guide.fromLine),
+            top: rowTop(guide.fromLine, rowPx),
             left: `calc(${PAD} + ${guide.column}ch)`,
-            height: `${(guide.toLine - guide.fromLine + 1) * LINE}em`,
+            height: rowsLength(guide.toLine - guide.fromLine + 1, rowPx),
           }}
         />
       ))}

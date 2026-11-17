@@ -23,6 +23,7 @@ import { CompletionPopup } from "./CompletionPopup";
 import type { DiagnosticsInput, EditorDiagnostic } from "./decorations/diagnostics";
 import { offsetOfLineColumn, type EditorHandle } from "./decorations/goto";
 import { OverlayContent } from "./decorations/OverlayContent";
+import { LINE_HEIGHT_RATIO, rowPitchPx } from "./decorations/row-metrics";
 import { useDecorations } from "./decorations/useDecorations";
 import { EditorGutter } from "./gutter";
 import { EditorStatusBar } from "./EditorStatusBar";
@@ -128,12 +129,17 @@ const NO_WRITING_ASSISTANTS = {
  *
  * `--text-sm` (16px), not `--text-xs`: the editor is the product's primary work surface, and
  * 12.8px there put our code two sizes under HackerRank's ~15.3px. The 1.3 line height keeps the
- * row pitch at ~20.8px, within a pixel of their 20px, so density stays theirs while the glyphs
+ * row pitch at 21px, within a pixel of their 20px, so density stays theirs while the glyphs
  * stop being metadata-sized.
+ *
+ * `lineHeight` here is only the first layout's value. Once the font size is measured the line
+ * height becomes a whole number of px (`rowPitchPx`), because the caret-row tint and the indent
+ * guides are positioned by arithmetic, and a fractional pitch is rounded one way by the browser's
+ * line layout and another by `calc()`. See decorations/row-metrics.ts.
  */
 const SHARED_TEXT = {
   fontSize: "var(--text-sm)",
-  lineHeight: "1.3",
+  lineHeight: String(LINE_HEIGHT_RATIO),
   tabSize: 4,
 } as const;
 
@@ -332,10 +338,30 @@ export function CodeEditorSurface({
     applyEdit: applyCommandEdit,
     diagnostics: currentDiagnostics,
   });
-  // Every layer that draws glyphs takes the same size, or the overlay slides off the caret.
+  /*
+    The default size is a token (`--text-sm`), so its px value is read from the textarea once it
+    is laid out; Mod+= and Mod+- set px directly. A layout effect, so the px line height lands
+    before the first paint and the tint is never drawn at the fractional pitch.
+  */
+  const [measuredFontPx, setMeasuredFontPx] = useState<number | null>(null);
+  useLayoutEffect(() => {
+    if (commands.fontPx !== null) return;
+    const element = textareaRef.current;
+    if (element === null) return;
+    const measured = Number.parseFloat(getComputedStyle(element).fontSize);
+    if (Number.isFinite(measured) && measured > 0) setMeasuredFontPx(measured);
+  }, [commands.fontPx]);
+  const fontSizePx = commands.fontPx ?? measuredFontPx;
+  const rowPx = fontSizePx === null ? null : rowPitchPx(fontSizePx);
+  // Every layer that draws glyphs takes the same size and the same whole-pixel row pitch, or the
+  // overlay slides off the caret and the row tint slides off its row.
   const textStyle = useMemo(
-    () => (commands.fontPx === null ? SHARED_TEXT : { ...SHARED_TEXT, fontSize: `${commands.fontPx}px` }),
-    [commands.fontPx],
+    () => ({
+      ...SHARED_TEXT,
+      ...(commands.fontPx === null ? {} : { fontSize: `${commands.fontPx}px` }),
+      ...(rowPx === null ? {} : { lineHeight: `${rowPx}px` }),
+    }),
+    [commands.fontPx, rowPx],
   );
 
   /*
@@ -360,7 +386,8 @@ export function CodeEditorSurface({
     textareaRef.current?.focus();
   }, [disabled]);
 
-  const { handleKeyDown, completion, profile, isMac, applyKeyEdit, tabMovesFocus, endTemplate } = useEditorKeys({
+  const { handleKeyDown, completion, profile, isMac, applyKeyEdit, tabMovesFocus, endTemplate, notePairCaret } =
+    useEditorKeys({
     textareaRef,
     language,
     onSubmitShortcut: submitFromKeys,
@@ -752,6 +779,7 @@ export function CodeEditorSurface({
               tokenClass={TOKEN_CLASS}
               guides={decorations.guides}
               caretLine={decorations.collapsed ? caret.line : null}
+              rowPx={rowPx}
             />
             {/* A trailing newline leaves the last row blank; this keeps the layer as tall as the
                 textarea so the final line never sits over nothing. */}
@@ -771,10 +799,10 @@ export function CodeEditorSurface({
             }}
             // A click puts the caret somewhere else, which ends the lookup and any template being
             // filled in; leaving the editor ends the lookup.
-            onMouseDown={() => {
+            onMouseDown={(event) => {
               completion.close();
               endTemplate();
-              commands.onPointerDown();
+              commands.onPointerDown(event);
             }}
             onPaste={commands.onPaste}
             onCopy={commands.onCopy}
@@ -797,10 +825,12 @@ export function CodeEditorSurface({
             }
             onSelect={(event) => {
               syncCaret(event.currentTarget);
+              notePairCaret(event.currentTarget);
               commands.rememberCaret();
             }}
             onKeyUp={(event) => {
               syncCaret(event.currentTarget);
+              notePairCaret(event.currentTarget);
               commands.rememberCaret();
             }}
             onClick={(event) => {

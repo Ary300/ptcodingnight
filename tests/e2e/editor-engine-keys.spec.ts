@@ -97,6 +97,34 @@ test.describe("Java keys", () => {
     await expect(textarea).toHaveValue("List<Integer> xs; if (i < n) {}");
   });
 
+  test("Tab steps out of a closer only while the caret has not left its pair", async ({ page }) => {
+    const textarea = await openEditor(page, "Java 21", "", 0);
+    // Nested: the inner closer first, then the outer, each typed by the editor.
+    await page.keyboard.type("f(a[i");
+    await expect(textarea).toHaveValue("f(a[i])");
+    await page.keyboard.press("Tab");
+    await page.keyboard.press("Tab");
+    await page.keyboard.type(";");
+    await expect(textarea).toHaveValue("f(a[i]);");
+
+    // Out of the pair and back in: the closer is plain text now, and Tab indents.
+    await textarea.fill("");
+    await page.keyboard.type("g(");
+    await expect(textarea).toHaveValue("g()");
+    await page.keyboard.press("ArrowRight");
+    await page.keyboard.press("ArrowLeft");
+    await page.keyboard.press("Tab");
+    await page.keyboard.type("x");
+    await expect(textarea).toHaveValue(/^g\(\s+x\)$/);
+
+    // A closer that was already in the code was never auto-inserted, so Tab does not leap it.
+    await textarea.fill("h()");
+    await textarea.evaluate((element) => (element as HTMLTextAreaElement).setSelectionRange(2, 2));
+    await page.keyboard.press("Tab");
+    await page.keyboard.type("y");
+    await expect(textarea).toHaveValue(/^h\(\s+y\)$/);
+  });
+
   test("block comment, Join Lines and Toggle Case", async ({ page }) => {
     const textarea = await openEditor(page, "Java 21", "int x =\n        5;", 3);
     const mac = await isMac(page);

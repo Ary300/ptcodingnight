@@ -9,6 +9,7 @@ import type { EditorCommandHooks } from "./commands/useEditorCommands";
 import { isCompletionTrigger } from "./completion-session";
 import { applyNativeEdit } from "./native-edit";
 import { handleKey, profileFor, type Edit, type EditState, type KeyInput, type LanguageProfile } from "./smart";
+import { exitableCloserAt, pairCreatedBy, prunePairs, type PairStack } from "./smart/pair-exit";
 import { nextTemplateStop, startTemplateSession, type TemplateSession } from "./smart/template-session";
 import { useCompletion, type Completion } from "./useCompletion";
 
@@ -119,6 +120,8 @@ export interface EditorKeys {
   readonly tabMovesFocus: boolean;
   /** Ends a live template being filled in: the caret was moved by a click, or focus left. */
   readonly endTemplate: () => void;
+  /** Forget the auto-inserted pairs the caret has left; the surface calls it whenever the caret moves. */
+  readonly notePairCaret: (element: HTMLTextAreaElement) => void;
 }
 
 export function useEditorKeys({
@@ -136,8 +139,18 @@ export function useEditorKeys({
   // The last keydown came from a soft keyboard ("Unidentified", keyCode 229), not an IME.
   const softKey = useRef(false);
 
+  // The auto-inserted pairs the caret has not left since their closers were typed (pair-exit.ts).
+  const pairs = useRef<PairStack>([]);
+
+  /** Forget pairs the caret has left. Run on every key and after every edit, so leaving is final. */
+  const prunePairsAt = useCallback((element: HTMLTextAreaElement) => {
+    pairs.current = prunePairs(pairs.current, element.value, element.selectionStart, element.selectionEnd);
+  }, []);
+
   const endTemplate = useCallback(() => {
     template.current = null;
+    // A click moves the caret somewhere else, which is leaving every pair.
+    pairs.current = [];
   }, []);
 
   /**
@@ -148,11 +161,14 @@ export function useEditorKeys({
     (element: HTMLTextAreaElement, edit: Edit) => {
       applyNativeEdit(element, edit);
       syncCaret(element);
+      prunePairsAt(element);
+      const created = pairCreatedBy(edit, element.value);
+      if (created !== null) pairs.current = [...pairs.current, created];
       // A template with fields starts a session; an edit inside the field being filled (a pair,
       // an accepted name) keeps the one already running.
       if (edit.tabStops !== undefined) template.current = startTemplateSession(element.value, edit);
     },
-    [syncCaret],
+    [prunePairsAt, syncCaret],
   );
 
   const indentSelection = useCallback(
@@ -440,8 +456,12 @@ export function useEditorKeys({
 
       // IntelliJ's keys: pairs, "}" snapping back, Enter inside "{}", comment toggle, duplicate,
       // move line, and live templates on Tab. Null means the key is not the engine's.
-      const edit =
-        profile === null ? null : handleKey(editStateOf(element), keyInputOf(event.key, isMac, event), profile);
+      prunePairsAt(element);
+      const input: KeyInput = {
+        ...keyInputOf(event.key, isMac, event),
+        exitCloserAt: exitableCloserAt(pairs.current, element.value, element.selectionStart),
+      };
+      const edit = profile === null ? null : handleKey(editStateOf(element), input, profile);
       if (edit !== null) {
         event.preventDefault();
         applyKeyEdit(element, edit);
@@ -505,6 +525,7 @@ export function useEditorKeys({
       onSubmitShortcut,
       pressEscape,
       profile,
+      prunePairsAt,
       tabMovesFocus,
     ],
   );
@@ -549,5 +570,14 @@ export function useEditorKeys({
     return () => element.removeEventListener("beforeinput", listener);
   }, [textareaRef]);
 
-  return { handleKeyDown, completion, profile, isMac, applyKeyEdit, tabMovesFocus, endTemplate };
+  return {
+    handleKeyDown,
+    completion,
+    profile,
+    isMac,
+    applyKeyEdit,
+    tabMovesFocus,
+    endTemplate,
+    notePairCaret: prunePairsAt,
+  };
 }

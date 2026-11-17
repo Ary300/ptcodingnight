@@ -8,8 +8,8 @@ import { closeTestDb, testDb } from "./helpers/seed";
  *
  * - side by side is a full-window workspace under the top bar: no page column, no page scroll,
  *   statement pane left at 40%, editor pane right, Submit pinned to the bottom edge;
- * - it is the default from 1280px, stacked is the default between 1024 and 1280, and the
- *   student's own choice wins wherever two panes fit, across a reload;
+ * - stacked is the default on every width, side by side is one click away on the toggle, and
+ *   the student's own choice wins wherever two panes fit, across a reload;
  * - the divider runs the full height, moves by pointer drag and by the arrow keys, stays inside
  *   25-75%, and the position survives a reload;
  * - Run samples opens the Results drawer, the drawer folds, and the editor stays on screen;
@@ -57,6 +57,13 @@ function layoutButton(page: Page, name: "Stacked" | "Side by side"): Locator {
   return page.getByRole("group", { name: "Layout" }).getByRole("button", { name, exact: true });
 }
 
+/** Side by side is one click away; every test of the split starts with that click. */
+async function chooseSideBySide(page: Page): Promise<void> {
+  await layoutButton(page, "Side by side").click();
+  await expect(layoutButton(page, "Side by side")).toHaveAttribute("aria-pressed", "true");
+  await expect(divider(page)).toBeVisible();
+}
+
 function divider(page: Page): Locator {
   return page.getByRole("separator", { name: "Resize the problem and the editor" });
 }
@@ -89,11 +96,13 @@ async function pageScrolls(page: Page): Promise<{ vertical: number; horizontal: 
 test.describe("on a wide window", () => {
   test.use({ viewport: { width: 1440, height: 900 }, isMobile: false, hasTouch: false });
 
-  test("side by side is the default, and fills the window under the top bar", async ({ page }) => {
+  test("stacked is the default even this wide; side by side fills the window under the top bar", async ({ page }) => {
     await openProblemAsGuest(page);
 
-    await expect(layoutButton(page, "Side by side")).toHaveAttribute("aria-pressed", "true");
-    await expect(divider(page)).toBeVisible();
+    await expect(layoutButton(page, "Stacked")).toHaveAttribute("aria-pressed", "true");
+    await expect(divider(page)).toHaveCount(0);
+
+    await chooseSideBySide(page);
     await expect(divider(page)).toHaveAttribute("aria-valuenow", "40");
 
     // Edge to edge, from the bottom of the top bar to the bottom of the window.
@@ -149,6 +158,8 @@ test.describe("on a wide window", () => {
   test("the student's choice wins over the default and survives a reload", async ({ page }) => {
     await openProblemAsGuest(page);
 
+    // Chosen and then un-chosen, so "Stacked" below is a click and not the default.
+    await chooseSideBySide(page);
     await layoutButton(page, "Stacked").click();
     await expect(layoutButton(page, "Stacked")).toHaveAttribute("aria-pressed", "true");
     await expect(divider(page)).toHaveCount(0);
@@ -176,6 +187,7 @@ test.describe("on a wide window", () => {
 
   test("the divider moves by drag and by arrow keys, within 25 to 75 percent", async ({ page }) => {
     await openProblemAsGuest(page);
+    await chooseSideBySide(page);
 
     const separator = divider(page);
     await expect(separator).toHaveAttribute("aria-orientation", "vertical");
@@ -237,6 +249,7 @@ test.describe("on a wide window", () => {
 
   test("Run samples opens the Results drawer, which folds without moving the editor off screen", async ({ page }) => {
     await openProblemAsGuest(page);
+    await chooseSideBySide(page);
 
     const toggle = resultsToggle(page);
     await expect(toggle).toHaveAttribute("aria-expanded", "false");
@@ -268,6 +281,7 @@ test.describe("on a wide window", () => {
 
   test("the bottom of the editor pane is a slim status bar and a copy-free action bar", async ({ page }) => {
     await openProblemAsGuest(page);
+    await chooseSideBySide(page);
     const solutionPane = page.getByRole("region", { name: "Your solution" });
 
     // No sentence of help on screen; the textarea still carries it for screen readers. Measured
@@ -304,7 +318,7 @@ test.describe("on a wide window", () => {
 
   test("the editor still takes typing side by side", async ({ page }) => {
     await openProblemAsGuest(page);
-    await expect(divider(page)).toBeVisible();
+    await chooseSideBySide(page);
 
     const textarea = editor(page);
     await textarea.click();

@@ -189,6 +189,119 @@ test("Surround With wraps the line in an if and puts the caret in the condition"
   await expect(textarea).toHaveValue("if (x > 0) {\n    a();\n}");
 });
 
+test("Insert Live Template lists this language's templates on Mod+J, and Enter inserts one with its fields", async ({ page }) => {
+  const code = "class Main {\n    void f() {\n        so\n    }\n}";
+  const textarea = await openEditor(page, "Java 21", code, code.indexOf("so") + 2);
+  await page.keyboard.press(`${await mod(page)}+j`);
+  const menu = page.getByRole("menu", { name: "Insert live template" });
+  await expect(menu).toBeVisible();
+  // Narrowed to what was typed, each row with IntelliJ's description.
+  await expect(menu.getByRole("menuitem").first()).toContainText("sout");
+  await expect(menu.getByRole("menuitem").first()).toContainText("Prints a string to System.out");
+  for (const name of await menu.getByRole("menuitem").allInnerTexts()) expect(name).toMatch(/so/);
+  // Quick Documentation is no longer on this chord: nothing but the menu opened.
+  await expect(page.getByRole("status").filter({ hasText: "No documentation" })).toHaveCount(0);
+
+  await page.keyboard.press("Enter");
+  await expect(menu).toHaveCount(0);
+  await expect(textarea).toBeFocused();
+  await expect(textarea).toHaveValue("class Main {\n    void f() {\n        System.out.println();\n    }\n}");
+  await page.keyboard.type("1");
+  await expect(textarea).toHaveValue("class Main {\n    void f() {\n        System.out.println(1);\n    }\n}");
+
+  // A template with fields keeps them: fori selects its variable, Tab moves to the bound.
+  await textarea.fill("class Main {\n    void f() {\n        \n    }\n}");
+  await textarea.evaluate((element) => {
+    const area = element as HTMLTextAreaElement;
+    const at = area.value.indexOf("        \n") + 8;
+    area.setSelectionRange(at, at);
+  });
+  await page.keyboard.press(`${await mod(page)}+j`);
+  await menu.getByRole("menuitem", { name: /fori/ }).first().click();
+  await expect(textarea).toHaveValue(/for \(int i = 0; i < ; i\+\+\) \{/);
+  await page.keyboard.press("Tab");
+  await page.keyboard.type("n");
+  await expect(textarea).toHaveValue(/for \(int i = 0; i < n; i\+\+\) \{/);
+});
+
+/** The viewport point over text cell (row, column), 0-based, from the textarea's own metrics. */
+async function cellPoint(textarea: Locator, row: number, column: number): Promise<{ x: number; y: number }> {
+  return textarea.evaluate(
+    (element, [r, c]) => {
+      const area = element as HTMLTextAreaElement;
+      const style = getComputedStyle(area);
+      const rect = area.getBoundingClientRect();
+      const probe = document.createElement("span");
+      probe.textContent = "0".repeat(20);
+      probe.style.font = style.font;
+      probe.style.position = "absolute";
+      probe.style.whiteSpace = "pre";
+      document.body.appendChild(probe);
+      const charWidth = probe.getBoundingClientRect().width / 20;
+      probe.remove();
+      const lineHeight = Number.parseFloat(style.lineHeight);
+      return {
+        x: rect.left + area.clientLeft + Number.parseFloat(style.paddingLeft) + (c ?? 0) * charWidth - area.scrollLeft + 1,
+        y: rect.top + area.clientTop + Number.parseFloat(style.paddingTop) + (r ?? 0) * lineHeight + lineHeight / 2 - area.scrollTop,
+      };
+    },
+    [row, column],
+  );
+}
+
+test("Alt+click adds carets: typing, Backspace, Delete and Enter apply at each as one undo step", async ({ page }) => {
+  const textarea = await openEditor(page, "Java 21", "int a;\nint b;\nint c;", 4);
+  for (const row of [1, 2]) {
+    const point = await cellPoint(textarea, row, 4);
+    await page.keyboard.down("Alt");
+    await page.mouse.click(point.x, point.y);
+    await page.keyboard.up("Alt");
+  }
+  await expect(page.getByTestId("editor-extra-caret")).toHaveCount(2);
+
+  await page.keyboard.type("xy");
+  await expect(textarea).toHaveValue("int xya;\nint xyb;\nint xyc;");
+  await page.keyboard.press("Backspace");
+  await expect(textarea).toHaveValue("int xa;\nint xb;\nint xc;");
+  await page.keyboard.press("Delete");
+  await expect(textarea).toHaveValue("int x;\nint x;\nint x;");
+  await page.keyboard.press("Enter");
+  await expect(textarea).toHaveValue("int x\n;\nint x\n;\nint x\n;");
+
+  // One undo takes the last key back at every caret at once, and a chord returns to one caret.
+  await page.keyboard.press(`${await mod(page)}+z`);
+  await expect(textarea).toHaveValue("int x;\nint x;\nint x;");
+  await expect(page.getByTestId("editor-extra-caret")).toHaveCount(0);
+});
+
+test("Clone Caret Below adds a caret on the next line; Escape leaves one", async ({ page }) => {
+  const textarea = await openEditor(page, "Java 21", "int a;\nint b;", 4);
+  await page.keyboard.press("Control+Shift+Alt+ArrowDown");
+  await expect(page.getByTestId("editor-extra-caret")).toHaveCount(1);
+  await page.keyboard.type("_");
+  await expect(textarea).toHaveValue("int _a;\nint _b;");
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("editor-extra-caret")).toHaveCount(0);
+  await page.keyboard.type("q");
+  await expect(textarea).toHaveValue("int _a;\nint _qb;");
+});
+
+test("Alt+Shift+drag selects a column, and typing replaces it on every line", async ({ page }) => {
+  const textarea = await openEditor(page, "Java 21", "int a;\nint b;\nint c;", 0);
+  const from = await cellPoint(textarea, 0, 0);
+  const to = await cellPoint(textarea, 2, 3);
+  await page.keyboard.down("Alt");
+  await page.keyboard.down("Shift");
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  await page.mouse.move(to.x, to.y, { steps: 6 });
+  await page.mouse.up();
+  await page.keyboard.up("Shift");
+  await page.keyboard.up("Alt");
+  await page.keyboard.type("var");
+  await expect(textarea).toHaveValue("var a;\nvar b;\nvar c;");
+});
+
 test("Context actions add the missing import, and Parameter Info and Quick Documentation show", async ({ page }) => {
   const textarea = await openEditor(page, "Java 21", "ArrayList<Integer> a;", 3);
   await page.keyboard.press("Alt+Enter");

@@ -1,5 +1,5 @@
 /**
- * Parameter Info (Mod+P) and Quick Documentation (F1, or Mod+J on a Mac) as data.
+ * Parameter Info (Mod+P) and Quick Documentation (F1, or Ctrl+Q off a Mac) as data.
  *
  * Both read the same completion tables the popup uses, so a signature never disagrees with the row
  * that inserted the call. Each entry is a signature and one plain sentence. The surface renders

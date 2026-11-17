@@ -30,6 +30,8 @@ const KIND_BADGE: Readonly<Record<CompletionKind, { readonly letter: string; rea
   field: { letter: "f", name: "field", className: "text-rise" },
   variable: { letter: "v", name: "variable", className: "text-paper" },
   snippet: { letter: "t", name: "template", className: "text-gold" },
+  // IntelliJ marks postfix rows apart from the expression's members; their own letter does here.
+  postfix: { letter: "p", name: "postfix template", className: "text-gold" },
 };
 
 /** One row's height (`h-7`), and the list's padding and border, as the hook sizes them. */

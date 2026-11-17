@@ -51,6 +51,12 @@ export function layerPieces(text: string, matches: readonly MatchRange[], curren
   return pieces;
 }
 
+/** A px line height is the row; a unitless ratio is that many em. */
+function rowHeight(lineHeight: CSSProperties["lineHeight"]): string {
+  if (lineHeight === undefined) return "1em";
+  return typeof lineHeight === "number" || !Number.isNaN(Number(lineHeight)) ? `${lineHeight}em` : lineHeight;
+}
+
 export const MatchLayer = forwardRef<HTMLPreElement, MatchLayerProps>(function MatchLayer(
   { text, matches, current, carets, style },
   ref,
@@ -67,7 +73,16 @@ export const MatchLayer = forwardRef<HTMLPreElement, MatchLayerProps>(function M
       {layerPieces(text, matches, current, carets).map((piece, index) => {
         if (piece.kind === "text") return <span key={index}>{piece.value}</span>;
         if (piece.kind === "caret") {
-          return <span key={index} data-testid="editor-extra-caret" className="relative inline-block h-[1.3em] w-0 border-l-2 border-gold align-top" />;
+          return (
+            <span
+              key={index}
+              data-testid="editor-extra-caret"
+              className="relative inline-block w-0 border-l-2 border-gold align-top"
+              // Exactly the row's pitch: a caret taller than its line box grows that line and
+              // pushes every row under it off the text the overlay draws.
+              style={{ height: rowHeight(style.lineHeight) }}
+            />
+          );
         }
         return (
           <mark

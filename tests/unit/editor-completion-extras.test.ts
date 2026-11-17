@@ -38,6 +38,16 @@ function labels(marked: string, profile: LanguageProfile): string[] {
   return ctx === null ? [] : completionsFor(ctx, text, profile, 50).map((item) => item.label);
 }
 
+/** The rows that are the expression's members: everything but the postfix templates after them. */
+function memberLabels(marked: string, profile: LanguageProfile): string[] {
+  const { text, selectionStart } = state(marked);
+  const ctx = completionContext(text, selectionStart, profile.lineComment);
+  if (ctx === null) return [];
+  return completionsFor(ctx, text, profile, 50)
+    .filter((item) => item.kind !== "postfix")
+    .map((item) => item.label);
+}
+
 /** Accepts the row named `label` (or whose identifier is `label`) and draws the result. */
 function accept(marked: string, label: string, profile: LanguageProfile): string {
   const current = state(marked);
@@ -230,8 +240,10 @@ describe("members by the variable's inferred type", () => {
     expect(labels(MAIN("List<Integer> xs = new ArrayList<>();\n        xs.|"), JAVA)).toContain("add(E e)");
     expect(labels(MAIN("List<Integer> xs = new ArrayList<>();\n        xs.|"), JAVA)).not.toContain("charAt(int index)");
     expect(labels(MAIN("String s = \"\";\n        s.cha|"), JAVA)).toEqual(["chars()", "charAt(int index)"]);
-    expect(labels(MAIN("int[] a = new int[3];\n        a.|"), JAVA)).toEqual(["length", "clone()"]);
-    expect(labels("pair<int, int> p;\np.|", CPP)).toEqual(["first", "second"]);
+    expect(memberLabels(MAIN("int[] a = new int[3];\n        a.|"), JAVA)).toEqual(["length", "clone()"]);
+    // The array's postfix templates follow its members, never ahead of them.
+    expect(labels(MAIN("int[] a = new int[3];\n        a.|"), JAVA).slice(0, 3)).toEqual(["length", "clone()", "sout"]);
+    expect(memberLabels("pair<int, int> p;\np.|", CPP)).toEqual(["first", "second"]);
     expect(labels("xs = []\nxs.ap|", PYTHON)).toEqual(["append()"]);
     expect(labels("s = 'abc'\ns.sp|", PYTHON)).toEqual(["split()"]);
   });

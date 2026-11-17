@@ -9,6 +9,7 @@ import {
   useState,
   type ClipboardEvent,
   type KeyboardEvent,
+  type MouseEvent,
   type ReactNode,
   type RefObject,
 } from "react";
@@ -18,6 +19,7 @@ import { offsetOfLineColumn } from "../decorations/goto";
 import { quickDocAt, signatureAt } from "../smart/docs";
 import { expandWord, expandWordAnchor, type ExpandWordAnchor } from "../smart/expand-word";
 import { importFixFor, type ContextAction } from "../smart/imports";
+import { insertTemplateEdit, templateChoices, type TemplateChoices } from "../smart/insert-template";
 import { reindentPaste } from "../smart/paste";
 import { surroundKindsFor, surroundWith, type SurroundKind } from "../smart/surround";
 import type { CompletionItem, Edit, EditState, LanguageProfile } from "../smart/types";
@@ -45,6 +47,7 @@ import {
   type SessionStep,
 } from "./occurrences";
 import { useFind } from "./useFind";
+import { useMultiCaret } from "./useMultiCaret";
 
 /**
  * The editor's commands: Find and Replace, Go to Line, Surround With, Parameter Info, Quick
@@ -115,7 +118,7 @@ export interface EditorCommands {
   readonly onCopy: (event: ClipboardEvent<HTMLTextAreaElement>) => void;
   readonly onCut: (event: ClipboardEvent<HTMLTextAreaElement>) => void;
   /** A click in the code: ends occurrences and closes info panels. */
-  readonly onPointerDown: () => void;
+  readonly onPointerDown: (event: MouseEvent<HTMLTextAreaElement>) => void;
   /** Remember the caret and scroll for this problem and language (debounced). */
   readonly rememberCaret: () => void;
   /** Describes the info panel to assistive tech while it is open. */
@@ -127,12 +130,30 @@ const REMEMBER_MS = 300;
 
 type MenuState =
   | { readonly kind: "surround"; readonly choices: readonly SurroundKind[]; readonly top: number; readonly left: number }
-  | { readonly kind: "actions"; readonly actions: readonly ContextAction[]; readonly top: number; readonly left: number };
+  | { readonly kind: "actions"; readonly actions: readonly ContextAction[]; readonly top: number; readonly left: number }
+  | { readonly kind: "templates"; readonly choices: TemplateChoices; readonly top: number; readonly left: number };
 
 interface InfoState {
   readonly content: InfoContent;
   readonly top: number;
   readonly left: number;
+}
+
+const MENU_TITLE: Readonly<Record<MenuState["kind"], string>> = {
+  surround: "Surround with",
+  actions: "Context actions",
+  templates: "Insert live template",
+};
+
+function menuItems(menu: MenuState): readonly { readonly label: string; readonly detail?: string }[] {
+  switch (menu.kind) {
+    case "surround":
+      return menu.choices;
+    case "actions":
+      return menu.actions;
+    case "templates":
+      return menu.choices.templates.map((template) => ({ label: template.abbreviation, detail: template.description }));
+  }
 }
 
 function stateOf(element: HTMLTextAreaElement): EditState {
@@ -163,6 +184,7 @@ export function useEditorCommands(options: EditorCommandsOptions): EditorCommand
   const [notice, setNotice] = useState<string | null>(null);
   const noticeTimer = useRef<number | null>(null);
   const [fontPx, setFontPx] = useState<number | null>(() => (typeof window === "undefined" ? null : readFontSize()));
+  const multi = useMultiCaret(textareaRef, isMac, syncCaret);
   const [session, setSessionState] = useState<OccurrenceSession | null>(null);
   const sessionRef = useRef<OccurrenceSession | null>(null);
   const rawPaste = useRef(false);
@@ -361,6 +383,11 @@ export function useEditorCommands(options: EditorCommandsOptions): EditorCommand
         case "findPrevious":
           find.step(id === "findNext" ? 1 : -1);
           return true;
+        case "cloneCaretAbove":
+        case "cloneCaretBelow":
+          endSession();
+          multi.clone(element, id === "cloneCaretAbove" ? -1 : 1);
+          return true;
         case "goToLine":
           setGotoOpen(true);
           return true;
@@ -391,6 +418,16 @@ export function useEditorCommands(options: EditorCommandsOptions): EditorCommand
           setMenu({ kind: "surround", choices: surroundKindsFor(profile), ...belowCaret(element) });
           return true;
         }
+        case "insertTemplate": {
+          if (profile === null || profile.templates.length === 0) {
+            showInfo(element, { kind: "none", message: "No live templates for this language" });
+            return true;
+          }
+          const choices = templateChoices(stateOf(element), profile);
+          if (choices.templates.length === 0) showInfo(element, { kind: "none", message: "No templates fit here" });
+          else setMenu({ kind: "templates", choices, ...belowCaret(element) });
+          return true;
+        }
         case "contextActions": {
           const actions = profile === null ? [] : importFixFor(element.value, element.selectionStart, profile);
           if (actions.length === 0) showInfo(element, { kind: "none", message: "No suggestions" });
@@ -408,6 +445,7 @@ export function useEditorCommands(options: EditorCommandsOptions): EditorCommand
       flash,
       fontPx,
       goToError,
+      multi,
       occurrenceCommand,
       onRunShortcut,
       onSaveShortcut,
@@ -433,6 +471,9 @@ export function useEditorCommands(options: EditorCommandsOptions): EditorCommand
           setInfo(null);
         }
       }
+
+      // Multiple carets take the editing keys before anything else; any other key returns to one.
+      if (multi.intercept(event)) return true;
 
       const current = sessionRef.current;
       if (current === null) return false;
@@ -471,7 +512,7 @@ export function useEditorCommands(options: EditorCommandsOptions): EditorCommand
       syncCaret(element);
       return true;
     },
-    [info, isMac, parameterInfo, setSession, showStep, syncCaret],
+    [info, isMac, multi, parameterInfo, setSession, showStep, syncCaret],
   );
 
   const escape = useCallback((): boolean => {
@@ -497,6 +538,8 @@ export function useEditorCommands(options: EditorCommandsOptions): EditorCommand
   const onPaste = useCallback(
     (event: ClipboardEvent<HTMLTextAreaElement>) => {
       endSession();
+      // At every caret: one line each when the clipboard has one per caret, as IntelliJ does.
+      if (multi.paste(event)) return;
       if (rawPaste.current || profile === null) {
         rawPaste.current = false;
         return;
@@ -517,7 +560,7 @@ export function useEditorCommands(options: EditorCommandsOptions): EditorCommand
       applyInEditor(element, edit);
       syncCaret(element);
     },
-    [endSession, profile, syncCaret],
+    [endSession, multi, profile, syncCaret],
   );
 
   /*
@@ -569,14 +612,16 @@ export function useEditorCommands(options: EditorCommandsOptions): EditorCommand
     [endSession, syncCaret],
   );
 
-  const onPointerDown = useCallback(() => {
+  const onPointerDown = useCallback((event: MouseEvent<HTMLTextAreaElement>) => {
     endSession();
+    // Alt+click adds a caret and Alt+Shift+drag selects a column; those keep the carets.
+    if (multi.pointerDown(event)) return;
     setInfo(null);
     // A click back into the code closes Context Actions and Surround With, as in IntelliJ, so a later
     // Alt+Enter opens a fresh menu that has the focus.
     setMenu(null);
     pendingRestore.current = null;
-  }, [endSession]);
+  }, [endSession, multi]);
 
   const closeMenu = useCallback(() => {
     setMenu(null);
@@ -594,6 +639,12 @@ export function useEditorCommands(options: EditorCommandsOptions): EditorCommand
         const choice = current.choices[index];
         const edit = choice === undefined || profile === null ? null : surroundWith(stateOf(element), choice.id, profile);
         if (edit !== null) (applyEdit ?? applyInEditor)(element, edit);
+      } else if (current.kind === "templates") {
+        const template = current.choices.templates[index];
+        // Through `applyEdit`, so a template with fields starts the same Tab session as `fori` + Tab.
+        if (template !== undefined && profile !== null) {
+          (applyEdit ?? applyInEditor)(element, insertTemplateEdit(element.value, current.choices, template, profile));
+        }
       } else {
         const action = current.actions[index];
         if (action !== undefined) (applyEdit ?? applyInEditor)(element, action.edit);
@@ -655,8 +706,8 @@ export function useEditorCommands(options: EditorCommandsOptions): EditorCommand
     <>
       {menu !== null && (
         <CommandMenu
-          title={menu.kind === "surround" ? "Surround with" : "Context actions"}
-          items={menu.kind === "surround" ? menu.choices : menu.actions}
+          title={MENU_TITLE[menu.kind]}
+          items={menuItems(menu)}
           top={menu.top}
           left={menu.left}
           onChoose={chooseMenu}
@@ -668,7 +719,9 @@ export function useEditorCommands(options: EditorCommandsOptions): EditorCommand
   );
 
   const highlights =
-    session !== null
+    multi.highlights !== null
+      ? { matches: multi.highlights.matches, current: -1, carets: multi.highlights.carets }
+      : session !== null
       ? { matches: session.ranges, current: session.offset === null ? session.primary : -1, carets: secondaryCarets(session) }
       : { matches: find.matches, current: find.current, carets: [] };
 

@@ -13,13 +13,6 @@ export type ProblemLayout = "stacked" | "side";
 /** Below this width the page is always stacked and no toggle is offered. Tailwind's `lg`. */
 export const SIDE_BY_SIDE_MIN_WIDTH_PX = 1024;
 
-/**
- * From this width up, a student who has never chosen gets side by side. Between 1024 and this
- * the split is offered but not the default: two panes in a 1100px window leave the editor about
- * 650px, which works, but is a choice a student should make rather than find.
- */
-export const SIDE_BY_SIDE_DEFAULT_MIN_WIDTH_PX = 1280;
-
 /** The left pane's share of the split, in percent. Each pane keeps at least a quarter. */
 export const SPLIT_MIN = 25;
 export const SPLIT_MAX = 75;
@@ -38,18 +31,21 @@ export interface LayoutFacts {
   readonly choice: ProblemLayout | null;
   /** The window is at least `SIDE_BY_SIDE_MIN_WIDTH_PX` wide. */
   readonly wide: boolean;
-  /** The window is at least `SIDE_BY_SIDE_DEFAULT_MIN_WIDTH_PX` wide. */
-  readonly roomy: boolean;
 }
 
 /**
  * The layout the page shows. Too narrow wins over everything, then the student's own choice,
- * then the width-based default.
+ * then stacked.
+ *
+ * Stacked is the default on every width, at the organizers' request: the statement reads first
+ * and the editor sits under it, and side by side is one click away on the toggle. The stored
+ * choice is still honoured, because the only thing that ever writes it is a click on that toggle
+ * (`rememberLayout`, called from `LayoutToggle`'s onChange and nowhere else), so a stored "side"
+ * is a student's own choice and never an old default that was saved for them.
  */
-export function resolveLayout({ choice, wide, roomy }: LayoutFacts): ProblemLayout {
+export function resolveLayout({ choice, wide }: LayoutFacts): ProblemLayout {
   if (!wide) return "stacked";
-  if (choice !== null) return choice;
-  return roomy ? "side" : "stacked";
+  return choice ?? "stacked";
 }
 
 /** Whole percent, inside the bounds. A non-finite value is the default rather than an edge. */

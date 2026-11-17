@@ -296,12 +296,30 @@ test.describe("Java, the IntelliJ reflexes that used to misfire", () => {
 
   test("the hint under the editor reads as plain sentences", async ({ page }) => {
     // The visible sentence is the STACKED page's; side by side, the shortcuts popover replaced
-    // it. Desktop Chrome's 1280px window opens side by side, so choose stacked as a student would.
-    await page.addInitScript(() => window.localStorage.setItem("ptcn.problem-layout.v1", "stacked"));
+    // it. Stacked is the default on every width, so nothing is chosen here.
     await openEmptyEditor(page, "Java 21");
+    await expect(page.getByRole("separator", { name: "Resize the problem and the editor" })).toHaveCount(0);
     const hint = page.locator("p", { hasText: "Tab indents." });
     const text = await hint.evaluate((element) => (element as HTMLElement).innerText);
     expect(text).toContain("Tab indents. Press Esc twice, then Tab, to move on. Ctrl / Cmd + Enter submits.");
+  });
+
+  test("postfix templates are listed after `x.`, marked, and accepting one expands over x", async ({ page }) => {
+    const textarea = await openEmptyEditor(page, "Java 21");
+    await textarea.fill("int x = 3;\n");
+    await textarea.evaluate((element) => {
+      const area = element as HTMLTextAreaElement;
+      area.setSelectionRange(area.value.length, area.value.length);
+    });
+    await page.keyboard.type("x.");
+    await expect(popup(page)).toBeVisible();
+    for (const name of ["sout", "if", "fori"]) {
+      await expect(popup(page).getByRole("option", { name: new RegExp(`^postfix template ${name}\\b`) })).toBeVisible();
+    }
+    await page.keyboard.type("so");
+    await expect(popup(page).getByRole("option").first()).toHaveAccessibleName(/^postfix template sout\b/);
+    await page.keyboard.press("Enter");
+    await expect(textarea).toHaveValue("int x = 3;\nSystem.out.println(x);");
   });
 
   test("Ctrl + Space opens completion on demand", async ({ page }) => {

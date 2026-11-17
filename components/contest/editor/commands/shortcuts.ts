@@ -56,6 +56,7 @@ function editing({ isMac, smart, templateExample, engine = [] }: ShortcutOptions
       { keys: [`${alt} + Shift + Up`], action: "Move the line up or down" },
       { keys: [`${mod} + ${alt} + T`], action: "Surround with if, for, try" },
       ...(templateExample === "" ? [] : [{ keys: [templateExample, "Tab"], action: "Expand a template" }]),
+      { keys: [`${mod} + J`], action: "Insert a live template from the list" },
       ...engine.filter((row) => !LISTED_ELSEWHERE.has(row.action)),
     ],
   };
@@ -76,7 +77,9 @@ function completion({ isMac, smart }: ShortcutOptions): ShortcutGroup | null {
       { keys: ["Enter"], action: "Insert the suggestion" },
       { keys: ["Tab"], action: "Replace the word with the suggestion" },
       { keys: [`${mod} + P`], action: "Parameter info" },
-      { keys: [isMac ? "F1" : "Ctrl + Q"], or: [`${mod} + J`], action: "Quick documentation" },
+      isMac
+        ? { keys: ["F1"], action: "Quick documentation" }
+        : { keys: ["Ctrl + Q"], or: ["F1"], action: "Quick documentation" },
       { keys: [`${alt} + Enter`], action: "Add the missing import" },
       { keys: [`${alt} + /`], or: [`${alt} + Shift + /`], action: "Complete the word from the file" },
     ],
@@ -95,6 +98,10 @@ function navigation({ isMac }: ShortcutOptions): ShortcutGroup {
       { keys: [isMac ? "Ctrl + G" : "Alt + J"], action: "Select the next copy of the word" },
       { keys: [isMac ? "Cmd + Ctrl + G" : "Ctrl + Alt + Shift + J"], action: "Select every copy, then type to rename" },
       { keys: [isMac ? "Ctrl + Shift + G" : "Alt + Shift + J"], action: "Unselect the last copy" },
+      { keys: [`${alt} + click`], action: "Add a caret; type at every caret at once" },
+      { keys: [`${alt} + Shift + drag`], or: ["Middle-button drag"], action: "Select a column" },
+      { keys: [`Ctrl + Shift + ${alt} + Up`], or: [`Ctrl + Shift + ${alt} + Down`], action: "Add a caret above or below" },
+      { keys: ["Esc"], action: "Back to one caret" },
     ],
   };
 }

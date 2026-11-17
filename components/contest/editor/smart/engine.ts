@@ -120,7 +120,7 @@ export function handleKey(state: EditState, input: KeyInput, profile: LanguagePr
     case "Backspace":
       return deleteEmptyPair(range, profile);
     case "Tab":
-      return input.shiftKey ? null : (expandTemplate(range, profile) ?? jumpOutOfCloser(range, profile));
+      return input.shiftKey ? null : (expandTemplate(range, profile) ?? tabOutOfPair(range, input, profile));
     case "Home":
       return smartHome(state, range, input.shiftKey);
     case "End":
@@ -1140,6 +1140,13 @@ function shifted(from: number, to: number, insert: string, range: Range, shift: 
 /* Tab                                                                                          */
 /* ------------------------------------------------------------------------------------------ */
 
+/** Tab over a closer: the editor's tracked auto-inserted one, or (with no tracking) a line-ending one. */
+function tabOutOfPair(range: Range, input: KeyInput, profile: LanguageProfile): Edit | null {
+  if (input.exitCloserAt === undefined) return jumpOutOfCloser(range, profile);
+  if (input.exitCloserAt === null || range.start !== range.end || input.exitCloserAt !== range.start) return null;
+  return caretOnly(range.start, range.start + 1);
+}
+
 function expandTemplate(range: Range, profile: LanguageProfile): Edit | null {
   const { text, start, end } = range;
   if (start !== end) return null;
@@ -1157,6 +1164,21 @@ function expandTemplate(range: Range, profile: LanguageProfile): Edit | null {
   const template = profile.templates.find((candidate) => candidate.abbreviation === word);
   if (template === undefined || !templateFits(text, wordStart, start, template, profile)) return null;
   return templateEdit(wordStart, start, templateBodyAt(template, text, wordStart), leadingSpace(lineBefore), profile);
+}
+
+/**
+ * The postfix template whose abbreviation ends at the caret after `expr.`, expanded, or null. The
+ * completion popup accepts its postfix rows through this, so a row and `x.sout` + Tab agree.
+ */
+export function expandPostfixAt(state: EditState, profile: LanguageProfile): Edit | null {
+  const range = normalise(state);
+  const { text, start, end } = range;
+  if (start !== end) return null;
+  const word = TRAILING_WORD.exec(text.slice(lineStartAt(text, start), start))?.[0];
+  if (word === undefined) return null;
+  const wordStart = start - word.length;
+  if (separatorEndingAt(text, wordStart) !== ".") return null;
+  return expandPostfix(range, word, wordStart, profile);
 }
 
 /**
