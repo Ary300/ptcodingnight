@@ -278,9 +278,9 @@ test.describe("Java, the IntelliJ reflexes that used to misfire", () => {
 
   test("the hint under the editor reads as plain sentences", async ({ page }) => {
     // The visible sentence is the STACKED page's; side by side, the shortcuts popover replaced
-    // it. Desktop Chrome's 1280px window opens side by side, so choose stacked as a student would.
-    await page.addInitScript(() => window.localStorage.setItem("ptcn.problem-layout.v1", "stacked"));
+    // it. Stacked is the default on every width, so nothing is chosen here.
     await openEmptyEditor(page, "Java 21");
+    await expect(page.getByRole("separator", { name: "Resize the problem and the editor" })).toHaveCount(0);
     const hint = page.locator("p", { hasText: "Tab indents." });
     const text = await hint.evaluate((element) => (element as HTMLElement).innerText);
     expect(text).toContain("Tab indents. Press Esc twice, then Tab, to move on. Ctrl / Cmd + Enter submits.");

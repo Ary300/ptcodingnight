@@ -37,7 +37,6 @@ import { resolveLayout } from "./split-layout";
 import {
   layoutStore,
   rememberLayout,
-  roomyViewportStore,
   wideViewportStore,
 } from "./split-preference";
 
@@ -200,12 +199,7 @@ export function ProblemWorkspace({ slug }: ProblemWorkspaceProps) {
     wideViewportStore.getSnapshot,
     wideViewportStore.getServerSnapshot,
   );
-  const roomy = useSyncExternalStore(
-    roomyViewportStore.subscribe,
-    roomyViewportStore.getSnapshot,
-    roomyViewportStore.getServerSnapshot,
-  );
-  const layout = resolveLayout({ choice: layoutChoice, wide, roomy });
+  const layout = resolveLayout({ choice: layoutChoice, wide });
   const sideBySide = layout === "side";
 
   // Side by side, the Results drawer. Opened by every run and submit; folded only by the student.

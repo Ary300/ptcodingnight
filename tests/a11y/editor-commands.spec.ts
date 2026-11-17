@@ -80,8 +80,10 @@ test.describe("axe-core: the editor's commands", () => {
   test("the grouped shortcuts popover", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await openEditor(page, "");
+    // The status bar and its popover exist only side by side, which is one click from the
+    // stacked default.
+    await page.getByRole("group", { name: "Layout" }).getByRole("button", { name: "Side by side", exact: true }).click();
     const button = page.getByRole("button", { name: "Keyboard shortcuts" });
-    test.skip((await button.count()) === 0, "the status bar shows only side by side");
     await button.click();
     await expect(page.getByRole("region", { name: "Keyboard shortcuts" })).toBeVisible();
     await auditPage(page, "/contest/[slug] (shortcuts popover)");

@@ -28,18 +28,17 @@ describe("parseLayout", () => {
 
 describe("resolveLayout", () => {
   it("is always stacked below 1024px, whatever was chosen", () => {
-    expect(resolveLayout({ choice: "side", wide: false, roomy: false })).toBe("stacked");
-    expect(resolveLayout({ choice: null, wide: false, roomy: false })).toBe("stacked");
+    expect(resolveLayout({ choice: "side", wide: false })).toBe("stacked");
+    expect(resolveLayout({ choice: null, wide: false })).toBe("stacked");
   });
 
-  it("defaults to side by side from 1280px and stacked between 1024 and 1280", () => {
-    expect(resolveLayout({ choice: null, wide: true, roomy: true })).toBe("side");
-    expect(resolveLayout({ choice: null, wide: true, roomy: false })).toBe("stacked");
+  it("defaults to stacked on every width, including a wide monitor", () => {
+    expect(resolveLayout({ choice: null, wide: true })).toBe("stacked");
   });
 
   it("keeps the student's choice wherever two panes fit", () => {
-    expect(resolveLayout({ choice: "stacked", wide: true, roomy: true })).toBe("stacked");
-    expect(resolveLayout({ choice: "side", wide: true, roomy: false })).toBe("side");
+    expect(resolveLayout({ choice: "stacked", wide: true })).toBe("stacked");
+    expect(resolveLayout({ choice: "side", wide: true })).toBe("side");
   });
 });
 

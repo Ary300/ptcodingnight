@@ -1,10 +1,4 @@
-import {
-  parseLayout,
-  parseSplit,
-  SIDE_BY_SIDE_DEFAULT_MIN_WIDTH_PX,
-  SIDE_BY_SIDE_MIN_WIDTH_PX,
-  type ProblemLayout,
-} from "./split-layout";
+import { parseLayout, parseSplit, SIDE_BY_SIDE_MIN_WIDTH_PX, type ProblemLayout } from "./split-layout";
 
 /**
  * The problem page's layout choice and divider position, remembered in this browser.
@@ -15,8 +9,8 @@ import {
  * `localStorage` throw on access.
  *
  * The layout store holds the student's CHOICE, which is `null` until they make one, so the page
- * can tell "never chose" (follow the window width) from "chose stacked" (keep stacked on a wide
- * screen). `resolveLayout` in `split-layout.ts` turns the choice and the width into a layout.
+ * can tell "never chose" (stacked, the default) from "chose side by side". Only `rememberLayout`
+ * writes it, and only the toggle calls that, so a stored value is always a click. `resolveLayout` in `split-layout.ts` turns the choice and the width into a layout.
  *
  * Shaped for `useSyncExternalStore`, like `rememberedLanguageStore`, so there is no effect racing
  * the first render to apply the stored value.
@@ -110,8 +104,3 @@ function mediaStore(query: string): MediaStore {
 
 /** Whether the window is wide enough for two panes. False on the server and on phones. */
 export const wideViewportStore = mediaStore(`(min-width: ${SIDE_BY_SIDE_MIN_WIDTH_PX}px)`);
-
-/** Whether the window is wide enough for side by side to be the default. */
-export const roomyViewportStore = mediaStore(
-  `(min-width: ${SIDE_BY_SIDE_DEFAULT_MIN_WIDTH_PX}px)`,
-);
