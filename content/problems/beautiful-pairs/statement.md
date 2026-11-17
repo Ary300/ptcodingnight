@@ -5,18 +5,17 @@ Hall: metal puzzles, train tracks, and a stack of Connections grids. Every puzzl
 out is stamped with a difficulty code, listed on his checkout sheet, and Navraj logs the
 code of each puzzle that comes back. A returned entry can be checked off against a
 checkout entry only when the two codes match, and no entry may be checked off twice.
-Navraj is certain that exactly one code on the return log is wrong, though not which one,
-so before the count Mr. Ritz will correct exactly one entry of the return log, replacing
-it with a different code of his choosing, and he wants the correction that lets him check
+Navraj thinks one code on the return log might be wrong, though not which one, so before
+the count Mr. Ritz may correct one entry of the return log, replacing it with a code of his
+choosing. He does not have to correct anything, and he wants whatever choice lets him check
 off as many entries as possible.
 
 You are given two arrays $a$ and $b$, each containing $n$ integers. A pair of indices
 $(i, j)$ is *beautiful* if $a_i = b_j$. A collection of beautiful pairs is *disjoint* if
 no index of $a$ and no index of $b$ appears in more than one pair of the collection. You
-must change exactly one element of $b$: choose a position $j$ and replace $b_j$ with an
-integer between $1$ and $100$ that is different from the current $b_j$. This change is
-mandatory, even if $a$ and $b$ already match perfectly. Print the largest possible size
-of a disjoint collection of beautiful pairs after the change.
+may change at most one element of $b$: either leave $b$ exactly as it is, or choose one
+position $j$ and replace $b_j$ with any integer between $1$ and $100$. Print the largest
+possible size of a disjoint collection of beautiful pairs.
 
 ## Input
 
@@ -27,14 +26,12 @@ The third line contains $n$ space-separated integers $b_1, b_2, \dots, b_n$.
 ## Output
 
 Print a single integer: the maximum number of disjoint beautiful pairs obtainable after
-changing exactly one element of $b$ to a different value between $1$ and $100$.
+changing at most one element of $b$ to a value between $1$ and $100$.
 
 ## Constraints
 
 - $1 \le n \le 1000$
 - $1 \le a_i \le 100$ and $1 \le b_i \le 100$
-- The replacement value is an integer between $1$ and $100$ and must differ from the
-  value it replaces.
 
 ## Example
 
@@ -65,10 +62,10 @@ Input:
 ```
 Output:
 ```
-3
+4
 ```
 
 Here $b$ is already a perfect rearrangement of $a$: the pairs $(1, 3)$, $(2, 4)$,
-$(3, 1)$, and $(4, 2)$ give $4$ disjoint beautiful pairs. But the change is mandatory,
-and replacing any element of $b$ with a different value breaks exactly one of those
-pairs without creating a new one, so the best Mr. Ritz can do is $3$.
+$(3, 1)$, and $(4, 2)$ give $4$ disjoint beautiful pairs. Changing any element of $b$
+would only break one of those pairs, so Mr. Ritz leaves the log alone and the answer
+is $4$.
