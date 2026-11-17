@@ -1,0 +1,1020 @@
+[
+  {
+    "id": "py-pairs-paren-empty-file",
+    "behavior": "pairs",
+    "before": "|",
+    "keys": [
+      "("
+    ],
+    "after": "(|)",
+    "note": "Start of an empty file: ( inserts its closer and the caret sits between them."
+  },
+  {
+    "id": "py-pairs-paren-after-name",
+    "behavior": "pairs",
+    "before": "print|",
+    "keys": [
+      "("
+    ],
+    "after": "print(|)",
+    "note": "( after a function name at end of file closes itself."
+  },
+  {
+    "id": "py-pairs-bracket",
+    "behavior": "pairs",
+    "before": "nums = |",
+    "keys": [
+      "["
+    ],
+    "after": "nums = [|]",
+    "note": "[ closes itself before end of file."
+  },
+  {
+    "id": "py-pairs-brace",
+    "behavior": "pairs",
+    "before": "seen = |",
+    "keys": [
+      "{"
+    ],
+    "after": "seen = {|}",
+    "note": "{ closes itself before end of file."
+  },
+  {
+    "id": "py-pairs-paren-before-identifier",
+    "behavior": "pairs",
+    "before": "x = |n",
+    "keys": [
+      "("
+    ],
+    "after": "x = (|n",
+    "note": "No closer when the next token is an identifier; PyCharm pairs only before whitespace, end of line, a comment, a colon, a comma or a closing bracket."
+  },
+  {
+    "id": "py-pairs-paren-before-closer",
+    "behavior": "pairs",
+    "before": "print(len|)",
+    "keys": [
+      "("
+    ],
+    "after": "print(len(|))",
+    "note": "A closing ) after the caret allows pairing, so the nested call gets its own pair."
+  },
+  {
+    "id": "py-pairs-paren-before-colon",
+    "behavior": "pairs",
+    "before": "for i in range|:",
+    "keys": [
+      "("
+    ],
+    "after": "for i in range(|):",
+    "note": "A colon after the caret allows pairing."
+  },
+  {
+    "id": "py-pairs-double-quote-in-call",
+    "behavior": "pairs",
+    "before": "print(|)",
+    "keys": [
+      "\""
+    ],
+    "after": "print(\"|\")",
+    "note": "A double quote opens a string and inserts its closing quote."
+  },
+  {
+    "id": "py-pairs-single-quote",
+    "behavior": "pairs",
+    "before": "s = |",
+    "keys": [
+      "'"
+    ],
+    "after": "s = '|'",
+    "note": "A single quote at end of file pairs the same way."
+  },
+  {
+    "id": "py-pairs-overtype-quote",
+    "behavior": "pairs",
+    "before": "print(\"Yes|\")",
+    "keys": [
+      "\""
+    ],
+    "after": "print(\"Yes\"|)",
+    "note": "Typing the closing quote of a string steps over the existing one."
+  },
+  {
+    "id": "py-pairs-overtype-paren",
+    "behavior": "pairs",
+    "before": "print(\"Yes\"|)",
+    "keys": [
+      ")"
+    ],
+    "after": "print(\"Yes\")|",
+    "note": "Typing ) before a matching ) steps over it."
+  },
+  {
+    "id": "py-pairs-overtype-bracket",
+    "behavior": "pairs",
+    "before": "nums = [1, 2|]",
+    "keys": [
+      "]"
+    ],
+    "after": "nums = [1, 2]|",
+    "note": "Typing ] before a matching ] steps over it."
+  },
+  {
+    "id": "py-pairs-closer-differs",
+    "behavior": "pairs",
+    "before": "ans = max(a[i|)",
+    "keys": [
+      "]"
+    ],
+    "after": "ans = max(a[i]|)",
+    "note": "The next character is ), so the typed ] is inserted and nothing is skipped."
+  },
+  {
+    "id": "py-pairs-call-sequence",
+    "behavior": "pairs",
+    "before": "x = max|",
+    "keys": [
+      "(",
+      "1",
+      ",",
+      " ",
+      "2",
+      ")"
+    ],
+    "after": "x = max(1, 2)|",
+    "note": "Typed straight through: ( pairs, the arguments go inside, and ) steps over the inserted closer."
+  },
+  {
+    "id": "py-pairs-string-sequence",
+    "behavior": "pairs",
+    "before": "print(|)",
+    "keys": [
+      "\"",
+      "N",
+      "O",
+      "\""
+    ],
+    "after": "print(\"NO\"|)",
+    "note": "The quote pairs, the text goes inside, and the final quote steps over the closer."
+  },
+  {
+    "id": "py-pairs-quote-inside-string",
+    "behavior": "pairs",
+    "before": "print(\"it|\")",
+    "keys": [
+      "'"
+    ],
+    "after": "print(\"it'|\")",
+    "note": "Inside a double-quoted string a single quote is plain text and gets no partner."
+  },
+  {
+    "id": "py-pairs-bracket-inside-string",
+    "behavior": "pairs",
+    "before": "print(\"a|\")",
+    "keys": [
+      "("
+    ],
+    "after": "print(\"a(|\")",
+    "note": "Inside a string literal ( is plain text, so no closer is added."
+  },
+  {
+    "id": "py-pairs-quote-in-comment",
+    "behavior": "pairs",
+    "before": "# don|",
+    "keys": [
+      "'"
+    ],
+    "after": "# don'|",
+    "note": "A quote typed in a comment is not an opening string quote, so it gets no partner."
+  },
+  {
+    "id": "py-pairs-escaped-quote-eof",
+    "behavior": "pairs",
+    "before": "s = 'it\\|",
+    "keys": [
+      "'"
+    ],
+    "after": "s = 'it\\'|",
+    "note": "An escaped quote inside an unterminated string at end of file is inserted alone."
+  },
+  {
+    "id": "py-backspace-empty-parens",
+    "behavior": "backspace",
+    "before": "(|)",
+    "keys": [
+      "Backspace"
+    ],
+    "after": "|",
+    "note": "Backspace between an empty pair deletes both halves."
+  },
+  {
+    "id": "py-backspace-call-parens",
+    "behavior": "backspace",
+    "before": "print(|)",
+    "keys": [
+      "Backspace"
+    ],
+    "after": "print|",
+    "note": "Backspace in an empty call removes ( and )."
+  },
+  {
+    "id": "py-backspace-empty-brackets",
+    "behavior": "backspace",
+    "before": "nums = [|]",
+    "keys": [
+      "Backspace"
+    ],
+    "after": "nums = |",
+    "note": "Empty [] is removed as a pair."
+  },
+  {
+    "id": "py-backspace-empty-braces",
+    "behavior": "backspace",
+    "before": "d = {|}",
+    "keys": [
+      "Backspace"
+    ],
+    "after": "d = |",
+    "note": "Empty {} is removed as a pair."
+  },
+  {
+    "id": "py-backspace-empty-double-quotes",
+    "behavior": "backspace",
+    "before": "print(\"|\")",
+    "keys": [
+      "Backspace"
+    ],
+    "after": "print(|)",
+    "note": "Empty \"\" is removed as a pair."
+  },
+  {
+    "id": "py-backspace-empty-single-quotes",
+    "behavior": "backspace",
+    "before": "s = '|'",
+    "keys": [
+      "Backspace"
+    ],
+    "after": "s = |",
+    "note": "Empty '' is removed as a pair."
+  },
+  {
+    "id": "py-backspace-nonempty-parens",
+    "behavior": "backspace",
+    "before": "print(n|)",
+    "keys": [
+      "Backspace"
+    ],
+    "after": "print(|)",
+    "note": "With content inside, Backspace deletes one character only."
+  },
+  {
+    "id": "py-backspace-opener-before-content",
+    "behavior": "backspace",
+    "before": "x = (|n)",
+    "keys": [
+      "Backspace"
+    ],
+    "after": "x = |n)",
+    "note": "The pair is not empty, so only the ( goes."
+  },
+  {
+    "id": "py-backspace-inside-string",
+    "behavior": "backspace",
+    "before": "print(\"a|\")",
+    "keys": [
+      "Backspace"
+    ],
+    "after": "print(\"|\")",
+    "note": "Deleting the last character of a string leaves the quotes alone."
+  },
+  {
+    "id": "py-enter-after-for",
+    "behavior": "enter",
+    "before": "n = int(input())\nfor i in range(n):|",
+    "keys": [
+      "Enter"
+    ],
+    "after": "n = int(input())\nfor i in range(n):\n    |",
+    "note": "A line ending in : opens a block, so the new line is indented one level (4 spaces)."
+  },
+  {
+    "id": "py-enter-after-def",
+    "behavior": "enter",
+    "before": "def solve(a, b):|",
+    "keys": [
+      "Enter"
+    ],
+    "after": "def solve(a, b):\n    |",
+    "note": "def header: indent one level."
+  },
+  {
+    "id": "py-enter-nested-if",
+    "behavior": "enter",
+    "before": "def solve(a):\n    for x in a:\n        if x > 0:|",
+    "keys": [
+      "Enter"
+    ],
+    "after": "def solve(a):\n    for x in a:\n        if x > 0:\n            |",
+    "note": "Three levels deep the new line gets 12 spaces."
+  },
+  {
+    "id": "py-enter-nested-for",
+    "behavior": "enter",
+    "before": "for i in range(n):\n    for j in range(m):|",
+    "keys": [
+      "Enter"
+    ],
+    "after": "for i in range(n):\n    for j in range(m):\n        |",
+    "note": "Nested loop header indents to 8."
+  },
+  {
+    "id": "py-enter-after-else",
+    "behavior": "enter",
+    "before": "if n % 2 == 0:\n    print(\"Even\")\nelse:|",
+    "keys": [
+      "Enter"
+    ],
+    "after": "if n % 2 == 0:\n    print(\"Even\")\nelse:\n    |",
+    "note": "else: opens a block."
+  },
+  {
+    "id": "py-enter-after-elif",
+    "behavior": "enter",
+    "before": "def sign(x):\n    if x > 0:\n        return 1\n    elif x < 0:|",
+    "keys": [
+      "Enter"
+    ],
+    "after": "def sign(x):\n    if x > 0:\n        return 1\n    elif x < 0:\n        |",
+    "note": "elif: inside a function indents to 8."
+  },
+  {
+    "id": "py-enter-after-class",
+    "behavior": "enter",
+    "before": "class Point:|",
+    "keys": [
+      "Enter"
+    ],
+    "after": "class Point:\n    |",
+    "note": "class header indents."
+  },
+  {
+    "id": "py-enter-after-except",
+    "behavior": "enter",
+    "before": "try:\n    x = int(input())\nexcept ValueError:|",
+    "keys": [
+      "Enter"
+    ],
+    "after": "try:\n    x = int(input())\nexcept ValueError:\n    |",
+    "note": "except clause indents."
+  },
+  {
+    "id": "py-enter-header-with-comment",
+    "behavior": "enter",
+    "before": "for x in a:  # each item|",
+    "keys": [
+      "Enter"
+    ],
+    "after": "for x in a:  # each item\n    |",
+    "note": "A trailing comment after the colon does not stop the block from opening."
+  },
+  {
+    "id": "py-enter-plain-top-level",
+    "behavior": "enter",
+    "before": "n = int(input())|",
+    "keys": [
+      "Enter"
+    ],
+    "after": "n = int(input())\n|",
+    "note": "A plain statement keeps column 0 and adds no comment or indent."
+  },
+  {
+    "id": "py-enter-keeps-block-indent",
+    "behavior": "enter",
+    "before": "for x in a:\n    total += x|",
+    "keys": [
+      "Enter"
+    ],
+    "after": "for x in a:\n    total += x\n    |",
+    "note": "Inside a block the new line keeps the block's indent."
+  },
+  {
+    "id": "py-enter-start-of-line",
+    "behavior": "enter",
+    "before": "|print(x)",
+    "keys": [
+      "Enter"
+    ],
+    "after": "\n|print(x)",
+    "note": "Start of file: Enter pushes the line down and the caret stays before it."
+  },
+  {
+    "id": "py-enter-colon-in-string",
+    "behavior": "enter",
+    "before": "print(\"Answer:\")|",
+    "keys": [
+      "Enter"
+    ],
+    "after": "print(\"Answer:\")\n|",
+    "note": "A colon inside a string does not open a block."
+  },
+  {
+    "id": "py-enter-lambda",
+    "behavior": "enter",
+    "before": "f = lambda x: x + 1|",
+    "keys": [
+      "Enter"
+    ],
+    "after": "f = lambda x: x + 1\n|",
+    "note": "A lambda's colon does not open a block."
+  },
+  {
+    "id": "py-enter-comment-ending-colon",
+    "behavior": "enter",
+    "before": "x = 1  # note:|",
+    "keys": [
+      "Enter"
+    ],
+    "after": "x = 1  # note:\n|",
+    "note": "A colon at the end of a comment does not open a block."
+  },
+  {
+    "id": "py-enter-end-of-comment",
+    "behavior": "enter",
+    "before": "# read the input|",
+    "keys": [
+      "Enter"
+    ],
+    "after": "# read the input\n|",
+    "note": "Enter at the end of a comment line does not start another comment."
+  },
+  {
+    "id": "py-enter-trailing-spaces-after-caret",
+    "behavior": "enter",
+    "before": "for i in range(3):\n    x = 1|   ",
+    "keys": [
+      "Enter"
+    ],
+    "after": "for i in range(3):\n    x = 1\n    |",
+    "note": "Spaces after the caret are dropped and replaced by the block's indent on the new line."
+  },
+  {
+    "id": "py-enter-unclosed-list-aligned",
+    "behavior": "enter",
+    "before": "nums = [1, 2,|",
+    "keys": [
+      "Enter"
+    ],
+    "after": "nums = [1, 2,\n        |",
+    "note": "Unclosed [ with an element on its line: the new line aligns with the first element (Align when multiline is on by default for collections)."
+  },
+  {
+    "id": "py-dedent-none-return",
+    "behavior": "dedent",
+    "before": "def f(n):\n    if n < 2:\n        |",
+    "keys": [
+      "r",
+      "e",
+      "t",
+      "u",
+      "r",
+      "n"
+    ],
+    "after": "def f(n):\n    if n < 2:\n        return|",
+    "note": "Typing return keeps the line where it is; Python has no closer that snaps a line back."
+  },
+  {
+    "id": "py-dedent-none-pass",
+    "behavior": "dedent",
+    "before": "def f():\n    |",
+    "keys": [
+      "p",
+      "a",
+      "s",
+      "s"
+    ],
+    "after": "def f():\n    pass|",
+    "note": "Typing pass does not move the line."
+  },
+  {
+    "id": "py-dedent-none-print",
+    "behavior": "dedent",
+    "before": "for x in a:\n    total += x\n    |",
+    "keys": [
+      "p",
+      "r",
+      "i",
+      "n",
+      "t"
+    ],
+    "after": "for x in a:\n    total += x\n    print|",
+    "note": "An ordinary statement typed at block indent stays at block indent."
+  },
+  {
+    "id": "py-dedent-none-else-word",
+    "behavior": "dedent",
+    "before": "if ok:\n    a = 1\n    |",
+    "keys": [
+      "e",
+      "l",
+      "s",
+      "e"
+    ],
+    "after": "if ok:\n    a = 1\n    else|",
+    "note": "Typing the word else (no colon yet) leaves the indent alone."
+  },
+  {
+    "id": "py-dedent-none-hash",
+    "behavior": "dedent",
+    "before": "for x in a:\n    |",
+    "keys": [
+      "#"
+    ],
+    "after": "for x in a:\n    #|",
+    "note": "A # typed as the first character stays at the block indent."
+  },
+  {
+    "id": "py-comment-line-moves-down",
+    "behavior": "comment",
+    "before": "n = int(input())|\nprint(n)",
+    "keys": [
+      "Mod+/"
+    ],
+    "after": "# n = int(input())\nprint(n)|",
+    "note": "Mod+/ with no selection comments the line with '# ' and moves the caret to the next line."
+  },
+  {
+    "id": "py-uncomment-line-moves-down",
+    "behavior": "comment",
+    "before": "# n = int(input())|\nprint(n)",
+    "keys": [
+      "Mod+/"
+    ],
+    "after": "n = int(input())\nprint(n)|",
+    "note": "On a commented line Mod+/ removes '# ' and moves the caret down."
+  },
+  {
+    "id": "py-comment-last-line",
+    "behavior": "comment",
+    "before": "n = 5\nprint(n)|",
+    "keys": [
+      "Mod+/"
+    ],
+    "after": "n = 5\n# print(n)|",
+    "note": "On the last line there is no next line, so the caret stays on the commented line."
+  },
+  {
+    "id": "py-comment-indented-at-indent",
+    "behavior": "comment",
+    "before": "for x in a:\n    print(x)|",
+    "keys": [
+      "Mod+/"
+    ],
+    "after": "for x in a:\n    # print(x)|",
+    "note": "The # goes at the line's indent, followed by a space."
+  },
+  {
+    "id": "py-uncomment-no-space",
+    "behavior": "comment",
+    "before": "for x in a:\n    #print(x)|",
+    "keys": [
+      "Mod+/"
+    ],
+    "after": "for x in a:\n    print(x)|",
+    "note": "A comment written without a space still uncomments cleanly."
+  },
+  {
+    "id": "py-uncomment-first-column",
+    "behavior": "comment",
+    "before": "for x in a:\n#     print(x)|",
+    "keys": [
+      "Mod+/"
+    ],
+    "after": "for x in a:\n    print(x)|",
+    "note": "A # at column 0 is removed with one following space, leaving the code's own indent."
+  },
+  {
+    "id": "py-comment-hash-in-string",
+    "behavior": "comment",
+    "before": "print(\"#1\")|",
+    "keys": [
+      "Mod+/"
+    ],
+    "after": "# print(\"#1\")|",
+    "note": "A # inside a string does not count as a comment."
+  },
+  {
+    "id": "py-comment-selection-block",
+    "behavior": "comment",
+    "before": "for x in a:\n[    y = x * 2\n    print(y)]",
+    "keys": [
+      "Mod+/"
+    ],
+    "after": "for x in a:\n[    # y = x * 2\n    # print(y)]",
+    "note": "Each selected line is commented at the block indent and the selection stays."
+  },
+  {
+    "id": "py-comment-selection-mixed-indent",
+    "behavior": "comment",
+    "before": "f[or x in a:\n    print(x)]",
+    "keys": [
+      "Mod+/"
+    ],
+    "after": "# f[or x in a:\n#     print(x)]",
+    "note": "Lines at different indents are commented at the smallest indent, so the #s line up."
+  },
+  {
+    "id": "py-comment-selection-mixed-state",
+    "behavior": "comment",
+    "before": "if ok:\n[    # a = 1\n    b = 2]",
+    "keys": [
+      "Mod+/"
+    ],
+    "after": "if ok:\n[    # # a = 1\n    # b = 2]",
+    "note": "One uncommented line means the whole selection is commented, including the line that already was."
+  },
+  {
+    "id": "py-uncomment-selection-all",
+    "behavior": "comment",
+    "before": "if ok:\n[    # a = 1\n    # b = 2]",
+    "keys": [
+      "Mod+/"
+    ],
+    "after": "if ok:\n[    a = 1\n    b = 2]",
+    "note": "Every line commented, so every line is uncommented."
+  },
+  {
+    "id": "py-comment-selection-ends-col0",
+    "behavior": "comment",
+    "before": "def f():\n[    a = 1\n    b = 2\n]    return a",
+    "keys": [
+      "Mod+/"
+    ],
+    "after": "def f():\n[    # a = 1\n    # b = 2\n]    return a",
+    "note": "A selection that ends at column 0 does not include that last line."
+  },
+  {
+    "id": "py-duplicate-line-keeps-column",
+    "behavior": "duplicate",
+    "before": "x = |10\nprint(x)",
+    "keys": [
+      "Mod+D"
+    ],
+    "after": "x = 10\nx = |10\nprint(x)",
+    "note": "Mod+D copies the line below and the caret moves to the same column on the copy."
+  },
+  {
+    "id": "py-duplicate-start-of-file",
+    "behavior": "duplicate",
+    "before": "|n = 5\nprint(n)",
+    "keys": [
+      "Mod+D"
+    ],
+    "after": "n = 5\n|n = 5\nprint(n)",
+    "note": "First line, caret at column 0."
+  },
+  {
+    "id": "py-duplicate-last-line",
+    "behavior": "duplicate",
+    "before": "print(ans)|",
+    "keys": [
+      "Mod+D"
+    ],
+    "after": "print(ans)\nprint(ans)|",
+    "note": "Last line of a file with no trailing newline."
+  },
+  {
+    "id": "py-duplicate-indented",
+    "behavior": "duplicate",
+    "before": "for i in range(n):\n    total += i|",
+    "keys": [
+      "Mod+D"
+    ],
+    "after": "for i in range(n):\n    total += i\n    total += i|",
+    "note": "The copy keeps the indentation."
+  },
+  {
+    "id": "py-duplicate-selection-lines",
+    "behavior": "duplicate",
+    "before": "[a = 1\nb = 2\n]print(a + b)",
+    "keys": [
+      "Mod+D"
+    ],
+    "after": "a = 1\nb = 2\n[a = 1\nb = 2\n]print(a + b)",
+    "note": "With a selection, exactly the selected text is copied after itself and the copy is selected."
+  },
+  {
+    "id": "py-duplicate-selection-inline",
+    "behavior": "duplicate",
+    "before": "total = [n]",
+    "keys": [
+      "Mod+D"
+    ],
+    "after": "total = n[n]",
+    "note": "A selection inside a line is duplicated inline, with the copy selected."
+  },
+  {
+    "id": "py-move-line-up",
+    "behavior": "move",
+    "before": "a = 1\nb = 2|\nc = 3",
+    "keys": [
+      "Alt+Shift+ArrowUp"
+    ],
+    "after": "b = 2|\na = 1\nc = 3",
+    "note": "The line swaps with the one above and the caret keeps its column."
+  },
+  {
+    "id": "py-move-line-down",
+    "behavior": "move",
+    "before": "a = 1|\nb = 2\nc = 3",
+    "keys": [
+      "Alt+Shift+ArrowDown"
+    ],
+    "after": "b = 2\na = 1|\nc = 3",
+    "note": "The line swaps with the one below."
+  },
+  {
+    "id": "py-move-first-line-up",
+    "behavior": "move",
+    "before": "|a = 1\nb = 2",
+    "keys": [
+      "Alt+Shift+ArrowUp"
+    ],
+    "after": "|a = 1\nb = 2",
+    "note": "The first line cannot move up; nothing changes."
+  },
+  {
+    "id": "py-move-last-line-down",
+    "behavior": "move",
+    "before": "a = 1\nb = 2|",
+    "keys": [
+      "Alt+Shift+ArrowDown"
+    ],
+    "after": "a = 1\nb = 2|",
+    "note": "The last line cannot move down; nothing changes."
+  },
+  {
+    "id": "py-move-last-line-up-no-newline",
+    "behavior": "move",
+    "before": "x = 1\ny = 2|",
+    "keys": [
+      "Alt+Shift+ArrowUp"
+    ],
+    "after": "y = 2|\nx = 1",
+    "note": "The last line has no trailing newline and still swaps cleanly."
+  },
+  {
+    "id": "py-move-selection-down",
+    "behavior": "move",
+    "before": "[a = 1\nb = 2]\nc = 3",
+    "keys": [
+      "Alt+Shift+ArrowDown"
+    ],
+    "after": "c = 3\n[a = 1\nb = 2]",
+    "note": "Every line touched by the selection moves together and stays selected."
+  },
+  {
+    "id": "py-move-inside-block",
+    "behavior": "move",
+    "before": "for i in range(n):\n    a = i\n    b = |a * 2",
+    "keys": [
+      "Alt+Shift+ArrowUp"
+    ],
+    "after": "for i in range(n):\n    b = |a * 2\n    a = i",
+    "note": "Two lines at the same indent swap and the caret keeps its column."
+  },
+  {
+    "id": "py-template-main-alone",
+    "behavior": "template",
+    "before": "main|",
+    "keys": [
+      "Tab"
+    ],
+    "after": "if __name__ == '__main__':\n    |",
+    "note": "The main live template expands to the __main__ guard with the caret indented in its body."
+  },
+  {
+    "id": "py-template-main-after-code",
+    "behavior": "template",
+    "before": "def solve():\n    print(42)\n\n\nmain|",
+    "keys": [
+      "Tab"
+    ],
+    "after": "def solve():\n    print(42)\n\n\nif __name__ == '__main__':\n    |",
+    "note": "Expands at end of file after a function."
+  },
+  {
+    "id": "py-template-main-before-newline",
+    "behavior": "template",
+    "before": "import sys\n\nmain|\n",
+    "keys": [
+      "Tab"
+    ],
+    "after": "import sys\n\nif __name__ == '__main__':\n    |\n",
+    "note": "Text after the abbreviation's line is kept."
+  },
+  {
+    "id": "py-complete-print",
+    "behavior": "completion",
+    "before": "pri|",
+    "keys": [
+      "Accept:print"
+    ],
+    "after": "print(|)",
+    "note": "Accepting a function inserts parentheses with the caret inside when it takes parameters."
+  },
+  {
+    "id": "py-complete-input-nested",
+    "behavior": "completion",
+    "before": "n = int(inp|)",
+    "keys": [
+      "Accept:input"
+    ],
+    "after": "n = int(input(|))",
+    "note": "input takes an optional prompt, so the caret goes inside."
+  },
+  {
+    "id": "py-complete-len-in-call",
+    "behavior": "completion",
+    "before": "print(le|)",
+    "keys": [
+      "Accept:len"
+    ],
+    "after": "print(len(|))",
+    "note": "Completion inside an argument list adds its own pair."
+  },
+  {
+    "id": "py-complete-sum",
+    "behavior": "completion",
+    "before": "ans = su|",
+    "keys": [
+      "Accept:sum"
+    ],
+    "after": "ans = sum(|)",
+    "note": "Builtin function."
+  },
+  {
+    "id": "py-complete-math-sqrt",
+    "behavior": "completion",
+    "before": "import math\nr = math.sq|",
+    "keys": [
+      "Accept:sqrt"
+    ],
+    "after": "import math\nr = math.sqrt(|)",
+    "note": "Member of math after the dot."
+  },
+  {
+    "id": "py-complete-math-pi",
+    "behavior": "completion",
+    "before": "import math\nprint(math.p|)",
+    "keys": [
+      "Accept:pi"
+    ],
+    "after": "import math\nprint(math.pi|)",
+    "note": "A constant gets no parentheses."
+  },
+  {
+    "id": "py-complete-math-gcd",
+    "behavior": "completion",
+    "before": "import math\ng = math.gc|",
+    "keys": [
+      "Accept:gcd"
+    ],
+    "after": "import math\ng = math.gcd(|)",
+    "note": "math function."
+  },
+  {
+    "id": "py-complete-collections-deque",
+    "behavior": "completion",
+    "before": "import collections\nq = collections.deq|",
+    "keys": [
+      "Accept:deque"
+    ],
+    "after": "import collections\nq = collections.deque|",
+    "note": "Accepting a class inserts the bare name; parentheses come only when ( is the key that accepts."
+  },
+  {
+    "id": "py-complete-collections-counter",
+    "behavior": "completion",
+    "before": "import collections\ncnt = collections.Cou|",
+    "keys": [
+      "Accept:Counter"
+    ],
+    "after": "import collections\ncnt = collections.Counter|",
+    "note": "Class member of collections, inserted bare."
+  },
+  {
+    "id": "py-complete-collections-defaultdict",
+    "behavior": "completion",
+    "before": "import collections\ng = collections.defa|",
+    "keys": [
+      "Accept:defaultdict"
+    ],
+    "after": "import collections\ng = collections.defaultdict|",
+    "note": "Class member of collections, inserted bare."
+  },
+  {
+    "id": "py-complete-from-import-deque",
+    "behavior": "completion",
+    "before": "from collections import deque\nq = deq|",
+    "keys": [
+      "Accept:deque"
+    ],
+    "after": "from collections import deque\nq = deque|",
+    "note": "A name brought in by from-import completes at top level."
+  },
+  {
+    "id": "py-complete-heapq-heappush",
+    "behavior": "completion",
+    "before": "import heapq\nheapq.heappu|",
+    "keys": [
+      "Accept:heappush"
+    ],
+    "after": "import heapq\nheapq.heappush(|)",
+    "note": "heapq function."
+  },
+  {
+    "id": "py-complete-heapq-heappop",
+    "behavior": "completion",
+    "before": "import heapq\nx = heapq.heapp|",
+    "keys": [
+      "Accept:heappop"
+    ],
+    "after": "import heapq\nx = heapq.heappop(|)",
+    "note": "heapq function chosen from several heapp... matches."
+  },
+  {
+    "id": "py-complete-str-split",
+    "behavior": "completion",
+    "before": "a = input().spl|",
+    "keys": [
+      "Accept:split"
+    ],
+    "after": "a = input().split(|)",
+    "note": "input() is known to return str, so its methods are offered."
+  },
+  {
+    "id": "py-complete-list-append",
+    "behavior": "completion",
+    "before": "nums = []\nnums.app|",
+    "keys": [
+      "Accept:append"
+    ],
+    "after": "nums = []\nnums.append(|)",
+    "note": "A list literal's methods are offered."
+  },
+  {
+    "id": "py-complete-local-variable",
+    "behavior": "completion",
+    "before": "total = 0\nfor x in nums:\n    tot|",
+    "keys": [
+      "Accept:total"
+    ],
+    "after": "total = 0\nfor x in nums:\n    total|",
+    "note": "A variable declared in the file completes as a bare name."
+  },
+  {
+    "id": "py-complete-local-function",
+    "behavior": "completion",
+    "before": "def solve(n):\n    return n * 2\n\n\nprint(sol|)",
+    "keys": [
+      "Accept:solve"
+    ],
+    "after": "def solve(n):\n    return n * 2\n\n\nprint(solve(|))",
+    "note": "A function from the file with a parameter: caret inside the parentheses."
+  },
+  {
+    "id": "py-complete-local-function-no-params",
+    "behavior": "completion",
+    "before": "def run():\n    pass\n\n\nru|",
+    "keys": [
+      "Accept:run"
+    ],
+    "after": "def run():\n    pass\n\n\nrun()|",
+    "note": "A function with no parameters: caret after the parentheses."
+  },
+  {
+    "id": "py-complete-none-in-string",
+    "behavior": "completion",
+    "before": "print(\"|\")",
+    "keys": [
+      "p",
+      "r",
+      "i"
+    ],
+    "after": "print(\"pri|\")",
+    "note": "No completion popup inside a string literal; the letters are just text."
+  },
+  {
+    "id": "py-complete-none-in-comment",
+    "behavior": "completion",
+    "before": "# |",
+    "keys": [
+      "m",
+      "a",
+      "t",
+      "h"
+    ],
+    "after": "# math|",
+    "note": "No completion popup inside a comment."
+  }
+]
