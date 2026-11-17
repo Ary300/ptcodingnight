@@ -294,7 +294,7 @@ export async function runJobAndWait(job: JudgeJob, timeoutMs: number): Promise<J
       const outcome = await jobOutcome(jobId);
       if (outcome.status === "completed") return outcome.result;
       if (outcome.status === "failed") {
-        throw new DomainError("INTERNAL", "The judge could not run your samples. Try again.");
+        throw new DomainError("INTERNAL", "The judge could not run your examples. Try again.");
       }
       if (outcome.status === "missing") {
         throw new DomainError("INTERNAL", "The judge lost that run. Try again.");

@@ -129,8 +129,8 @@ test.describe("axe-core: zero critical or serious", () => {
     // The verdict panel is `--ink` ground with `--paper` text — the inverse of every other
     // competitor surface, and the one place gold/rise/fall are used at all. Auditing the page
     // without it would skip the contrast that is hardest to get right.
-    await page.getByRole("button", { name: "Run samples" }).click();
-    await expect(page.getByRole("region", { name: "Sample run" })).toBeVisible();
+    await page.getByRole("button", { name: "Run examples" }).click();
+    await expect(page.getByRole("region", { name: "Example run" })).toBeVisible();
     await auditPage(page, "/contest/[slug] (sample results)");
 
     await page.getByRole("button", { name: "Submit for judging" }).click();

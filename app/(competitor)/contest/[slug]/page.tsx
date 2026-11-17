@@ -7,7 +7,7 @@ import { loadContestPhase } from "../contest-phase";
  * below it stays a plain client component with a string prop.
  *
  * The contest window is read here, on the server, for the same reason the lobby reads it: the
- * workspace disables Run samples and Submit once submissions close, and it has to know the end
+ * workspace disables Run examples and Submit once submissions close, and it has to know the end
  * in the first paint rather than find out from a refused press. `null` for an organizer or a
  * visitor, who has no window of their own.
  */

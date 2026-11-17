@@ -198,7 +198,7 @@ export function PreStartPanel({ phase }: PreStartPanelProps) {
             score.
           </li>
           <li>
-            You can run the sample tests as often as you like. Only submissions are scored.
+            You can run the examples as often as you like. Only submissions are scored.
           </li>
           <li>
             Your problems come from the problem set shown above.

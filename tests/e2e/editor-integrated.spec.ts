@@ -124,7 +124,7 @@ test("F2 moves the caret to the last run's error line and shows its message", as
     }),
   );
   const textarea = await openEditor(page, code, 0);
-  await page.getByRole("button", { name: "Run samples" }).click();
+  await page.getByRole("button", { name: "Run examples" }).click();
   await expect(page.locator("[data-diagnostic-line]")).toHaveAttribute("data-diagnostic-line", "3");
 
   await textarea.focus();

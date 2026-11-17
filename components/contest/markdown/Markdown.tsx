@@ -103,7 +103,7 @@ function renderBlock(block: Block, key: string): ReactNode {
           // rationale (gold/rise/fall are AAA only on ink) is about SYNTAX colour, and these
           // blocks carry none — so full-width dark bands here were polarity for nothing, where
           // the reference sits its code quietly inside a white statement. Same tint as
-          // SampleIO's blocks, so the statement's two kinds of code read as one surface.
+          // the Examples blocks, so the statement's two kinds of code read as one surface.
           className="my-5 overflow-x-auto rounded-flat bg-ink/[0.04] p-4 text-ink"
           // Long sample blocks scroll inside their own box; the page never scrolls sideways.
           tabIndex={0}
@@ -159,7 +159,7 @@ function renderSection(section: CollapsedSection, key: string): ReactNode {
   return (
     <Disclosure
       key={key}
-      kind="example"
+      kind="statement-example"
       className="my-3"
       summary={createElement(
         `h${section.level}`,

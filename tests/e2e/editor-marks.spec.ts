@@ -124,7 +124,7 @@ test("a compile error marks its line, and its reference in Results moves the car
   );
   const textarea = await openWith(page, code, 0);
 
-  await page.getByRole("button", { name: "Run samples" }).click();
+  await page.getByRole("button", { name: "Run examples" }).click();
   const marker = page.locator("[data-diagnostic-line]");
   await expect(marker).toHaveAttribute("data-diagnostic-line", "3");
   await expect(marker).toHaveAttribute("title", "error: ';' expected");

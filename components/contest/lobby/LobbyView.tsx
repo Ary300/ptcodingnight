@@ -206,7 +206,7 @@ export function LobbyView({ phase = null, viewerKind }: LobbyViewProps) {
           <PracticeIntro />
         ) : phase === null || phase.submissionsOpen ? (
           <p className="mt-1 text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
-            You can run the sample tests as often as you like. Only submissions are scored.
+            You can run the examples as often as you like. Only submissions are scored.
           </p>
         ) : (
           <p className="mt-1 text-ink/60" style={{ fontSize: "var(--text-xs)" }}>

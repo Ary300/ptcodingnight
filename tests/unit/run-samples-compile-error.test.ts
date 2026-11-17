@@ -6,7 +6,7 @@ import { toRunSamplesResponse } from "@/lib/contest/serialize";
 import { RunSamplesResponseSchema } from "@/lib/schemas/api";
 
 /**
- * Run samples on code that does not compile. The response used to carry the compiler's output on
+ * Run examples on code that does not compile. The response used to carry the compiler's output on
  * a synthetic row with ordinal 0, which the wire schema rejects (ordinals are 1-based), so every
  * such run was a 400 "Too small: expected number to be >0" and the student saw no compiler output,
  * no line links and no gutter marks, in every language.

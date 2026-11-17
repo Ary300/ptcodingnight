@@ -7,7 +7,7 @@ import { signInAsCompetitor } from "./helpers/session";
  * G7 — after submissions close, the problem page says so instead of letting a press fail.
  *
  * Submit for judging stayed enabled after the window closed, the press went to the server, and the
- * Results header read "Did not finish", which sounds like the student's code failed. Run samples
+ * Results header read "Did not finish", which sounds like the student's code failed. Run examples
  * and Submit are now disabled once the window has closed, at load and on the clock for a student
  * who has the page open across the end, with the reason as the buttons' description.
  */
@@ -62,7 +62,7 @@ test.afterAll(async () => {
   await closeTestDb();
 });
 
-test("a page opened after the end has Run samples and Submit disabled, with the reason", async ({
+test("a page opened after the end has Run examples and Submit disabled, with the reason", async ({
   page,
 }) => {
   await windowEndsIn(-60_000);
@@ -70,7 +70,7 @@ test("a page opened after the end has Run samples and Submit disabled, with the 
   await page.goto(`/contest/${slug}`);
 
   const submit = page.getByRole("button", { name: "Submit for judging" });
-  const run = page.getByRole("button", { name: "Run samples" });
+  const run = page.getByRole("button", { name: "Run examples" });
   await expect(submit).toBeVisible({ timeout: 30_000 });
   await expect(submit).toBeDisabled();
   await expect(run).toBeDisabled();
@@ -84,10 +84,10 @@ test("a page open across the end disables both buttons when the window closes", 
   await page.goto(`/contest/${slug}`);
 
   const submit = page.getByRole("button", { name: "Submit for judging" });
-  const run = page.getByRole("button", { name: "Run samples" });
+  const run = page.getByRole("button", { name: "Run examples" });
   await expect(submit).toBeEnabled({ timeout: 30_000 });
   await expect(run).toBeEnabled();
-  await expect(run).toHaveAccessibleDescription(/Running samples is free/);
+  await expect(run).toHaveAccessibleDescription(/Running examples is free/);
 
   await expect(submit).toBeDisabled({ timeout: 30_000 });
   await expect(run).toBeDisabled();

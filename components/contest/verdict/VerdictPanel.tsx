@@ -63,7 +63,7 @@ export interface VerdictPanelProps {
   source?: string | null;
   /**
    * Side by side, the panel sits in the Results drawer under HackerRank's copy-free action bar,
-   * and the organizers asked for no helper sentences there. `quiet` keeps "Sample runs are free
+   * and the organizers asked for no helper sentences there. `quiet` keeps "Example runs are free
    * and are not scored." for screen readers and takes it off the screen.
    */
   quiet?: boolean;
@@ -147,7 +147,7 @@ function TestRow({ result, language, onGoToLine }: TestRowProps) {
   const passed = result.verdict === "AC";
   // `ordinal` is 1-based (lib/schemas/api.ts). Adding one here labelled the first sample of
   // every problem "Sample 2" — correct only against the stub, which was 0-based.
-  const name = result.isSample ? `Sample ${result.ordinal}` : `Test case ${result.ordinal}`;
+  const name = result.isSample ? `Example ${result.ordinal}` : `Test case ${result.ordinal}`;
 
   return (
     <li className="motion-swap-in border-t border-rule-hair-inverse py-2 first:border-t-0">
@@ -193,7 +193,7 @@ function TestRow({ result, language, onGoToLine }: TestRowProps) {
           <pre
             tabIndex={0}
             role="region"
-            aria-label={`Difference for sample ${result.ordinal}`}
+            aria-label={`Difference for example ${result.ordinal}`}
             className="mt-2 overflow-x-auto rounded-flat bg-paper/5 p-2 font-mono text-paper/80"
             style={{ fontSize: "var(--text-xs)" }}
           >
@@ -238,7 +238,7 @@ export function VerdictPanel({
   );
 
   const hasHidden = safeResults.some((result) => !result.isSample);
-  const heading = mode === "samples" ? "Sample run" : "Verdict";
+  const heading = mode === "samples" ? "Example run" : "Verdict";
 
   return (
     /*
@@ -288,7 +288,7 @@ export function VerdictPanel({
         {busy && queuePosition?.state !== "offline" && (
           <span className="text-paper/60" style={{ fontSize: "var(--text-xs)" }}>
             {mode === "samples"
-              ? "Running the samples…"
+              ? "Running the examples…"
               : judgingProgressLabel(safeResults.length, totalCases, queuePosition?.state ?? null)}
           </span>
         )}
@@ -329,7 +329,7 @@ export function VerdictPanel({
       <p aria-live="polite" className="sr-only">
         {busy
           ? mode === "samples"
-            ? "Running the samples."
+            ? "Running the examples."
             : "Judging your submission."
           : ""}
       </p>
@@ -346,7 +346,7 @@ export function VerdictPanel({
 
       {mode === "samples" && (
         <p className={quiet ? "sr-only" : "mt-2 text-paper/60"} style={{ fontSize: "var(--text-xs)" }}>
-          Sample runs are free and are not scored.
+          Example runs are free and are not scored.
         </p>
       )}
 
@@ -439,7 +439,7 @@ export function VerdictPanel({
       {!busy && verdict === null && safeResults.length === 0 && error === null && (
         <p className="mt-3 text-paper/50" style={{ fontSize: "var(--text-xs)" }}>
           {mode === "samples"
-            ? "Run the samples to check your code without using a submission."
+            ? "Run the examples to check your code without using a submission."
             : "No submission yet."}
         </p>
       )}

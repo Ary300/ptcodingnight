@@ -202,7 +202,7 @@ export function commandFor(chord: Chord): CommandId | null {
   // Surround With: Cmd+Option+T, Ctrl+Alt+T.
   if (letter === "t" && modOnly(chord) && chord.altKey && !chord.shiftKey) return "surround";
 
-  // Run the samples: Mac Ctrl+R as in IntelliJ and CLion, and Mod+' everywhere.
+  // Run examples: Mac Ctrl+R as in IntelliJ and CLion, and Mod+' everywhere.
   if (chord.isMac && chord.ctrlKey && !chord.metaKey && !chord.altKey && !chord.shiftKey && letter === "r") {
     return "run";
   }

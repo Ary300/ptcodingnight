@@ -835,7 +835,7 @@ export async function runSamples(
   runSamplesLimiter.consumeOrThrow(
     viewer.participantId,
     now,
-    "You are running samples very quickly — wait a moment and try again",
+    "You are running examples very quickly. Wait a moment and try again.",
   );
   await reconcileContestClockById(viewer.contestId, now);
 

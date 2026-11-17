@@ -477,7 +477,7 @@ export function SubmissionHistory({
         className="motion-swap-in rounded-panel border border-dashed border-rule-edge bg-paper px-4 py-10 text-center text-ink/70"
         style={{ fontSize: "var(--text-sm)" }}
       >
-        You have not submitted this problem yet. Running samples is free and unjudged, so sample
+        You have not submitted this problem yet. Running examples is free and unjudged, so example
         runs never appear here.
       </p>
     );
@@ -497,7 +497,7 @@ export function SubmissionHistory({
           className="rounded-panel border border-dashed border-rule-edge bg-paper px-4 py-10 text-center text-ink/70"
           style={{ fontSize: "var(--text-sm)" }}
         >
-          You have not made any submissions yet. Running samples is free and unjudged, so sample
+          You have not made any submissions yet. Running examples is free and unjudged, so example
           runs never appear here.
         </p>
         <p className="mt-4 text-center">

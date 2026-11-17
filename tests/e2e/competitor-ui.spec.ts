@@ -123,7 +123,7 @@ test.describe("the competitor journey in a browser", () => {
     await page.waitForURL(/\/contest\/[^/]+$/);
     const title = page.getByRole("heading", { level: 1 });
     await expect(title).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Samples", level: 2 })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Examples", level: 2 })).toBeVisible();
     // Students are not shown a Constraints section, from either the column or the statement.
     await expect(page.getByRole("heading", { name: /constraints/i })).toHaveCount(0);
 
@@ -132,20 +132,20 @@ test.describe("the competitor journey in a browser", () => {
     await chooseLanguage(page, "Python 3");
     await editor.fill(readSolution("accepted.py"));
 
-    // --- run samples: free, and it must say so -------------------------------
+    // --- run examples: free, and it must say so -------------------------------
     // Stacked shows the sentence under the buttons; side by side (HackerRank's bar, no copy)
     // keeps it as the button's description. Either way the button says it is free.
-    await expect(page.getByRole("button", { name: "Run samples" })).toHaveAccessibleDescription(
-      "Running samples is free. Submitting counts.",
+    await expect(page.getByRole("button", { name: "Run examples" })).toHaveAccessibleDescription(
+      "Running examples is free. Submitting counts.",
     );
-    await page.getByRole("button", { name: "Run samples" }).click();
+    await page.getByRole("button", { name: "Run examples" }).click();
 
-    const samplePanel = page.getByRole("region", { name: "Sample run" });
+    const samplePanel = page.getByRole("region", { name: "Example run" });
     await expect(samplePanel).toBeVisible();
     // On screen when stacked; side by side the organizers asked for no helper copy in the
     // Results drawer, so there it is screen-reader text. Present in the panel either way.
-    await expect(samplePanel.getByText("Sample runs are free and are not scored.")).toBeAttached();
-    await expect(samplePanel.getByText("Sample 1")).toBeVisible();
+    await expect(samplePanel.getByText("Example runs are free and are not scored.")).toBeAttached();
+    await expect(samplePanel.getByText("Example 1")).toBeVisible();
 
     // --- submit --------------------------------------------------------------
     await page.getByRole("button", { name: "Submit for judging" }).click();

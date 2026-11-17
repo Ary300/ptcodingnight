@@ -306,7 +306,7 @@ test.describe("Java, the IntelliJ reflexes that used to misfire", () => {
     await expect(page.getByRole("button", { name: "Upload code", exact: true })).toBeVisible();
     await expect(textarea).toHaveAccessibleDescription(/Press Escape twice, then Tab/);
     // Screen-reader text is a 1px clip, so measure what is actually painted.
-    for (const text of [/Tab indents/, /^Running samples is free\. Submitting counts\.$/]) {
+    for (const text of [/Tab indents/, /^Running examples is free\. Submitting counts\.$/]) {
       const copy = solution.getByText(text);
       await expect(copy).toHaveCount(1);
       const size = await copy.evaluate((element) => {

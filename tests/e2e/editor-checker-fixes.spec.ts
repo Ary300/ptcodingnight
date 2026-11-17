@@ -8,7 +8,7 @@ import { closeTestDb, testDb } from "./helpers/seed";
  * G7, in a browser: the failures three checkers found by typing real programs into the editor,
  * each pinned the way they found it. Real keys go in, and the textarea's value comes out.
  *
- * Runs as a practice guest. The two Run samples / Submit cases need a judge worker
+ * Runs as a practice guest. The two Run examples / Submit cases need a judge worker
  * (`npm run worker`); everything else needs only the arena (`npx tsx scripts/seed-practice.ts`).
  */
 
@@ -298,7 +298,7 @@ test.describe("off a Mac", () => {
   });
 });
 
-test("Run samples on Java that does not compile shows javac's output with a line link and a mark", async ({ page }) => {
+test("Run examples on Java that does not compile shows javac's output with a line link and a mark", async ({ page }) => {
   test.setTimeout(120_000);
   const code = [
     "import java.util.*;",
@@ -313,7 +313,7 @@ test("Run samples on Java that does not compile shows javac's output with a line
     "}",
   ].join("\n");
   const textarea = await open(page, "Java 21", code);
-  await page.getByRole("button", { name: "Run samples" }).click();
+  await page.getByRole("button", { name: "Run examples" }).click();
   const link = page.getByRole("button", { name: /^Main\.java:7, go to line 7$/ });
   await expect(link).toBeVisible({ timeout: 90_000 });
   await expect(page.getByText("Too small")).toHaveCount(0);

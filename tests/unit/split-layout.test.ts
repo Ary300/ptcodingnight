@@ -121,10 +121,10 @@ describe("resultsSummary", () => {
   });
 
   it("counts passing samples, and says when they are still running", () => {
-    expect(resultsSummary({ ...idle, action: "samples", sampleBusy: true })).toBe("Running samples");
+    expect(resultsSummary({ ...idle, action: "samples", sampleBusy: true })).toBe("Running examples");
     expect(
       resultsSummary({ ...idle, action: "samples", sampleResults: [row(1, "AC"), row(2, "WA")] }),
-    ).toBe("1 of 2 samples passed");
+    ).toBe("1 of 2 examples passed");
   });
 
   it("follows a submission from submitting to its verdict", () => {

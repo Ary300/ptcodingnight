@@ -21,7 +21,7 @@ export interface ProblemWindow {
   readonly closedAtLoad: boolean;
 }
 
-/** The sentence a disabled Run samples or Submit carries as its description. */
+/** The sentence a disabled Run examples or Submit carries as its description. */
 export const SUBMISSIONS_CLOSED_REASON =
   "Submissions are closed because the contest window has ended. Your earlier submissions still count.";
 

@@ -42,7 +42,7 @@ function editing({ isMac, smart, templateExample, engine = [] }: ShortcutOptions
     { keys: ["Shift + Tab"], action: "Unindent" },
     { keys: [`${mod} + Z`], action: "Undo" },
     { keys: [`${mod} + S`], action: "Save the draft" },
-    { keys: [`${mod} + '`], action: "Run the samples" },
+    { keys: [`${mod} + '`], action: "Run examples" },
     { keys: ["Ctrl / Cmd + Enter"], action: "Submit for judging" },
     { keys: [`${mod} + =`], or: [`${mod} + -`], action: "Bigger or smaller code text" },
   ];

@@ -10,8 +10,7 @@ import { closeTestDb, testDb } from "./helpers/seed";
  *
  * - the "Coding Night" logo goes to the home page, not back to the problem list;
  * - a problem named by its slot label carries its title, "P1 (Two Tables, One Total)";
- * - samples and statement examples fold behind a chevron, by click and by keyboard, with the
- *   every sample and every example closed until opened;
+ * - the examples fold behind a chevron, by click and by keyboard, each closed until opened;
  * - no "Constraints" anywhere on the page.
  *
  * Runs as a practice guest on the arena's first warm-up, because that statement is real authored
@@ -91,22 +90,22 @@ test("the problem is named by its slot label with its title, and shows no constr
   await expect(page.getByRole("heading", { name: "Output", exact: true })).toBeVisible();
 });
 
-test("samples fold, all closed at first, by click and by keyboard", async ({ page }) => {
+test("examples fold, all closed at first, by click and by keyboard", async ({ page }) => {
   await openProblemAsGuest(page);
 
-  const samples = page.locator("details[data-disclosure=sample]");
+  const samples = page.locator("details[data-disclosure=example]");
   await expect(samples).toHaveCount(2);
   const first = samples.nth(0);
   const second = samples.nth(1);
   // Nothing opens by itself (organizers' request, 2026-11-16).
   await expectOpen(first, false);
   await expectOpen(second, false);
-  await expect(second.getByRole("region", { name: "sample 2 input" })).toBeHidden();
+  await expect(second.getByRole("region", { name: "example 2 input" })).toBeHidden();
 
   // Click opens and closes.
   await summaryOf(second).click();
   await expectOpen(second, true);
-  await expect(second.getByRole("region", { name: "sample 2 input" })).toBeVisible();
+  await expect(second.getByRole("region", { name: "example 2 input" })).toBeVisible();
   await summaryOf(second).click();
   await expectOpen(second, false);
 
@@ -121,12 +120,12 @@ test("samples fold, all closed at first, by click and by keyboard", async ({ pag
   expect(outline).not.toBe("none");
   await page.keyboard.press("Enter");
   await expectOpen(first, true);
-  await expect(first.getByRole("button", { name: "Copy sample 1 input" })).toBeVisible();
+  await expect(first.getByRole("button", { name: "Copy example 1 input" })).toBeVisible();
   await page.keyboard.press("Space");
   await expectOpen(first, false);
 });
 
-test("statement examples start closed and open by click and by keyboard", async ({ page }) => {
+test("the statement examples are the runnable examples, closed until opened by click or keyboard", async ({ page }) => {
   await openProblemAsGuest(page);
 
   const examples = page.locator("details[data-disclosure=example]");

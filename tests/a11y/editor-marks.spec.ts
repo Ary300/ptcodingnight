@@ -55,7 +55,7 @@ async function openWithCompileError(page: Page): Promise<void> {
   const textarea = page.getByRole("textbox", { name: /^Solution for / });
   await textarea.click();
   await textarea.fill("public class Main {\n    public static void main(String[] args) {\n        int x = 3\n    }\n}");
-  await page.getByRole("button", { name: "Run samples" }).click();
+  await page.getByRole("button", { name: "Run examples" }).click();
   await expect(page.getByRole("button", { name: /^Main\.java:3, go to line 3$/ })).toBeVisible();
 }
 

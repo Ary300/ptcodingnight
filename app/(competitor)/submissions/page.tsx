@@ -22,7 +22,7 @@ export default function SubmissionsPage() {
         My submissions
       </h1>
       <p className="mt-1 mb-4 text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
-        Every judged submission, newest first. Sample runs are free and never appear here.
+        Every judged submission, newest first. Example runs are free and never appear here.
       </p>
       <SubmissionHistory />
     </div>

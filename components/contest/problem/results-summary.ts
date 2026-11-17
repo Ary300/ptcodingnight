@@ -39,14 +39,14 @@ export function resultsSummary(input: ResultsSummaryInput): string | null {
     return "Did not finish";
   }
   if (input.action === "samples") {
-    if (input.sampleBusy) return "Running samples";
+    if (input.sampleBusy) return "Running examples";
     if (input.sampleCompileError !== undefined && input.sampleCompileError !== null) {
       return VERDICT_DISPLAY.CE.label;
     }
     const total = input.sampleResults.length;
-    if (total === 0) return "No samples ran";
+    if (total === 0) return "No examples ran";
     const passed = input.sampleResults.filter((row) => row.verdict === "AC").length;
-    return `${String(passed)} of ${String(total)} samples passed`;
+    return `${String(passed)} of ${String(total)} examples passed`;
   }
   if (input.action === "judged") {
     if (input.submitBusy) return "Submitting";

@@ -1,12 +1,12 @@
 import type { ReactNode } from "react";
 
 /**
- * A section of the problem page that folds away behind its own heading: the samples, and the
- * examples inside a statement.
+ * A section of the problem page that folds away behind its own heading: the examples, and any
+ * example section a statement keeps.
  *
  * Native `<details>`/`<summary>`, so Enter and Space toggle it, the open state is announced, and
  * it works before hydration. The summary carries the section's heading (HTML allows one heading
- * inside a summary), so the page outline still lists "Sample 1" and "Example".
+ * inside a summary), so the page outline still lists "Example 1".
  *
  * `defaultOpen` is read once. React never writes `open` again unless the prop changes, and it
  * never does, so a student's own toggling wins from the first click, the same contract as the
@@ -23,8 +23,9 @@ export interface DisclosureProps {
   children: ReactNode;
   /** Extra classes on the `<details>`, for spacing against its neighbours. */
   className?: string;
-  /** A stable hook for tests: `data-disclosure="sample"` or `"example"`. */
-  kind: "sample" | "example";
+  /** A stable hook for tests: `"example"` for a runnable example, `"statement-example"` for an
+   * example section the statement kept because it did not match the published examples. */
+  kind: "example" | "statement-example";
 }
 
 export function Disclosure({ summary, defaultOpen = false, children, className, kind }: DisclosureProps) {

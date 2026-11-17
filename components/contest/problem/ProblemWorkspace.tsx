@@ -5,7 +5,11 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExtern
 
 import { Button } from "@/components/ui";
 import type { PublicTestResult, SubmissionView } from "@/lib/schemas/api";
-import { statementWithoutConstraints, statementWithoutRepeatedTitle } from "@/lib/contest/statement";
+import {
+  mergeStatementExamples,
+  statementWithoutConstraints,
+  statementWithoutRepeatedTitle,
+} from "@/lib/contest/statement";
 import type { Language } from "@/lib/schemas/judge";
 
 import { contestApi, errorMessageOf } from "../data/backend";
@@ -27,7 +31,7 @@ import { rememberStreamed } from "../submissions/live-rows";
 import { ProblemBreadcrumb, ProblemMetaRail, ProblemStatusPill } from "./ProblemMeta";
 import { problemTabStore, selectProblemTab } from "./problem-tab";
 import { ProblemTabs, problemPanelId, problemTabId } from "./ProblemTabs";
-import { SampleIO } from "./SampleIO";
+import { Examples } from "./Examples";
 import { TeamActivity } from "./TeamActivity";
 import { useDraft } from "./useDraft";
 import { initialLanguageFor, rememberLanguage, rememberedLanguageStore } from "./default-language";
@@ -54,7 +58,7 @@ import {
  *
  * ## The two buttons are not the same button
  *
- * "Run samples" is free, unjudged, and never creates a Submission. "Submit" counts. They are
+ * "Run examples" is free, unjudged, and never creates a Submission. "Submit" counts. They are
  * visually different weights, worded differently, and the judged one restates what it does.
  * A student who submits when they meant to run has lost a real attempt, and no amount of
  * apologising afterwards gives it back.
@@ -245,6 +249,25 @@ export function ProblemWorkspace({ slug, window: contestWindow = null }: Problem
   const stream = useVerdictStream(seed ?? restored);
 
   /*
+    The statement a student is shown, and each example's explanation. Students are not shown a
+    Constraints section, at the organizers' request, and the statement's Example section moves
+    into the Examples list when every example in it is a published sample. The content files and
+    the organizer's editor keep both.
+  */
+  const examples = useMemo(
+    () =>
+      detail === null
+        ? null
+        : mergeStatementExamples(
+            statementWithoutConstraints(
+              statementWithoutRepeatedTitle(detail.statementMd, detail.title),
+            ),
+            detail.samples,
+          ),
+    [detail],
+  );
+
+  /*
     The "My submissions" tab: which tab shows, from the address, and every copy of a submission
     the verdict stream has delivered on this page.
 
@@ -392,7 +415,7 @@ export function ProblemWorkspace({ slug, window: contestWindow = null }: Problem
     );
   }
 
-  if (problem.status === "error" || detail === null) {
+  if (problem.status === "error" || detail === null || examples === null) {
     /*
       Signed out is a state, not an error — but it is only reported HERE, after the problem read
       has actually failed, and the ordering is deliberate.
@@ -461,13 +484,16 @@ export function ProblemWorkspace({ slug, window: contestWindow = null }: Problem
       */}
       {/*
         Students are not shown a Constraints section, at the organizers' request: the
-        statement's own `## Constraints` is cut here, and the separate `constraints` column
+        statement's own `## Constraints` is cut above (`examples`), and the separate `constraints` column
         is not rendered at all. The content files and the organizer's editor keep both.
       */}
+      {/*
+        The statement's own Example section is folded into the Examples below when every example
+        in it is a published sample (`mergeStatementExamples`), so a student reads each example
+        once and can run it. A statement whose examples do not all match keeps its section.
+      */}
       <Markdown
-        source={statementWithoutConstraints(
-          statementWithoutRepeatedTitle(detail.statementMd, detail.title),
-        )}
+        source={examples.statementMd}
         // Side by side, the pane's own padding is the gap under the tabs.
         className={sideBySide ? "max-w-none" : "mt-5 max-w-none"}
         collapseExamples
@@ -484,9 +510,19 @@ export function ProblemWorkspace({ slug, window: contestWindow = null }: Problem
 
       <section className="mt-8">
         <h2 className="mb-3 font-display font-bold" style={{ fontSize: "var(--text-md)" }}>
-          Samples
+          Examples
         </h2>
-        <SampleIO samples={detail.samples} />
+        <Examples
+          samples={detail.samples}
+          explanations={examples.explanations}
+          results={shownAction === "samples" ? sampleResults : []}
+          running={shownAction === "samples" && sampleBusy}
+          compileFailed={
+            shownAction === "samples" &&
+            !sampleBusy &&
+            (sampleCompileError !== null || sampleResults.some((row) => row.verdict === "CE"))
+          }
+        />
       </section>
     </>
   );
@@ -521,7 +557,7 @@ export function ProblemWorkspace({ slug, window: contestWindow = null }: Problem
       disabled={submitBusy}
       onSubmitShortcut={() => void submit()}
       onSaveShortcut={() => setKeptSource(source)}
-      // The same guard as the Run samples button, so a held shortcut is one run.
+      // The same guard as the Run examples button, so a held shortcut is one run.
       onRunShortcut={() => {
         if (!sampleBusy && !submitBusy) void runSamples();
       }}
@@ -576,9 +612,9 @@ export function ProblemWorkspace({ slug, window: contestWindow = null }: Problem
         aria-describedby={windowClosed ? closedNoteId : freeNoteId}
         title={windowClosed ? SUBMISSIONS_CLOSED_REASON : undefined}
       >
-        <span aria-hidden="true" className="invisible">Run samples</span>
+        <span aria-hidden="true" className="invisible">Run examples</span>
         <span className="absolute inset-0 flex items-center justify-center">
-          {sampleBusy ? "Running…" : "Run samples"}
+          {sampleBusy ? "Running…" : "Run examples"}
         </span>
       </Button>
       <Button
@@ -603,7 +639,7 @@ export function ProblemWorkspace({ slug, window: contestWindow = null }: Problem
     </div>
   );
 
-  const freeNote = "Running samples is free. Submitting counts.";
+  const freeNote = "Running examples is free. Submitting counts.";
 
   /*
     The Hints card is not rendered, and its absence is the fix: `getHintBalance()` has no endpoint
@@ -774,7 +810,7 @@ export function ProblemWorkspace({ slug, window: contestWindow = null }: Problem
           >
             {shownAction === null && actionError === null ? (
               <p className="pt-2 text-ink/70" style={{ fontSize: "var(--text-xs)" }}>
-                Run samples to see your results here.
+                Run examples to see your results here.
               </p>
             ) : (
               <div className="space-y-3 pt-2">{verdicts}</div>

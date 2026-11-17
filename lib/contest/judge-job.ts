@@ -110,7 +110,7 @@ export function buildJudgeJob(input: BuildJudgeJobInput): JudgeJob {
   if (selected.length === 0) {
     throw new ValidationError(
       input.samplesOnly === true
-        ? "This problem has no sample cases to run"
+        ? "This problem has no examples to run"
         : "This problem has no test cases yet",
     );
   }

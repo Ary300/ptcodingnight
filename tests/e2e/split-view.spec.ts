@@ -12,7 +12,7 @@ import { closeTestDb, testDb } from "./helpers/seed";
  *   the student's own choice wins wherever two panes fit, across a reload;
  * - the divider runs the full height, moves by pointer drag and by the arrow keys, stays inside
  *   25-75%, and the position survives a reload;
- * - Run samples opens the Results drawer, the drawer folds, and the editor stays on screen;
+ * - Run examples opens the Results drawer, the drawer folds, and the editor stays on screen;
  * - below 1024px the page is stacked and the toggle is not offered, whatever was chosen;
  * - the editor still takes typing in the split.
  *
@@ -138,7 +138,7 @@ test.describe("on a wide window", () => {
     const submit = await box(page.getByRole("button", { name: "Submit for judging" }));
     expect(submit.y + submit.height).toBeLessThanOrEqual(900);
     expect(submit.y + submit.height).toBeGreaterThan(900 - 24);
-    const run = await box(page.getByRole("button", { name: "Run samples" }));
+    const run = await box(page.getByRole("button", { name: "Run examples" }));
     expect(run.x).toBeGreaterThan(right.x + right.width / 2);
     expect(submit.x).toBeGreaterThan(run.x);
 
@@ -247,7 +247,7 @@ test.describe("on a wide window", () => {
     await expect(divider(page)).toHaveAttribute("aria-valuenow", "30");
   });
 
-  test("Run samples opens the Results drawer, which folds without moving the editor off screen", async ({ page }) => {
+  test("Run examples opens the Results drawer, which folds without moving the editor off screen", async ({ page }) => {
     await openProblemAsGuest(page);
     await chooseSideBySide(page);
 
@@ -256,7 +256,7 @@ test.describe("on a wide window", () => {
     // Nothing has run, so the header is the word and nothing else.
     await expect(toggle).toHaveText("Results");
 
-    await page.getByRole("button", { name: "Run samples" }).click();
+    await page.getByRole("button", { name: "Run examples" }).click();
     await expect(toggle).toHaveAttribute("aria-expanded", "true");
 
     // Open, the drawer sits between the editor and the action bar and the editor keeps its room.
@@ -286,7 +286,7 @@ test.describe("on a wide window", () => {
 
     // No sentence of help on screen; the textarea still carries it for screen readers. Measured
     // as a box, because Playwright counts screen-reader-only text (a 1px clip) as "visible".
-    for (const text of [/Tab indents/, /^Running samples is free\. Submitting counts\.$/]) {
+    for (const text of [/Tab indents/, /^Running examples is free\. Submitting counts\.$/]) {
       const copy = solutionPane.getByText(text);
       await expect(copy).toHaveCount(1);
       const size = await box(copy);
@@ -294,8 +294,8 @@ test.describe("on a wide window", () => {
     }
     // Escape TWICE: one Escape is an IntelliJ reflex and must not arm the exit.
     await expect(editor(page)).toHaveAccessibleDescription(/Press Escape twice, then Tab/);
-    await expect(page.getByRole("button", { name: "Run samples" })).toHaveAccessibleDescription(
-      "Running samples is free. Submitting counts.",
+    await expect(page.getByRole("button", { name: "Run examples" })).toHaveAccessibleDescription(
+      "Running examples is free. Submitting counts.",
     );
     await expect(solutionPane.getByText(/^Ln \d+, Col \d+$/)).toBeVisible();
     // `exact`: the visually hidden file input behind it is "Upload code as file".
@@ -371,7 +371,7 @@ test.describe("on a wide window", () => {
     await expect(textarea).not.toHaveValue("int b = 2;");
   });
 
-  test("samples fit the problem pane at the divider's narrowest", async ({ page }) => {
+  test("examples fit the problem pane at the divider's narrowest", async ({ page }) => {
     await page.setViewportSize({ width: 1024, height: 768 });
     await openProblemAsGuest(page);
     await layoutButton(page, "Side by side").click();
@@ -381,8 +381,8 @@ test.describe("on a wide window", () => {
     await expect(divider(page)).toHaveAttribute("aria-valuenow", "25");
 
     const pane = page.getByRole("region", { name: "Problem statement" });
-    await pane.getByText("Sample 1", { exact: true }).click();
-    const copy = pane.getByRole("button", { name: /^Copy sample 1/ });
+    await pane.getByText("Example 1", { exact: true }).click();
+    const copy = pane.getByRole("button", { name: /^Copy example 1/ });
     await expect(copy.first()).toBeVisible();
 
     // Nothing in the pane spills sideways, and each Copy button sits inside it.
