@@ -107,9 +107,9 @@ test.afterAll(async () => {
 */
 
 
-test("a new contest's roster reports teams of up to five, the size the roster accepts", async () => {
-  // The roster accepted a fifth member while reporting maxTeamSize 4, so every screen said
-  // "up to 4" beside a team of five. A contest created by the organizer route takes the default.
+test("a new contest's roster reports teams of up to four, the size the roster enforces", async () => {
+  // The roster accepted a fifth member while reporting maxTeamSize 4. Teams are at most four
+  // (2026-11-17), the default is 4 again, and team-of-four.spec.ts proves the fifth is refused.
   const created = await readOk(
     await admin.createContestRaw({
       name: `E2E Team Size ${String(Date.now())}`,
@@ -125,7 +125,7 @@ test("a new contest's roster reports teams of up to five, the size the roster ac
     const roster = await okRoster(
       await adminContext.get(`/api/admin/contests/${contestId}/roster`),
     );
-    expect(roster.maxTeamSize).toBe(5);
+    expect(roster.maxTeamSize).toBe(4);
   } finally {
     await testDb().contest.delete({ where: { id: contestId } });
   }

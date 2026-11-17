@@ -228,6 +228,33 @@ async function unusedTeamCode(db: Db, contestId: string): Promise<string> {
   throw new DomainError("INTERNAL", "Could not allocate a team code. Try again.");
 }
 
+/**
+ * Refuse a new member on a team that is already at the contest's `maxTeamSize`.
+ *
+ * **One number, one source.** The roster reports `Contest.maxTeamSize` and this enforces the same
+ * column, read under the same contest lock as the write. The audit that prompted this found the
+ * roster saying 4 while the organizer routes accepted a fifth member, because the cap was reported
+ * and never checked. Every path that puts a participant on a team calls this: an organizer move
+ * and a join-code seat created onto a team.
+ *
+ * Must run inside a transaction that holds `lockContestMutations`, so two concurrent adds cannot
+ * both read "three members" and both write a fourth and fifth.
+ */
+async function assertTeamHasRoom(
+  db: Db,
+  team: { readonly id: string; readonly name: string },
+  maxTeamSize: number,
+): Promise<void> {
+  const members = await db.participant.count({ where: { teamId: team.id } });
+  if (members >= maxTeamSize) {
+    throw new DomainError(
+      "CONFLICT",
+      `A team has at most ${String(maxTeamSize)} students. ${team.name} already has ` +
+        `${String(members)}, so move someone off it before adding another.`,
+    );
+  }
+}
+
 export interface CreateTeamResult {
   readonly team: TeamView;
   readonly chosenSetId: string | null;
@@ -398,9 +425,11 @@ export async function adminRenameTeam(
  * team they left shrinks and the team they joined grows, so two team scores change from one
  * click. Both are recorded in the audit row.
  *
- * The organizer is NOT subject to `maxTeamSize`. A roster correction on the night must not be
- * blocked by a setting chosen a week earlier — the limit exists to shape what students do, not
- * to overrule the person running the contest.
+ * The organizer IS subject to `maxTeamSize` (organizer decision, 2026-11-17: a team has at most
+ * four students). Students no longer join teams themselves, so an organizer move is the main path
+ * onto a team, and a cap that exempted it was a cap that limited nothing while the roster
+ * reported it as the rule. A full team is refused by `assertTeamHasRoom`; the organizer moves
+ * somebody off first.
  */
 export async function adminMoveParticipant(
   participantId: string,
@@ -538,6 +567,9 @@ export async function adminMoveParticipant(
     const toSize = teamId === null ? 0 : await tx.participant.count({ where: { teamId } });
 
     const teamChanges = participant.teamId !== teamId;
+    if (teamChanges && target !== null) {
+      await assertTeamHasRoom(tx, target, contest.maxTeamSize);
+    }
     if (teamChanges) {
       await tx.participant.update({ where: { id: participantId }, data: { teamId } });
     }
@@ -1041,7 +1073,16 @@ export async function adminAddNamedParticipant(
   const participant = await prisma.$transaction(async (tx) => {
     await lockContestMutations(tx, contestId);
     const lockedContest = await contestForTeams(contestId, tx);
-    if (input.teamId != null) assertCanMutateStandingsInputs(lockedContest, new Date());
+    if (input.teamId != null) {
+      assertCanMutateStandingsInputs(lockedContest, new Date());
+      // Re-read under the lock: the name is for the refusal, and the count must not be stale.
+      const team = await tx.team.findUnique({
+        where: { id: input.teamId },
+        select: { id: true, name: true },
+      });
+      if (team === null) throw new NotFoundError("Team");
+      await assertTeamHasRoom(tx, team, lockedContest.maxTeamSize);
+    }
 
     const created = await tx.participant.create({
       data: {
