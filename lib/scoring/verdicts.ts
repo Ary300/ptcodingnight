@@ -8,18 +8,22 @@ import type { Verdict } from "@/lib/schemas/judge";
  */
 
 /**
- * A rejection is any judged verdict that is not `AC`.
+ * A rejection is any judged verdict other than `AC`, `CE` and `IE`: that is `WA`, `TLE`, `MLE`
+ * and `RE`. A `WA` that earned partial points is still a rejection — the verdict decides, not the
+ * score. Whether a rejection actually COSTS anything depends on when it was sent; that is the
+ * caller's business (see `scoreClassic` in `lib/scoring/index.ts` and docs/SCORING.md §5.1).
  *
  * `IE` is excluded, and that exclusion is not a detail. An internal error means the judge
  * failed — we do not actually know whether the submission was correct. Charging a student
  * five minutes for our own infrastructure fault would contradict PRD §7.2, which says `IE`
  * is never surfaced as a student-facing failure. It is requeued once and paged to an admin.
  *
- * `CE` *does* count. A submission that does not compile is a failed attempt like any other,
- * and the student can compile locally before submitting.
+ * `CE` is excluded too, by the organizer's decision of 2026-11-17. A program that never compiled
+ * never ran against a single test, so it is not a wrong attempt at the problem. It applies to
+ * both presets, which is also how ICPC itself treats a compilation error.
  */
 export function isRejection(verdict: Verdict): boolean {
-  return verdict !== "AC" && verdict !== "IE";
+  return verdict !== "AC" && verdict !== "CE" && verdict !== "IE";
 }
 
 /**

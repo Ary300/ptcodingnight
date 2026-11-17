@@ -3,30 +3,40 @@
     "HAND-COMPUTED expected standings for G6. Not generated from lib/scoring/ — a fixture",
     "derived from the code under test proves nothing.",
     "",
-    "Base points: E=100, M=200, H=300. Penalty: 5 min per rejected submission, charged only",
-    "on problems eventually scored above zero. Hints: 15% of base points each.",
+    "Base points: E=100, M=200, H=300. Penalty: 5 min per rejected submission (WA, TLE, MLE,",
+    "RE; never CE or IE) sent BEFORE the submission that first reached the problem's final",
+    "best score, and only on problems scored above zero. Hints: 15% of base points each.",
+    "Penalty rule per the organizer's decision of 2026-11-17, docs/SCORING.md 5.1.",
     "",
     "What each participant is here to prove:",
-    "  int-a  best-not-last (120 then 80 keeps 120), and 3 rejections on a NEVER-scored",
-    "         problem cost 0 penalty — the rule most likely to be implemented wrong.",
+    "  int-a  best-not-last (120 then 80 keeps 120), and the 80 came AFTER the 120 that reached",
+    "         the best, so it costs nothing. 3 rejections on a NEVER-scored problem cost 0",
+    "         penalty — the rule most likely to be implemented wrong. One WA then AC costs 5.",
     "  int-b  clean sweep, no penalty. The control.",
     "  int-c  an IE is dropped entirely: it is neither a rejection nor a score. Charging for",
-    "         it would bill a student for our own infrastructure fault.",
-    "  int-d  a CE is a rejection like any other.",
+    "         it would bill a student for our own infrastructure fault. Also a lone partial WA",
+    "         (150) that IS the best: nothing came before it, so it is not charged for itself.",
+    "  int-d  a CE is never a rejection: CE then AC costs 0.",
     "  adv-a  ) level on score, penalty AND last-score-increase: a genuine tie that must be",
     "  adv-b  ) displayed as a tie, both rank 2, with the next participant at rank 4.",
     "  adv-c  two hints on a group problem: round(2 * 0.15 * 300) = 90 off a 300 solve = 210.",
-    "  adv-d  two rejections before an AC, plus a partial-credit WA that still scores.",
+    "  adv-d  two rejections before an AC (10), plus a lone partial-credit WA that still scores",
+    "         and, being its problem's first best, costs 0.",
     "",
     "Arithmetic:",
-    "  int-a  100 + 120 + 0   = 220   penalty  5 + 10 + 0 = 15",
+    "  int-a  100 + 120 + 0   = 220   penalty  5 +  0 + 0 =  5",
     "  int-b  100 + 200       = 300   penalty  0",
-    "  int-c  100 + 150 + 200 = 450   penalty  0 +  5 + 0 =  5",
-    "  int-d  100 + 200       = 300   penalty  0 +  5     =  5",
+    "  int-c  100 + 150 + 200 = 450   penalty  0 +  0 + 0 =  0",
+    "  int-d  100 + 200       = 300   penalty  0 +  0     =  0",
     "  adv-a  100 + 200       = 300   penalty  0",
     "  adv-b  100 + 200       = 300   penalty  0",
     "  adv-c  100 + 210       = 310   penalty  0",
-    "  adv-d  100 +  50       = 150   penalty 10 +  5     = 15",
+    "  adv-d  100 +  50       = 150   penalty 10 +  0     = 10",
+    "",
+    "Changed 2026-11-17 (before -> after): int-a 15 -> 5 (int-m-a 10 -> 0); int-c 5 -> 0",
+    "(int-h-c 5 -> 0); int-d 5 -> 0 (int-m-d, a CE, 5 -> 0); adv-d 15 -> 10 (adv-m-d 5 -> 0).",
+    "No score and no rank moved: int-b and int-d now tie on 300 and 0 penalty, and int-b's",
+    "last score increase (18:35) is earlier than int-d's (19:05), so the order holds.",
     "",
     "Divisions rank independently: Intermediate winner int-c, Advanced winner adv-c."
   ],
@@ -37,13 +47,13 @@
       "displayName": "Player C",
       "divisionId": "intermediate",
       "score": 450,
-      "penaltyMinutes": 5,
+      "penaltyMinutes": 0,
       "lastScoreIncreaseAt": "2025-11-14T19:35:00.000Z",
       "rank": 1,
       "isTied": false,
       "problems": [
         { "contestProblemId": "int-e-c", "score": 100, "rejectedCount": 0, "penaltyMinutes": 0, "hintsTaken": 0, "hintDeduction": 0, "firstScoredAt": "2025-11-14T18:12:00.000Z" },
-        { "contestProblemId": "int-h-c", "score": 150, "rejectedCount": 1, "penaltyMinutes": 5, "hintsTaken": 0, "hintDeduction": 0, "firstScoredAt": "2025-11-14T19:35:00.000Z" },
+        { "contestProblemId": "int-h-c", "score": 150, "rejectedCount": 0, "penaltyMinutes": 0, "hintsTaken": 0, "hintDeduction": 0, "firstScoredAt": "2025-11-14T19:35:00.000Z" },
         { "contestProblemId": "int-m-c", "score": 200, "rejectedCount": 0, "penaltyMinutes": 0, "hintsTaken": 0, "hintDeduction": 0, "firstScoredAt": "2025-11-14T18:52:00.000Z" }
       ]
     },
@@ -66,13 +76,13 @@
       "displayName": "Player D",
       "divisionId": "intermediate",
       "score": 300,
-      "penaltyMinutes": 5,
+      "penaltyMinutes": 0,
       "lastScoreIncreaseAt": "2025-11-14T19:05:00.000Z",
       "rank": 3,
       "isTied": false,
       "problems": [
         { "contestProblemId": "int-e-d", "score": 100, "rejectedCount": 0, "penaltyMinutes": 0, "hintsTaken": 0, "hintDeduction": 0, "firstScoredAt": "2025-11-14T18:18:00.000Z" },
-        { "contestProblemId": "int-m-d", "score": 200, "rejectedCount": 1, "penaltyMinutes": 5, "hintsTaken": 0, "hintDeduction": 0, "firstScoredAt": "2025-11-14T19:05:00.000Z" }
+        { "contestProblemId": "int-m-d", "score": 200, "rejectedCount": 0, "penaltyMinutes": 0, "hintsTaken": 0, "hintDeduction": 0, "firstScoredAt": "2025-11-14T19:05:00.000Z" }
       ]
     },
     {
@@ -80,14 +90,14 @@
       "displayName": "Player A",
       "divisionId": "intermediate",
       "score": 220,
-      "penaltyMinutes": 15,
+      "penaltyMinutes": 5,
       "lastScoreIncreaseAt": "2025-11-14T18:40:00.000Z",
       "rank": 4,
       "isTied": false,
       "problems": [
         { "contestProblemId": "int-e-a", "score": 100, "rejectedCount": 1, "penaltyMinutes": 5, "hintsTaken": 0, "hintDeduction": 0, "firstScoredAt": "2025-11-14T18:20:00.000Z" },
         { "contestProblemId": "int-h-a", "score": 0, "rejectedCount": 3, "penaltyMinutes": 0, "hintsTaken": 0, "hintDeduction": 0, "firstScoredAt": null },
-        { "contestProblemId": "int-m-a", "score": 120, "rejectedCount": 2, "penaltyMinutes": 10, "hintsTaken": 0, "hintDeduction": 0, "firstScoredAt": "2025-11-14T18:40:00.000Z" }
+        { "contestProblemId": "int-m-a", "score": 120, "rejectedCount": 0, "penaltyMinutes": 0, "hintsTaken": 0, "hintDeduction": 0, "firstScoredAt": "2025-11-14T18:40:00.000Z" }
       ]
     },
     {
@@ -137,13 +147,13 @@
       "displayName": "Player D",
       "divisionId": "advanced",
       "score": 150,
-      "penaltyMinutes": 15,
+      "penaltyMinutes": 10,
       "lastScoreIncreaseAt": "2025-11-14T19:10:00.000Z",
       "rank": 4,
       "isTied": false,
       "problems": [
         { "contestProblemId": "adv-e-d", "score": 100, "rejectedCount": 2, "penaltyMinutes": 10, "hintsTaken": 0, "hintDeduction": 0, "firstScoredAt": "2025-11-14T18:45:00.000Z" },
-        { "contestProblemId": "adv-m-d", "score": 50, "rejectedCount": 1, "penaltyMinutes": 5, "hintsTaken": 0, "hintDeduction": 0, "firstScoredAt": "2025-11-14T19:10:00.000Z" }
+        { "contestProblemId": "adv-m-d", "score": 50, "rejectedCount": 0, "penaltyMinutes": 0, "hintsTaken": 0, "hintDeduction": 0, "firstScoredAt": "2025-11-14T19:10:00.000Z" }
       ]
     }
   ]

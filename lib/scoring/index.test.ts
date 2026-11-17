@@ -117,13 +117,281 @@ describe("penalty", () => {
     expect(standing?.problems[0]?.rejectedCount).toBe(0);
   });
 
-  it("charges for a compile error", () => {
+  it("never charges for a compile error (organizer decision, 2026-11-17)", () => {
+    // This case cost 5 minutes before 2026-11-17.
     const standing = only([
       sub({ submittedAt: at(10), verdict: "CE", score: 0 }),
       sub({ submittedAt: at(20), verdict: "AC", score: 100 }),
     ]);
 
+    expect(standing?.penaltyMinutes).toBe(0);
+    expect(standing?.problems[0]?.rejectedCount).toBe(0);
+  });
+});
+
+/*
+  Organizer decision, 2026-11-17 (docs/SCORING.md §5.1). Penalty counts only the rejections sent
+  BEFORE the submission that first reached the problem's final best score. CE never counts.
+
+  The live walkthrough that prompted it: AC for 100, then a wrong Python and two C++ compile errors
+  on the same problem, and the student finished with 15 penalty minutes for attempts made after
+  they had already solved it.
+*/
+describe("penalty counts only rejections before the first best submission", () => {
+  it("AC, then WA, then CE: 0", () => {
+    const standing = only([
+      sub({ submittedAt: at(10), verdict: "AC", score: 100 }),
+      sub({ submittedAt: at(20), verdict: "WA", score: 0 }),
+      sub({ submittedAt: at(30), verdict: "CE", score: 0 }),
+    ]);
+
+    expect(standing?.score).toBe(100);
+    expect(standing?.penaltyMinutes).toBe(0);
+    expect(standing?.problems[0]?.rejectedCount).toBe(0);
+  });
+
+  it("the walkthrough: AC, then a WA and two CEs: 0", () => {
+    const standing = only([
+      sub({ submittedAt: at(10), verdict: "AC", score: 100 }),
+      sub({ submittedAt: at(20), verdict: "WA", score: 0 }),
+      sub({ submittedAt: at(21), verdict: "CE", score: 0 }),
+      sub({ submittedAt: at(22), verdict: "CE", score: 0 }),
+    ]);
+
+    expect(standing?.penaltyMinutes).toBe(0);
+  });
+
+  it("WA, then AC: 5", () => {
+    const standing = only([
+      sub({ submittedAt: at(10), verdict: "WA", score: 0 }),
+      sub({ submittedAt: at(20), verdict: "AC", score: 100 }),
+    ]);
+
     expect(standing?.penaltyMinutes).toBe(5);
+    expect(standing?.problems[0]?.rejectedCount).toBe(1);
+  });
+
+  it("CE, then AC: 0", () => {
+    const standing = only([
+      sub({ submittedAt: at(10), verdict: "CE", score: 0 }),
+      sub({ submittedAt: at(20), verdict: "AC", score: 100 }),
+    ]);
+
+    expect(standing?.penaltyMinutes).toBe(0);
+  });
+
+  it("WA, partial 50, WA, then 100: 3 rejections before the first 100, so 15", () => {
+    // The partial is a WA verdict and counts as a rejection, because it was sent before the
+    // submission that reached the final best. Its 50 points do not make it a cutoff.
+    const standing = only([
+      sub({ submittedAt: at(10), verdict: "WA", score: 0 }),
+      sub({ submittedAt: at(20), verdict: "WA", score: 50 }),
+      sub({ submittedAt: at(30), verdict: "WA", score: 0 }),
+      sub({ submittedAt: at(40), verdict: "AC", score: 100 }),
+    ]);
+
+    expect(standing?.score).toBe(100);
+    expect(standing?.penaltyMinutes).toBe(15);
+    expect(standing?.problems[0]?.rejectedCount).toBe(3);
+  });
+
+  it("WA, then 100, then WA: 5", () => {
+    const standing = only([
+      sub({ submittedAt: at(10), verdict: "WA", score: 0 }),
+      sub({ submittedAt: at(20), verdict: "AC", score: 100 }),
+      sub({ submittedAt: at(30), verdict: "WA", score: 0 }),
+    ]);
+
+    expect(standing?.penaltyMinutes).toBe(5);
+    expect(standing?.problems[0]?.rejectedCount).toBe(1);
+  });
+
+  it("never scored: 0, and every rejection is still reported", () => {
+    const standing = only([
+      sub({ submittedAt: at(10), verdict: "WA", score: 0 }),
+      sub({ submittedAt: at(20), verdict: "TLE", score: 0 }),
+      sub({ submittedAt: at(30), verdict: "MLE", score: 0 }),
+      sub({ submittedAt: at(40), verdict: "CE", score: 0 }),
+    ]);
+
+    expect(standing?.penaltyMinutes).toBe(0);
+    expect(standing?.problems[0]?.rejectedCount).toBe(3);
+  });
+
+  it("counts WA, TLE, MLE and RE alike before the cutoff", () => {
+    const standing = only([
+      sub({ submittedAt: at(10), verdict: "WA", score: 0 }),
+      sub({ submittedAt: at(11), verdict: "TLE", score: 0 }),
+      sub({ submittedAt: at(12), verdict: "MLE", score: 0 }),
+      sub({ submittedAt: at(13), verdict: "RE", score: 0 }),
+      sub({ submittedAt: at(14), verdict: "IE", score: 0 }),
+      sub({ submittedAt: at(15), verdict: "CE", score: 0 }),
+      sub({ submittedAt: at(20), verdict: "AC", score: 100 }),
+    ]);
+
+    expect(standing?.penaltyMinutes).toBe(20);
+  });
+
+  it("a partial-credit WA that is itself the best is not charged for itself", () => {
+    // 120 then 80: the 120 is the first submission to reach the final best, and nothing came
+    // before it. The 80 came after it. Before 2026-11-17 this cost 10.
+    const standing = only([
+      sub({ submittedAt: at(10), verdict: "WA", score: 120 }),
+      sub({ submittedAt: at(20), verdict: "WA", score: 80 }),
+    ]);
+
+    expect(standing?.score).toBe(120);
+    expect(standing?.penaltyMinutes).toBe(0);
+  });
+
+  it("a later submission that only EQUALS the best does not move the cutoff", () => {
+    const standing = only([
+      sub({ submittedAt: at(10), verdict: "AC", score: 100 }),
+      sub({ submittedAt: at(20), verdict: "WA", score: 0 }),
+      sub({ submittedAt: at(30), verdict: "AC", score: 100 }),
+    ]);
+
+    expect(standing?.penaltyMinutes).toBe(0);
+  });
+
+  it("charges nothing when hints take the problem's score to zero", () => {
+    const standing = only(
+      [
+        sub({ submittedAt: at(10), contestProblemId: "g1", verdict: "WA", score: 0 }),
+        sub({ submittedAt: at(20), contestProblemId: "g1", verdict: "WA", score: 30 }),
+      ],
+      [0, 1, 2, 3, 4, 5, 6].map((index) => ({
+        participantId: "u1",
+        contestProblemId: "g1",
+        hintIndex: index,
+        grantedAt: at(5),
+      })),
+    );
+
+    expect(standing?.score).toBe(0);
+    expect(standing?.penaltyMinutes).toBe(0);
+  });
+
+  describe("overrides and rejudges replay through the same cutoff", () => {
+    const revision = (
+      submissionId: string,
+      submittedMinutes: number,
+      verdict: Verdict | null,
+      score: number,
+      effectiveMinutes: number,
+      revisionOrder: number,
+    ): SubmissionRecord => ({
+      submissionId,
+      participantId: "u1",
+      contestProblemId: "p1",
+      submittedAt: at(submittedMinutes),
+      effectiveAt: at(effectiveMinutes),
+      verdict,
+      score,
+      revisionOrder,
+    });
+
+    const log = [
+      revision("o1", 10, "WA", 0, 10, 1),
+      revision("o2", 20, "WA", 0, 20, 1),
+      revision("o3", 30, "WA", 0, 30, 1),
+      revision("o4", 40, "AC", 100, 40, 1),
+    ];
+
+    it("an override that raises an earlier submission to the best moves the cutoff earlier", () => {
+      expect(only(log)?.penaltyMinutes).toBe(15);
+
+      // At 60 an organizer overrides o2 to AC/100. The first submission to reach 100 is now o2,
+      // so only o1 came before it.
+      const overridden = [...log, revision("o2", 20, "AC", 100, 60, 2)];
+      const live = only(overridden);
+      expect(live?.penaltyMinutes).toBe(5);
+      expect(live?.problems[0]?.rejectedCount).toBe(1);
+
+      // The board frozen at 50 never saw the override, so it still charges 15.
+      expect(only(overridden, [], config(), { upTo: at(50) })?.penaltyMinutes).toBe(15);
+    });
+
+    it("an override that lowers the cutoff submission moves the cutoff later", () => {
+      const solvedEarly = [
+        revision("o1", 10, "WA", 0, 10, 1),
+        revision("o2", 20, "AC", 100, 20, 1),
+        revision("o3", 30, "WA", 0, 30, 1),
+        revision("o4", 40, "AC", 100, 40, 1),
+      ];
+      expect(only(solvedEarly)?.penaltyMinutes).toBe(5);
+
+      // o2 overridden to WA/0: the first 100 is now o4, with o1, o2 and o3 before it.
+      const overridden = [...solvedEarly, revision("o2", 20, "WA", 0, 60, 2)];
+      expect(only(overridden)?.penaltyMinutes).toBe(15);
+    });
+
+    it("a rejudge tombstone removes a rejection from the count until it is re-judged", () => {
+      const tombstoned = [...log, revision("o2", 20, null, 0, 60, 2)];
+      expect(only(tombstoned)?.penaltyMinutes).toBe(10);
+
+      const rejudgedAsCe = [...tombstoned, revision("o2", 20, "CE", 0, 70, 3)];
+      expect(only(rejudgedAsCe)?.penaltyMinutes).toBe(10);
+    });
+  });
+
+  it("replays byte-identically from any input order", () => {
+    const participantsTwo: ParticipantRecord[] = [
+      ...players,
+      { participantId: "u2", displayName: "Two", divisionId: "d1", teamId: null, chosenSetId: null },
+    ];
+    const row = (
+      submissionId: string,
+      participantId: string,
+      contestProblemId: string,
+      minutes: number,
+      verdict: Verdict,
+      score: number,
+    ): SubmissionRecord => ({
+      submissionId,
+      participantId,
+      contestProblemId,
+      submittedAt: at(minutes),
+      effectiveAt: at(minutes),
+      verdict,
+      score,
+    });
+    const log: SubmissionRecord[] = [
+      row("r01", "u1", "p1", 10, "WA", 0),
+      row("r02", "u1", "p1", 20, "WA", 50),
+      row("r03", "u1", "p1", 30, "WA", 0),
+      row("r04", "u1", "p1", 40, "AC", 100),
+      row("r05", "u1", "p1", 50, "WA", 0),
+      row("r06", "u1", "p2", 15, "CE", 0),
+      row("r07", "u1", "p2", 25, "AC", 200),
+      // Same instant: the id decides which came first, never the input order.
+      row("r08", "u2", "p1", 30, "WA", 0),
+      row("r09", "u2", "p1", 30, "AC", 100),
+      row("r10", "u2", "p1", 30, "WA", 0),
+      row("r11", "u2", "p2", 35, "TLE", 0),
+    ];
+
+    const serialize = (submissions: readonly SubmissionRecord[], people: ParticipantRecord[]) =>
+      JSON.stringify(computeStandings(config(), people, submissions, []));
+    const baseline = serialize(log, participantsTwo);
+
+    // Fixed permutations, not Math.random: a failing order must be reproducible.
+    const permutations = [
+      [...log].reverse(),
+      [...log.slice(5), ...log.slice(0, 5)],
+      log.filter((_, i) => i % 2 === 1).concat(log.filter((_, i) => i % 2 === 0)),
+      [...log].sort((a, b) => (a.submissionId < b.submissionId ? 1 : -1)),
+    ];
+    for (const permutation of permutations) {
+      expect(serialize(permutation, [...participantsTwo].reverse())).toBe(baseline);
+    }
+    expect(serialize(log, participantsTwo)).toBe(baseline);
+
+    const [u1, u2] = computeStandings(config(), participantsTwo, log, []);
+    // u1: p1 has 3 rejections before r04 (r05 after is free); p2's CE is free.
+    expect(u1?.penaltyMinutes).toBe(15);
+    // u2: r08 precedes r09 by id, r10 follows it; p2 never scored.
+    expect(u2?.penaltyMinutes).toBe(5);
   });
 });
 
