@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import { formatEventTime } from "@/lib/contest/event-time";
 
-import { TEAM_EXPANDED_ROW_COST, TEAM_VISIBLE_ROWS } from "./constants";
 import { Countdown } from "./Countdown";
 import { CrestWatermark } from "./CrestWatermark";
 import {
@@ -16,7 +15,7 @@ import {
 import { resolveTabId, teamTabsFor, teamsForTab } from "./team-tabs";
 import { FrozenPlate } from "./FrozenPlate";
 import styles from "./leaderboard.module.css";
-import { drawnTeamRows, memberBlockBudget } from "./projector-rows";
+import { rosterBlockRows } from "./projector-rows";
 import { TeamDivisionTabs } from "./TeamDivisionTabs";
 import { TeamStandingsBoard } from "./TeamStandingsBoard";
 import { useReducedMotion } from "./useReducedMotion";
@@ -51,16 +50,16 @@ import { useTeamStandings } from "./useTeamStandings";
  * every strip sits directly under the row it explains, so its addends remain aligned with the
  * arithmetic that consumes them.
  *
- * The price is stated rather than hidden. Each strip is paid for out of `TEAM_VISIBLE_ROWS` (see
- * `TEAM_EXPANDED_ROW_COST`), the footnote says how many teams are drawn and out of how many, and
- * every open team stays drawn even when it ranks below the cut. The
- * failure being designed against is specific and has happened here: a change that silently clipped
- * five rows under a footnote that claimed to show ten.
+ * **Every team, scrolling.** The wall used to ration a measured row budget: it drew the top seven,
+ * printed "Showing top 7 of 15 teams", and every open breakdown cost two more teams off the
+ * bottom. The organizers asked for no cap, so the board now draws every team on the division's tab
+ * and the board region scrolls under a sticky header row. An open breakdown takes its height in
+ * normal flow and pushes the teams below it down, and it draws every member, so a team of five
+ * shows five players. Expand all and Collapse all sit above the table.
  *
  * No login and no app chrome (PRD §9.3). A dropped poll keeps the previous rows rather than
- * blanking — the room cannot tell a five-second-stale board from a live one, and can very much tell
- * an empty one. Vertical scrolling appears only if the organizer opens more roster rows than the
- * measured canvas can hold; clipping an explicitly open section would be worse.
+ * blanking; the room cannot tell a five-second-stale board from a live one, and can very much tell
+ * an empty one.
  */
 
 export interface TeamProjectorScreenProps {
@@ -77,8 +76,6 @@ export interface TeamProjectorScreenProps {
    * divisions has no tabs at all.
    */
   initialDivisionId?: string | null;
-  /** Rows beyond this are not drawn; the footnote still counts them. */
-  maxRows?: number;
 }
 
 function timeOfDay(iso: string): string {
@@ -93,7 +90,6 @@ const TEAM_PANEL_ID = "team-standings-panel";
 export function TeamProjectorScreen({
   contestId,
   initialDivisionId = null,
-  maxRows = TEAM_VISIBLE_ROWS,
 }: TeamProjectorScreenProps) {
   const { standings, source, error } = useTeamStandings(contestId);
 
@@ -212,55 +208,14 @@ export function TeamProjectorScreen({
   }, [chosenAt]);
 
   /*
-    How many rows fit, and which ones.
-
-    Open indices are looked up by id on every poll rather than remembered as positions, because the
-    board reorders under an open strip. A team that was rank 5 can be rank 3 four seconds later, and
-    a remembered index would then put the wrong roster under the wrong row. IDs that vanished from
-    the payload are ignored rather than reassigned to their old positions.
+    Which teams are open. Looked up by id on every poll rather than remembered as positions,
+    because the board reorders under an open strip; ids that vanished from the payload drop out.
+    Every team is drawn: the board region scrolls, so there is no row budget to spend.
   */
-  const openIndices = teams.flatMap((team, index) =>
-    openTeamIds.has(team.teamId) ? [index] : [],
-  );
   const validOpenTeamIds = new Set(
-    openIndices.flatMap((index) => {
-      const team = teams[index];
-      return team === undefined ? [] : [team.teamId];
-    }),
+    teams.flatMap((team) => (openTeamIds.has(team.teamId) ? [team.teamId] : [])),
   );
-
-  /*
-   * Every roster costs two collapsed team rows. The minimum preserves the stronger promise that
-   * an open control always has its content on screen.
-   */
-  const cap = Math.max(
-    openIndices.length,
-    maxRows - openIndices.length * TEAM_EXPANDED_ROW_COST,
-  );
-  const { indices, jumped } = drawnTeamRows(teams.length, cap, openIndices);
-
-  /*
-   * Past the point where two-row costs balance (three open on a seven-row wall), the strips
-   * themselves shrink to share the leftover height, so the wall still does not scroll — measured
-   * 894px of table against a 794px canvas at 1920×1080 before this arithmetic existed. The
-   * remainder row inside each strip keeps a shorter block reconciling with its team row.
-   * Vertical scroll survives only as the last resort for states this cannot satisfy (five or
-   * more open blocks at their two-row floor), which clicking cannot reach on this geometry.
-   */
-  const blockRows = memberBlockBudget(maxRows, indices.length, openIndices.length);
-  const visible = indices.flatMap((at) => {
-    const team = teams[at];
-    return team === undefined ? [] : [team];
-  });
-
-  /** What the footnote may honestly call "the top N" before the first pulled-up rank. */
-  let topCount = 0;
-  while (indices[topCount] === topCount) topCount += 1;
-  const pulledOpenRanks = openIndices.flatMap((index) => {
-    if (index < topCount) return [];
-    const team = teams[index];
-    return team === undefined ? [] : [team.rank];
-  });
+  const blockRows = rosterBlockRows(teams.map((team) => team.players.length));
 
   /*
     Live or frozen, IN WORDS — DESIGN.md §7, and the individual board has always said it. The team
@@ -421,7 +376,7 @@ export function TeamProjectorScreen({
                 nothing. Poll updates keep the key, so real overtakes still slide.
               */
               key={activeTabId ?? "all-teams"}
-              teams={visible}
+              teams={teams}
               setLabels={standings?.setLabels ?? []}
               sets={standings?.sets ?? []}
               projectorTabId={activeTabId}
@@ -438,45 +393,20 @@ export function TeamProjectorScreen({
                   return next;
                 });
               }}
+              onSetOpenTeams={setOpenTeamIds}
             />
           )}
         </div>
 
         <div className={styles.teamFootnote}>
-          {standings !== null && teams.length > topCount && (
+          {standings !== null && teams.length > 0 && (
             /*
-              The DRAWN count, which is not always the top of the table: an open team below the cut
-              is pulled up and drawn out of sequence, and the ranks then jump (1 2 3 4, then 7). The
-              jump is legible in the rank column on its own, and it is said here in words as well,
-              because a numeral that skips is a fact the board should state rather than leave to be
-              noticed.
+              The whole field is on the board; this only counts it, and on a division tab the
+              count is that division's. Scrolling the board reaches every team.
             */
             <span>
-              {/* Counts THIS VIEW: on a division tab, "of N" is that division's field. */}
-              Showing top <span className="numeric">{topCount}</span> of{" "}
-              <span className="numeric">{teams.length}</span> teams
-              {jumped && pulledOpenRanks.length > 0 && (
-                <>
-                  , plus {pulledOpenRanks.length === 1 ? "rank" : "ranks"}{" "}
-                  <span className="numeric">{pulledOpenRanks.join(", ")}</span>
-                </>
-              )}
-            </span>
-          )}
-
-          {/*
-            Why the count just dropped. A board that shows five of nine seconds after showing seven
-            of nine, with nothing to explain it, reads as teams having disappeared.
-
-            Only when the budget actually cost somebody their row: on a four-team contest the whole
-            field fits with a strip open, and announcing a squeeze that did not happen is its own
-            small lie.
-          */}
-          {openIndices.length > 0 && teams.length > cap && (
-            <span>
-              {openIndices.length === 1
-                ? "A breakdown is open, so fewer teams fit."
-                : `${String(openIndices.length)} breakdowns are open, so fewer teams fit.`}
+              <span className="numeric">{teams.length}</span>{" "}
+              {teams.length === 1 ? "team" : "teams"}
             </span>
           )}
 

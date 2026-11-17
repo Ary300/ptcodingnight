@@ -1200,3 +1200,16 @@
     transform: scale(1.05);
   }
 }
+
+/*
+ * The header row stays on screen while the board scrolls under it. The cells need an OPAQUE
+ * ground of their own, the head tint mixed onto paper, or the rows would show through the
+ * translucent tint as they pass beneath. Inside a box that does not scroll this is inert.
+ */
+.stickyHead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: color-mix(in srgb, var(--color-ink) 5%, var(--color-paper));
+  box-shadow: inset 0 -1px 0 var(--color-rule-edge, currentColor);
+}
