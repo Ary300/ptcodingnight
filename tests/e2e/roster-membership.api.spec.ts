@@ -449,36 +449,29 @@ test.describe("the student then lands in the contest they were rostered into", (
     await testDb().participant.delete({ where: { id: stray.id } });
   });
 
-  test("a brand new account still lands in a contest that is running now", async () => {
+  test("a brand new account lands only in the practice arena, never a real contest running now", async () => {
     /*
-      The property the old ordering was introduced to fix, and it has to survive the new one: a
-      student who is a participant of nothing has no roster preference to apply, so the clock
-      decides.
-
-      Asserted as "the window contains now and the state is live" rather than as a specific
-      contest id. This database is shared, and a second contest whose window also contains now
-      makes the two indistinguishable on every key the rule uses — pinning one id would be
-      asserting the `startsAt desc` tie-break, which is not the property under test and is not a
-      promise this rule makes.
+      Student accounts are closed (2026-11-16): join codes and the organizer roster are the only
+      ways into a real contest. A participant of nothing therefore lands in the always-open arena,
+      however live tonight's contest is. The arena exists here because the local setup runs
+      scripts/seed-practice.ts; with no arena, a newcomer lands nowhere, which this also accepts.
     */
     const newcomer = await createUser("Newcomer", 2030);
     const enrolment = await ensureEnrolled(newcomer.userId, newcomer.displayName);
-    expect(enrolment?.created, "a first sign-in creates the participant").toBe(true);
+    if (enrolment !== null) {
+      const landed = await testDb().contest.findUniqueOrThrow({
+        where: { id: enrolment.contestId },
+        select: { isPractice: true },
+      });
+      expect(landed.isPractice, "a brand new account enrolled itself into a real contest").toBe(true);
+    }
+    expect(
+      await testDb().participant.count({
+        where: { userId: newcomer.userId, contest: { isPractice: false } },
+      }),
+    ).toBe(0);
 
-    const landed = await testDb().contest.findUniqueOrThrow({
-      where: { id: enrolment?.contestId ?? "" },
-      select: { state: true, startsAt: true, endsAt: true },
-    });
-    const now = Date.now();
-    expect(landed.startsAt.getTime()).toBeLessThanOrEqual(now);
-    expect(landed.endsAt.getTime()).toBeGreaterThan(now);
-    expect(["RUNNING", "FROZEN"]).toContain(landed.state);
-
-    const created = await testDb().participant.findFirstOrThrow({
-      where: { userId: newcomer.userId },
-      select: { id: true },
-    });
-    await testDb().participant.delete({ where: { id: created.id } });
+    await testDb().participant.deleteMany({ where: { userId: newcomer.userId } });
   });
 });
 

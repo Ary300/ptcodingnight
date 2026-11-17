@@ -7,6 +7,13 @@ import { invalidateScoringInput } from "@/lib/contest/standings";
 /**
  * Put a signed-in account into the contest the organizer is running, with no team.
  *
+ * ## Since 2026-11-16, accounts mint participants in the PRACTICE ARENA only
+ *
+ * The organizers decided on join codes and no student accounts. An account can still sign in
+ * (OAuth), and it lands in a real contest only when an organizer's roster action already put it
+ * there; otherwise it lands in the arena or nowhere. Join codes and the organizer's roster are the
+ * only two ways into a real contest. The history below explains why the arena path still exists.
+ *
  * ## Why signing in enrols you
  *
  * Team membership is decided in exactly one place — the organizer's roster — so a student who has
@@ -203,7 +210,11 @@ export async function ensureEnrolled(
 ): Promise<Enrolment | null> {
   const choiceNow = now ?? new Date();
   const choices = await contestsForUser(userId, choiceNow);
-  const best = choices[0];
+  // An account may only ever MINT a participant in the practice arena. A real contest is entered
+  // with a join code or by an organizer's roster action, so an account reaches one only when the
+  // organizer already put that account in it. Without this, any account (OAuth or the old sign-up
+  // form) enrolled itself into tonight's contest the moment it was SCHEDULED.
+  const best = choices.find((choice) => choice.isPractice || choice.alreadyParticipant);
   if (best === undefined) return null;
 
   const enrolment = await prisma.$transaction(async (tx) => {
@@ -230,6 +241,9 @@ export async function ensureEnrolled(
         created: false,
       };
     }
+
+    // Re-checked under the lock: only the arena takes a new participant from an account.
+    if (!best.isPractice) return null;
 
     // The contest may have ended while this callback waited for the lock. Do not mint a new row
     // into history after the choice query has gone stale.

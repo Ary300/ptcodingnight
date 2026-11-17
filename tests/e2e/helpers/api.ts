@@ -320,6 +320,13 @@ export class ContestApi {
 
   // --- admin: roster -------------------------------------------------------
 
+  /** The organizer's roster action that puts an existing ACCOUNT into this contest, on no team. */
+  addParticipantRaw(userId: string): Promise<APIResponse> {
+    return this.req().post(`/api/admin/contests/${this.contestId}/participants`, {
+      data: { userId },
+    });
+  }
+
   rosterRaw(): Promise<APIResponse> {
     return this.req().get(`/api/admin/contests/${this.contestId}/roster`);
   }
