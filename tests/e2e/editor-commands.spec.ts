@@ -174,25 +174,28 @@ test("Save says Saved, and leaving asks only while the code is unsaved", async (
   expect(askedAgain).toBe(0);
 });
 
-test("Surround With wraps the line in an if and selects the condition", async ({ page }) => {
+test("Surround With wraps the line in an if and puts the caret in the condition", async ({ page }) => {
   const textarea = await openEditor(page, "Java 21", "a();", 4);
   const m = await mod(page);
   await page.keyboard.press(`${m}+Alt+t`);
   const menu = page.getByRole("menu", { name: "Surround with" });
   await expect(menu).toBeVisible();
   await page.keyboard.press("1");
-  await expect(textarea).toHaveValue("if (condition) {\n    a();\n}");
+  await expect(textarea).toHaveValue("if () {\n    a();\n}");
   await expect(textarea).toBeFocused();
-  expect(await selection(textarea)).toEqual([4, 13]);
+  expect(await selection(textarea)).toEqual([4, 4]);
+  // IntelliJ's empty condition is a template field: typing fills it, Tab moves on into the body.
+  await page.keyboard.type("x > 0");
+  await expect(textarea).toHaveValue("if (x > 0) {\n    a();\n}");
 });
 
 test("Context actions add the missing import, and Parameter Info and Quick Documentation show", async ({ page }) => {
   const textarea = await openEditor(page, "Java 21", "ArrayList<Integer> a;", 3);
   await page.keyboard.press("Alt+Enter");
   const menu = page.getByRole("menu", { name: "Context actions" });
-  await expect(menu.getByRole("menuitem", { name: /Import java\.util\.ArrayList/ })).toBeVisible();
+  await expect(menu.getByRole("menuitem", { name: /import java\.util\.ArrayList/ })).toBeVisible();
   await page.keyboard.press("Enter");
-  await expect(textarea).toHaveValue("import java.util.ArrayList;\nArrayList<Integer> a;");
+  await expect(textarea).toHaveValue("import java.util.ArrayList;\n\nArrayList<Integer> a;");
 
   await page.keyboard.press("F1");
   await expect(page.getByRole("status").filter({ hasText: "java.util" })).toBeVisible();
@@ -240,7 +243,8 @@ test("a pasted block is re-indented to the caret's line", async ({ page }) => {
 
 test("Alt+Space opens completion where Ctrl+Space switches keyboards", async ({ page }) => {
   await openEditor(page, "Java 21", "", 0);
-  await page.keyboard.type("Sys");
+  // Several suggestions (String, StringBuilder): an explicit call with exactly one inserts it.
+  await page.keyboard.type("Str");
   const list = page.getByRole("listbox", { name: "Suggestions" });
   await expect(list).toBeVisible();
   await page.keyboard.press("Escape");

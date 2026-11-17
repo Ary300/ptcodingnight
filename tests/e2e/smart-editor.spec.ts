@@ -215,12 +215,14 @@ test.describe("Java, the IntelliJ reflexes that used to misfire", () => {
     await expect(page.getByText("Judging your submission")).toHaveCount(0);
   });
 
-  test("Enter after a declared name, with the popup open, keeps the name", async ({ page }) => {
+  test("Enter after a declared name typed in full keeps the name and starts a new line", async ({ page }) => {
     const textarea = await openEmptyEditor(page, "Java 21");
     await textarea.fill("int n = 5;\n");
     await textarea.evaluate((element) => (element as HTMLTextAreaElement).setSelectionRange(11, 11));
     await page.keyboard.type("int x = n", { delay: 90 });
-    await expect(popup(page)).toBeVisible();
+    // The name is already complete, so the list stays shut and cannot take the Enter.
+    await page.waitForTimeout(300);
+    await expect(popup(page)).toBeHidden();
     await page.keyboard.press("Enter");
     await expect(textarea).toHaveValue("int n = 5;\nint x = n\n");
   });
