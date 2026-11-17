@@ -24,7 +24,7 @@ Print a single integer: the median of the list.
 
 ## Constraints
 
-- $1 \le n \le 1000$, and $n$ is odd
+- $1 \le n \le 1001$, and $n$ is odd
 - $-10^6 \le a_i \le 10^6$
 
 ## Example
