@@ -3,7 +3,7 @@
 Checks every unordered pair of flavors and collects the ones whose costs sum
 to the budget. Asserts the guarantee (exactly one such pair) instead of
 trusting it, which also makes this the oracle for validating generated data.
-O(n^2) per trip; hopeless at the constraint ceiling, by design.
+O(n^2) per trip, which is the beginner double loop and fits the limits.
 """
 
 import sys
