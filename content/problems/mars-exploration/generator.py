@@ -3,8 +3,8 @@
 Usage: python3 generator.py <seed>
 
 Deterministic per seed. Small seeds produce short messages; large seeds push
-the length to the constraint ceiling (99999, the largest multiple of 3 not
-exceeding 10^5). The seed also selects the corruption shape so the test set
+the length to the constraint ceiling (9999, the largest multiple of 3 not
+exceeding 10^4). The seed also selects the corruption shape so the test set
 covers the degenerate cases (clean message, every character wrong, damage
 confined to the S positions or to the O positions, corruption replaced by
 letters that still belong to {S, O}) and not just uniform noise.
@@ -14,12 +14,12 @@ import random
 import string
 import sys
 
-MAX_LEN = 99999  # largest multiple of 3 that is <= 10^5
+MAX_LEN = 9999  # largest multiple of 3 that is <= 10^4
 PATTERN = "SOS"
 
 
 def choose_blocks(seed: int) -> int:
-    """Grow with the seed: seed 1 -> 1 block, seed >= 183 -> the ceiling."""
+    """Grow with the seed: seed 1 -> 1 block, seed >= 58 -> the ceiling."""
     return max(1, min(MAX_LEN // 3, seed * seed))
 
 
@@ -79,6 +79,13 @@ def main() -> None:
     assert 3 <= n <= MAX_LEN
     assert all(c in string.ascii_uppercase for c in message)
     sys.stdout.write(message + "\n")
+
+
+# Seeds behind tests/*.in (01-06 are hand-written):
+#   07 <- 7    08 <- 3    09 <- 4    10 <- 5    11 <- 2    12 <- 11
+#   13 <- 20   14 <- 45   15 <- 100  16 <- 186  17 <- 187  18 <- 188
+# Seeds 100 and 186-188 sit at the 9999-character ceiling with shapes
+# 4 (O-only damage), 0 (clean), 1 (all wrong) and 2 (uniform noise).
 
 
 if __name__ == "__main__":

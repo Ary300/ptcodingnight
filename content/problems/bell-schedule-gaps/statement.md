@@ -33,7 +33,7 @@ and the last bell. Print $0$ if every minute of the day is covered.
 
 ## Constraints
 
-- $1 \le n \le 10^5$
+- $1 \le n \le 1000$
 - $0 \le f < g \le 1440$
 - $f \le l_i < r_i \le g$ for every $i$
 

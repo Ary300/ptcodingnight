@@ -6,17 +6,35 @@ Deterministic per seed. Small seeds produce tiny logs; large seeds push n to the
 constraint ceiling. The seed also selects the shape of the log so that the test
 set covers degenerate cases (single sighting, one species only, forced ties,
 perfectly flat distributions) and not just uniform noise.
+
+The ceiling is a moderate 1000 sightings: this is a casual contest, and the
+point of the large tests is the tie-break and the counting, not the time limit.
+
+Which seed made which test (01 and 02 are the hand-written samples):
+
+    03 <- seed 1    n=1     single sighting
+    04 <- seed 2    n=4     forced tie
+    05 <- seed 3    n=9     flat, every code once
+    06 <- seed 4    n=16    one dominant species
+    07 <- seed 6    n=36    one species only
+    08 <- seed 23   n=529   flat, many codes tie at the top
+    09 <- seed 25   n=625   uniform noise
+    10 <- seed 27   n=729   forced tie
+    11 <- seed 32   n=1000  forced tie at the ceiling
+    12 <- seed 33   n=1000  flat at the ceiling
+    13 <- seed 35   n=1000  uniform noise at the ceiling
+    14 <- seed 34   n=1000  one dominant species at the ceiling
 """
 
 import random
 import sys
 
-MAX_N = 200000
+MAX_N = 1000
 MAX_CODE = 50
 
 
 def choose_n(seed: int) -> int:
-    """Grow with the seed: seed 1 -> 1 sighting, seed >= 448 -> the ceiling."""
+    """Grow with the seed: seed 1 -> 1 sighting, seed >= 32 -> the ceiling."""
     return max(1, min(MAX_N, seed * seed))
 
 

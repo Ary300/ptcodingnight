@@ -13,17 +13,26 @@ adversarial structures, not just uniform noise:
   4: duplicate-heavy, values drawn from a tiny pool
   5: near-degenerate: many rods sitting exactly at or one off a + b = c
 
-Lengths stop at 7 * 10^8 so that three of them, the largest perimeter, still fit
-in a signed 32-bit int (2.1 * 10^9 < 2^31 - 1), and adding a + b + c in an int is
-never wrong. Which seed made which test: 15 = 10, 16 = 17, 17 = 28, 18 = 45,
-19 = 64, 20 = 83, 22 = 102. The rest are written by hand.
+Lengths stop at 10^6, a casual-contest size: the largest perimeter is
+3 * 10^6, so a + b, a + b + c and every comparison fit an int with room to
+spare. A Fibonacci run under that cap is about 30 rods long, which is what
+bounds the shape 2 and 3 bins. Which seed made which test: 15 = 10, 16 = 17,
+17 = 28, 18 = 45, 19 = 64, 20 = 83, 22 = 102. The rest are written by hand:
+
+  06: 1 1 MAX_L, flat at the ceiling (answer -1)
+  07: three rods at MAX_L, the largest possible perimeter
+  08: 100 rods at MAX_L
+  11: the Fibonacci numbers 1, 1, 2, ... up to MAX_L, in order (answer -1)
+  12: the same run shuffled, plus three 7s, so every triangle needs a 7 and
+      the best one, 7 8 13, sits near the bottom of the sort
+  21: MAX_L - 2, MAX_L - 1, MAX_L first, then 97 random lengths below them
 """
 
 import random
 import sys
 
 MAX_N = 100
-MAX_L = 7 * 10**8
+MAX_L = 10**6
 
 
 def choose_n(seed: int) -> int:

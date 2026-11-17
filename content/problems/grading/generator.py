@@ -6,17 +6,30 @@ Deterministic per seed. Small seeds produce short grade lists; large seeds push
 n toward the constraint ceiling. The seed also selects a shape so the test set
 covers the decision boundaries (grades 36 through 45, exact multiples of 5,
 everything below the rounding floor) and not just uniform noise.
+
+The ceiling is a moderate 1,000 grades: this is a casual contest, and a bigger
+list tests nothing the rules do not already exercise at this size.
+
+Which seed made which test (01-08 are written by hand):
+  09 <- seed 10    (n = 100,  shape 3: multiples of 5 only)
+  10 <- seed 11    (n = 121,  shape 4: everything rounds up)
+  11 <- seed 12    (n = 144,  shape 5: everything below the floor)
+  12 <- seed 70    (n = 1000, shape 0: uniform noise)
+  13 <- seed 65    (n = 1000, shape 2: clustered around the floor)
+  14 <- seed 224   (n = 1000, shape 0: uniform noise)
+  15 <- seed 317   (n = 1000, shape 2: clustered around the floor)
+  16 <- seed 322   (n = 1000, shape 0: uniform noise)
 """
 
 import random
 import sys
 
-MAX_N = 100000
+MAX_N = 1000
 MAX_GRADE = 100
 
 
 def choose_n(seed: int) -> int:
-    """Grow with the seed: seed 1 -> 1 grade, seed >= 317 -> the ceiling."""
+    """Grow with the seed: seed 1 -> 1 grade, seed >= 32 -> the ceiling."""
     return max(1, min(MAX_N, seed * seed))
 
 

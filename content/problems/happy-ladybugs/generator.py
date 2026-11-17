@@ -11,13 +11,28 @@ Deterministic per seed. seed % 6 selects the shape of the whole input:
     empty cell, planted singletons, pair soup
   4 large random boards, total cells pushed toward the ceiling
   5 maximum: a handful of full-size boards with distinct structures
+
+The ceiling is kept moderate on purpose (n <= 3,000, total cells <= 15,000) so
+the largest input stays under about 20 KB; the answer only needs counting and a
+single scan, so bigger boards would test nothing new.
+
+Seeds behind the committed tests (01-10 are hand-written edge cases, 01-02 are
+the statement samples):
+
+    11  seed 600   shape 0, tiny boards
+    12  seed 601   shape 1, small boards with empties
+    13  seed 602   shape 2, letters-only boards
+    14  seed 603   shape 3, adversarial
+    15  seed 604   shape 4, large random boards
+    16  seed 610   shape 4, large random boards
+    17  seed 605   shape 5, full-size boards
 """
 
 import random
 import sys
 
-MAX_N = 100000
-MAX_TOTAL = 500000
+MAX_N = 3000
+MAX_TOTAL = 15000
 MAX_G = 100
 LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 

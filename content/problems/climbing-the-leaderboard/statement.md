@@ -30,8 +30,8 @@ $p_j$ would hold on the leaderboard.
 
 ## Constraints
 
-- $1 \le n \le 2 \times 10^5$
-- $1 \le m \le 2 \times 10^5$
+- $1 \le n \le 1000$
+- $1 \le m \le 1000$
 - $0 \le r_i \le 10^9$ and $r_i \ge r_{i+1}$ for all $1 \le i < n$
 - $0 \le p_j \le 10^9$ and $p_j \le p_{j+1}$ for all $1 \le j < m$
 

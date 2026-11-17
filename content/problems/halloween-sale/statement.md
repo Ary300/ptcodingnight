@@ -23,10 +23,10 @@ keychains that shopper buys, and the total number of cents spent.
 ## Constraints
 
 - $1 \le q \le 20$
-- $1 \le p \le 100000$
-- $1 \le d \le 100000$
+- $1 \le p \le 1000$
+- $1 \le d \le 1000$
 - $1 \le m \le p$
-- $0 \le b \le 10^9$
+- $0 \le b \le 100000$
 
 ## Example
 

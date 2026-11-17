@@ -6,14 +6,30 @@ Prints one valid input to stdout. Deterministic for a given seed. Small seeds
 produce small inputs; large seeds push toward the constraint ceiling. The seed
 also selects a shape (general, all-equal offsets, all hits, all misses,
 single-point tarp) so a spread of seeds covers the degenerate cases.
+
+Bounds are sized for a casual contest: positions and offsets stay within
+10^6 and each launcher fires at most 1,000 pieces, so every landing point
+fits comfortably in a 32-bit int and the largest input stays under 20 KB.
+
+tests/01-07 are written by hand (the two statement samples, then edge cases).
+tests/08-15 come from this generator, in order, with these seeds:
+
+    08 <- 11     all hits, small
+    09 <- 42     all hits, small
+    10 <- 104    single-point tarp, medium
+    11 <- 701    all hits, medium
+    12 <- 777    all hits, medium
+    13 <- 1234   single-point tarp, largest size
+    14 <- 5000   mixed hits and misses, largest size
+    15 <- 8003   all misses, largest size
 """
 
 import random
 import sys
 
-MAX_POS = 10 ** 7
-MAX_OFFSET = 10 ** 7
-MAX_COUNT = 10 ** 5
+MAX_POS = 10 ** 6
+MAX_OFFSET = 10 ** 6
+MAX_COUNT = 1000
 
 
 def size_for(seed):
@@ -23,7 +39,7 @@ def size_for(seed):
     if seed < 100:
         return 1, 200
     if seed < 1000:
-        return 100, 5000
+        return 100, 500
     return MAX_COUNT - 100, MAX_COUNT
 
 
@@ -34,7 +50,7 @@ def span_for(rng, seed):
     elif seed < 100:
         ceiling = 1000
     elif seed < 1000:
-        ceiling = 10 ** 5
+        ceiling = 10 ** 4
     else:
         ceiling = MAX_POS
     low = rng.randint(1, ceiling)

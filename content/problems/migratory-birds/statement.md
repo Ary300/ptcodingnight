@@ -21,7 +21,7 @@ species are tied for the most sightings, print the smallest such code.
 
 ## Constraints
 
-- $1 \le n \le 200000$
+- $1 \le n \le 1000$
 - $1 \le s_i \le 50$
 
 ## Example

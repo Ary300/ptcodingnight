@@ -2,23 +2,34 @@
 
 Usage: python3 generator.py <seed>
 
-Deterministic per seed. Small seeds produce tiny inputs; seeds of 55 and above
-push n to the constraint ceiling. The seed also selects the shape of the input
+Deterministic per seed. Small seeds produce tiny inputs; seeds of 27 and above
+push n to the constraint ceiling of 700, which a quadratic all-pairs solution
+still handles comfortably. Values stay within +-10^6, so every value and every
+difference fits in a 32-bit int. The seed also selects the shape of the input
 so the test set covers adversarial layouts (arithmetic progressions where every
 pair ties, a single tight pair hidden among widely spaced values, sorted and
 reverse-sorted order, tight clusters with chained ties) and not just uniform
 noise. Values are always distinct, as the constraints promise.
+
+Which seed made which test:
+  01-12  hand-written (01 and 02 are the statement's samples; 03 and 12 sit
+         on the value bounds +-10^6)
+  13     seed 7   (n = 49, arithmetic progression, every adjacent pair ties)
+  14     seed 23  (n = 529, tight cluster with chained ties)
+  15     seed 40  (n = 700, reverse sorted)
+  16     seed 61  (n = 700, arithmetic progression, every adjacent pair ties)
+  17     seed 60  (n = 700, uniform noise)
 """
 
 import random
 import sys
 
-MAX_N = 3000
-VMAX = 10**7
+MAX_N = 700
+VMAX = 10**6
 
 
 def choose_n(seed: int) -> int:
-    """Grow with the seed: seed 1 -> 2 values, seed >= 55 -> the ceiling."""
+    """Grow with the seed: seed 1 -> 2 values, seed >= 27 -> the ceiling."""
     return max(2, min(MAX_N, seed * seed))
 
 

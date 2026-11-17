@@ -8,17 +8,30 @@ line so the test set covers the adversarial cases (guaranteed pangrams,
 near-misses one letter short, single-character lines, all-space lines,
 single-letter floods, exactly-26-letter pangrams) rather than only uniform
 noise, under which random text of any length is almost never a pangram.
+
+Tests 01-11 are hand-written. The rest came from this generator:
+
+    12 <- seed 12    (shape 0, 144 chars of noise, pangram)
+    13 <- seed 7     (shape 1, guaranteed pangram, 49 chars)
+    14 <- seed 20    (shape 2, near-miss, 400 chars)
+    15 <- seed 23    (shape 5, exactly the 26 letters)
+    16 <- seed 45    (shape 3, single-letter flood, 2025 chars)
+    17 <- seed 318   (shape 0, noise at the 10,000-character ceiling)
+    18 <- seed 320   (shape 2, near-miss at the 10,000-character ceiling)
+
+The ceiling is 10,000 characters, kept moderate for a casual contest: large
+enough that the line is clearly long, small enough that any approach passes.
 """
 
 import random
 import string
 import sys
 
-MAX_LEN = 100000
+MAX_LEN = 10000
 
 
 def choose_len(seed: int) -> int:
-    """Grow with the seed: seed 1 -> 1 character, seed >= 317 -> the ceiling."""
+    """Grow with the seed: seed 1 -> 1 character, seed >= 100 -> the ceiling."""
     return max(1, min(MAX_LEN, seed * seed))
 
 

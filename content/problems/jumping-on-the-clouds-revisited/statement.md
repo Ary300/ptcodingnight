@@ -30,7 +30,7 @@ may be negative.
 
 ## Constraints
 
-- $2 \le n \le 10^5$
+- $2 \le n \le 1000$
 - $1 \le k \le n$
 - $c_i \in \{0, 1\}$
 - $c_0 = 0$

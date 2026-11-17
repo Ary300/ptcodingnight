@@ -29,10 +29,10 @@ weight exactly $x_i$, and `No` otherwise.
 
 ## Constraints
 
-- $1 \le |s| \le 10^5$
+- $1 \le |s| \le 300$
 - $s$ consists of lowercase English letters only
-- $1 \le q \le 10^5$
-- $1 \le x_i \le 10^7$
+- $1 \le q \le 500$
+- $1 \le x_i \le 10^6$
 
 ## Example
 

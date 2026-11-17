@@ -2,23 +2,43 @@
 
 Usage: python3 generator.py <seed>
 
-Deterministic per seed. Small seeds produce tiny order lists; large seeds push
-n to the constraint ceiling. The seed also selects the shape of the data so
-the test set covers degenerate cases (a single order, every finish time equal,
-finish times already sorted or exactly reversed, heavy ties, both value
-bounds) and not just uniform noise.
+Deterministic per seed. Small seeds produce tiny order lists; larger seeds push
+n to the constraint ceiling of 1,000 orders. The seed also selects the shape of
+the data (seed % 7) so the test set covers degenerate cases (a single order,
+every finish time equal, finish times already sorted or exactly reversed, heavy
+ties, both value bounds) and not just uniform noise.
+
+Which seed made which test (tests 01-04 are written by hand: the two statement
+examples, then a single (1, 1) order and a single (10^6, 10^6) order):
+
+    05  seed 12   n = 144   shape 5, all (1, 1)
+    06  seed 5    n = 25    shape 5, all (10^6, 10^6)
+    07  seed 9    n = 81    shape 2, finish times strictly decreasing
+    08  seed 10   n = 100   shape 3, finish times strictly increasing
+    09  seed 8    n = 64    shape 1, one shared finish time
+    10  seed 11   n = 121   shape 4, a handful of distinct finish times
+    11  seed 13   n = 169   shape 6, one shared arrival time
+    12  seed 7    n = 49    shape 0, uniform noise
+    13  seed 21   n = 441   shape 0, uniform noise
+    14  seed 25   n = 625   shape 4, a handful of distinct finish times
+    15  seed 29   n = 841   shape 1, one shared finish time
+    16  seed 30   n = 900   shape 2, finish times strictly decreasing
+    17  seed 35   n = 1000  shape 0, uniform noise at the ceiling
+
+Tests 13-17 were once seeds 70, 60, 92, 275 and 322 against a ceiling of
+10^5 orders; the seeds above keep each test's shape at a classroom size.
 """
 
 import random
 import sys
 
-MAX_N = 100000
+MAX_N = 1000
 MAX_T = 1000000
 MAX_D = 1000000
 
 
 def choose_n(seed: int) -> int:
-    """Grow with the seed: seed 1 -> 1 order, seed >= 317 -> the ceiling."""
+    """Grow with the seed: seed 1 -> 1 order, seed >= 32 -> the ceiling."""
     return max(1, min(MAX_N, seed * seed))
 
 

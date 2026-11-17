@@ -25,9 +25,8 @@ word has no such rearrangement.
 
 ## Constraints
 
-- $1 \le t \le 10^5$
+- $1 \le t \le 1000$
 - $1 \le |w| \le 100$
-- The total length of all words in one input is at most $10^6$.
 - Every word consists only of the lowercase letters `a` through `z`.
 
 ## Example

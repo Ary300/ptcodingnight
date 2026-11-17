@@ -26,9 +26,9 @@ Print $n$ lines. Line $t$ is the ciphertext for the $t$-th message.
 
 ## Constraints
 
-- $1 \le n \le 100$
+- $1 \le n \le 50$
 - $1 \le |k| \le 20$
-- $1 \le |m| \le 2000$
+- $1 \le |m| \le 400$
 - Every character of $k$ and $m$ is in `a`–`z`.
 
 ## Example

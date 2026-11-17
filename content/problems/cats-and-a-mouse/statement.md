@@ -23,7 +23,7 @@ if both cats arrive at the same moment.
 
 ## Constraints
 
-- $1 \le q \le 20000$
+- $1 \le q \le 1000$
 - $-10^9 \le p \le 10^9$
 - $-10^9 \le b \le 10^9$
 - $-10^9 \le m \le 10^9$

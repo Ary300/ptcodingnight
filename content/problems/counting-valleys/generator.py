@@ -3,17 +3,28 @@
 Usage: python3 generator.py <seed>
 
 Deterministic per seed. Small seeds produce short walks; large seeds push n to
-the constraint ceiling. The seed also selects the shape of the walk so the test
+the constraint ceiling of 10,000 steps, which keeps every input file near 10 KB
+for a casual contest while still covering the long-walk shapes. The seed also selects the shape of the walk so the test
 set covers adversarial cases (one bottomless valley, a pure sawtooth of unit
 valleys, long excursions that hug sea level, hills only) and not just uniform
 shuffles. Every emitted walk has equal counts of U and D, as the statement
 guarantees.
+
+Which seed made which test (tests 01-11 are written by hand):
+  12  seed 6     n = 36,     shape 0 (uniform shuffle)
+  13  seed 17    n = 290,    shape 5 (alternating excursions)
+  14  seed 60    n = 3,600,  shape 0 (uniform shuffle)
+  15  seed 101   n = 10,000, shape 5 (alternating excursions; 101^2 clipped)
+  16  seed 995   n = 10,000, shape 5 (alternating excursions; 995^2 clipped)
+  17  seed 1003  n = 10,000, shape 1 (one valley as deep as the walk allows)
+  18  seed 1002  n = 10,000, shape 0 (uniform shuffle)
+  19  seed 1005  n = 10,000, shape 3 (sawtooth of unit valleys, answer 5,000)
 """
 
 import random
 import sys
 
-MAX_N = 1_000_000
+MAX_N = 10_000
 
 
 def choose_n(seed: int, rng: random.Random) -> int:

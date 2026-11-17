@@ -32,7 +32,7 @@ orders are handed out.
 
 ## Constraints
 
-- $1 \le n \le 10^5$
+- $1 \le n \le 1000$
 - $1 \le t_i \le 10^6$
 - $1 \le d_i \le 10^6$
 

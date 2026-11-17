@@ -2,22 +2,39 @@
 
 Usage: python3 generator.py <seed>
 
-Deterministic per seed. Small seeds produce tiny lists; seeds of 317 and above
-hit the n = 100000 ceiling. The seed also selects the shape of the list so the
-test set covers degenerate cases (single element, one repeated value, exactly
-two adjacent values, sorted ramps, tight clusters, values spaced so that no two
-distinct values can ever be combined) and not just uniform noise.
+Deterministic per seed. Small seeds produce tiny lists; seeds of 32 and above
+hit the n = 1000 ceiling. The ceiling is kept small on purpose for a casual
+contest: a straightforward quadratic count stays well inside the time limit,
+and every count fits easily in a 32-bit int. The seed also selects the shape
+of the list so the test set covers degenerate cases (single element, one
+repeated value, exactly two adjacent values, sorted ramps, tight clusters,
+values spaced so that no two distinct values can ever be combined) and not just
+uniform noise.
+
+Tests 01-11 are hand-written. Tests 12-22 come from these seeds:
+
+    12 <- 6    (n = 36, uniform noise)
+    13 <- 13   (n = 169, all equal)
+    14 <- 20   (n = 400, two adjacent values)
+    15 <- 27   (n = 729, sorted ramp)
+    16 <- 34   (n = 1000, tight clusters)
+    17 <- 41   (n = 1000, spaced values)
+    18 <- 100  (n = 1000, tight clusters)
+    19 <- 200  (n = 1000, two adjacent values)
+    20 <- 317  (n = 1000, spaced values)
+    21 <- 318  (n = 1000, uniform noise)
+    22 <- 320  (n = 1000, two adjacent values)
 """
 
 import random
 import sys
 
-MAX_N = 100000
+MAX_N = 1000
 MAX_VALUE = 100
 
 
 def choose_n(seed: int) -> int:
-    """Grow with the seed: seed 1 -> 1 element, seed >= 317 -> the ceiling."""
+    """Grow with the seed: seed 1 -> 1 element, seed >= 32 -> the ceiling."""
     return max(1, min(MAX_N, seed * seed))
 
 

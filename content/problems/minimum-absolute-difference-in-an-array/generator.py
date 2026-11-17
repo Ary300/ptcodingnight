@@ -6,18 +6,33 @@ Deterministic per seed. Small seeds produce tiny arrays; large seeds push n to
 the constraint ceiling. The seed also selects a shape so the test set covers
 adversarial layouts (all-equal arrays, sorted and reverse-sorted input, tight
 duplicate-heavy ranges, far-apart clusters hiding one close pair, arithmetic
-progressions, values pinned to the +-10^9 boundary) and not just uniform noise.
+progressions, values pinned to the +-10^6 boundary) and not just uniform noise.
+
+The ceiling is kept moderate on purpose (n = 1000, |a_i| <= 10^6) so the largest
+input stays under about 10 KB, every difference fits comfortably in a 32-bit
+int, and the definition-literal O(n^2) pair scan runs well inside the limit.
+
+Committed tests (01-12 are hand-written; 01-02 are the statement samples; 03,
+10 and 11 pin values to the +-10^6 boundary, 03's answer being the largest
+possible, 2000000):
+
+    13  seed 4    n = 16, tiny value range, duplicates (answer 0)
+    14  seed 14   n = 196, shuffled arithmetic progression (every gap ties)
+    15  seed 23   n = 529, noise with -10^6 and 10^6 pinned in
+    16  seed 33   n = 1000, all entries equal (answer 0)
+    17  seed 38   n = 1000, shuffled arithmetic progression
+    18  seed 48   n = 1000, uniform noise over the full range
 """
 
 import random
 import sys
 
-MAX_N = 2000
-MAX_ABS = 10**9
+MAX_N = 1000
+MAX_ABS = 10**6
 
 
 def choose_n(seed: int, rng: random.Random) -> int:
-    """Grow with the seed: seed 1 -> n = 2, seed >= 45 -> the ceiling."""
+    """Grow with the seed: seed 1 -> n = 2, seed >= 32 -> the ceiling."""
     return max(2, min(MAX_N, seed * seed))
 
 
@@ -61,7 +76,7 @@ def build_array(seed: int, n: int, rng: random.Random) -> list[int]:
     if shape == 5:
         # Two clusters near the boundaries, one deliberately close pair.
         values = [
-            rng.choice([-1, 1]) * (MAX_ABS - rng.randint(0, 10**6))
+            rng.choice([-1, 1]) * (MAX_ABS - rng.randint(0, MAX_ABS // 1000))
             for _ in range(n - 2)
         ]
         anchor = rng.randint(-MAX_ABS // 2, MAX_ABS // 2)

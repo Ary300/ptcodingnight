@@ -26,7 +26,7 @@ that the final string is empty, print exactly `Empty String` instead.
 
 ## Constraints
 
-- $1 \le |s| \le 10^5$
+- $1 \le |s| \le 5000$
 - $s$ consists only of lowercase English letters, `a` through `z`
 
 ## Example

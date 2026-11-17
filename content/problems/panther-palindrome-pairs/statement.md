@@ -26,7 +26,7 @@ Print one integer: the number of mirror pairs in the pile.
 
 ## Constraints
 
-- $1 \le n \le 20000$
+- $1 \le n \le 1000$
 - Each tag has between $1$ and $10$ lowercase letters.
 
 ## Example

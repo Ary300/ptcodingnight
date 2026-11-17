@@ -2,16 +2,30 @@
 
 Usage: python3 generator.py <seed> > case.in
 
-Deterministic per seed. Small seeds produce tiny inputs; large seeds push the
-input toward the constraint ceiling.
+Deterministic per seed. Small seeds produce tiny inputs; large seeds produce
+the largest generated tests. Those stay moderate on purpose (this is a casual
+contest): at most MAX_Q pairs, starts up to 10^5 and jumps up to 10^3, so every
+meeting mark is at most about 10^8 and a student who simply simulates the hops
+one beep at a time finishes well inside the time limit with 32-bit integers.
+
+Which test came from where:
+  01, 02        the two statement samples, written by hand (never regenerate)
+  03 - 08       hand-written edge cases: all zero, the ends of the strip,
+                five identical pairs, both rovers parked, leapfrogs, near misses
+  09            seed 37
+  10            seed 88
+  11            seed 640
+  12            seed 977
+  13            seed 4001
+  14            seed 4002
 """
 
 import random
 import sys
 
-MAX_Q = 20000
-MAX_START = 10 ** 9
-MAX_JUMP = 10 ** 6
+MAX_Q = 800
+MAX_START = 10 ** 5
+MAX_JUMP = 10 ** 3
 
 
 def size_for_seed(seed: int) -> tuple[int, int, int]:
@@ -21,7 +35,7 @@ def size_for_seed(seed: int) -> tuple[int, int, int]:
     if seed <= 100:
         return (10 + seed % 51, 1000, 50)
     if seed <= 1000:
-        return (500 + seed % 2501, 10 ** 6, 1000)
+        return (200 + seed % 301, 10 ** 4, 100)
     return (MAX_Q, MAX_START, MAX_JUMP)
 
 

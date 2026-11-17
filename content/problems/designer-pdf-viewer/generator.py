@@ -8,6 +8,16 @@ ceiling (seed // 5 is the size step). Seed % 5 selects a structural shape so
 that degenerate cases (all-equal heights, minimum heights, maximum heights,
 one-letter words, single-letter alphabets) are reachable as well as plain
 random data.
+
+The bounds are kept moderate for a casual contest: at the ceiling an input is
+about 15 KB and the largest area is 200 * 20 = 4,000.
+
+Which seed made which test (01 and 02 are the hand-written samples shown in
+statement.md and are not generated):
+
+    03 <- 0     04 <- 2     05 <- 4     06 <- 7     07 <- 11
+    08 <- 19    09 <- 23    10 <- 31    11 <- 42    12 <- 54
+    13 <- 60    14 <- 61    15 <- 62    16 <- 63    17 <- 64
 """
 
 import random
@@ -15,8 +25,8 @@ import sys
 import string
 
 MAX_HEIGHT = 20
-MAX_Q = 500
-MAX_WORD_LEN = 500
+MAX_Q = 150
+MAX_WORD_LEN = 200
 SIZE_CEILING = 60
 SIZE_STEPS = SIZE_CEILING // 5
 

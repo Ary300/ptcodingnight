@@ -28,8 +28,8 @@ decimal point:
 
 ## Constraints
 
-- $1 \le n \le 10^5$
-- $-10^9 \le a_i \le 10^9$
+- $1 \le n \le 1000$
+- $-10^6 \le a_i \le 10^6$
 
 ## Example
 

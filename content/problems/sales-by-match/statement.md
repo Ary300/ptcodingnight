@@ -21,7 +21,7 @@ bin. Each glove may be used in at most one pair.
 
 ## Constraints
 
-- $1 \le n \le 200000$
+- $1 \le n \le 1000$
 - $1 \le c_i \le 1000000$ for every $i$
 
 ## Example

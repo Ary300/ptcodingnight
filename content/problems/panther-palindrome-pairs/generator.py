@@ -2,26 +2,39 @@
 
 Usage: python3 generator.py <seed>
 
-Deterministic per seed. Small seeds produce a few tags; the size ceiling is reached once
-the seed passes 1000. The seed also picks the shape of the pile so the test set covers a
-single tag, a pile with no mirror pairs at all, a pile of identical palindromes (the
-answer is n choose 2, the largest possible), tags from a two-letter alphabet where mirrors
-are common, and the biggest pile the constraints allow.
+Deterministic per seed. Small seeds produce a few tags: the ceiling on n climbs by 20 tags
+per seed and reaches MAX_N at seed 50. From seed 1000 on, half the seeds use exactly MAX_N
+tags. The seed also picks the shape of the pile so the test set covers a single tag, a pile
+with no mirror pairs at all, a pile of identical palindromes (the answer is n choose 2, the
+largest possible), tags from a two-letter alphabet where mirrors are common, and the biggest
+pile the constraints allow.
+
+The tests were made from these seeds (01 and 02 are the hand-written samples):
+
+    03 <- 0     04 <- 1     05 <- 2     06 <- 3     07 <- 10    08 <- 18
+    09 <- 120   10 <- 500   11 <- 900   12 <- 1000  13 <- 1004  14 <- 1006
+    15 <- 1059  16 <- 1019
+
+15 and 16 were seeds 1009 and 1010 when MAX_N was 20000. At the new ceiling those two both
+came out as three-letter piles, so they were swapped for 1059 (1000 copies of `abbbba`, the
+largest possible answer) and 1019 (1000 tags with no mirror pair at all).
+
+MAX_N is 1000 so a casual contest's quadratic solution finishes well inside the time limit
+and the largest answer, 1000 choose 2 = 499500, fits a 32-bit int with room to spare. It was
+20000 once; the growth of 20 tags per seed is the old curve's slope, so tests 03 to 08 came
+out byte-identical when the ceiling dropped.
 """
 
 import random
 import string
 import sys
 
-MAX_N = 20_000
+MAX_N = 1_000
+GROWTH_PER_SEED = 20
+FULL_SIZE_SEED = 1000
 MAX_LEN = 10
 
 LETTERS = string.ascii_lowercase
-
-
-def scale(seed: int) -> float:
-    """0.0 for tiny seeds, 1.0 once the seed reaches 1000."""
-    return min(seed, 1000) / 1000.0
 
 
 def random_tag(rng: random.Random, alphabet: str, max_len: int) -> str:
@@ -62,10 +75,10 @@ def build(rng: random.Random, n: int, shape: float) -> list[str]:
 def main() -> None:
     seed = int(sys.argv[1])
     rng = random.Random(seed)
-    t = scale(seed)
 
-    n = rng.randint(1, max(1, int(round(1 + t * (MAX_N - 1)))))
-    if t >= 1.0 and rng.random() < 0.5:
+    ceiling = min(MAX_N, 1 + GROWTH_PER_SEED * seed)
+    n = rng.randint(1, ceiling)
+    if seed >= FULL_SIZE_SEED and rng.random() < 0.5:
         n = MAX_N
     tags = build(rng, n, rng.random())
 

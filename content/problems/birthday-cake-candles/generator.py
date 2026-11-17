@@ -7,17 +7,25 @@ the constraint ceiling. The seed also selects the shape of the height list so
 the test set covers degenerate cases (single candle, every candle equal, a
 unique tallest candle hiding in a near-flat crowd, both height bounds) and
 not just uniform noise.
+
+Tests 01-10 are hand-written. The rest came from these seeds:
+  11 <- 7, 12 <- 15, 13 <- 20, 14 <- 23, 15 <- 28, 16 <- 30,
+  17 <- 324, 18 <- 319, 19 <- 320  (the last three sit at the n ceiling)
+
+The ceilings are sized for a casual contest: n at most 1,000 and heights at
+most 10^6, so every value fits a 32-bit int and any natural solution, sorting
+included, finishes instantly.
 """
 
 import random
 import sys
 
-MAX_N = 100000
-MAX_H = 10**7
+MAX_N = 1000
+MAX_H = 10**6
 
 
 def choose_n(seed: int) -> int:
-    """Grow with the seed: seed 1 -> 1 candle, seed >= 317 -> the ceiling."""
+    """Grow with the seed: seed 1 -> 1 candle, seed >= 32 -> the ceiling."""
     return max(1, min(MAX_N, seed * seed))
 
 

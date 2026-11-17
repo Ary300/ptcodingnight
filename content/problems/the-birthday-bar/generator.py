@@ -7,19 +7,33 @@ the constraint ceiling. The seed also selects the shape of the bar so the test
 set covers degenerate cases (single square, all squares equal, sums that sit
 one off the target everywhere, targets that every window hits) and not just
 uniform noise.
+
+Tests 01-02 are the statement samples and 03-10 are hand-written edge cases.
+The rest come from this generator:
+
+    seed  24 -> tests/11.in   n = 598,  shape 4 (ascending sawtooth)
+    seed  29 -> tests/12.in   n = 858,  shape 4 (descending sawtooth)
+    seed  30 -> tests/13.in   n = 917,  shape 0 (uniform noise)
+    seed  47 -> tests/14.in   n = 1000, shape 2 (target read off a window)
+    seed 158 -> tests/15.in   n = 1000, shape 3 (low digits, near-miss target)
+    seed 318 -> tests/16.in   n = 1000, shape 3 (low digits, near-miss target)
+    seed 317 -> tests/17.in   n = 1000, shape 2 (target read off a window)
+
+The ceiling is kept at 1,000 squares for a casual contest; a straightforward
+O(n * m) count runs in well under a second at that size.
 """
 
 import random
 import sys
 
-MAX_N = 100000
+MAX_N = 1000
 MAX_DIGIT = 9
 MAX_D = 31
 MAX_M = 12
 
 
 def choose_n(seed: int, rng: random.Random) -> int:
-    """Grow with the seed: seed 1 -> a few squares, seed >= 317 -> the ceiling."""
+    """Grow with the seed: seed 1 -> a few squares, seed >= 32 -> the ceiling."""
     return max(1, min(MAX_N, seed * seed + rng.randint(0, seed)))
 
 

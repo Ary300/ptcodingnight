@@ -2,18 +2,42 @@
 
 Usage: python3 generator.py <seed>
 
-Deterministic per seed. Small seeds produce short ledgers; the size ceiling is reached once
-the seed passes 1000. The seed also picks the shape of the ledger so the test set covers a
-single student making many trips, many students who each sign once and stay out, trips
-that open and close in the same minute, a closing bell that lands on the last signature,
-and the biggest ledger the constraints allow.
+Deterministic per seed. Small seeds produce short ledgers. The ramp climbs toward RAMP_N
+signatures as the seed approaches 1000, and every ledger is clamped to MAX_N, so seeds past
+about 10 already reach the ceiling. The seed also picks the shape of the ledger so the test
+set covers a single student making many trips, many students who each sign once and stay
+out, trips that open and close in the same minute, a closing bell that lands on the last
+signature, and the biggest ledger the constraints allow.
+
+The ceiling is a casual contest size: a student who loops over every distinct name and
+rescans the whole ledger for each one still finishes well inside the time limit. Every
+minute and every total is at most 1440, so nothing comes near a 32-bit int.
+
+Tests 01 and 02 are the hand-written samples from the statement. The rest come from these
+seeds:
+
+    03: 0     one signature, still out at closing
+    04: 1     everyone signs once, all in the same minute
+    05: 2     three students with several trips each
+    06: 4     six students, every signature in one minute
+    07: 7     two lookalike names ("a" and "aa"), every signature in one minute
+    08: 8     one student making many trips, closing on the last signature
+    09: 15    nearly everyone signs once and stays out, all in one minute
+    10: 77    the ceiling, nearly everyone signs once, spread over the day
+    11: 127   a large roster with repeat visitors, closing at 1440 on the last signature
+    12: 350   the ceiling, a lookalike roster from a tiny alphabet across the whole day
+    13: 1004  the ceiling, a large roster, closing on the last signature
+    14: 1009  the ceiling, closing at 1440 one minute after the last signature
+    15: 1012  the ceiling, one student making every trip
+    16: 1006  the ceiling, a large roster, closing on the last signature
 """
 
 import random
 import string
 import sys
 
-MAX_N = 100_000
+MAX_N = 1_000
+RAMP_N = 100_000
 MAX_CLOSING = 1440
 MAX_NAME = 12
 
@@ -68,7 +92,7 @@ def main() -> None:
     rng = random.Random(seed)
     t = scale(seed)
 
-    n = rng.randint(1, max(1, int(round(1 + t * (MAX_N - 1)))))
+    n = min(MAX_N, rng.randint(1, max(1, int(round(1 + t * (RAMP_N - 1))))))
     if t >= 1.0 and rng.random() < 0.5:
         n = MAX_N
     closing = rng.randint(1, MAX_CLOSING) if rng.random() < 0.8 else MAX_CLOSING

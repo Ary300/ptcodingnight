@@ -25,9 +25,9 @@ no single toy is affordable, print $0$.
 
 ## Constraints
 
-- $1 \le n \le 10^5$
-- $1 \le k \le 10^{14}$
-- $1 \le p_i \le 10^9$
+- $1 \le n \le 1000$
+- $1 \le k \le 10^9$
+- $1 \le p_i \le 10^6$
 
 ## Example
 

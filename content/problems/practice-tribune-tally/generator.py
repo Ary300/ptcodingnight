@@ -2,25 +2,45 @@
 
 Usage: python3 generator.py <seed>
 
-Deterministic per seed. Small seeds produce tiny ledgers; seed >= 317 pushes
-both n and q to the constraint ceiling. seed % 6 selects the ledger shape so
-the test set covers degenerate cases (one word only, all-distinct words, a
-dominant word, every query identical) and not just uniform noise. Seeds
-divisible by 7 additionally force every word to the maximum length of 20.
+Deterministic per seed. Small seeds produce tiny ledgers; seed >= 23 pushes
+n to the constraint ceiling of 500 ledger lines (q is capped at 300). seed % 6
+selects the ledger shape so the test set covers degenerate cases (one word
+only, all-distinct words, a dominant word, every query identical) and not just
+uniform noise. Seeds divisible by 7 additionally force every word to the
+maximum length of 20.
+
+The bounds are kept small on purpose (casual contest): the largest input stays
+near 20 KB and every number fits comfortably in a 32-bit int.
+
+Test map:
+  01, 02  hand-written samples (statement.md)
+  03      hand-written: n = q = 1, one-letter word that hits
+  04      hand-written: n = q = 1, largest issue number, 20-letter word,
+          query differs only in its last letter (a miss)
+  05      seed 7   n = 49,  shape 1 (one word, one issue), fixed length
+  06      seed 8   n = 64,  shape 2 (one word, all-distinct issues)
+  07      seed 9   n = 81,  shape 3 (every line a distinct word)
+  08      seed 12  n = 144, shape 0 (uniform noise)
+  09      seed 18  n = 324, shape 0 (uniform noise)
+  10      seed 21  n = 441, shape 3 (every line a distinct word), fixed length
+  11      seed 24  n = 500, shape 0 (uniform noise)
+  12      seed 28  n = 500, shape 4 (dominant word), fixed length
+  13      seed 29  n = 500, shape 5 (every query identical)
+  14      seed 27  n = 500, shape 3 (every line a distinct word)
 """
 
 import random
 import string
 import sys
 
-MAX_N = 100000
-MAX_Q = 100000
-MAX_ISSUE = 10**9
+MAX_N = 500
+MAX_Q = 300
+MAX_ISSUE = 10**6
 MAX_WORD_LEN = 20
 
 
 def choose_n(seed: int) -> int:
-    """Grow with the seed: seed 1 -> 1 line, seed >= 317 -> the ceiling."""
+    """Grow with the seed: seed 1 -> 1 line, seed >= 23 -> the ceiling."""
     return max(1, min(MAX_N, seed * seed))
 
 
@@ -73,7 +93,7 @@ def build_case(seed: int, rng: random.Random) -> tuple[list[tuple[int, str]], li
         ledger = [(pick_issue(rng, issue_pool), word) for word in vocab]
     elif shape == 4:
         # One dominant word buried in a long tail.
-        vocab = make_vocab(rng, max(2, min(n, 500)), fixed_len)
+        vocab = make_vocab(rng, max(2, min(n, 50)), fixed_len)
         winner = vocab[0]
         ledger = []
         for _ in range(n):
