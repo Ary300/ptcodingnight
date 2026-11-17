@@ -195,6 +195,8 @@ test.describe("the projector", () => {
     await page.setViewportSize({ width: 1280, height: 720 });
     await page.waitForTimeout(300);
     expect(await overlaps(page)).toEqual([]);
+    // Only the board scrolls. The stage once scrolled itself on this click and hid the title.
+    await expect(page.getByRole("heading", { level: 1 })).toBeInViewport({ ratio: 1 });
     await page.screenshot({ path: join(SHOTS_DIR, "projector-expanded-1280x720.png") });
 
     await page.getByRole("button", { name: "Collapse all" }).click();

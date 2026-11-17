@@ -55,7 +55,14 @@
 
   position: fixed;
   inset: 0;
-  overflow: hidden;
+  /*
+    `clip`, not `hidden`. A `hidden` box is still a scroll container, and the crest watermark
+    overflows this one by about 86px at 1280x720. Once the team board became a scroller of its
+    own, a click on Expand all scrolled the STAGE by exactly that much and pushed the title off
+    the top of the wall. A clipped box cannot be scrolled by anything; the board region inside
+    it is the only thing on the projector that scrolls.
+  */
+  overflow: clip;
   /*
     WHITE, like Codeforces. This was --ink on --paper and the room said it looked wrong.
 
