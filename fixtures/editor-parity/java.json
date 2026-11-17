@@ -779,51 +779,6 @@
     "note": "serr prints to standard error."
   },
   {
-    "id": "template-psvm",
-    "behavior": "template",
-    "before": "public class Main {\n    psvm|\n}\n",
-    "keys": [
-      "Tab"
-    ],
-    "after": "public class Main {\n    public static void main(String[] args) {\n        |\n    }\n}\n",
-    "note": "psvm in a class body writes the main method and puts the caret on its indented body line."
-  },
-  {
-    "id": "template-main",
-    "behavior": "template",
-    "before": "public class Main {\n    main|\n}\n",
-    "keys": [
-      "Tab"
-    ],
-    "after": "public class Main {\n    public static void main(String[] args) {\n        |\n    }\n}\n",
-    "note": "main is a second abbreviation for the same main method."
-  },
-  {
-    "id": "template-fori",
-    "behavior": "template",
-    "before": "import java.util.Scanner;\n\npublic class Main {\n    public static void main(String[] args) {\n        Scanner in = new Scanner(System.in);\n        int n = in.nextInt();\n        fori|\n    }\n}\n",
-    "keys": [
-      "Tab",
-      "Tab",
-      "n",
-      "Tab"
-    ],
-    "after": "import java.util.Scanner;\n\npublic class Main {\n    public static void main(String[] args) {\n        Scanner in = new Scanner(System.in);\n        int n = in.nextInt();\n        for (int i = 0; i < n; i++) {\n            |\n        }\n    }\n}\n",
-    "note": "fori stops first on the index name (i, kept with Tab), then on the empty limit (n typed), then Tab ends in the indented body."
-  },
-  {
-    "id": "template-iter",
-    "behavior": "template",
-    "before": "import java.util.List;\n\npublic class Main {\n    static void show(List<String> words) {\n        iter|\n    }\n}\n",
-    "keys": [
-      "Tab",
-      "Tab",
-      "Tab"
-    ],
-    "after": "import java.util.List;\n\npublic class Main {\n    static void show(List<String> words) {\n        for (String word : words) {\n            |\n        }\n    }\n}\n",
-    "note": "iter fills the only iterable in scope (words), its element type and a singular name. Tab keeps words, Tab keeps word, and the last Tab ends in the body."
-  },
-  {
     "id": "template-ifn",
     "behavior": "template",
     "before": "public class Main {\n    static int len(String s) {\n        ifn|\n        return s.length();\n    }\n}\n",
