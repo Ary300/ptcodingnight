@@ -4,17 +4,24 @@ import {
   useCallback,
   useEffect,
   useId,
+  useImperativeHandle,
   useLayoutEffect,
   useMemo,
   useRef,
   useState,
   type ReactNode,
+  type Ref,
   type UIEvent,
 } from "react";
 
 import { Button } from "@/components/ui";
 
 import { CompletionPopup } from "./CompletionPopup";
+import type { DiagnosticsInput } from "./decorations/diagnostics";
+import { offsetOfLineColumn, type EditorHandle } from "./decorations/goto";
+import { OverlayContent } from "./decorations/OverlayContent";
+import { useDecorations } from "./decorations/useDecorations";
+import { EditorGutter } from "./gutter";
 import { EditorStatusBar } from "./EditorStatusBar";
 import { tokenizeCached, type TokenKind } from "./highlight";
 import { LANGUAGE_LABEL, LANGUAGE_TEMPLATE, type CodeEditorProps } from "./types";
@@ -152,6 +159,10 @@ export interface CodeEditorSurfaceProps extends CodeEditorProps {
    * keeps its own floor, cap and resize handle.
    */
   readonly fill?: boolean;
+  /** The last run's compile or runtime error lines, marked in the gutter and underlined. */
+  readonly diagnostics?: DiagnosticsInput | null;
+  /** Lets the Results drawer move the caret to a line the compiler named. */
+  readonly handleRef?: Ref<EditorHandle>;
 }
 
 export function CodeEditorSurface({
@@ -164,6 +175,8 @@ export function CodeEditorSurface({
   label,
   toolbarStart,
   fill = false,
+  diagnostics = null,
+  handleRef,
 }: CodeEditorSurfaceProps) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const gutterRef = useRef<HTMLDivElement | null>(null);
@@ -185,11 +198,14 @@ export function CodeEditorSurface({
    * on its own.
    */
   const [caret, setCaret] = useState({ line: 1, column: 1 });
+  // The selection as offsets, for the on-screen marks (decorations/).
+  const [selection, setSelection] = useState<readonly [number, number]>([0, 0]);
   const syncCaret = useCallback((element: HTMLTextAreaElement | null) => {
     if (element === null) return;
     const upTo = element.value.slice(0, element.selectionStart);
     const lines = upTo.split("\n");
     setCaret({ line: lines.length, column: (lines[lines.length - 1]?.length ?? 0) + 1 });
+    setSelection([element.selectionStart, element.selectionEnd]);
   }, []);
 
   /**
@@ -263,6 +279,42 @@ export function CodeEditorSurface({
     onSubmitShortcut,
     syncCaret,
   });
+  /* ---- on-screen marks: brackets, usages, caret row, indent guides, error lines ---- */
+
+  // Offsets past the end mean the value changed under a stale selection; clamp rather than mark.
+  const decorations = useDecorations({
+    value,
+    tokens,
+    selectionStart: Math.min(selection[0], value.length),
+    selectionEnd: Math.min(selection[1], value.length),
+    diagnostics,
+    indentUnit: profile?.indentUnit.length ?? 4,
+  });
+
+  useImperativeHandle(
+    handleRef,
+    (): EditorHandle => ({
+      focus: () => textareaRef.current?.focus(),
+      goTo: (line, column) => {
+        const element = textareaRef.current;
+        if (element === null) return;
+        const offset = offsetOfLineColumn(element.value, line, column);
+        completion.close();
+        element.focus();
+        element.setSelectionRange(offset, offset);
+        // Centre the line when it is off screen, as IntelliJ's navigation does.
+        const lineHeight = Number.parseFloat(getComputedStyle(element).lineHeight) || 20;
+        const row = element.value.slice(0, offset).split("\n").length - 1;
+        const top = row * lineHeight;
+        if (top < element.scrollTop || top + lineHeight > element.scrollTop + element.clientHeight) {
+          element.scrollTop = Math.max(0, top - element.clientHeight / 2);
+        }
+        syncCaret(element);
+      },
+    }),
+    [completion, syncCaret],
+  );
+
   const listboxId = useId();
   const optionId = useCallback((index: number) => `${listboxId}-option-${index}`, [listboxId]);
   // The help line names the modifier this keyboard actually has, and a template this language has.
@@ -306,6 +358,7 @@ export function CodeEditorSurface({
     // `setSelectionRange` on a collapsed caret fires no `select` event, so the derived caret
     // state has to be moved by hand or Line/Col keeps showing where the old code ended.
     setCaret({ line: 1, column: 1 });
+    setSelection([0, 0]);
     setConfirmingReset(false);
   }, [applyEdit, completion, template]);
 
@@ -559,40 +612,33 @@ export function CodeEditorSurface({
           if (event.target === event.currentTarget) setSwappingLanguage(false);
         }}
       >
-        <div
-          ref={gutterRef}
-          aria-hidden="true"
-          className="numeric shrink-0 overflow-hidden border-r border-rule-hair-inverse bg-paper/5 py-3 pr-2 pl-3 text-right select-none"
-          // `height` pins the gutter to the textarea's measured height so its per-line divs can
-          // never stretch the band past the box the student actually types in. Null only before
-          // the first layout-effect measurement, which runs before paint.
+        {/*
+          `height` pins the gutter to the textarea's measured height so its per-line divs can
+          never stretch the band past the box the student actually types in. Null only before
+          the first layout-effect measurement, which runs before paint.
+        */}
+        <EditorGutter
+          gutterRef={gutterRef}
+          lineCount={lineCount}
+          caretLine={caret.line}
+          diagnostics={decorations.diagnostics}
           style={{ ...SHARED_TEXT, height: gutterHeight ?? undefined }}
-        >
-          {Array.from({ length: lineCount }, (_unused, index) => (
-            <div
-              key={index}
-              // The caret's own row, marked the way HackerRank marks it — but in the gutter
-              // rather than as a band across the code, because a band would have to be redrawn
-              // on every keystroke and horizontal scroll to stay under the right characters.
-              className={index + 1 === caret.line ? "text-paper" : "text-paper/55"}
-            >
-              {index + 1}
-            </div>
-          ))}
-        </div>
+        />
 
         <div className="relative min-w-0 flex-1">
           <pre
             ref={overlayRef}
             aria-hidden="true"
-            className="pointer-events-none absolute inset-0 overflow-hidden p-3 font-mono whitespace-pre"
+            // `isolate`: the caret row and indent guides paint under the text (decorations/).
+            className="pointer-events-none absolute inset-0 isolate overflow-hidden p-3 font-mono whitespace-pre"
             style={{ ...SHARED_TEXT }}
           >
-            {tokens.map((token, index) => (
-              <span key={index} className={TOKEN_CLASS[token.kind]}>
-                {token.value}
-              </span>
-            ))}
+            <OverlayContent
+              segments={decorations.segments}
+              tokenClass={TOKEN_CLASS}
+              guides={decorations.guides}
+              caretLine={decorations.collapsed ? caret.line : null}
+            />
             {/* A trailing newline leaves the last row blank; this keeps the layer as tall as the
                 textarea so the final line never sits over nothing. */}
             {"\n"}
