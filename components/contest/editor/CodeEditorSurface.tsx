@@ -15,6 +15,7 @@ import {
 import { Button } from "@/components/ui";
 
 import { CompletionPopup } from "./CompletionPopup";
+import { EditorStatusBar } from "./EditorStatusBar";
 import { tokenize, type TokenKind } from "./highlight";
 import { LANGUAGE_LABEL, LANGUAGE_TEMPLATE, type CodeEditorProps } from "./types";
 import { useEditorKeys } from "./useEditorKeys";
@@ -668,6 +669,37 @@ export function CodeEditorSurface({
         every keystroke, and a live region that announces the column number as you type is
         actively hostile to a screen-reader user.
       */}
+      {/*
+        Filling a pane (side by side), the sentence goes and HackerRank's slim status bar takes its
+        place: `Ln N, Col M` and a shortcuts button. The sentence screen readers need stays, as the
+        textarea's description, and the popover lists Esc-then-Tab first. See EditorStatusBar.
+      */}
+      {fill ? (
+        <>
+          <p id={hintId} className="sr-only">
+            Tab indents. Press Escape, then Tab, to move focus out of the editor. Control or
+            Command plus Enter submits.
+          </p>
+          <EditorStatusBar
+            line={caret.line}
+            column={caret.column}
+            shortcuts={[
+              { keys: ["Esc", "Tab"], action: "Move focus out of the editor" },
+              { keys: ["Tab"], action: "Indent" },
+              { keys: ["Ctrl / Cmd + Enter"], action: "Submit for judging" },
+              ...(profile === null
+                ? []
+                : [
+                    { keys: [`${modLabel} + /`], action: "Comment or uncomment the line" },
+                    { keys: [`${modLabel} + D`], action: "Duplicate the line" },
+                  ]),
+              ...(profile === null || templateExample === ""
+                ? []
+                : [{ keys: [templateExample, "Tab"], action: "Expand a template" }]),
+            ]}
+          />
+        </>
+      ) : (
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-t border-rule-edge px-3 py-2">
         <p id={hintId} className="text-ink/70" style={{ fontSize: "var(--text-xs)" }}>
           Tab indents. Press <kbd className="font-mono">Esc</kbd> then{" "}
@@ -693,6 +725,7 @@ export function CodeEditorSurface({
           Line: {caret.line} Col: {caret.column}
         </p>
       </div>
+      )}
 
       <p aria-live="polite" className="sr-only">
         {tabMovesFocus ? "Tab will now move focus out of the editor." : "Tab will insert an indent."}

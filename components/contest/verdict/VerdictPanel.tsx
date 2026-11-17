@@ -60,6 +60,12 @@ export interface VerdictPanelProps {
   /** The language and code this result is for, so a Java compile error can say what to change. */
   language?: Language | null;
   source?: string | null;
+  /**
+   * Side by side, the panel sits in the Results drawer under HackerRank's copy-free action bar,
+   * and the organizers asked for no helper sentences there. `quiet` keeps "Sample runs are free
+   * and are not scored." for screen readers and takes it off the screen.
+   */
+  quiet?: boolean;
 }
 
 function Chip({ verdict }: { verdict: Verdict }) {
@@ -201,6 +207,7 @@ export function VerdictPanel({
   submittedAt = null,
   language = null,
   source = null,
+  quiet = false,
 }: VerdictPanelProps) {
   // A sample run's compile error arrives as its one CE row rather than in `compileError`.
   const hint = compileHint(
@@ -321,7 +328,7 @@ export function VerdictPanel({
       )}
 
       {mode === "samples" && (
-        <p className="mt-2 text-paper/60" style={{ fontSize: "var(--text-xs)" }}>
+        <p className={quiet ? "sr-only" : "mt-2 text-paper/60"} style={{ fontSize: "var(--text-xs)" }}>
           Sample runs are free and are not scored.
         </p>
       )}

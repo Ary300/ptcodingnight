@@ -1,6 +1,7 @@
 import {
   parseLayout,
   parseSplit,
+  SIDE_BY_SIDE_DEFAULT_MIN_WIDTH_PX,
   SIDE_BY_SIDE_MIN_WIDTH_PX,
   type ProblemLayout,
 } from "./split-layout";
@@ -12,6 +13,10 @@ import {
  * the next problem and after a reload, and nothing breaks when storage is blocked. Every read and
  * write is guarded, because a private window or a locked-down school profile can make
  * `localStorage` throw on access.
+ *
+ * The layout store holds the student's CHOICE, which is `null` until they make one, so the page
+ * can tell "never chose" (follow the window width) from "chose stacked" (keep stacked on a wide
+ * screen). `resolveLayout` in `split-layout.ts` turns the choice and the width into a layout.
  *
  * Shaped for `useSyncExternalStore`, like `rememberedLanguageStore`, so there is no effect racing
  * the first render to apply the stored value.
@@ -66,13 +71,14 @@ export function rememberSplit(split: number): void {
   notify();
 }
 
+/** The student's own choice, or `null` before they have made one. */
 export const layoutStore = {
   subscribe,
-  getSnapshot: (): ProblemLayout => {
+  getSnapshot: (): ProblemLayout | null => {
     const stored = read(LAYOUT_KEY);
     return stored === null && layoutInMemory !== null ? layoutInMemory : parseLayout(stored);
   },
-  getServerSnapshot: (): ProblemLayout => parseLayout(null),
+  getServerSnapshot: (): ProblemLayout | null => null,
 };
 
 export const splitStore = {
@@ -84,15 +90,28 @@ export const splitStore = {
   getServerSnapshot: (): number => parseSplit(null),
 };
 
-const WIDE_QUERY = `(min-width: ${SIDE_BY_SIDE_MIN_WIDTH_PX}px)`;
+interface MediaStore {
+  readonly subscribe: (listener: () => void) => () => void;
+  readonly getSnapshot: () => boolean;
+  readonly getServerSnapshot: () => boolean;
+}
+
+function mediaStore(query: string): MediaStore {
+  return {
+    subscribe(listener) {
+      const list = window.matchMedia(query);
+      list.addEventListener("change", listener);
+      return () => list.removeEventListener("change", listener);
+    },
+    getSnapshot: () => window.matchMedia(query).matches,
+    getServerSnapshot: () => false,
+  };
+}
 
 /** Whether the window is wide enough for two panes. False on the server and on phones. */
-export const wideViewportStore = {
-  subscribe(listener: () => void): () => void {
-    const query = window.matchMedia(WIDE_QUERY);
-    query.addEventListener("change", listener);
-    return () => query.removeEventListener("change", listener);
-  },
-  getSnapshot: (): boolean => window.matchMedia(WIDE_QUERY).matches,
-  getServerSnapshot: (): boolean => false,
-};
+export const wideViewportStore = mediaStore(`(min-width: ${SIDE_BY_SIDE_MIN_WIDTH_PX}px)`);
+
+/** Whether the window is wide enough for side by side to be the default. */
+export const roomyViewportStore = mediaStore(
+  `(min-width: ${SIDE_BY_SIDE_DEFAULT_MIN_WIDTH_PX}px)`,
+);

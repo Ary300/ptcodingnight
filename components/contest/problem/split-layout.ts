@@ -2,27 +2,54 @@
  * The rules of the problem page's two layouts, as pure functions.
  *
  * "Stacked" is the page as it has always been: statement across the measure, editor below.
- * "Side by side" is HackerRank's split, statement on the left and the editor on the right with a
- * divider between them. Everything here is free of `window` so it is a unit test, and the parts
- * that touch storage and media queries live in `split-preference.ts`.
+ * "Side by side" is HackerRank's test editor: under the site's top bar the workspace takes the
+ * whole window, the statement in a pane on the left and the editor in a pane on the right, with
+ * a full-height divider between them. Everything here is free of `window` so it is a unit test;
+ * the parts that touch storage and media queries live in `split-preference.ts`.
  */
 
 export type ProblemLayout = "stacked" | "side";
 
-export const DEFAULT_LAYOUT: ProblemLayout = "stacked";
-
-/** Below this width the page is always stacked. Tailwind's `lg`, so CSS and JS agree. */
+/** Below this width the page is always stacked and no toggle is offered. Tailwind's `lg`. */
 export const SIDE_BY_SIDE_MIN_WIDTH_PX = 1024;
 
-/** The left pane's share of the split, in percent. Each pane keeps at least 30%. */
-export const SPLIT_MIN = 30;
-export const SPLIT_MAX = 70;
-export const SPLIT_DEFAULT = 50;
+/**
+ * From this width up, a student who has never chosen gets side by side. Between 1024 and this
+ * the split is offered but not the default: two panes in a 1100px window leave the editor about
+ * 650px, which works, but is a choice a student should make rather than find.
+ */
+export const SIDE_BY_SIDE_DEFAULT_MIN_WIDTH_PX = 1280;
+
+/** The left pane's share of the split, in percent. Each pane keeps at least a quarter. */
+export const SPLIT_MIN = 25;
+export const SPLIT_MAX = 75;
+/** HackerRank's proportion: the statement a little narrower than the editor. */
+export const SPLIT_DEFAULT = 40;
 /** How far one arrow press moves the divider. */
 export const SPLIT_STEP = 5;
 
-export function parseLayout(raw: string | null): ProblemLayout {
-  return raw === "side" || raw === "stacked" ? raw : DEFAULT_LAYOUT;
+/** A remembered choice, or `null` when the student has never chosen (or storage holds junk). */
+export function parseLayout(raw: string | null): ProblemLayout | null {
+  return raw === "side" || raw === "stacked" ? raw : null;
+}
+
+export interface LayoutFacts {
+  /** What the student chose, if they ever did. */
+  readonly choice: ProblemLayout | null;
+  /** The window is at least `SIDE_BY_SIDE_MIN_WIDTH_PX` wide. */
+  readonly wide: boolean;
+  /** The window is at least `SIDE_BY_SIDE_DEFAULT_MIN_WIDTH_PX` wide. */
+  readonly roomy: boolean;
+}
+
+/**
+ * The layout the page shows. Too narrow wins over everything, then the student's own choice,
+ * then the width-based default.
+ */
+export function resolveLayout({ choice, wide, roomy }: LayoutFacts): ProblemLayout {
+  if (!wide) return "stacked";
+  if (choice !== null) return choice;
+  return roomy ? "side" : "stacked";
 }
 
 /** Whole percent, inside the bounds. A non-finite value is the default rather than an edge. */
@@ -60,39 +87,4 @@ export function splitAfterKey(current: number, key: string): number | null {
     default:
       return null;
   }
-}
-
-/**
- * The box the split occupies, from facts the caller measures.
- *
- * `bleed` widens the split past the page's content column on each side, up to a 16px gutter
- * from the window edge, because two panes inside a 1120px column leave each about 560px and the
- * editor needs the room. `height` fills the window below the split's top edge, with a floor so a
- * short window scrolls the page rather than squashing the editor into a strip.
- */
-export interface SplitBoxInput {
-  readonly viewportWidth: number;
-  readonly viewportHeight: number;
-  readonly columnWidth: number;
-  readonly topInDocument: number;
-}
-
-export interface SplitBox {
-  readonly bleed: number;
-  readonly height: number;
-}
-
-export const SPLIT_SIDE_GUTTER_PX = 16;
-export const SPLIT_MAX_WIDTH_PX = 1760;
-export const SPLIT_MIN_HEIGHT_PX = 448;
-export const SPLIT_BOTTOM_GAP_PX = 16;
-
-export function splitBoxFor(input: SplitBoxInput): SplitBox {
-  const target = Math.min(input.viewportWidth - 2 * SPLIT_SIDE_GUTTER_PX, SPLIT_MAX_WIDTH_PX);
-  const bleed = Math.max(0, Math.floor((target - input.columnWidth) / 2));
-  const height = Math.max(
-    SPLIT_MIN_HEIGHT_PX,
-    Math.floor(input.viewportHeight - input.topInDocument - SPLIT_BOTTOM_GAP_PX),
-  );
-  return { bleed, height };
 }

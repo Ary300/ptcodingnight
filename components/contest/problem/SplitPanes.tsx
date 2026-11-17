@@ -3,47 +3,37 @@
 import {
   useCallback,
   useId,
-  useLayoutEffect,
   useRef,
   useState,
   useSyncExternalStore,
   type KeyboardEvent,
   type PointerEvent,
   type ReactNode,
-  type RefObject,
 } from "react";
 
-import {
-  SPLIT_MAX,
-  SPLIT_MIN,
-  splitAfterKey,
-  splitBoxFor,
-  splitFromPointer,
-  type SplitBox,
-} from "./split-layout";
+import { SPLIT_MAX, SPLIT_MIN, splitAfterKey, splitFromPointer } from "./split-layout";
 import { rememberSplit, splitStore } from "./split-preference";
 
 /**
- * Two panes side by side with a divider between them: HackerRank's split, the statement on the
- * left and the work on the right.
+ * Two full-height panes with a divider between them: HackerRank's test editor, the statement on
+ * the left and the editor on the right.
  *
  * ## The box
  *
- * The split fills the window from its own top edge down, so on arrival the Submit button is on
- * screen and each pane scrolls by itself: a student scrolls the statement while the editor stays
- * where it is. It also widens past the page's 1120px content column to a 16px gutter from the
- * window edge, because two halves of that column leave the editor about 70 characters.
- *
- * Both numbers are measured rather than written in CSS. The top is summed from `offsetTop`, which
- * ignores transforms, because the workspace rises in on a transform animation and a
- * `getBoundingClientRect` taken mid-rise would be 3px off for good.
+ * The split is exactly as tall as its parent (`h-full`), and the parent is the window less the
+ * site's top bar (`full-bleed.ts`). Neither pane scrolls the page: each is a column the caller
+ * fills with fixed rows and one scrolling region of its own, so the statement scrolls while the
+ * editor and its Submit button stay where they are.
  *
  * ## The divider
  *
  * The WAI-ARIA window splitter: `role="separator"`, focusable, valued as the LEFT pane's share in
- * percent. Pointer drag uses pointer capture, so the drag keeps tracking over the textarea and
- * past the window edge. Arrows step 5%, Home and End jump to the 30% and 70% bounds. The ratio is
- * remembered once a drag ends rather than on every move, because each write notifies the store.
+ * percent. It is a 1px rule the full height of the workspace inside an 8px target, with a grip
+ * at its middle that firms up on hover, focus and drag, so the rule reads as something to take
+ * hold of rather than as a border. Pointer drag uses pointer capture, so the drag keeps tracking
+ * over the textarea and past the window edge. Arrows step 5%, Home and End jump to the 25% and
+ * 75% bounds. The ratio is remembered once a drag ends rather than on every move, because each
+ * write notifies the store.
  */
 
 export interface SplitPanesProps {
@@ -52,55 +42,11 @@ export interface SplitPanesProps {
   /** Accessible names for the two panes, which are regions. */
   readonly startLabel: string;
   readonly endLabel: string;
-  readonly className?: string;
 }
 
-function documentTop(element: HTMLElement): number {
-  let top = 0;
-  let current: HTMLElement | null = element;
-  while (current !== null) {
-    top += current.offsetTop;
-    current = current.offsetParent instanceof HTMLElement ? current.offsetParent : null;
-  }
-  return top;
-}
-
-function useSplitBox(rootRef: RefObject<HTMLDivElement | null>): SplitBox | null {
-  const [box, setBox] = useState<SplitBox | null>(null);
-  useLayoutEffect(() => {
-    const root = rootRef.current;
-    const column = root?.parentElement ?? null;
-    if (root === null || column === null) return;
-    const measure = () => {
-      const next = splitBoxFor({
-        viewportWidth: document.documentElement.clientWidth,
-        viewportHeight: window.innerHeight,
-        columnWidth: column.clientWidth,
-        topInDocument: documentTop(root),
-      });
-      setBox((previous) =>
-        previous !== null && previous.bleed === next.bleed && previous.height === next.height
-          ? previous
-          : next,
-      );
-    };
-    measure();
-    // The column resizes with the window, and the title above can rewrap and move the top.
-    const observer = new ResizeObserver(measure);
-    observer.observe(column);
-    window.addEventListener("resize", measure);
-    return () => {
-      observer.disconnect();
-      window.removeEventListener("resize", measure);
-    };
-  }, [rootRef]);
-  return box;
-}
-
-export function SplitPanes({ start, end, startLabel, endLabel, className }: SplitPanesProps) {
+export function SplitPanes({ start, end, startLabel, endLabel }: SplitPanesProps) {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const startId = useId();
-  const box = useSplitBox(rootRef);
 
   const stored = useSyncExternalStore(
     splitStore.subscribe,
@@ -155,18 +101,13 @@ export function SplitPanes({ start, end, startLabel, endLabel, className }: Spli
     <div
       ref={rootRef}
       data-split-root=""
-      className={`flex ${dragging ? "cursor-col-resize select-none" : ""} ${className ?? ""}`}
-      style={{
-        height: box === null ? undefined : `${box.height}px`,
-        marginLeft: box === null ? undefined : `${-box.bleed}px`,
-        marginRight: box === null ? undefined : `${-box.bleed}px`,
-      }}
+      className={`flex h-full min-h-0 w-full ${dragging ? "cursor-col-resize select-none" : ""}`}
     >
       <section
         id={startId}
         aria-label={startLabel}
         data-split-pane="start"
-        className="min-w-0 shrink-0 overflow-y-auto overscroll-contain pt-1 pr-4 pb-6"
+        className="flex min-h-0 min-w-0 shrink-0 flex-col bg-paper"
         style={{ flexBasis: `${split}%` }}
       >
         {start}
@@ -182,37 +123,46 @@ export function SplitPanes({ start, end, startLabel, endLabel, className }: Spli
         aria-valuemin={SPLIT_MIN}
         aria-valuemax={SPLIT_MAX}
         aria-valuetext={`Problem ${split}%, editor ${100 - split}%`}
+        title="Drag to resize, or focus and use the arrow keys"
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={endDrag}
         onPointerCancel={endDrag}
         onLostPointerCapture={endDrag}
         onKeyDown={onKeyDown}
-        className="group relative flex w-3 shrink-0 cursor-col-resize touch-none justify-center"
+        // Inset ring: the divider runs the full height of a frame that clips at the window's
+        // bottom edge, so the global 2px offset ring would lose its top and bottom.
+        className="group relative z-10 flex w-2 shrink-0 cursor-col-resize touch-none justify-center focus-visible:outline-offset-[-2px]!"
       >
-        {/* The rule, full height. Firm while dragged or focused so the student sees what moves. */}
+        {/* The rule, full height. Firm while dragged, hovered or focused, so the student sees what moves. */}
         <span
           aria-hidden="true"
           className={`h-full w-px transition-colors duration-[var(--motion-press)] group-hover:bg-panther group-focus-visible:bg-panther ${
             dragging ? "bg-panther" : "bg-rule-edge"
           }`}
         />
-        {/* The grip, so the rule reads as something to take hold of rather than a border. */}
+        {/* The grip: quiet at rest, a filled handle under the pointer or the keyboard. */}
         <span
           aria-hidden="true"
-          className={`absolute top-1/2 h-10 w-1.5 -translate-y-1/2 rounded-chip border transition-colors duration-[var(--motion-press)] group-hover:border-panther group-hover:bg-panther group-focus-visible:border-panther group-focus-visible:bg-panther ${
+          className={`absolute top-1/2 flex h-12 w-2 -translate-y-1/2 flex-col items-center justify-center gap-1 rounded-chip border transition-colors duration-[var(--motion-press)] group-hover:border-panther group-hover:bg-panther group-focus-visible:border-panther group-focus-visible:bg-panther ${
             dragging ? "border-panther bg-panther" : "border-rule-firm bg-paper"
           }`}
-        />
+        >
+          {[0, 1, 2].map((dot) => (
+            <span
+              key={dot}
+              className={`h-0.5 w-0.5 rounded-full group-hover:bg-paper group-focus-visible:bg-paper ${
+                dragging ? "bg-paper" : "bg-ink/60"
+              }`}
+            />
+          ))}
+        </span>
       </div>
 
       <section
         aria-label={endLabel}
         data-split-pane="end"
-        // A flex column, so the editor panel inside can take the height the actions and the
-        // verdict leave. `px-1` and `pt-1` keep the editor's focus ring, drawn 2px outside the
-        // textarea, inside this pane's scroll box where it cannot be clipped.
-        className="flex min-w-0 flex-1 flex-col overflow-y-auto overscroll-contain pt-1 pr-1 pb-6 pl-4"
+        className="flex min-h-0 min-w-0 flex-1 flex-col bg-paper"
       >
         {end}
       </section>

@@ -52,9 +52,19 @@ export interface UploadCodeProps {
   readonly language: Language;
   readonly onLoaded: (source: string) => void;
   readonly disabled?: boolean;
+  /**
+   * "Upload code" instead of "Upload Code as File", for the side-by-side action bar where the
+   * organizers asked for HackerRank's short labels. The hidden input's name says the rest.
+   */
+  readonly compact?: boolean;
 }
 
-export function UploadCode({ language, onLoaded, disabled = false }: UploadCodeProps) {
+export function UploadCode({
+  language,
+  onLoaded,
+  disabled = false,
+  compact = false,
+}: UploadCodeProps) {
   const input = useRef<HTMLInputElement | null>(null);
   const [note, setNote] = useState<{ kind: "error" | "warn" | "ok"; text: string } | null>(null);
 
@@ -140,7 +150,7 @@ export function UploadCode({ language, onLoaded, disabled = false }: UploadCodeP
         <svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true" fill="currentColor">
           <path d="M8 1 4 5h2.5v5h3V5H12L8 1zM2 12v2h12v-2h1.5v3.5h-15V12H2z" />
         </svg>
-        Upload Code as File
+        {compact ? "Upload code" : "Upload Code as File"}
       </Button>
 
       {note !== null && (

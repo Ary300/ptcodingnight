@@ -12,6 +12,7 @@ import { contestApi, isStubBackend } from "./data/backend";
 import { clearParticipant, fetchParticipant, useParticipant } from "./data/participant";
 import { useResource } from "./data/useResource";
 import { forgetDrafts, keepOnlyDraftsOf } from "./data/draft-storage";
+import { FullBleedContext } from "./full-bleed";
 
 /**
  * The frame every competitor screen sits in.
@@ -72,6 +73,8 @@ export function CompetitorChrome({ children }: { children: ReactNode }) {
     .filter((href) => pathname === href || pathname.startsWith(`${href}/`))
     .sort((a, b) => b.length - a.length)[0];
   const participant = useParticipant();
+  // Whether the page has claimed the whole window under the bar; see `full-bleed.ts`.
+  const [fullBleed, setFullBleed] = useState(false);
 
   /**
    * Not fetched until the student is actually in a contest.
@@ -279,7 +282,18 @@ export function CompetitorChrome({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <>
+    /*
+      The frame is a box the page can claim (see `full-bleed.ts`). Normally it is a column that
+      grows with `<body>`, so the bar and main lay out exactly as they did as body's own flex
+      children. Not `display: contents`: a contents box has no geometry, and anything measuring
+      the page by its top-level boxes reads it as zero high. Claimed, it is a window-high column
+      that never scrolls: the bar keeps its height and the main takes the rest, edge to edge.
+
+      The div is always rendered and only its class changes, so claiming the frame never
+      remounts the page inside it: the editor keeps its caret, its scroll and its draft.
+    */
+    <FullBleedContext.Provider value={setFullBleed}>
+    <div className={fullBleed ? "flex h-dvh flex-col overflow-hidden" : "flex flex-1 flex-col"}>
       <a
         href="#main"
         className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 focus:rounded focus:bg-ink focus:px-3 focus:py-2 focus:text-paper"
@@ -506,9 +520,26 @@ export function CompetitorChrome({ children }: { children: ReactNode }) {
         `/sign-in` and `/join` are excluded because they are full-bleed split screens that supply
         their own grounds.
       */}
-      <main id="main" className="flex-1 bg-ink/[0.035]">
-        <div className="mx-auto w-full max-w-6xl px-4 py-6">{children}</div>
+      {/*
+        Claimed by the page, the main is a one-cell grid that fills the frame: the grid row is
+        what gives the page's own box a definite height, so a `h-full` inside it is the window
+        less the bar rather than the height of its content.
+      */}
+      <main
+        id="main"
+        className={fullBleed ? "flex min-h-0 flex-1 flex-col bg-paper" : "flex-1 bg-ink/[0.035]"}
+      >
+        <div
+          className={
+            fullBleed
+              ? "grid min-h-0 w-full flex-1 grid-cols-[minmax(0,1fr)] grid-rows-[minmax(0,1fr)]"
+              : "mx-auto w-full max-w-6xl px-4 py-6"
+          }
+        >
+          {children}
+        </div>
       </main>
-    </>
+    </div>
+    </FullBleedContext.Provider>
   );
 }
