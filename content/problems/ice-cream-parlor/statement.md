@@ -32,7 +32,7 @@ the two chosen flavors, in increasing order.
 ## Constraints
 
 - $1 \le t \le 10$
-- $2 \le n \le 1000$ for each trip
+- $2 \le n \le 500$ for each trip
 - the total of $n$ over all trips in one input does not exceed $2500$
 - $1 \le c_i \le 10^6$
 - $2 \le m \le 2 \times 10^6$
