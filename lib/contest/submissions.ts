@@ -763,6 +763,8 @@ export async function getSubmissionView(
       verdict: true,
       score: true,
       runtimeMs: true,
+      judgedAt: true,
+      effectiveAt: true,
       judgeLogRef: true,
       testResults: {
         select: {

@@ -454,6 +454,8 @@ export const AdminSubmissionRowSchema = z.object({
   runtimeMs: z.number().int().nonnegative().nullable(),
   /** null while unjudged, and for every submission judged before timings were recorded. */
   timings: AdminSubmissionTimingsSchema.nullable(),
+  /** The verdict and score on this row were set by an organizer's override, not the judge. */
+  overridden: z.boolean(),
 });
 export type AdminSubmissionRow = z.infer<typeof AdminSubmissionRowSchema>;
 
@@ -468,6 +470,11 @@ export const AdminConsoleViewSchema = z.object({
   contestId: z.string(),
   contestName: z.string(),
   frozen: z.boolean(),
+  /**
+   * ENDED or ARCHIVED. The console offered "Freeze the public board" on a contest whose final
+   * board was already public, and the API refuses it there.
+   */
+  ended: z.boolean(),
   total: z.number().int().nonnegative(),
   submissions: z.array(AdminSubmissionRowSchema),
   health: JudgeHealthViewSchema,
@@ -1149,6 +1156,12 @@ export const SubmissionViewSchema = z.object({
    * read, so nothing downstream may require this field. Never present once `verdict` is set.
    */
   queuePosition: QueuePositionSchema.optional(),
+  /**
+   * True when an organizer's override set this verdict and score rather than the judge, so the
+   * student's own list can say so. Optional so the stub backend and older responses still parse;
+   * absence means not overridden.
+   */
+  overridden: z.boolean().optional(),
 });
 export type SubmissionView = z.infer<typeof SubmissionViewSchema>;
 
