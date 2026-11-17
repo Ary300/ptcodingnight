@@ -69,10 +69,13 @@ test("the problem page opens on the verdict of the last submission made there", 
 
   await page.goto(`/contest/${problem.slug}`);
   const solution = page.getByRole("region", { name: "Your solution" });
-  await expect(solution.getByText("Accepted", { exact: true })).toBeVisible({ timeout: 30_000 });
+  // The verdict panel itself. Side by side the Results drawer's summary line says "Accepted"
+  // too, so the bare text matches twice there; the panel is the one that has to be on screen.
+  const accepted = solution.getByRole("region", { name: "Verdict" }).getByText("Accepted", { exact: true });
+  await expect(accepted).toBeVisible({ timeout: 30_000 });
 
   await page.reload();
-  await expect(solution.getByText("Accepted", { exact: true })).toBeVisible({ timeout: 30_000 });
+  await expect(accepted).toBeVisible({ timeout: 30_000 });
 });
 
 test("a Java class not named Main is told to rename it (requires the worker)", async ({

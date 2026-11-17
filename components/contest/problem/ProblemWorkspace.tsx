@@ -198,7 +198,8 @@ export function ProblemWorkspace({ slug }: ProblemWorkspaceProps) {
   const sideBySide = layout === "side";
 
   // Side by side, the Results drawer. Opened by every run and submit; folded only by the student.
-  const [resultsOpen, setResultsOpen] = useState(false);
+  // `null` until either happens, and then the drawer follows `restored` below.
+  const [resultsChoice, setResultsOpen] = useState<boolean | null>(null);
   const freeNoteId = useId();
 
   const detail = problem.data;
@@ -224,6 +225,15 @@ export function ProblemWorkspace({ slug }: ProblemWorkspaceProps) {
   }, [detail, history.data]);
 
   const stream = useVerdictStream(seed ?? restored);
+
+  /*
+    The page opens on its last verdict in BOTH layouts, so side by side the drawer starts open
+    when there is one. Folded, a restored compile error showed only "Compile error" in the summary
+    line, and the instruction that fixes it ("Rename the class Solution to Main.") sat hidden
+    inside. Derived rather than set in an effect: the history arrives after the first render, and
+    nothing the student did is overridden, because any fold, run or submit makes it their choice.
+  */
+  const resultsOpen = resultsChoice ?? restored !== null;
   const shownAction = lastAction ?? (restored !== null ? "judged" : null);
 
   const runSamples = useCallback(async () => {
