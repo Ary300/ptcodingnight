@@ -42,7 +42,7 @@ test("the homepage states the night as the organizers set it: five a team, a puz
   expect(rendered).toContain(
     "the standings on the projector update live until the last fifteen minutes, when the board freezes.",
   );
-  expect(rendered).toContain("Teams have up to five students");
+  expect(rendered).toContain("Teams have up to four students");
   expect(rendered).toContain("each team member also receives one puzzle");
   expect(rendered).not.toContain("throughout the contest");
 });

@@ -43,7 +43,7 @@ const HOW = [
 const NIGHT = [
   {
     title: "Teams",
-    body: "Teams have up to five students, and each teammate receives different problems. A team’s score is the average of its members’ scores.",
+    body: "Teams have up to four students, and each teammate receives different problems. A team’s score is the average of its members’ scores.",
   },
   {
     title: "Puzzles",

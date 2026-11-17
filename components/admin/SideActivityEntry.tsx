@@ -408,8 +408,8 @@ export function SideActivityEntry({ contestId }: SideActivityEntryProps) {
           </Select>
 
           {/*
-            Optional: which seat or student the award is for. A team of five can hand in five
-            puzzles, and "Sudoku" five times on a breakdown says nothing about which was whose.
+            Optional: which seat or student the award is for. A team of four can hand in four
+            puzzles, and "Sudoku" four times on a breakdown says nothing about which was whose.
           */}
           {selected !== undefined && !isKahoot(activity) && (
             <Select

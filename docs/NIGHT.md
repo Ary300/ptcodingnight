@@ -74,7 +74,8 @@ Each line in the teacher's email, mapped to a screen or a person.
   runs Intermediate and Advanced.
 - [ ] **Build the roster.** `/admin/contests/{id}/teams`. New team name plus its division, then
   Add a student by name onto each team, or move students between teams with the move form.
-  Teams of two to four, and one team of five if the numbers need it. Team size is the divisor in
+  Teams of two to four, never more: the API refuses a fifth member with "A team has at most 4
+  students." Team size is the divisor in
   every team score, so a wrong roster is a wrong result. The screen lists everybody on no team at
   the top; that list must be empty. A student added onto a team after the sets are assigned is
   dealt a set no teammate holds, and a student moved between teams or divisions keeps their code.
@@ -92,13 +93,13 @@ Each line in the teacher's email, mapped to a screen or a person.
   `npm run test:content` (G13), which runs each reference solution through the real judge. A
   reference that passes locally proves the algorithm only.
 - [ ] **Build the sets.** `/admin/contests/{id}/sets`. Number of sets is the size of the largest
-  team, so 5 with a team of five (the screen starts there). The recipe defaults to 1 Easy and 2
+  team, so 4 with a full team of four (the screen starts there). The recipe defaults to 1 Easy and 2
   Medium per set, which is the teacher's brief: one quick solve and two problems of 15 to 20
-  minutes each. Five sets of three is fifteen distinct problems per division, and no problem
+  minutes each. Four sets of three is twelve distinct problems per division, and no problem
   appears in two columns of one division. The same problem may be dealt to both divisions. If the bank cannot fill it, the
   screen says exactly how many more of which difficulty it needs. Leave Team questions at 0:
   there are no team problems this year. Press Build and read the grid back.
-- [ ] **Assign the sets.** Setup tab, Assign problem sets. Every student gets a letter A to E,
+- [ ] **Assign the sets.** Setup tab, Assign problem sets. Every student gets a letter A to D,
   and teammates get different letters. The slips print the letter, so do this before printing.
 - [ ] **Leave the group clock alone.** Setup tab, "Open team questions after the individual
   stretch". It only opens team questions, and there are none this year, so it should read "Team

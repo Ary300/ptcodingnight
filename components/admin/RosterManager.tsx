@@ -1034,7 +1034,7 @@ export function RosterManager({ contestId }: RosterManagerProps) {
               onChange={(event) => setSetTarget(event.target.value)}
             >
               <option value="">(no individual set)</option>
-              {/* Only this student's division: every division has its own A to E, and a list of
+              {/* Only this student's division: every division has its own A to D, and a list of
                   two identical "Set A" lines gave no way to tell them apart. */}
               {roster.problemSets
                 .filter((set) => set.divisionId === settingSet.divisionId)
@@ -1086,9 +1086,10 @@ export function RosterManager({ contestId }: RosterManagerProps) {
             className="numeric text-ink/60"
             style={{ fontSize: "var(--text-sm)" }}
           >
-            {/* No "max": the cap only ever limited students joining by themselves, which no
-                longer exists, and an organizer may field a team of five. "5/4" beside such a
-                team read as an error on a roster that was right. */}
+            {/* No "max" counter here: the API refuses a member past `maxTeamSize` with a
+                sentence saying so, and a team over the cap can only be one left from before
+                the cap was enforced, where "5/4" would read as an error the organizer cannot
+                act on from this line. */}
             {roster.teams.length} {roster.teams.length === 1 ? "team" : "teams"}
           </span>
         }

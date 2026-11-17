@@ -275,7 +275,7 @@ async function gatherPool(contestId: string): Promise<AvailableProblem[]> {
  * Which teams would break the "every teammate holds a different set" rule under `setCount`.
  *
  * Judged per (team, division): a member only draws from their own division's columns, and each
- * division gets `setCount` of them, so five teammates split 3 and 2 across two divisions fit in
+ * division gets `setCount` of them, so four teammates split 3 and 1 across two divisions fit in
  * three sets ("column A" is a different column in each division). A contest with no divisions is
  * one scope holding everybody, which is the old whole-team comparison unchanged.
  *

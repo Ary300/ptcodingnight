@@ -601,7 +601,7 @@ export function ContestLineup({
               individual/group control was. Both are answered here, in the order the columns
               appear, rather than being left to be inferred from a table.
             */}
-            Every teammate works a different SET, so a team of five needs sets A to E, each with the
+            Every teammate works a different SET, so a team of four needs sets A to D, each with the
             same shape. A group question has no set: every team works it together. The CODE is what
             a student sees beside the question, like A-E1 for the first Easy in set A.
             <span className="mt-1 block">
@@ -1258,7 +1258,7 @@ function SetShape({
         // a screen that refused it would be wrong more often than the organizer is.
         <p className="mt-1 font-semibold text-panther">
           {oneSetOnly
-            ? "Only one set exists, so every teammate would work the same questions. Add one set per member of the largest team: A to E for a team of five."
+            ? "Only one set exists, so every teammate would work the same questions. Add one set per member of the largest team: A to D for a team of four."
             : "The sets hold different numbers of questions, so teammates have unequal work."}
         </p>
       )}
