@@ -53,4 +53,25 @@ describe("data-preserving upgrade migrations", () => {
     expect(sql).toContain("'DRAFT', 'SCHEDULED', 'RUNNING', 'FROZEN'");
     expect(sql).not.toContain("'ENDED'");
   });
+
+  it("moves the team-size default back to four, and lowers only live contests with no team over four", async () => {
+    const sql = await migration("20261117120000_team_size_four");
+
+    // A NEW migration after the five one, which is applied and stays as it was.
+    expect("20261116120000_team_size_five" < "20261117120000_team_size_four").toBe(true);
+    expect(sql).toContain('ALTER COLUMN "maxTeamSize" SET DEFAULT 4');
+    expect(sql).toContain('WHERE c."maxTeamSize" = 5');
+    expect(sql).toContain("'DRAFT', 'SCHEDULED', 'RUNNING', 'FROZEN'");
+    expect(sql).not.toContain("'ENDED'");
+    expect(sql).not.toContain("'ARCHIVED'");
+    // The roster guard: a contest whose roster already holds a team of five keeps 5.
+    const guard = sql.indexOf("AND NOT EXISTS (");
+    expect(guard).toBeGreaterThan(sql.indexOf('SET "maxTeamSize" = 4'));
+    expect(sql.slice(guard)).toContain('JOIN "Participant" AS p ON p."teamId" = t."id"');
+    expect(sql.slice(guard)).toContain('WHERE t."contestId" = c."id"');
+    expect(sql.slice(guard)).toContain("HAVING COUNT(*) > 4");
+
+    const schema = await readFile(join(process.cwd(), "prisma", "schema.prisma"), "utf8");
+    expect(schema).toMatch(/maxTeamSize Int @default\(4\)/);
+  });
 });

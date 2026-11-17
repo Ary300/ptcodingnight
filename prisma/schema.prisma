@@ -298,13 +298,14 @@ model Contest {
   /// database, which is the exact problem team management exists to remove.
   teamFormationClosesAt DateTime?
 
-  /// Largest team a student may join. An organizer's guardrail, not a scoring input.
+  /// Largest team this contest allows: at most four students (organizer decision, 2026-11-17).
   ///
   /// **Team size is the divisor**, so an oversized team is not merely untidy — it dilutes every
-  /// member's contribution. Enforced when joining; an organizer can still place someone over the
-  /// limit deliberately, because a roster correction on the night must not be blocked by a
-  /// setting.
-  maxTeamSize Int @default(5)
+  /// member's contribution. Enforced on every path that puts a member on a team (an organizer
+  /// move, a join-code seat created onto a team) by `assertTeamHasRoom` in
+  /// `lib/contest/teams.ts`, and the roster reports this same column, so the number the screens
+  /// print and the number the API enforces cannot disagree.
+  maxTeamSize Int @default(4)
 
   /// Whether students may still create and join teams.
   ///
