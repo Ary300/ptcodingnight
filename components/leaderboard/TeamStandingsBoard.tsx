@@ -19,6 +19,7 @@ import {
   type SetColumn,
   type SetFact,
 } from "./team-tabs";
+import { ExpandAllControls } from "./ExpandAllControls";
 import { TeamDivisionTabs } from "./TeamDivisionTabs";
 import { TeamRosterStrip } from "./TeamRosterStrip";
 import styles from "./leaderboard.module.css";
@@ -150,6 +151,11 @@ export interface TeamStandingsBoardProps {
   openTeamIds?: ReadonlySet<string>;
   /** Projector only. Absent means the board is not expandable at all. */
   onToggleTeam?: (teamId: string) => void;
+  /**
+   * Projector only: replaces the whole open set at once, for Expand all and Collapse all. The
+   * interactive board owns its own state and needs nothing passed.
+   */
+  onSetOpenTeams?: (teamIds: ReadonlySet<string>) => void;
   /**
    * Projector only: rows each open roster strip may occupy, decided by the same screen that owns
    * `openTeamIds` — the strips share one measured height, so each one's share depends on how many
@@ -419,6 +425,7 @@ export function TeamStandingsBoard({
   highlightTeamId = null,
   openTeamIds = new Set(),
   onToggleTeam,
+  onSetOpenTeams,
   memberBlockRows,
   sideActivityBreakdown,
 }: TeamStandingsBoardProps) {
@@ -476,6 +483,42 @@ export function TeamStandingsBoard({
       return next;
     });
   };
+
+  /*
+    Expand all opens every team on THIS view; Collapse all closes every team and every player
+    inside them. Both replace the whole set, so afterwards each caret goes on toggling only its
+    own team.
+  */
+  const expandAll = (): void => {
+    const ids = new Set(visibleTeams.map((team) => team.teamId));
+    if (projector) {
+      onSetOpenTeams?.(ids);
+      return;
+    }
+    setExpanded((current) => new Set([...current, ...ids]));
+  };
+
+  const collapseAll = (): void => {
+    if (projector) {
+      onSetOpenTeams?.(new Set());
+      return;
+    }
+    setExpanded(new Set());
+    setExpandedPlayers(new Set());
+  };
+
+  const bulkControls =
+    (projector ? toggleWall !== undefined && onSetOpenTeams !== undefined : true) &&
+    visibleTeams.length > 0 ? (
+      <div className="mb-2 flex justify-end">
+        <ExpandAllControls
+          teamCount={visibleTeams.length}
+          onExpandAll={expandAll}
+          onCollapseAll={collapseAll}
+          controls={panelId}
+        />
+      </div>
+    ) : null;
 
   const togglePlayer = (playerKey: string): void => {
     setExpandedPlayers((current) => {
@@ -621,6 +664,7 @@ export function TeamStandingsBoard({
       }}
     >
       {divisionStrip}
+      {bulkControls}
 
       {/* `rounded-panel` on the interactive board only: DataTable already frames the app's other
           table that way, and two table treatments in one product is one too many. The projector
@@ -643,7 +687,12 @@ export function TeamStandingsBoard({
           still slides and nothing rises.
         */
         key={activeTabId ?? "all-teams"}
-        className={`motion-swap-in w-full overflow-x-auto border ${grid} ${projector ? "" : "rounded-panel bg-paper"}`}
+        /*
+          The projector's board region is the scroller (it scrolls the whole field vertically),
+          so this box must not become a scroll container of its own there, or the sticky header
+          row would stick to a box that never scrolls. Phones keep the sideways scroller.
+        */
+        className={`motion-swap-in w-full border ${grid} ${projector ? "" : "overflow-x-auto rounded-panel bg-paper"}`}
       >
         <table
           ref={rankSlideTable}
@@ -651,7 +700,7 @@ export function TeamStandingsBoard({
           className="w-full border-collapse"
           style={{ fontSize: projector ? size.cell : "var(--text-sm)" }}
         >
-          <thead>
+          <thead className={styles.stickyHead}>
             <tr className={headBg}>
               <th
                 scope="col"
