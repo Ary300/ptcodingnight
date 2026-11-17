@@ -164,7 +164,7 @@ test("the account menu of a join-code seat offers no Settings, and says why", as
 
   const menu = page.getByRole("menu", { name: "Account" });
   await expect(menu).toBeVisible();
-  for (const label of ["Problems", "My team", "My submissions", "Live standings"]) {
+  for (const label of ["Problems", "My team", "My submissions", "Standings"]) {
     await expect(menu.getByRole("menuitem", { name: label })).toBeVisible();
   }
   // `/settings` reads a `User` row, and a join-code seat has none: `/api/me` answers 403. A menu

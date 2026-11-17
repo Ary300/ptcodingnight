@@ -66,7 +66,9 @@ const ITEMS = [
   { href: "/contest", label: "Problems" },
   { href: "/team", label: "My team" },
   { href: "/submissions", label: "My submissions" },
-  { href: "/projector", label: "Live standings" },
+  // The team board on this laptop, read as the wall reads it. It used to open /projector, a
+  // full-screen wall built for a 1920 screen across a room.
+  { href: "/standings", label: "Standings" },
   { href: "/settings", label: "Settings" },
 ] as const;
 
@@ -79,7 +81,7 @@ const ITEMS = [
 const ACCOUNT_ONLY_HREFS: ReadonlySet<string> = new Set(["/settings"]);
 
 /** Destinations that lead nowhere in the practice arena, which has no teams. */
-const NOT_IN_PRACTICE_HREFS: ReadonlySet<string> = new Set(["/team"]);
+const NOT_IN_PRACTICE_HREFS: ReadonlySet<string> = new Set(["/team", "/standings"]);
 
 /**
  * The account picture, at a given size.
