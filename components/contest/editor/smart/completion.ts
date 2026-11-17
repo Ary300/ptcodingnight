@@ -355,9 +355,33 @@ function dedupe(items: readonly CompletionItem[]): CompletionItem[] {
  * starts at the caret's word), so a name declared elsewhere in the file is offered even when the
  * prefix already spells it in full.
  */
+/** Whether the file declares `type` itself (`struct P`, `class Node`, `record Edge`). */
+function declaresOwnType(text: string, type: string | null): boolean {
+  if (type === null || !/^[A-Za-z_]\w*$/.test(type)) return false;
+  return new RegExp(`\\b(?:struct|class|record)\\s+${type}\\b`).test(text);
+}
+
+/** The type a variable was declared with (`P p;`, `Node* cur = ...`, `P ps[10]`), or null. */
+function declaredTypeOf(text: string, qualifier: string, before: number): string | null {
+  const name = /^[A-Za-z_]\w*/.exec(qualifier)?.[0];
+  if (name === undefined) return null;
+  const pattern = new RegExp(`(?:^|[\\s(,;{])([A-Za-z_]\\w*)\\s*[*&]*\\s+[*&]*${name}\\s*(?=[;=,)\\[{(])`, "gm");
+  let found: string | null = null;
+  for (const match of text.slice(0, before).matchAll(pattern)) found = match[1] ?? null;
+  return found;
+}
+
+/**
+ * The text with every `#include` line blanked to spaces, offsets kept: `bits/stdc++.h` names no
+ * variable `stdc` and no member `h`, which the popup offered after `g[0].` and for `s`.
+ */
+function withoutIncludes(text: string): string {
+  return text.replace(/^[ \t]*#[ \t]*include\b.*$/gm, (line) => " ".repeat(line.length));
+}
+
 function fileIdentifiers(text: string, ctx: CompletionContext): string[] {
   const names = new Set<string>();
-  for (const match of text.matchAll(WORD_RUN)) {
+  for (const match of withoutIncludes(text).matchAll(WORD_RUN)) {
     const word = match[0];
     if (match.index === ctx.replaceFrom || isDigit(word[0])) continue;
     names.add(word);
@@ -429,6 +453,8 @@ function topLevelCandidates(
   const functions = fileFunctions(text, profile);
   const known = new Set<string>([
     ...profile.keywords,
+    // `main` is the template's row, not a second row for the word the file already has.
+    ...profile.templates.map((template) => template.abbreviation),
     ...profile.globals.map(matchKey),
     ...importables.map(matchKey),
     ...functions.map(matchKey),
@@ -475,15 +501,19 @@ function memberCandidates(ctx: CompletionContext, text: string, profile: Languag
   const typed = inferred === null ? undefined : profile.typeMembers?.[inferred];
   const specific = dedupe(qualifier === "*" ? [] : (typed ?? profile.members[qualifier] ?? []));
   const named = new Set(specific.map(matchKey));
+  // A struct or class the file declares has only its own members: `p.` lists x and y, never
+  // first, second or push_back.
+  const ownType = declaresOwnType(text, inferred ?? declaredTypeOf(text, qualifier, ctx.replaceFrom));
   const general =
-    typed !== undefined ? [] : dedupe(profile.members["*"] ?? []).filter((item) => !named.has(matchKey(item)));
+    typed !== undefined || ownType ? [] : dedupe(profile.members["*"] ?? []).filter((item) => !named.has(matchKey(item)));
   const library = new Set([...named, ...general.map(matchKey)]);
   // The file's own members (`self.val`, a Node's `next`). A call the library already lists keeps
   // the library's row, which knows its parameters; a field always gets its own row, since
   // `node.next` and Scanner's `next()` are different things that share a name.
   const chainStartsAt = ctx.replaceFrom - qualifier.length - 2;
   // A library type the text names (an inferred List, vector or str) has no members of the file's.
-  const ownMembers = typed !== undefined ? [] : fileMembers(text, profile.lineComment === "//", chainStartsAt, ctx.replaceFrom);
+  const ownMembers =
+    typed !== undefined ? [] : fileMembers(withoutIncludes(text), profile.lineComment === "//", chainStartsAt, ctx.replaceFrom);
   const own: CompletionItem[] = ownMembers
     .filter((member) => !(member.isMethod && library.has(member.name)))
     .filter((member) => !named.has(member.name))
@@ -704,6 +734,14 @@ export function applyCompletion(
     selectionStart: caret,
     selectionEnd: caret,
   };
+  if (ctx.scope === "import" && profile?.id === "java" && item.kind === "type") {
+    // A class ends a Java import, so IntelliJ writes the ";" with it: `import java.util.ArrayList;`.
+    const rest = state.text.slice(ctx.replaceTo, state.text.indexOf("\n", ctx.replaceTo) === -1 ? state.text.length : state.text.indexOf("\n", ctx.replaceTo));
+    if (!rest.trimStart().startsWith(";")) {
+      const end = edit.from + insertText.length + 1;
+      return { ...edit, insert: `${insertText};`, selectionStart: end, selectionEnd: end };
+    }
+  }
   if (profile === undefined || ctx.scope !== undefined) return edit;
   return withImport(state.text, edit, item.importLine, profile);
 }

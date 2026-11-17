@@ -73,6 +73,15 @@ function opensBlock(lineBeforeCaret: string): boolean {
 const LABEL = /^\s*(?:case\b.*|default\s*|public|private|protected)\s*:$/;
 
 const TEMPLATES: readonly LiveTemplate[] = [
+  // CLion's statement templates: the condition first, then the body.
+  { abbreviation: "if", description: "if statement", body: "if (${1}) {\n\t$END$\n}" },
+  { abbreviation: "else", description: "else block", body: "else {\n\t$END$\n}" },
+  { abbreviation: "while", description: "while loop", body: "while (${1}) {\n\t$END$\n}" },
+  { abbreviation: "do", description: "do-while loop", body: "do {\n\t$END$\n} while (${1});" },
+  { abbreviation: "switch", description: "switch statement", body: "switch (${1}) {\n\t$END$\n}" },
+  { abbreviation: "cerr", description: "Print a value to standard error", body: "cerr << $END$ << '\\n';" },
+  { abbreviation: "struct", description: "struct definition", body: "struct ${1} {\n\t$END$\n};", context: "toplevel" },
+  { abbreviation: "class", description: "class definition", body: "class ${1} {\npublic:\n\t$END$\n};", context: "toplevel" },
   {
     abbreviation: "main",
     description: "int main() with return 0",
@@ -147,6 +156,16 @@ const POSTFIX: readonly LiveTemplate[] = [
   { abbreviation: "not", description: "Negates the expression", body: "!$EXPR$$END$" },
   { abbreviation: "return", description: "Returns the expression", body: "return $EXPR$;$END$" },
   { abbreviation: "cout", description: "Prints the expression", body: "cout << $EXPR$ << '\\n';$END$" },
+  { abbreviation: "cerr", description: "Prints the expression to standard error", body: "cerr << $EXPR$ << '\\n';$END$" },
+  { abbreviation: "else", description: "Checks the expression is false", body: "if (!$EXPR$) {\n\t$END$\n}" },
+  { abbreviation: "foreach", description: "Iterates over the expression", body: "for (auto &${1:x} : $EXPR$) {\n\t$END$\n}" },
+  { abbreviation: "iter", description: "Iterates over the expression", body: "for (auto &${1:x} : $EXPR$) {\n\t$END$\n}" },
+  { abbreviation: "var", description: "Declares a variable holding the expression", body: "auto ${1:x} = $EXPR$;$END$" },
+  { abbreviation: "par", description: "Puts the expression in parentheses", body: "($EXPR$)$END$" },
+  { abbreviation: "switch", description: "Switches on the expression", body: "switch ($EXPR$) {\n\t$END$\n}" },
+  { abbreviation: "static_cast", description: "Casts the expression", body: "static_cast<${1}>($EXPR$)$END$" },
+  // `v.all` is the begin/end pair every <algorithm> call takes: sort(v.all) is sort(v.begin(), v.end()).
+  { abbreviation: "all", description: "The expression's begin and end", body: "$EXPR$.begin(), $EXPR$.end()$END$" },
 ];
 
 /** C++17 keywords, alternative operator tokens included, as CLion highlights them. */

@@ -8,8 +8,8 @@
  * caret's indent. Paste as Plain Text skips all of this and is the surface's business.
  */
 
-import { regionAt } from "./scan";
-import { leadingSpace, lineEndAt, lineStartAt } from "./text";
+import { regionAt, scanCode } from "./scan";
+import { BRACE_LANGUAGES, leadingSpace, lineEndAt, lineStartAt } from "./text";
 import type { Edit, EditState, LanguageProfile } from "./types";
 
 const ZERO_WIDTH = /[​‌‍⁠﻿]/g;
@@ -78,7 +78,10 @@ export function reindentPaste(
   const lineStart = lineStartAt(text, from);
   const beforeCaret = text.slice(lineStart, from);
   const atIndent = beforeCaret.trim() === "";
-  const target = atIndent ? beforeCaret : leadingSpace(beforeCaret);
+  const blankLine = atIndent && text.slice(to, lineEndAt(text, to)).trim() === "";
+  // On a blank line the block goes where code on that line belongs, even from column 0 inside main.
+  const proper = blankLine ? properIndent(text, lineStart, profile) : "";
+  const target = atIndent ? (proper.length > beforeCaret.length ? proper : beforeCaret) : leadingSpace(beforeCaret);
 
   const [first = "", ...rest] = cleaned.split("\n").map((line) => expandLeadingTabs(line, profile.indentUnit));
   const filled = rest.filter((line) => line.trim() !== "");
@@ -88,14 +91,58 @@ export function reindentPaste(
   // body that would land level with its header keeps one level under it.
   const firstBody = filled[0];
   const opens = /[:{]\s*$/.test(first) && firstBody !== undefined && leadingSpace(firstBody).length === measured;
-  const strip = opens ? Math.max(0, measured - profile.indentUnit.length) : measured;
+  // `foo(1,` then `      2);`: the lines after an open "(" are its continuation, which keeps its
+  // place relative to the call instead of lining up with it. Two levels is IntelliJ's continuation.
+  const continues = unclosedParens(first) > 0;
+  const strip = opens
+    ? Math.max(0, measured - profile.indentUnit.length)
+    : continues
+      ? Math.max(0, measured - 2 * profile.indentUnit.length)
+      : measured;
 
   const head = atIndent ? first.trimStart() : first;
   const tail = rest.map((line, i) => {
-    if (line.trim() === "") return i === rest.length - 1 && lineEndAt(text, to) > to ? target : "";
+    // The line the caret ends on keeps the indent, so the caret lands at the body's column.
+    if (line.trim() === "") return i === rest.length - 1 ? target : "";
     return target + line.slice(strip);
   });
-  const insert = [head, ...tail].join("\n");
+  const insert = [atIndent && blankLine && target !== beforeCaret ? target.slice(beforeCaret.length) + head : head, ...tail].join("\n");
   const caret = from + insert.length;
   return { from, to, insert, selectionStart: caret, selectionEnd: caret };
+}
+
+/** Openers minus closers of "(" and "[" outside quotes, on one line. */
+function unclosedParens(line: string): number {
+  let depth = 0;
+  let quote: string | null = null;
+  for (let i = 0; i < line.length; i += 1) {
+    const ch = line[i];
+    if (quote !== null) {
+      if (ch === "\\") i += 1;
+      else if (ch === quote) quote = null;
+    } else if (ch === '"' || ch === "'") quote = ch;
+    else if (ch === "(" || ch === "[") depth += 1;
+    else if (ch === ")" || ch === "]") depth -= 1;
+  }
+  return depth;
+}
+
+/** The indent code on the blank line at `lineStart` should have: brace depth, or Python's block. */
+function properIndent(text: string, lineStart: number, profile: LanguageProfile): string {
+  if (BRACE_LANGUAGES.has(profile.id)) {
+    let depth = 0;
+    scanCode(text, lineStart, profile, (ch) => {
+      if (ch === "{") depth += 1;
+      else if (ch === "}") depth -= 1;
+    });
+    return profile.indentUnit.repeat(Math.max(0, depth));
+  }
+  let end = lineStart - 1;
+  while (end >= 0) {
+    const start = lineStartAt(text, end);
+    const line = text.slice(start, end);
+    if (line.trim() !== "") return leadingSpace(line) + (line.trimEnd().endsWith(":") ? profile.indentUnit : "");
+    end = start - 1;
+  }
+  return "";
 }

@@ -199,7 +199,9 @@ describe("import statements and #include", () => {
   it("offers a Java package's classes after import", () => {
     expect(labels("import java.util.Arr|", JAVA)).toEqual(["Arrays", "ArrayList", "ArrayDeque"]);
     expect(labels("import java.i|", JAVA)).toEqual(["io"]);
-    expect(accept("import java.util.Arr|", "ArrayList", JAVA)).toBe("import java.util.ArrayList|");
+    // A class ends the import, so its ";" comes with it.
+    expect(accept("import java.util.Arr|", "ArrayList", JAVA)).toBe("import java.util.ArrayList;|");
+    expect(accept("import java.util.Arr|;", "ArrayList", JAVA)).toBe("import java.util.ArrayList|;");
   });
 
   it("offers header names after #include <, closing the bracket when nothing closes it", () => {

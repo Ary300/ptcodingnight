@@ -60,6 +60,11 @@ export interface EditorCommandHooks {
   readonly interceptKey: (event: KeyboardEvent<HTMLTextAreaElement>) => boolean;
   /** Escape after the popup and the template: closes the topmost bar or popup. True when it did. */
   readonly escape: () => boolean;
+  /**
+   * A call was just opened with "(": IntelliJ shows Parameter Info on its own when the function is
+   * one it knows, and says nothing otherwise.
+   */
+  readonly callOpened: (element: HTMLTextAreaElement) => void;
 }
 
 export interface EditorCommandsOptions {
@@ -668,7 +673,7 @@ export function useEditorCommands(options: EditorCommandsOptions): EditorCommand
       : { matches: find.matches, current: find.current, carets: [] };
 
   return {
-    hooks: { run, interceptKey, escape },
+    hooks: { run, interceptKey, escape, callOpened: (element: HTMLTextAreaElement) => parameterInfo(element, true) },
     bars,
     popups,
     highlights,

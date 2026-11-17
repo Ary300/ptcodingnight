@@ -199,7 +199,8 @@ export function useEditorKeys({
         from: blockStart,
         to: blockEnd,
         insert: nextLines.join("\n"),
-        selectionStart: Math.max(blockStart, start + firstDelta),
+        // A selection that starts at column 0 keeps its whole lines selected, as IntelliJ's does.
+        selectionStart: start === blockStart && start !== end ? blockStart : Math.max(blockStart, start + firstDelta),
         selectionEnd: Math.max(blockStart, end + totalDelta),
       });
     },
@@ -367,6 +368,7 @@ export function useEditorKeys({
             if (event.key === "(" && accepted.insert.includes("(")) {
               // The accept already wrote the call's parentheses with the caret inside them.
               event.preventDefault();
+              commands?.callOpened(element);
               return;
             }
           }
@@ -445,6 +447,7 @@ export function useEditorKeys({
       if (edit !== null) {
         event.preventDefault();
         applyKeyEdit(element, edit);
+        if (event.key === "(" && plain) commands?.callOpened(element);
         if (plain && isCompletionTrigger(event.key)) completion.schedule();
         else completion.close();
         if (tabMovesFocus && event.key !== "Tab" && event.key !== "Enter") setTabMovesFocus(false);

@@ -275,6 +275,23 @@ test("the editor keeps the focus after Mod+Enter submits", async ({ page }) => {
   await expect(textarea).toBeFocused();
 });
 
+test("Parameter Info opens on its own after the '(' of a known call", async ({ page }) => {
+  await open(page, "Java 21", "        int m = ");
+  await page.keyboard.press("ControlOrMeta+End");
+  await page.keyboard.type("Math.max(");
+  await expect(page.getByRole("status").filter({ hasText: "max(" }).first()).toBeVisible();
+});
+
+test("Mod+Shift+Enter with the popup open accepts the row, then completes the statement", async ({ page }) => {
+  const mod = await modifier(page);
+  const textarea = await open(page, "Java 21", "        int total = 0;\n        ");
+  await page.keyboard.press("ControlOrMeta+End");
+  await page.keyboard.type("tot");
+  await expect(page.getByRole("listbox", { name: "Suggestions" })).toBeVisible();
+  await page.keyboard.press(`${mod}+Shift+Enter`);
+  await expect(textarea).toHaveValue("        int total = 0;\n        total;\n        ");
+});
+
 test.describe("off a Mac", () => {
   test.beforeEach(async ({ page }) => {
     await page.addInitScript(() => {

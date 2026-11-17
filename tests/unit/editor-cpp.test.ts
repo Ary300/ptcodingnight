@@ -68,7 +68,11 @@ describe("CPP profile", () => {
   describe("live templates", () => {
     it("has the CLion contest abbreviations", () => {
       expect(CPP.templates.map((t) => t.abbreviation).sort()).toEqual(
-        ["main", "fastio", "for", "fori", "forr", "foreach", "iter", "cout", "cin", "vi", "ll", "inc"].sort(),
+        [
+          "main", "fastio", "for", "fori", "forr", "foreach", "iter", "cout", "cin", "vi", "ll", "inc",
+          // CLion's statement and type templates.
+          "if", "else", "while", "do", "switch", "cerr", "struct", "class",
+        ].sort(),
       );
     });
 
