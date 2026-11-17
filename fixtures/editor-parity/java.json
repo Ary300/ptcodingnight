@@ -1,0 +1,1062 @@
+[
+  {
+    "id": "pairs-paren-at-line-end",
+    "behavior": "pairs",
+    "before": "public class Main {\n    public static void main(String[] args) {\n        int best = Math.max|\n    }\n}\n",
+    "keys": [
+      "("
+    ],
+    "after": "public class Main {\n    public static void main(String[] args) {\n        int best = Math.max(|)\n    }\n}\n",
+    "note": "Typing ( with nothing after the caret inserts the matching ) and leaves the caret between them."
+  },
+  {
+    "id": "pairs-paren-before-semicolon",
+    "behavior": "pairs",
+    "before": "public class Main {\n    public static void main(String[] args) {\n        long total = sum|;\n    }\n}\n",
+    "keys": [
+      "("
+    ],
+    "after": "public class Main {\n    public static void main(String[] args) {\n        long total = sum(|);\n    }\n}\n",
+    "note": "A ; after the caret still allows the pair, so ) is inserted."
+  },
+  {
+    "id": "pairs-paren-before-identifier",
+    "behavior": "pairs",
+    "before": "public class Main {\n    public static void main(String[] args) {\n        int y = |x + 1;\n    }\n}\n",
+    "keys": [
+      "("
+    ],
+    "after": "public class Main {\n    public static void main(String[] args) {\n        int y = (|x + 1;\n    }\n}\n",
+    "note": "An identifier right after the caret suppresses the pair. Only ( is inserted."
+  },
+  {
+    "id": "pairs-paren-nested",
+    "behavior": "pairs",
+    "before": "public class Main {\n    public static void main(String[] args) {\n        System.out.println(|)\n    }\n}\n",
+    "keys": [
+      "("
+    ],
+    "after": "public class Main {\n    public static void main(String[] args) {\n        System.out.println((|))\n    }\n}\n",
+    "note": "A ) after the caret allows another pair, giving two sets of parentheses."
+  },
+  {
+    "id": "pairs-bracket-open",
+    "behavior": "pairs",
+    "before": "public class Main {\n    public static void main(String[] args) {\n        int[] a = new int|;\n    }\n}\n",
+    "keys": [
+      "["
+    ],
+    "after": "public class Main {\n    public static void main(String[] args) {\n        int[] a = new int[|];\n    }\n}\n",
+    "note": "Typing [ inserts ] after the caret."
+  },
+  {
+    "id": "pairs-bracket-typed-through",
+    "behavior": "pairs",
+    "before": "import java.util.Scanner;\n\npublic class Main {\n    public static void main(String[] args) {\n        Scanner in = new Scanner(System.in);\n        int[] a = new int|;\n    }\n}\n",
+    "keys": [
+      "[",
+      "n",
+      "]"
+    ],
+    "after": "import java.util.Scanner;\n\npublic class Main {\n    public static void main(String[] args) {\n        Scanner in = new Scanner(System.in);\n        int[] a = new int[n]|;\n    }\n}\n",
+    "note": "The ] typed last steps over the auto-inserted one instead of adding a second."
+  },
+  {
+    "id": "pairs-call-typed-through",
+    "behavior": "pairs",
+    "before": "import java.util.Scanner;\n\npublic class Main {\n    public static void main(String[] args) {\n        Scanner in = new Scanner(System.in);\n        int n = in.nextInt|\n    }\n}\n",
+    "keys": [
+      "(",
+      ")",
+      ";"
+    ],
+    "after": "import java.util.Scanner;\n\npublic class Main {\n    public static void main(String[] args) {\n        Scanner in = new Scanner(System.in);\n        int n = in.nextInt();|\n    }\n}\n",
+    "note": "( pairs, ) steps over the inserted closer, and ; lands after it."
+  },
+  {
+    "id": "pairs-skip-paren",
+    "behavior": "pairs",
+    "before": "public class Main {\n    public static void main(String[] args) {\n        System.out.println(x|)\n    }\n}\n",
+    "keys": [
+      ")"
+    ],
+    "after": "public class Main {\n    public static void main(String[] args) {\n        System.out.println(x)|\n    }\n}\n",
+    "note": "The next character is the matching ), so typing ) moves over it."
+  },
+  {
+    "id": "pairs-skip-bracket",
+    "behavior": "pairs",
+    "before": "public class Main {\n    public static void main(String[] args) {\n        int v = a[i|];\n    }\n}\n",
+    "keys": [
+      "]"
+    ],
+    "after": "public class Main {\n    public static void main(String[] args) {\n        int v = a[i]|;\n    }\n}\n",
+    "note": "The next character is ], so typing ] moves over it."
+  },
+  {
+    "id": "pairs-closer-differs",
+    "behavior": "pairs",
+    "before": "public class Main {\n    public static void main(String[] args) {\n        int v = a[i|;\n    }\n}\n",
+    "keys": [
+      "]"
+    ],
+    "after": "public class Main {\n    public static void main(String[] args) {\n        int v = a[i]|;\n    }\n}\n",
+    "note": "The next character is ; and not ], so ] is inserted."
+  },
+  {
+    "id": "pairs-paren-unbalanced-inserts",
+    "behavior": "pairs",
+    "before": "public class Main {\n    public static void main(String[] args) {\n        int m = Math.max(a, Math.min(b, c|);\n    }\n}\n",
+    "keys": [
+      ")"
+    ],
+    "after": "public class Main {\n    public static void main(String[] args) {\n        int m = Math.max(a, Math.min(b, c)|);\n    }\n}\n",
+    "note": "Two ( and one ) on the line: the ) after the caret is still needed by Math.max, so typing ) inserts instead of skipping."
+  },
+  {
+    "id": "pairs-quote-open",
+    "behavior": "pairs",
+    "before": "public class Main {\n    public static void main(String[] args) {\n        String s = |;\n    }\n}\n",
+    "keys": [
+      "\""
+    ],
+    "after": "public class Main {\n    public static void main(String[] args) {\n        String s = \"|\";\n    }\n}\n",
+    "note": "Typing a double quote inserts the closing quote."
+  },
+  {
+    "id": "pairs-quote-twice",
+    "behavior": "pairs",
+    "before": "public class Main {\n    public static void main(String[] args) {\n        String s = |;\n    }\n}\n",
+    "keys": [
+      "\"",
+      "\""
+    ],
+    "after": "public class Main {\n    public static void main(String[] args) {\n        String s = \"\"|;\n    }\n}\n",
+    "note": "The second quote steps over the closing quote, leaving an empty string."
+  },
+  {
+    "id": "pairs-quote-skip",
+    "behavior": "pairs",
+    "before": "public class Main {\n    public static void main(String[] args) {\n        String s = \"Yes|\";\n    }\n}\n",
+    "keys": [
+      "\""
+    ],
+    "after": "public class Main {\n    public static void main(String[] args) {\n        String s = \"Yes\"|;\n    }\n}\n",
+    "note": "At the closing quote of a literal, typing a quote moves over it."
+  },
+  {
+    "id": "pairs-quote-in-call",
+    "behavior": "pairs",
+    "before": "public class Main {\n    public static void main(String[] args) {\n        System.out.println(|)\n    }\n}\n",
+    "keys": [
+      "\""
+    ],
+    "after": "public class Main {\n    public static void main(String[] args) {\n        System.out.println(\"|\")\n    }\n}\n",
+    "note": "A quote typed before ) is paired."
+  },
+  {
+    "id": "pairs-quote-word-then-close",
+    "behavior": "pairs",
+    "before": "public class Main {\n    public static void main(String[] args) {\n        System.out.println(|);\n    }\n}\n",
+    "keys": [
+      "\"",
+      "h",
+      "i",
+      "\""
+    ],
+    "after": "public class Main {\n    public static void main(String[] args) {\n        System.out.println(\"hi\"|);\n    }\n}\n",
+    "note": "Open, type the text, and the closing quote steps over the inserted one."
+  },
+  {
+    "id": "pairs-escaped-quote",
+    "behavior": "pairs",
+    "before": "public class Main {\n    public static void main(String[] args) {\n        String s = \"say \\|\";\n    }\n}\n",
+    "keys": [
+      "\""
+    ],
+    "after": "public class Main {\n    public static void main(String[] args) {\n        String s = \"say \\\"|\";\n    }\n}\n",
+    "note": "After a backslash the quote is escaped text inside the literal. It is inserted and neither skips nor pairs."
+  },
+  {
+    "id": "pairs-char-literal-open",
+    "behavior": "pairs",
+    "before": "public class Main {\n    public static void main(String[] args) {\n        char c = |;\n    }\n}\n",
+    "keys": [
+      "'"
+    ],
+    "after": "public class Main {\n    public static void main(String[] args) {\n        char c = '|';\n    }\n}\n",
+    "note": "A single quote opens a char literal and gets its closing quote."
+  },
+  {
+    "id": "pairs-char-literal-skip",
+    "behavior": "pairs",
+    "before": "public class Main {\n    public static void main(String[] args) {\n        char c = 'x|';\n    }\n}\n",
+    "keys": [
+      "'"
+    ],
+    "after": "public class Main {\n    public static void main(String[] args) {\n        char c = 'x'|;\n    }\n}\n",
+    "note": "At the closing quote of a char literal, typing ' moves over it."
+  },
+  {
+    "id": "pairs-apostrophe-in-string",
+    "behavior": "pairs",
+    "before": "public class Main {\n    public static void main(String[] args) {\n        String s = \"don|\";\n    }\n}\n",
+    "keys": [
+      "'"
+    ],
+    "after": "public class Main {\n    public static void main(String[] args) {\n        String s = \"don'|\";\n    }\n}\n",
+    "note": "Inside a string literal ' is ordinary text. Nothing is paired."
+  },
+  {
+    "id": "pairs-paren-in-string",
+    "behavior": "pairs",
+    "before": "public class Main {\n    public static void main(String[] args) {\n        System.out.println(\"Total |\");\n    }\n}\n",
+    "keys": [
+      "("
+    ],
+    "after": "public class Main {\n    public static void main(String[] args) {\n        System.out.println(\"Total (|\");\n    }\n}\n",
+    "note": "Inside a string literal ( is text, so no ) is added."
+  },
+  {
+    "id": "pairs-paren-in-comment",
+    "behavior": "pairs",
+    "before": "public class Main {\n    public static void main(String[] args) {\n        // read n, then call solve|\n    }\n}\n",
+    "keys": [
+      "("
+    ],
+    "after": "public class Main {\n    public static void main(String[] args) {\n        // read n, then call solve(|\n    }\n}\n",
+    "note": "Inside a line comment ( is text, so no ) is added."
+  },
+  {
+    "id": "pairs-quote-in-comment",
+    "behavior": "pairs",
+    "before": "public class Main {\n    public static void main(String[] args) {\n        // print |\n    }\n}\n",
+    "keys": [
+      "\""
+    ],
+    "after": "public class Main {\n    public static void main(String[] args) {\n        // print \"|\n    }\n}\n",
+    "note": "Inside a line comment a quote does not open a literal, so it is not paired."
+  },
+  {
+    "id": "backspace-empty-parens",
+    "behavior": "backspace",
+    "before": "public class Main {\n    public static void main(String[] args) {\n        System.out.println(|)\n    }\n}\n",
+    "keys": [
+      "Backspace"
+    ],
+    "after": "public class Main {\n    public static void main(String[] args) {\n        System.out.println|\n    }\n}\n",
+    "note": "Backspace between an empty ( ) deletes both."
+  },
+  {
+    "id": "backspace-empty-brackets",
+    "behavior": "backspace",
+    "before": "public class Main {\n    public static void main(String[] args) {\n        int[] a = new int[|];\n    }\n}\n",
+    "keys": [
+      "Backspace"
+    ],
+    "after": "public class Main {\n    public static void main(String[] args) {\n        int[] a = new int|;\n    }\n}\n",
+    "note": "Backspace between an empty [ ] deletes both."
+  },
+  {
+    "id": "backspace-empty-braces",
+    "behavior": "backspace",
+    "before": "public class Main {\n    public static void main(String[] args) {\n        int[] d = {|};\n    }\n}\n",
+    "keys": [
+      "Backspace"
+    ],
+    "after": "public class Main {\n    public static void main(String[] args) {\n        int[] d = |;\n    }\n}\n",
+    "note": "Backspace between an empty { } deletes both."
+  },
+  {
+    "id": "backspace-empty-string",
+    "behavior": "backspace",
+    "before": "public class Main {\n    public static void main(String[] args) {\n        String s = \"|\";\n    }\n}\n",
+    "keys": [
+      "Backspace"
+    ],
+    "after": "public class Main {\n    public static void main(String[] args) {\n        String s = |;\n    }\n}\n",
+    "note": "Backspace between two quotes of an empty string deletes both."
+  },
+  {
+    "id": "backspace-empty-char",
+    "behavior": "backspace",
+    "before": "public class Main {\n    public static void main(String[] args) {\n        char c = '|';\n    }\n}\n",
+    "keys": [
+      "Backspace"
+    ],
+    "after": "public class Main {\n    public static void main(String[] args) {\n        char c = |;\n    }\n}\n",
+    "note": "Backspace inside an empty char literal deletes both quotes."
+  },
+  {
+    "id": "backspace-paren-not-empty",
+    "behavior": "backspace",
+    "before": "public class Main {\n    public static void main(String[] args) {\n        int y = (|x + 1);\n    }\n}\n",
+    "keys": [
+      "Backspace"
+    ],
+    "after": "public class Main {\n    public static void main(String[] args) {\n        int y = |x + 1);\n    }\n}\n",
+    "note": "The pair is not empty, so only ( goes."
+  },
+  {
+    "id": "backspace-inside-string-text",
+    "behavior": "backspace",
+    "before": "public class Main {\n    public static void main(String[] args) {\n        String s = \"a|\";\n    }\n}\n",
+    "keys": [
+      "Backspace"
+    ],
+    "after": "public class Main {\n    public static void main(String[] args) {\n        String s = \"|\";\n    }\n}\n",
+    "note": "An ordinary character is deleted. The quotes stay."
+  },
+  {
+    "id": "backspace-after-closing-quote",
+    "behavior": "backspace",
+    "before": "public class Main {\n    public static void main(String[] args) {\n        String s = \"\"|;\n    }\n}\n",
+    "keys": [
+      "Backspace"
+    ],
+    "after": "public class Main {\n    public static void main(String[] args) {\n        String s = \"|;\n    }\n}\n",
+    "note": "With the caret after the closing quote, Backspace removes that quote only."
+  },
+  {
+    "id": "backspace-paren-extra-open",
+    "behavior": "backspace",
+    "before": "public class Main {\n    public static void main(String[] args) {\n        int r = Math.abs((|);\n    }\n}\n",
+    "keys": [
+      "Backspace"
+    ],
+    "after": "public class Main {\n    public static void main(String[] args) {\n        int r = Math.abs(|);\n    }\n}\n",
+    "note": "After deleting the inner (, the ) is still matched by Math.abs(, so it stays."
+  },
+  {
+    "id": "backspace-start-of-file",
+    "behavior": "backspace",
+    "before": "|import java.util.Scanner;\n",
+    "keys": [
+      "Backspace"
+    ],
+    "after": "|import java.util.Scanner;\n",
+    "note": "Nothing precedes the caret, so nothing changes."
+  },
+  {
+    "id": "enter-between-class-braces",
+    "behavior": "enter",
+    "before": "public class Main {|}\n",
+    "keys": [
+      "Enter"
+    ],
+    "after": "public class Main {\n    |\n}\n",
+    "note": "Enter between { and } puts } on its own line and the caret on an indented line between them."
+  },
+  {
+    "id": "enter-between-method-braces",
+    "behavior": "enter",
+    "before": "public class Main {\n    static int solve(int n) {|}\n}\n",
+    "keys": [
+      "Enter"
+    ],
+    "after": "public class Main {\n    static int solve(int n) {\n        |\n    }\n}\n",
+    "note": "The split keeps } at the method's indent and indents the caret one level deeper."
+  },
+  {
+    "id": "enter-between-if-braces",
+    "behavior": "enter",
+    "before": "import java.util.Scanner;\n\npublic class Main {\n    public static void main(String[] args) {\n        Scanner in = new Scanner(System.in);\n        int n = in.nextInt();\n        if (n == 0) {|}\n    }\n}\n",
+    "keys": [
+      "Enter"
+    ],
+    "after": "import java.util.Scanner;\n\npublic class Main {\n    public static void main(String[] args) {\n        Scanner in = new Scanner(System.in);\n        int n = in.nextInt();\n        if (n == 0) {\n            |\n        }\n    }\n}\n",
+    "note": "The same split for a block nested two levels deep."
+  },
+  {
+    "id": "enter-after-unmatched-brace",
+    "behavior": "enter",
+    "before": "public class Main {\n    public static void main(String[] args) {\n        for (int i = 0; i < 3; i++) {|\n    }\n}\n",
+    "keys": [
+      "Enter"
+    ],
+    "after": "public class Main {\n    public static void main(String[] args) {\n        for (int i = 0; i < 3; i++) {\n            |\n        }\n    }\n}\n",
+    "note": "The { has no partner in the file, so Enter adds the closing } on the line below the caret."
+  },
+  {
+    "id": "enter-after-unmatched-class-brace",
+    "behavior": "enter",
+    "before": "public class Main {|",
+    "keys": [
+      "Enter"
+    ],
+    "after": "public class Main {\n    |\n}",
+    "note": "End of file with an unclosed class: Enter indents and adds the }."
+  },
+  {
+    "id": "enter-after-matched-brace",
+    "behavior": "enter",
+    "before": "public class Main {\n    public static void main(String[] args) {\n        int n = 4;\n        if (n > 0) {|\n        }\n    }\n}\n",
+    "keys": [
+      "Enter"
+    ],
+    "after": "public class Main {\n    public static void main(String[] args) {\n        int n = 4;\n        if (n > 0) {\n            |\n        }\n    }\n}\n",
+    "note": "The { already has its }, so no second } is added. The new line is indented one level."
+  },
+  {
+    "id": "enter-after-statement",
+    "behavior": "enter",
+    "before": "import java.util.Scanner;\n\npublic class Main {\n    public static void main(String[] args) {\n        Scanner in = new Scanner(System.in);\n        int n = in.nextInt();|\n    }\n}\n",
+    "keys": [
+      "Enter"
+    ],
+    "after": "import java.util.Scanner;\n\npublic class Main {\n    public static void main(String[] args) {\n        Scanner in = new Scanner(System.in);\n        int n = in.nextInt();\n        |\n    }\n}\n",
+    "note": "After a complete statement the new line keeps the block's indent."
+  },
+  {
+    "id": "enter-after-closing-brace",
+    "behavior": "enter",
+    "before": "public class Main {\n    public static void main(String[] args) {\n        int sum = 0;\n        for (int i = 0; i < 3; i++) {\n            sum += i;\n        }|\n    }\n}\n",
+    "keys": [
+      "Enter"
+    ],
+    "after": "public class Main {\n    public static void main(String[] args) {\n        int sum = 0;\n        for (int i = 0; i < 3; i++) {\n            sum += i;\n        }\n        |\n    }\n}\n",
+    "note": "After a block's } the next line returns to the indent of the statement that opened it."
+  },
+  {
+    "id": "enter-start-of-file",
+    "behavior": "enter",
+    "before": "|import java.util.Scanner;\n",
+    "keys": [
+      "Enter"
+    ],
+    "after": "\n|import java.util.Scanner;\n",
+    "note": "At column 0 of the first line, Enter pushes the line down and the caret stays with its text."
+  },
+  {
+    "id": "enter-end-of-file",
+    "behavior": "enter",
+    "before": "public class Main {\n}|",
+    "keys": [
+      "Enter"
+    ],
+    "after": "public class Main {\n}\n|",
+    "note": "At the very end of the file the new line has no indent."
+  },
+  {
+    "id": "enter-trailing-spaces-after-caret",
+    "behavior": "enter",
+    "before": "public class Main {\n    public static void main(String[] args) {\n        int n = 5;|    \n    }\n}\n",
+    "keys": [
+      "Enter"
+    ],
+    "after": "public class Main {\n    public static void main(String[] args) {\n        int n = 5;\n        |\n    }\n}\n",
+    "note": "The spaces after the caret move down and are replaced by the new line's indent, so the caret sits at the block indent."
+  },
+  {
+    "id": "enter-split-line",
+    "behavior": "enter",
+    "before": "public class Main {\n    public static void main(String[] args) {\n        int a = 1;| int b = 2;\n    }\n}\n",
+    "keys": [
+      "Enter"
+    ],
+    "after": "public class Main {\n    public static void main(String[] args) {\n        int a = 1;\n        |int b = 2;\n    }\n}\n",
+    "note": "Splitting a line drops the space after the caret and indents the rest to the block."
+  },
+  {
+    "id": "enter-in-call-arguments",
+    "behavior": "enter",
+    "before": "public class Main {\n    public static void main(String[] args) {\n        int m = Math.max(a,| b);\n    }\n}\n",
+    "keys": [
+      "Enter"
+    ],
+    "after": "public class Main {\n    public static void main(String[] args) {\n        int m = Math.max(a,\n                |b);\n    }\n}\n",
+    "note": "Inside a call's argument list the new line takes the continuation indent, 8 spaces past the statement."
+  },
+  {
+    "id": "enter-javadoc-stub",
+    "behavior": "enter",
+    "before": "public class Main {\n    /**|\n    static int n;\n}\n",
+    "keys": [
+      "Enter"
+    ],
+    "after": "public class Main {\n    /**\n     * |\n     */\n    static int n;\n}\n",
+    "note": "Enter after /** above a field writes the comment body line and the closing */."
+  },
+  {
+    "id": "enter-javadoc-continue",
+    "behavior": "enter",
+    "before": "public class Main {\n    /**\n     * Reads n.|\n     */\n    static int n;\n}\n",
+    "keys": [
+      "Enter"
+    ],
+    "after": "public class Main {\n    /**\n     * Reads n.\n     * |\n     */\n    static int n;\n}\n",
+    "note": "Inside a javadoc comment Enter continues with the leading asterisk."
+  },
+  {
+    "id": "enter-block-comment-continue",
+    "behavior": "enter",
+    "before": "public class Main {\n    public static void main(String[] args) {\n        /*\n         * Count the votes.|\n         */\n        int votes = 0;\n    }\n}\n",
+    "keys": [
+      "Enter"
+    ],
+    "after": "public class Main {\n    public static void main(String[] args) {\n        /*\n         * Count the votes.\n         * |\n         */\n        int votes = 0;\n    }\n}\n",
+    "note": "Inside a block comment written with leading asterisks, Enter continues with one."
+  },
+  {
+    "id": "dedent-brace-from-body-indent",
+    "behavior": "dedent",
+    "before": "public class Main {\n    public static void main(String[] args) {\n        int sum = 0;\n        for (int i = 0; i < 3; i++) {\n            sum += i;\n            |\n    }\n}\n",
+    "keys": [
+      "}"
+    ],
+    "after": "public class Main {\n    public static void main(String[] args) {\n        int sum = 0;\n        for (int i = 0; i < 3; i++) {\n            sum += i;\n        }|\n    }\n}\n",
+    "note": "A } typed as the first character on a line snaps the line to the indent of the block it closes."
+  },
+  {
+    "id": "dedent-brace-from-column-zero",
+    "behavior": "dedent",
+    "before": "public class Main {\n    static int twice(int n) {\n        return 2 * n;\n|\n}\n",
+    "keys": [
+      "}"
+    ],
+    "after": "public class Main {\n    static int twice(int n) {\n        return 2 * n;\n    }|\n}\n",
+    "note": "Typed at column 0, the } moves right to the method's indent."
+  },
+  {
+    "id": "dedent-brace-from-over-indent",
+    "behavior": "dedent",
+    "before": "public class Main {\n    public static void main(String[] args) {\n        if (args.length == 0) {\n            return;\n                |\n    }\n}\n",
+    "keys": [
+      "}"
+    ],
+    "after": "public class Main {\n    public static void main(String[] args) {\n        if (args.length == 0) {\n            return;\n        }|\n    }\n}\n",
+    "note": "Extra indentation before the } is removed."
+  },
+  {
+    "id": "dedent-brace-after-code",
+    "behavior": "dedent",
+    "before": "public class Main {\n    public static void main(String[] args) {\n        int[] d = {1, 2|\n    }\n}\n",
+    "keys": [
+      "}"
+    ],
+    "after": "public class Main {\n    public static void main(String[] args) {\n        int[] d = {1, 2}|\n    }\n}\n",
+    "note": "A } that follows code on its line is inserted and the line keeps its indent."
+  },
+  {
+    "id": "comment-line-caret-moves-down",
+    "behavior": "comment",
+    "before": "public class Main {\n    public static void main(String[] args) {\n        int a = 1;\n        int b| = 2;\n        int c = 3;\n    }\n}\n",
+    "keys": [
+      "Mod+/"
+    ],
+    "after": "public class Main {\n    public static void main(String[] args) {\n        int a = 1;\n//        int b = 2;\n        int c =| 3;\n    }\n}\n",
+    "note": "Java's default style puts // at column 0 with no space. With no selection the caret then drops one line, keeping its column (two further right after the insert)."
+  },
+  {
+    "id": "uncomment-line-caret-moves-down",
+    "behavior": "comment",
+    "before": "public class Main {\n    public static void main(String[] args) {\n        int a = 1;\n//        int b| = 2;\n        int c = 3;\n    }\n}\n",
+    "keys": [
+      "Mod+/"
+    ],
+    "after": "public class Main {\n    public static void main(String[] args) {\n        int a = 1;\n        int b = 2;\n        int c| = 3;\n    }\n}\n",
+    "note": "A commented line is uncommented by removing the // at column 0, restoring its indent. The caret drops one line."
+  },
+  {
+    "id": "comment-first-line",
+    "behavior": "comment",
+    "before": "import java.util.Sc|anner;\n\npublic class Main {\n}\n",
+    "keys": [
+      "Mod+/"
+    ],
+    "after": "//import java.util.Scanner;\n|\npublic class Main {\n}\n",
+    "note": "The first line of the file is commented. The next line is empty, so the caret lands at its start."
+  },
+  {
+    "id": "comment-last-line",
+    "behavior": "comment",
+    "before": "public class Main {\n}|",
+    "keys": [
+      "Mod+/"
+    ],
+    "after": "public class Main {\n//}|",
+    "note": "On the last line there is no line below, so the caret stays on the commented line."
+  },
+  {
+    "id": "comment-selection-two-lines",
+    "behavior": "comment",
+    "before": "public class Main {\n    static void solve() {\n        [int a = 1;\n        int b = 2;]\n        int c = 3;\n    }\n}\n",
+    "keys": [
+      "Mod+/"
+    ],
+    "after": "public class Main {\n    static void solve() {\n//        [int a = 1;\n//        int b = 2;]\n        int c = 3;\n    }\n}\n",
+    "note": "Every line the selection touches gets // at column 0, and the selection stays on the same text."
+  },
+  {
+    "id": "comment-selection-ending-column-zero",
+    "behavior": "comment",
+    "before": "public class Main {\n    static void solve() {\n        [int a = 1;\n        int b = 2;\n]        int c = 3;\n    }\n}\n",
+    "keys": [
+      "Mod+/"
+    ],
+    "after": "public class Main {\n    static void solve() {\n//        [int a = 1;\n//        int b = 2;\n]        int c = 3;\n    }\n}\n",
+    "note": "A selection that ends at column 0 of a line does not include that line."
+  },
+  {
+    "id": "uncomment-selection-all-commented",
+    "behavior": "comment",
+    "before": "public class Main {\n    static void solve() {\n//        [int a = 1;\n//        int b = 2;]\n        int c = 3;\n    }\n}\n",
+    "keys": [
+      "Mod+/"
+    ],
+    "after": "public class Main {\n    static void solve() {\n        [int a = 1;\n        int b = 2;]\n        int c = 3;\n    }\n}\n",
+    "note": "When every selected line is commented, the toggle removes the // from each."
+  },
+  {
+    "id": "comment-selection-mixed",
+    "behavior": "comment",
+    "before": "public class Main {\n    static void solve() {\n        [int a = 1;\n//        int b = 2;\n        int c = 3;]\n    }\n}\n",
+    "keys": [
+      "Mod+/"
+    ],
+    "after": "public class Main {\n    static void solve() {\n//        [int a = 1;\n////        int b = 2;\n//        int c = 3;]\n    }\n}\n",
+    "note": "If any selected line is uncommented, all of them are commented, so the line that already had // gets a second one."
+  },
+  {
+    "id": "duplicate-middle-line",
+    "behavior": "duplicate",
+    "before": "public class Main {\n    public static void main(String[] args) {\n        int a = 1;\n        int b| = 2;\n        int c = 3;\n    }\n}\n",
+    "keys": [
+      "Mod+D"
+    ],
+    "after": "public class Main {\n    public static void main(String[] args) {\n        int a = 1;\n        int b = 2;\n        int b| = 2;\n        int c = 3;\n    }\n}\n",
+    "note": "With no selection the whole line is copied below and the caret moves to the copy at the same column."
+  },
+  {
+    "id": "duplicate-first-line",
+    "behavior": "duplicate",
+    "before": "import java.|util.Scanner;\n\npublic class Main {\n}\n",
+    "keys": [
+      "Mod+D"
+    ],
+    "after": "import java.util.Scanner;\nimport java.|util.Scanner;\n\npublic class Main {\n}\n",
+    "note": "The first line of the file duplicates like any other."
+  },
+  {
+    "id": "duplicate-last-line-no-newline",
+    "behavior": "duplicate",
+    "before": "public class Main {\n}|",
+    "keys": [
+      "Mod+D"
+    ],
+    "after": "public class Main {\n}\n}|",
+    "note": "On a last line with no trailing newline, a newline and the copy are appended."
+  },
+  {
+    "id": "duplicate-caret-column-zero",
+    "behavior": "duplicate",
+    "before": "import java.util.Scanner;\n\npublic class Main {\n    public static void main(String[] args) {\n        Scanner in = new Scanner(System.in);\n|        int n = in.nextInt();\n    }\n}\n",
+    "keys": [
+      "Mod+D"
+    ],
+    "after": "import java.util.Scanner;\n\npublic class Main {\n    public static void main(String[] args) {\n        Scanner in = new Scanner(System.in);\n        int n = in.nextInt();\n|        int n = in.nextInt();\n    }\n}\n",
+    "note": "With the caret at column 0 the caret still lands on the copy, at column 0."
+  },
+  {
+    "id": "duplicate-block-header",
+    "behavior": "duplicate",
+    "before": "public class Main {\n    public static void main(String[] args) {\n        for (int i = 0; i < 3; i++) {|\n        }\n    }\n}\n",
+    "keys": [
+      "Mod+D"
+    ],
+    "after": "public class Main {\n    public static void main(String[] args) {\n        for (int i = 0; i < 3; i++) {\n        for (int i = 0; i < 3; i++) {|\n        }\n    }\n}\n",
+    "note": "Duplicate copies text only. It does not add a } for the copied {."
+  },
+  {
+    "id": "move-line-down",
+    "behavior": "move",
+    "before": "public class Main {\n    public static void main(String[] args) {\n        int a| = 1;\n        int b = 2;\n    }\n}\n",
+    "keys": [
+      "Alt+Shift+ArrowDown"
+    ],
+    "after": "public class Main {\n    public static void main(String[] args) {\n        int b = 2;\n        int a| = 1;\n    }\n}\n",
+    "note": "Move Line Down swaps the caret line with the one below. The caret keeps its column."
+  },
+  {
+    "id": "move-line-up",
+    "behavior": "move",
+    "before": "public class Main {\n    public static void main(String[] args) {\n        int a = 1;\n        int b| = 2;\n    }\n}\n",
+    "keys": [
+      "Alt+Shift+ArrowUp"
+    ],
+    "after": "public class Main {\n    public static void main(String[] args) {\n        int b| = 2;\n        int a = 1;\n    }\n}\n",
+    "note": "Move Line Up swaps the caret line with the one above."
+  },
+  {
+    "id": "move-line-up-past-blank",
+    "behavior": "move",
+    "before": "public class Main {\n    public static void main(String[] args) {\n        int a = 1;\n\n        int b| = 2;\n    }\n}\n",
+    "keys": [
+      "Alt+Shift+ArrowUp"
+    ],
+    "after": "public class Main {\n    public static void main(String[] args) {\n        int a = 1;\n        int b| = 2;\n\n    }\n}\n",
+    "note": "An empty line is an ordinary line to swap with."
+  },
+  {
+    "id": "move-selection-up",
+    "behavior": "move",
+    "before": "public class Main {\n    static void solve() {\n        int x = 0;\n        [int a = 1;\n        int b = 2;]\n    }\n}\n",
+    "keys": [
+      "Alt+Shift+ArrowUp"
+    ],
+    "after": "public class Main {\n    static void solve() {\n        [int a = 1;\n        int b = 2;]\n        int x = 0;\n    }\n}\n",
+    "note": "Every line the selection touches moves as one block and the selection moves with it."
+  },
+  {
+    "id": "move-first-line-up",
+    "behavior": "move",
+    "before": "import java.util.Sc|anner;\n\npublic class Main {\n}\n",
+    "keys": [
+      "Alt+Shift+ArrowUp"
+    ],
+    "after": "import java.util.Sc|anner;\n\npublic class Main {\n}\n",
+    "note": "The first line has nowhere to go, so nothing changes."
+  },
+  {
+    "id": "move-last-line-down",
+    "behavior": "move",
+    "before": "public class Main {\n}|",
+    "keys": [
+      "Alt+Shift+ArrowDown"
+    ],
+    "after": "public class Main {\n}|",
+    "note": "The last line has nowhere to go, so nothing changes."
+  },
+  {
+    "id": "template-sout",
+    "behavior": "template",
+    "before": "public class Main {\n    public static void main(String[] args) {\n        sout|\n    }\n}\n",
+    "keys": [
+      "Tab"
+    ],
+    "after": "public class Main {\n    public static void main(String[] args) {\n        System.out.println(|);\n    }\n}\n",
+    "note": "sout + Tab expands to System.out.println(); with the caret inside the parentheses."
+  },
+  {
+    "id": "template-sout-nested",
+    "behavior": "template",
+    "before": "public class Main {\n    public static void main(String[] args) {\n        for (int i = 0; i < 3; i++) {\n            sout|\n        }\n    }\n}\n",
+    "keys": [
+      "Tab"
+    ],
+    "after": "public class Main {\n    public static void main(String[] args) {\n        for (int i = 0; i < 3; i++) {\n            System.out.println(|);\n        }\n    }\n}\n",
+    "note": "The expansion keeps the indent of the line it was typed on."
+  },
+  {
+    "id": "template-sout-then-type",
+    "behavior": "template",
+    "before": "public class Main {\n    public static void main(String[] args) {\n        int n = 7;\n        sout|\n    }\n}\n",
+    "keys": [
+      "Tab",
+      "n"
+    ],
+    "after": "public class Main {\n    public static void main(String[] args) {\n        int n = 7;\n        System.out.println(n|);\n    }\n}\n",
+    "note": "sout has no stops besides the end, so typing goes straight into the argument."
+  },
+  {
+    "id": "template-souf",
+    "behavior": "template",
+    "before": "public class Main {\n    public static void main(String[] args) {\n        souf|\n    }\n}\n",
+    "keys": [
+      "Tab"
+    ],
+    "after": "public class Main {\n    public static void main(String[] args) {\n        System.out.printf(\"|\");\n    }\n}\n",
+    "note": "souf expands to System.out.printf(\"\"); with the caret inside the format string."
+  },
+  {
+    "id": "template-serr",
+    "behavior": "template",
+    "before": "public class Main {\n    public static void main(String[] args) {\n        serr|\n    }\n}\n",
+    "keys": [
+      "Tab"
+    ],
+    "after": "public class Main {\n    public static void main(String[] args) {\n        System.err.println(|);\n    }\n}\n",
+    "note": "serr prints to standard error."
+  },
+  {
+    "id": "template-psvm",
+    "behavior": "template",
+    "before": "public class Main {\n    psvm|\n}\n",
+    "keys": [
+      "Tab"
+    ],
+    "after": "public class Main {\n    public static void main(String[] args) {\n        |\n    }\n}\n",
+    "note": "psvm in a class body writes the main method and puts the caret on its indented body line."
+  },
+  {
+    "id": "template-main",
+    "behavior": "template",
+    "before": "public class Main {\n    main|\n}\n",
+    "keys": [
+      "Tab"
+    ],
+    "after": "public class Main {\n    public static void main(String[] args) {\n        |\n    }\n}\n",
+    "note": "main is a second abbreviation for the same main method."
+  },
+  {
+    "id": "template-fori",
+    "behavior": "template",
+    "before": "import java.util.Scanner;\n\npublic class Main {\n    public static void main(String[] args) {\n        Scanner in = new Scanner(System.in);\n        int n = in.nextInt();\n        fori|\n    }\n}\n",
+    "keys": [
+      "Tab",
+      "Tab",
+      "n",
+      "Tab"
+    ],
+    "after": "import java.util.Scanner;\n\npublic class Main {\n    public static void main(String[] args) {\n        Scanner in = new Scanner(System.in);\n        int n = in.nextInt();\n        for (int i = 0; i < n; i++) {\n            |\n        }\n    }\n}\n",
+    "note": "fori stops first on the index name (i, kept with Tab), then on the empty limit (n typed), then Tab ends in the indented body."
+  },
+  {
+    "id": "template-iter",
+    "behavior": "template",
+    "before": "import java.util.List;\n\npublic class Main {\n    static void show(List<String> words) {\n        iter|\n    }\n}\n",
+    "keys": [
+      "Tab",
+      "Tab",
+      "Tab"
+    ],
+    "after": "import java.util.List;\n\npublic class Main {\n    static void show(List<String> words) {\n        for (String word : words) {\n            |\n        }\n    }\n}\n",
+    "note": "iter fills the only iterable in scope (words), its element type and a singular name. Tab keeps words, Tab keeps word, and the last Tab ends in the body."
+  },
+  {
+    "id": "template-ifn",
+    "behavior": "template",
+    "before": "public class Main {\n    static int len(String s) {\n        ifn|\n        return s.length();\n    }\n}\n",
+    "keys": [
+      "Tab",
+      "Tab"
+    ],
+    "after": "public class Main {\n    static int len(String s) {\n        if (s == null) {\n            |\n        }\n        return s.length();\n    }\n}\n",
+    "note": "ifn writes an if (... == null) block around the only variable in scope. Tab keeps s and the second Tab ends in the body."
+  },
+  {
+    "id": "template-inn",
+    "behavior": "template",
+    "before": "public class Main {\n    static void show(String s) {\n        inn|\n    }\n}\n",
+    "keys": [
+      "Tab",
+      "Tab"
+    ],
+    "after": "public class Main {\n    static void show(String s) {\n        if (s != null) {\n            |\n        }\n    }\n}\n",
+    "note": "inn is the != null version of ifn."
+  },
+  {
+    "id": "completion-system-out",
+    "behavior": "completion",
+    "before": "public class Main {\n    public static void main(String[] args) {\n        System.|\n    }\n}\n",
+    "keys": [
+      "o",
+      "u",
+      "Accept:out"
+    ],
+    "after": "public class Main {\n    public static void main(String[] args) {\n        System.out|\n    }\n}\n",
+    "note": "Accepting a field inserts the name with no parentheses."
+  },
+  {
+    "id": "completion-system-in",
+    "behavior": "completion",
+    "before": "public class Main {\n    public static void main(String[] args) {\n        Scanner in = new Scanner(System.|);\n    }\n}\n",
+    "keys": [
+      "i",
+      "n",
+      "Accept:in"
+    ],
+    "after": "public class Main {\n    public static void main(String[] args) {\n        Scanner in = new Scanner(System.in|);\n    }\n}\n",
+    "note": "Completion inside an argument replaces only the typed prefix and leaves the ) and ; alone."
+  },
+  {
+    "id": "completion-println",
+    "behavior": "completion",
+    "before": "public class Main {\n    public static void main(String[] args) {\n        System.out.|\n    }\n}\n",
+    "keys": [
+      "p",
+      "r",
+      "i",
+      "n",
+      "t",
+      "l",
+      "Accept:println(String x)"
+    ],
+    "after": "public class Main {\n    public static void main(String[] args) {\n        System.out.println(|)\n    }\n}\n",
+    "note": "Accepting a method that takes arguments inserts the parentheses with the caret between them. No ; is added."
+  },
+  {
+    "id": "completion-printf",
+    "behavior": "completion",
+    "before": "public class Main {\n    public static void main(String[] args) {\n        System.out.|\n    }\n}\n",
+    "keys": [
+      "p",
+      "r",
+      "i",
+      "n",
+      "t",
+      "f",
+      "Accept:printf(String format, Object... args)"
+    ],
+    "after": "public class Main {\n    public static void main(String[] args) {\n        System.out.printf(|)\n    }\n}\n",
+    "note": "printf takes arguments, so the caret lands inside the parentheses."
+  },
+  {
+    "id": "completion-current-time-millis-hump",
+    "behavior": "completion",
+    "before": "public class Main {\n    public static void main(String[] args) {\n        long start = System.|\n    }\n}\n",
+    "keys": [
+      "c",
+      "T",
+      "M",
+      "Accept:currentTimeMillis()"
+    ],
+    "after": "public class Main {\n    public static void main(String[] args) {\n        long start = System.currentTimeMillis()|\n    }\n}\n",
+    "note": "cTM matches currentTimeMillis by its word starts. A method with no parameters leaves the caret after ()."
+  },
+  {
+    "id": "completion-math-max",
+    "behavior": "completion",
+    "before": "public class Main {\n    public static void main(String[] args) {\n        int best = Math.|\n    }\n}\n",
+    "keys": [
+      "m",
+      "a",
+      "Accept:max(int a, int b)"
+    ],
+    "after": "public class Main {\n    public static void main(String[] args) {\n        int best = Math.max(|)\n    }\n}\n",
+    "note": "Prefix ma offers max. Accepting it puts the caret inside ()."
+  },
+  {
+    "id": "completion-math-floor-mod-hump",
+    "behavior": "completion",
+    "before": "public class Main {\n    public static void main(String[] args) {\n        int r = Math.|\n    }\n}\n",
+    "keys": [
+      "f",
+      "M",
+      "Accept:floorMod(int x, int y)"
+    ],
+    "after": "public class Main {\n    public static void main(String[] args) {\n        int r = Math.floorMod(|)\n    }\n}\n",
+    "note": "fM matches floorMod by its humps."
+  },
+  {
+    "id": "completion-math-pi",
+    "behavior": "completion",
+    "before": "public class Main {\n    public static void main(String[] args) {\n        double area = Math.|\n    }\n}\n",
+    "keys": [
+      "P",
+      "I",
+      "Accept:PI"
+    ],
+    "after": "public class Main {\n    public static void main(String[] args) {\n        double area = Math.PI|\n    }\n}\n",
+    "note": "A constant is inserted as a bare name."
+  },
+  {
+    "id": "completion-nested-in-call",
+    "behavior": "completion",
+    "before": "public class Main {\n    public static void main(String[] args) {\n        System.out.println(Math.|);\n    }\n}\n",
+    "keys": [
+      "a",
+      "b",
+      "Accept:abs(int a)"
+    ],
+    "after": "public class Main {\n    public static void main(String[] args) {\n        System.out.println(Math.abs(|));\n    }\n}\n",
+    "note": "Inside another call the new parentheses nest and the outer ); is untouched."
+  },
+  {
+    "id": "completion-arrays-sort",
+    "behavior": "completion",
+    "before": "import java.util.Arrays;\n\npublic class Main {\n    public static void main(String[] args) {\n        Arrays.|\n    }\n}\n",
+    "keys": [
+      "s",
+      "o",
+      "Accept:sort(int[] a)"
+    ],
+    "after": "import java.util.Arrays;\n\npublic class Main {\n    public static void main(String[] args) {\n        Arrays.sort(|)\n    }\n}\n",
+    "note": "sort is offered after Arrays."
+  },
+  {
+    "id": "completion-arrays-as-list-hump",
+    "behavior": "completion",
+    "before": "import java.util.Arrays;\n\npublic class Main {\n    public static void main(String[] args) {\n        Arrays.|\n    }\n}\n",
+    "keys": [
+      "a",
+      "L",
+      "Accept:asList(T... a)"
+    ],
+    "after": "import java.util.Arrays;\n\npublic class Main {\n    public static void main(String[] args) {\n        Arrays.asList(|)\n    }\n}\n",
+    "note": "aL matches asList by its humps."
+  },
+  {
+    "id": "completion-arrays-to-string-hump",
+    "behavior": "completion",
+    "before": "import java.util.Arrays;\n\npublic class Main {\n    public static void main(String[] args) {\n        System.out.println(Arrays.|);\n    }\n}\n",
+    "keys": [
+      "t",
+      "S",
+      "Accept:toString(int[] a)"
+    ],
+    "after": "import java.util.Arrays;\n\npublic class Main {\n    public static void main(String[] args) {\n        System.out.println(Arrays.toString(|));\n    }\n}\n",
+    "note": "tS matches toString by its humps."
+  },
+  {
+    "id": "completion-parse-int-hump",
+    "behavior": "completion",
+    "before": "import java.util.Scanner;\n\npublic class Main {\n    public static void main(String[] args) {\n        Scanner in = new Scanner(System.in);\n        int n = Integer.|\n    }\n}\n",
+    "keys": [
+      "p",
+      "I",
+      "Accept:parseInt(String s)"
+    ],
+    "after": "import java.util.Scanner;\n\npublic class Main {\n    public static void main(String[] args) {\n        Scanner in = new Scanner(System.in);\n        int n = Integer.parseInt(|)\n    }\n}\n",
+    "note": "pI matches parseInt by its humps."
+  },
+  {
+    "id": "completion-max-value-hump",
+    "behavior": "completion",
+    "before": "public class Main {\n    public static void main(String[] args) {\n        int best = Integer.|\n    }\n}\n",
+    "keys": [
+      "M",
+      "V",
+      "Accept:MAX_VALUE"
+    ],
+    "after": "public class Main {\n    public static void main(String[] args) {\n        int best = Integer.MAX_VALUE|\n    }\n}\n",
+    "note": "MV matches the underscore-separated words of MAX_VALUE."
+  },
+  {
+    "id": "completion-to-binary-string-hump",
+    "behavior": "completion",
+    "before": "public class Main {\n    public static void main(String[] args) {\n        String bits = Integer.|\n    }\n}\n",
+    "keys": [
+      "t",
+      "B",
+      "S",
+      "Accept:toBinaryString(int i)"
+    ],
+    "after": "public class Main {\n    public static void main(String[] args) {\n        String bits = Integer.toBinaryString(|)\n    }\n}\n",
+    "note": "tBS matches toBinaryString by its humps."
+  },
+  {
+    "id": "completion-class-adds-import",
+    "behavior": "completion",
+    "before": "public class Main {\n    public static void main(String[] args) {\n        |\n    }\n}\n",
+    "keys": [
+      "B",
+      "R",
+      "Accept:BufferedReader"
+    ],
+    "after": "import java.io.BufferedReader;\n\npublic class Main {\n    public static void main(String[] args) {\n        BufferedReader|\n    }\n}\n",
+    "note": "BR matches BufferedReader by its humps. Accepting a class that is not imported adds its import at the top of the file."
+  },
+  {
+    "id": "completion-none-in-string",
+    "behavior": "completion",
+    "before": "public class Main {\n    public static void main(String[] args) {\n        System.out.println(\"System.|\");\n    }\n}\n",
+    "keys": [
+      "o",
+      "u",
+      "t"
+    ],
+    "after": "public class Main {\n    public static void main(String[] args) {\n        System.out.println(\"System.out|\");\n    }\n}\n",
+    "note": "Inside a string literal no popup opens, so the letters are typed as text."
+  }
+]
