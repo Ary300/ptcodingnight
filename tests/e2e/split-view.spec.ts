@@ -278,7 +278,8 @@ test.describe("on a wide window", () => {
       const size = await box(copy);
       expect(size.width * size.height, `${String(text)} is on screen`).toBeLessThanOrEqual(1);
     }
-    await expect(editor(page)).toHaveAccessibleDescription(/Press Escape, then Tab/);
+    // Escape TWICE: one Escape is an IntelliJ reflex and must not arm the exit.
+    await expect(editor(page)).toHaveAccessibleDescription(/Press Escape twice, then Tab/);
     await expect(page.getByRole("button", { name: "Run samples" })).toHaveAccessibleDescription(
       "Running samples is free. Submitting counts.",
     );
@@ -362,7 +363,8 @@ test.describe("on a wide window", () => {
     await layoutButton(page, "Side by side").click();
     await divider(page).focus();
     await page.keyboard.press("Home");
-    await expect(divider(page)).toHaveAttribute("aria-valuenow", "30");
+    // 25, the side-by-side workspace's lower bound (it was 30 in the old in-column split).
+    await expect(divider(page)).toHaveAttribute("aria-valuenow", "25");
 
     const pane = page.getByRole("region", { name: "Problem statement" });
     await pane.getByText("Sample 1", { exact: true }).click();

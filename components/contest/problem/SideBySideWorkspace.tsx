@@ -24,9 +24,23 @@ import { SplitPanes } from "./SplitPanes";
  *
  * This component arranges; it owns no state. Every block arrives from `ProblemWorkspace`, which
  * renders the same statement, editor and verdict in both layouts.
+ *
+ * ## Stacked is arranged here too
+ *
+ * The stacked page is this same component with `stacked` set, because the editor has to be the
+ * SAME DOM node in both layouts. Two trees meant the toggle, or the window crossing 1024px,
+ * rebuilt the textarea, taking the student's focus, caret and undo history with it. So both
+ * arrangements share one `SplitPanes` (which drops its divider when stacked), and inside the end
+ * pane the editor's wrapper is always the first child: only its classes change. What moves around
+ * it (the drawer, the action row, the free-run note) sits in slots that are `null` in the layout
+ * that does not use them, so nothing before the editor ever shifts its position.
  */
 
 export interface SideBySideWorkspaceProps {
+  /** The ordinary page: header and statement above, the editor panel full width below. */
+  readonly stacked: boolean;
+  /** The stacked page's own header: breadcrumb, the full-size title, and the tabs. */
+  readonly stackedHeader: ReactNode;
   /** "P1 (Two Tables, One Total)". */
   readonly label: string;
   /** The Solved / Attempted / Locked pill, or nothing. */
@@ -37,11 +51,14 @@ export interface SideBySideWorkspaceProps {
   readonly statement: ReactNode;
   /** The code editor, which fills the room the drawer and the action bar leave. */
   readonly editor: ReactNode;
+  /** Side by side the drawer above the actions; stacked, the verdicts below them. */
   readonly results: ReactNode;
   readonly actions: ReactNode;
 }
 
 export function SideBySideWorkspace({
+  stacked,
+  stackedHeader,
   label,
   status,
   tabs,
@@ -52,9 +69,19 @@ export function SideBySideWorkspace({
 }: SideBySideWorkspaceProps) {
   return (
     <SplitPanes
+      stacked={stacked}
+      // "Loading problem…" is replaced by the whole page in one client-side swap; the rise makes
+      // the statement's arrival followable. Transform only, and only on the scrolling page.
+      stackedClassName="motion-swap-in"
       startLabel="Problem statement"
       endLabel="Your solution"
       start={
+        stacked ? (
+          <>
+            {stackedHeader}
+            {statement}
+          </>
+        ) : (
         <>
           <header className="shrink-0 px-5 pt-3">
             <nav aria-label="Breadcrumb">
@@ -100,16 +127,29 @@ export function SideBySideWorkspace({
             {statement}
           </div>
         </>
+        )
       }
       end={
         <>
           {/*
-            The editor takes every row the drawer and the bar leave, and never fewer than 14rem:
-            an open drawer is capped (ResultsDrawer) precisely so this floor always holds.
+            Side by side, the editor takes every row the drawer and the bar leave, and never fewer
+            than 14rem: an open drawer is capped (ResultsDrawer) precisely so this floor always
+            holds. Stacked, it is a bordered panel. This wrapper is the end pane's FIRST child in
+            both, which is what keeps the editor inside it from being rebuilt on a switch.
+
+            No `overflow-hidden` on the stacked panel, deliberately: it would crop the editor's
+            focus ring, and the header bar and the status strip cover the rounded corners anyway.
           */}
-          <div className="flex min-h-[14rem] flex-1 flex-col">{editor}</div>
-          {results}
+          <div
+            className={
+              stacked ? "rounded-panel border border-rule-edge bg-paper" : "flex min-h-[14rem] flex-1 flex-col"
+            }
+          >
+            {editor}
+          </div>
+          {stacked ? null : results}
           {actions}
+          {stacked ? results : null}
         </>
       }
     />

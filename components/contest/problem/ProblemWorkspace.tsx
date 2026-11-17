@@ -532,23 +532,70 @@ export function ProblemWorkspace({ slug }: ProblemWorkspaceProps) {
   );
 
   const toggle = wide ? <LayoutToggle value={layout} onChange={rememberLayout} /> : undefined;
+  const tabs = <ProblemTabs slug={slug} trailing={toggle} />;
 
-  if (sideBySide) {
-    return (
-      <SideBySideWorkspace
-        label={problemLabel(detail.slotLabel, detail.title)}
-        status={<ProblemStatusPill detail={detail} />}
-        tabs={<ProblemTabs slug={slug} trailing={toggle} />}
-        statement={
+  /*
+    ONE tree for both layouts. `SideBySideWorkspace` arranges the stacked page too, so the editor
+    is the same DOM node whichever layout is showing: the toggle, or the window crossing 1024px,
+    changes classes around the textarea and never rebuilds it, and the student keeps focus, caret
+    and undo history mid-word. Only the blocks AROUND the editor differ by layout, below.
+  */
+  return (
+    <SideBySideWorkspace
+      stacked={!sideBySide}
+      stackedHeader={
+        /*
+          Breadcrumb, title with its status pill, tabs: HackerRank's header. The limits line
+          lives in the right-hand rail, where HackerRank puts Difficulty and Max Score, so the
+          title area carries the name and its state and nothing else.
+
+          The pill sits on the same row as the title at `sm` and above, and wraps under it at
+          360px rather than squeezing the title into two words per line.
+        */
+        <>
+          <ProblemBreadcrumb slotLabel={detail.slotLabel} title={detail.title} />
+          <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2">
+            {/*
+              Two steps of the app scale rather than one fixed size: HackerRank's challenge title
+              is the largest thing on its page, and 31px of Baskerville at 360px eats three lines
+              of a long title. On scale at both ends (DESIGN.md §4): `--text-lg` then `--text-xl`.
+            */}
+            <h1 className="min-w-0 font-display font-bold text-[length:var(--text-lg)] sm:text-[length:var(--text-xl)]">
+              {detail.title}
+            </h1>
+            <ProblemStatusPill detail={detail} />
+          </div>
+          {tabs}
+        </>
+      }
+      label={problemLabel(detail.slotLabel, detail.title)}
+      status={<ProblemStatusPill detail={detail} />}
+      tabs={tabs}
+      statement={
+        sideBySide ? (
           <article className="min-w-0">
             {statement}
             {/* Below the samples rather than beside them: a 16rem rail in a 40% pane would
                 leave the prose about 40 characters wide. */}
             <div className="mt-8 border-t border-rule-edge pt-4">{rail}</div>
           </article>
-        }
-        editor={editor}
-        results={
+        ) : (
+          /*
+            Stacked: the statement across the measure with the rail beside it, and the editor as
+            a full-width panel BELOW. A statement in a half-width column wraps at roughly 45
+            characters once the samples' code blocks are in it, so on a narrower laptop the prose
+            gets the full measure and the editor the full width. Below `lg` both stack, statement
+            first, which is the order a student needs them in.
+          */
+          <div className="mt-6 grid gap-8 lg:grid-cols-[minmax(0,1fr)_16rem]">
+            <article className="min-w-0">{statement}</article>
+            <aside className="min-w-0">{rail}</aside>
+          </div>
+        )
+      }
+      editor={editor}
+      results={
+        sideBySide ? (
           <ResultsDrawer
             open={resultsOpen}
             onOpenChange={setResultsOpen}
@@ -570,8 +617,17 @@ export function ProblemWorkspace({ slug }: ProblemWorkspaceProps) {
               <div className="space-y-3 pt-2">{verdicts}</div>
             )}
           </ResultsDrawer>
-        }
-        actions={
+        ) : (
+          <>
+            <p id={freeNoteId} className="mt-2 text-right text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
+              {freeNote}
+            </p>
+            <div className="mt-4 space-y-4">{verdicts}</div>
+          </>
+        )
+      }
+      actions={
+        sideBySide ? (
           /*
             Pinned to the bottom of the pane: upload on the left, the two run controls on the
             right, where HackerRank keeps Run Code and Submit Code, and no copy between them. The
@@ -584,78 +640,14 @@ export function ProblemWorkspace({ slug }: ProblemWorkspaceProps) {
             </p>
             {runButtons}
           </div>
-        }
-      />
-    );
-  }
-
-  return (
-    /*
-      "Loading problem…" is replaced by the whole workspace in one client-side swap, after the
-      page's own arrival animation has long finished. The rise makes the statement's arrival
-      followable instead of a same-frame pop. Transform only: the ink-on-paper text inside is
-      full strength, but the rule is cheaper to keep than to re-derive per surface.
-    */
-    <div className="motion-swap-in">
-      {/*
-        Breadcrumb, title with its status pill, tabs — HackerRank's header. The limits line that
-        used to live under the title has moved into the right-hand rail, where HackerRank puts
-        Difficulty and Max Score, so the title area carries the name and its state and nothing
-        else.
-
-        The pill sits on the same row as the title at `sm` and above, and wraps under it at 360px
-        rather than squeezing the title into two words per line.
-      */}
-      <ProblemBreadcrumb slotLabel={detail.slotLabel} title={detail.title} />
-      <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2">
-        {/*
-          Two steps of the app scale rather than one fixed size: HackerRank's challenge title is
-          the largest thing on its page, and 31px of Baskerville at 360px eats three lines of a
-          long title. On scale at both ends (DESIGN.md §4) — `--text-lg` then `--text-xl`.
-        */}
-        <h1 className="min-w-0 font-display font-bold text-[length:var(--text-lg)] sm:text-[length:var(--text-xl)]">
-          {detail.title}
-        </h1>
-        <ProblemStatusPill detail={detail} />
-      </div>
-      <ProblemTabs slug={slug} trailing={toggle} />
-
-      {/*
-        Statement across the measure with a metadata rail beside it, and the editor as a full-width
-        panel BELOW. The split is one click away on the toggle, and the default from 1280px.
-
-        A statement in a half-width column wraps at roughly 45 characters once the samples' code
-        blocks are in it, so on a narrower laptop the prose gets the full measure and the editor
-        the full width. Below `lg` both stack, statement first, which is the order a student needs
-        them in.
-      */}
-      <div className="mt-6 grid gap-8 lg:grid-cols-[minmax(0,1fr)_16rem]">
-        <article className="min-w-0">{statement}</article>
-        <aside className="min-w-0">{rail}</aside>
-      </div>
-
-      {/* ---- the editor panel, full width, below the statement ---- */}
-      <section aria-label="Your solution" className="mt-8">
-        {/*
-          No `overflow-hidden` on this box, deliberately. It would tidy the dark band's corners
-          and it would also crop the editor's focus ring — and a focus ring that is only mostly
-          visible is the one part of this panel that has to be exactly visible (G9, keyboard-only
-          submit). The header bar and the status strip cover the rounded corners on their own.
-        */}
-        <div className="rounded-panel border border-rule-edge bg-paper">{editor}</div>
-
-        {/* The action row sits BELOW the panel, not inside it: upload left, run controls right. */}
-        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 border-t border-rule-edge pt-3">
-          {upload}
-          {runButtons}
-        </div>
-
-        <p id={freeNoteId} className="mt-2 text-right text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
-          {freeNote}
-        </p>
-
-        <div className="mt-4 space-y-4">{verdicts}</div>
-      </section>
-    </div>
+        ) : (
+          /* BELOW the editor panel, not inside it: upload left, run controls right. */
+          <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 border-t border-rule-edge pt-3">
+            {upload}
+            {runButtons}
+          </div>
+        )
+      }
+    />
   );
 }

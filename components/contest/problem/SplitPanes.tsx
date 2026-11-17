@@ -34,6 +34,16 @@ import { rememberSplit, splitStore } from "./split-preference";
  * over the textarea and past the window edge. Arrows step 5%, Home and End jump to the 25% and
  * 75% bounds. The ratio is remembered once a drag ends rather than on every move, because each
  * write notifies the store.
+ *
+ * ## Stacked is a mode of this component, not another tree
+ *
+ * The "Stacked" layout is the same three slots with the divider taken out: the start pane above,
+ * the end pane below, the page scrolling. It lives here rather than in a second component because
+ * the end pane holds the editor. With two trees, every switch (the toggle, the window crossing
+ * 1024px, a browser zoom) rebuilt the textarea: focus fell to <body> mid-word, the caret went to
+ * 0, and the undo history was gone, since Chrome drops a node's undo steps when it leaves the
+ * page. Here the root and both panes are the same elements in both layouts and only their classes
+ * change, so React keeps every node under them that the caller keeps in the same place.
  */
 
 export interface SplitPanesProps {
@@ -42,9 +52,20 @@ export interface SplitPanesProps {
   /** Accessible names for the two panes, which are regions. */
   readonly startLabel: string;
   readonly endLabel: string;
+  /** One pane above the other with no divider: the "Stacked" layout. See the note above. */
+  readonly stacked?: boolean;
+  /** Classes for the root, stacked only; the split's root is sized by the frame. */
+  readonly stackedClassName?: string;
 }
 
-export function SplitPanes({ start, end, startLabel, endLabel }: SplitPanesProps) {
+export function SplitPanes({
+  start,
+  end,
+  startLabel,
+  endLabel,
+  stacked = false,
+  stackedClassName = "",
+}: SplitPanesProps) {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const startId = useId();
 
@@ -101,18 +122,25 @@ export function SplitPanes({ start, end, startLabel, endLabel }: SplitPanesProps
     <div
       ref={rootRef}
       data-split-root=""
-      className={`flex h-full min-h-0 w-full ${dragging ? "cursor-col-resize select-none" : ""}`}
+      data-layout={stacked ? "stacked" : "split"}
+      className={
+        stacked
+          ? stackedClassName
+          : `flex h-full min-h-0 w-full ${dragging ? "cursor-col-resize select-none" : ""}`
+      }
     >
       <section
         id={startId}
         aria-label={startLabel}
         data-split-pane="start"
-        className="flex min-h-0 min-w-0 shrink-0 flex-col bg-paper"
-        style={{ flexBasis: `${split}%` }}
+        className={stacked ? "min-w-0" : "flex min-h-0 min-w-0 shrink-0 flex-col bg-paper"}
+        style={stacked ? undefined : { flexBasis: `${split}%` }}
       >
         {start}
       </section>
 
+      {/* Absent when stacked, but its slot stays, so the end pane after it is never rebuilt. */}
+      {stacked ? null : (
       <div
         role="separator"
         tabIndex={0}
@@ -158,11 +186,13 @@ export function SplitPanes({ start, end, startLabel, endLabel }: SplitPanesProps
           ))}
         </span>
       </div>
+      )}
 
       <section
         aria-label={endLabel}
         data-split-pane="end"
-        className="flex min-h-0 min-w-0 flex-1 flex-col bg-paper"
+        // Stacked, it is the full-width panel below the statement.
+        className={stacked ? "mt-8" : "flex min-h-0 min-w-0 flex-1 flex-col bg-paper"}
       >
         {end}
       </section>
