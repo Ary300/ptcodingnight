@@ -16,15 +16,17 @@ Which seed made which test: 04 = seed 3, 06 = 6, 09 = 9,
 10 = 13, 11 = 14, 12 = 16, 13 = 17, 14 = 18, 15 = 33, 16 = 40, 17 = 47, 18 = 49.
 01-03, 05, 07 and 08 are written by hand.
 
-Bounds are kept small for a casual contest: n <= 1000 and every value and d
-<= 10^6, so a + 2d stays far inside a signed 32-bit int and no program needs a
-64-bit type.
+Bounds are kept small for a casual contest: n <= 200, so the plain triple loop
+over every (i, j, k) is about 1.3 million checks and runs quickly in Python,
+and every value and d <= 10^6, so a + 2d stays far inside a signed 32-bit int
+and no program needs a 64-bit type. Seeds 15 and above land on the n = 200
+ceiling.
 """
 
 import random
 import sys
 
-MAX_N = 1000
+MAX_N = 200
 MAX_VALUE = 10**6
 MAX_D = 10**6
 

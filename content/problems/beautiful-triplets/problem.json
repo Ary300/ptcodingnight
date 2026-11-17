@@ -27,11 +27,11 @@
       },
       {
         "name": "d",
-        "type": "long"
+        "type": "int"
       },
       {
         "name": "a",
-        "type": "long[]",
+        "type": "int[]",
         "length": "n"
       }
     ]
