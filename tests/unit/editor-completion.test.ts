@@ -306,16 +306,20 @@ describe("completionsFor at the top level", () => {
   it("does not offer the word being typed back to itself", () => {
     expect(labelsFor("int zebraCount;\nzebra|")).toEqual(["zebraCount"]);
     expect(labelsFor("zz|")).toEqual([]);
-    expect(labelsFor("zz|\nint zz;")).toEqual([]);
+  });
+
+  it("offers a name the file declares elsewhere even when the prefix spells it in full", () => {
+    // The declared name is the top row, so accepting it changes nothing and Enter stays Enter.
+    expect(labelsFor("zz|\nint zz;")).toEqual(["zz"]);
   });
 
   it("does not offer the word the caret sits inside", () => {
     expect(labelsFor("zq|uux = 1;")).toEqual([]);
   });
 
-  it("skips one-letter words and numbers in the file", () => {
+  it("offers one-letter names from the file and skips numbers", () => {
     expect(labelsFor("int a = 42; int b2 = a;\nb|")).toEqual(["b2"]);
-    expect(labelsFor("int x = 0x1F;\nx|")).toEqual([]);
+    expect(labelsFor("int x = 0x1F;\nx|")).toEqual(["x"]);
   });
 
   it("de-duplicates identifiers that appear many times", () => {

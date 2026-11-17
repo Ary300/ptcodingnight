@@ -13,16 +13,12 @@
  * then keywords, globals and live templates.
  */
 
+import { fileMembers } from "./members";
+import { renderTemplate, shiftStops } from "./template";
 import type { CompletionContext, CompletionItem, Edit, EditState, LanguageProfile } from "./types";
 
 /** Matches IntelliJ's popup, which shows about a dozen rows before it scrolls. */
 export const DEFAULT_COMPLETION_LIMIT = 12;
-
-/** The shortest identifier from the file worth offering back. One letter is faster to type. */
-const MIN_FILE_IDENTIFIER_LENGTH = 2;
-
-/** Where a template body puts the caret, as IntelliJ's live templates spell it. */
-const END_MARKER = "$END$";
 
 const IDENT_CHAR = /[A-Za-z0-9_]/;
 const DIGIT = /[0-9]/;
@@ -247,18 +243,26 @@ export function camelHumpMatches(pattern: string, name: string): boolean {
   return starts.length > 0 && from(0, 0);
 }
 
-/** 0 exact-case prefix, 1 any-case prefix, 2 camel hump, null no match. */
+/**
+ * 0 the whole name exactly as typed, 1 exact-case prefix, 2 any-case prefix, 3 camel hump, null
+ * no match. The exact match outranks everything, so a name the student has typed in full stays
+ * the top row: accepting it changes nothing, and Enter after `return n` is a newline, never `not`.
+ */
 function matchTier(prefix: string, key: string): number | null {
-  if (key.startsWith(prefix)) return 0;
-  if (key.toLowerCase().startsWith(prefix.toLowerCase())) return 1;
-  if (camelHumpMatches(prefix, key)) return 2;
+  if (key === prefix) return 0;
+  if (key.startsWith(prefix)) return 1;
+  if (key.toLowerCase().startsWith(prefix.toLowerCase())) return 2;
+  if (camelHumpMatches(prefix, key)) return 3;
   return null;
 }
 
 /** Code-unit order, so the ranking is identical on every machine and locale. */
 const byCodeUnit = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
 
-/** A candidate and the group it came from: 0 for the qualifier's own members, 1 for "*". */
+/**
+ * A candidate and the group it came from. After a qualifier: 0 for the qualifier's own members,
+ * 1 for members the file itself defines, 2 for the general "*" members. At the top level: 0.
+ */
 interface Candidate {
   readonly item: CompletionItem;
   readonly group: number;
@@ -274,6 +278,7 @@ function rank(prefix: string, candidates: readonly Candidate[], limit: number): 
     (a, b) =>
       a.tier - b.tier ||
       a.group - b.group ||
+      (b.item.priority ?? 0) - (a.item.priority ?? 0) ||
       a.key.length - b.key.length ||
       byCodeUnit(a.key, b.key) ||
       byCodeUnit(a.item.label, b.item.label),
@@ -297,15 +302,17 @@ function dedupe(items: readonly CompletionItem[]): CompletionItem[] {
 // ---------------------------------------------------------------------------------------------
 
 /**
- * Every identifier the file names, two characters or longer, in first-seen order. The word being
- * typed is not one of them: neither the prefix itself nor the run that starts where it starts.
+ * Every identifier the file names, in first-seen order, one-letter names included: `n`, `i` and
+ * `a` are the names contest code uses most, and leaving them out let a keyword take the top row
+ * after `return n`. The word being typed is left out only where it is being typed (the run that
+ * starts at the caret's word), so a name declared elsewhere in the file is offered even when the
+ * prefix already spells it in full.
  */
 function fileIdentifiers(text: string, ctx: CompletionContext): string[] {
   const names = new Set<string>();
   for (const match of text.matchAll(WORD_RUN)) {
     const word = match[0];
-    if (match.index === ctx.replaceFrom || word === ctx.prefix) continue;
-    if (word.length < MIN_FILE_IDENTIFIER_LENGTH || isDigit(word[0])) continue;
+    if (match.index === ctx.replaceFrom || isDigit(word[0])) continue;
     names.add(word);
   }
   return [...names];
@@ -338,13 +345,28 @@ function topLevelCandidates(
  * The qualifier's own members, then the members offered after any qualifier. A general member
  * the qualifier already names (print after System.out) is dropped: the specific one is the truth.
  */
-function memberCandidates(qualifier: string, profile: LanguageProfile): Candidate[] {
+function memberCandidates(ctx: CompletionContext, text: string, profile: LanguageProfile): Candidate[] {
+  const qualifier = ctx.qualifier ?? "";
   const specific = dedupe(qualifier === "*" ? [] : (profile.members[qualifier] ?? []));
   const named = new Set(specific.map(matchKey));
   const general = dedupe(profile.members["*"] ?? []).filter((item) => !named.has(matchKey(item)));
+  const library = new Set([...named, ...general.map(matchKey)]);
+  // The file's own members (`self.val`, a Node's `next`). A call the library already lists keeps
+  // the library's row, which knows its parameters; a field always gets its own row, since
+  // `node.next` and Scanner's `next()` are different things that share a name.
+  const chainStartsAt = ctx.replaceFrom - qualifier.length - 2;
+  const own: CompletionItem[] = fileMembers(text, profile.lineComment === "//", chainStartsAt, ctx.replaceFrom)
+    .filter((member) => !(member.isMethod && library.has(member.name)))
+    .filter((member) => !named.has(member.name))
+    .map((member) =>
+      member.isMethod
+        ? { label: `${member.name}()`, insertText: `${member.name}()`, kind: "method", caretOffset: member.name.length + 1 }
+        : { label: member.name, insertText: member.name, kind: "field" },
+    );
   return [
     ...specific.map((item) => ({ item, group: 0 })),
-    ...general.map((item) => ({ item, group: 1 })),
+    ...own.map((item) => ({ item, group: 1 })),
+    ...general.map((item) => ({ item, group: 2 })),
   ];
 }
 
@@ -362,7 +384,7 @@ export function completionsFor(
   const candidates =
     ctx.qualifier === null
       ? topLevelCandidates(ctx, text, profile).map((item) => ({ item, group: 0 }))
-      : memberCandidates(ctx.qualifier, profile);
+      : memberCandidates(ctx, text, profile);
   return rank(ctx.prefix, candidates, limit);
 }
 
@@ -379,43 +401,43 @@ function indentAt(text: string, offset: number): string {
 
 /**
  * A live template body as typed at a line indented by `indent`: continuation lines take that
- * indent, and the caret goes where $END$ was, or at the end when there is none.
+ * indent, and the caret goes where $END$ was (or the first field), or at the end when there is none.
  */
 export function expandTemplateBody(
   body: string,
   indent: string,
 ): { readonly text: string; readonly caret: number } {
-  const indented = body
-    .split("\n")
-    .map((line, i) => (i === 0 || line === "" ? line : indent + line))
-    .join("\n");
-  const marker = indented.indexOf(END_MARKER);
-  if (marker < 0) return { text: indented, caret: indented.length };
-  const text =
-    indented.slice(0, marker) +
-    indented
-      .slice(marker + END_MARKER.length)
-      .split(END_MARKER)
-      .join("");
-  return { text, caret: marker };
+  // A tab "unit" leaves leading tabs as they are written.
+  const rendered = renderTemplate(body, indent, "\t");
+  return { text: rendered.text, caret: rendered.selectionStart };
 }
 
-/** The one replacement that accepting `item` in `ctx` performs. */
+/** The indent unit a template inserted from the popup widens tabs to, when the caller names none. */
+const DEFAULT_INDENT_UNIT = "    ";
+
+/**
+ * The one replacement that accepting `item` in `ctx` performs. A template keeps its fields, so
+ * Tab after accepting `fori` from the list moves on exactly as it does after `fori` + Tab.
+ */
 export function applyCompletion(
   state: EditState,
   ctx: CompletionContext,
   item: CompletionItem,
+  indentUnit: string = DEFAULT_INDENT_UNIT,
 ): Edit {
   if (item.kind === "snippet") {
-    const expanded = expandTemplateBody(item.insertText, indentAt(state.text, ctx.replaceFrom));
-    const caret = ctx.replaceFrom + expanded.caret;
-    return {
+    const indent = indentAt(state.text, ctx.replaceFrom);
+    const rendered = renderTemplate(item.insertText, indent, indent.includes("\t") ? "\t" : indentUnit);
+    const edit: Edit = {
       from: ctx.replaceFrom,
       to: ctx.replaceTo,
-      insert: expanded.text,
-      selectionStart: caret,
-      selectionEnd: caret,
+      insert: rendered.text,
+      selectionStart: ctx.replaceFrom + rendered.selectionStart,
+      selectionEnd: ctx.replaceFrom + rendered.selectionEnd,
     };
+    return rendered.tabStops.length === 0
+      ? edit
+      : { ...edit, tabStops: shiftStops(rendered.tabStops, ctx.replaceFrom) };
   }
   const offset = item.caretOffset ?? item.insertText.length;
   const clamped = Math.min(Math.max(offset, 0), item.insertText.length);

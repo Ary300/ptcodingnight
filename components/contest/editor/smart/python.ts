@@ -3,9 +3,11 @@ import type { CompletionItem, CompletionKind, LanguageProfile, LiveTemplate } fr
 /**
  * The Python profile, modelled on PyCharm for contest code that reads stdin and writes stdout.
  *
- * Python has no closing brace, so nothing dedents on type. A block opens on a trailing ":" (the
- * header of an if, for, def, class ...) or on a line left hanging on an open bracket, which is how
- * PyCharm decides that Enter should indent one level more.
+ * A block opens on a trailing ":" (the header of an if, for, def, class ...) or on a line left
+ * hanging on an open bracket, which is how PyCharm decides that Enter should indent one level
+ * more. It closes after `return`, `pass`, `break`, `continue` or `raise`, where Enter drops a
+ * level, and typing the ":" of `else:`, `elif`, `except` or `finally` moves the clause back to its
+ * `if` or `try`. A closing bracket typed on its own line returns to its opener's indent.
  */
 
 const OPENERS = "([{";
@@ -72,9 +74,9 @@ const TEMPLATES: readonly LiveTemplate[] = [
     description: "The if __name__ == \"__main__\" guard",
     body: 'if __name__ == "__main__":\n    $END$',
   },
-  { abbreviation: "for", description: "A for loop over an iterable", body: "for $END$ in :" },
-  { abbreviation: "fori", description: "A for loop over range()", body: "for i in range($END$):" },
-  { abbreviation: "def", description: "A function definition", body: "def $END$():" },
+  { abbreviation: "for", description: "A for loop over an iterable", body: "for ${1} in ${2}:\n    $END$" },
+  { abbreviation: "fori", description: "A for loop over range()", body: "for i in range(${1}):\n    $END$" },
+  { abbreviation: "def", description: "A function definition", body: "def ${1}(${2}):\n    $END$" },
   { abbreviation: "inp", description: "Read one line from input", body: "input()$END$" },
   {
     abbreviation: "readints",
@@ -88,6 +90,41 @@ const TEMPLATES: readonly LiveTemplate[] = [
   },
   { abbreviation: "prt", description: "Print a value", body: "print($END$)" },
 ];
+
+/** PyCharm's postfix templates, typed after an expression and a dot: `x.print`, `xs.for`. */
+const POSTFIX: readonly LiveTemplate[] = [
+  { abbreviation: "print", description: "Prints the expression", body: "print($EXPR$)$END$" },
+  { abbreviation: "for", description: "Iterates over the expression", body: "for ${1:x} in $EXPR$:\n    $END$" },
+  { abbreviation: "fori", description: "Counts up to the expression", body: "for i in range($EXPR$):\n    $END$" },
+  { abbreviation: "if", description: "Checks the expression", body: "if $EXPR$:\n    $END$" },
+  { abbreviation: "while", description: "Loops while the expression holds", body: "while $EXPR$:\n    $END$" },
+  { abbreviation: "not", description: "Negates the expression", body: "not $EXPR$$END$" },
+  { abbreviation: "return", description: "Returns the expression", body: "return $EXPR$$END$" },
+  { abbreviation: "len", description: "The length of the expression", body: "len($EXPR$)$END$" },
+];
+
+/**
+ * The clauses PyCharm moves back to the block they continue when their ":" is typed, and the
+ * openers each can continue. `else` also ends a for, a while and a try.
+ */
+const ALIGN_ON_COLON: Readonly<Record<string, readonly string[]>> = {
+  else: ["if", "elif", "for", "while", "try", "except"],
+  elif: ["if", "elif"],
+  except: ["try", "except"],
+  finally: ["try", "except", "else"],
+};
+
+const TERMINATOR = /^\s*(?:return|pass|break|continue|raise)\b/;
+
+/**
+ * Whether the line ends its block, so the next line drops a level: PyCharm does this after
+ * `return`, `pass`, `break`, `continue` and `raise`. A statement still open in a bracket
+ * (`return max(a,`) continues instead.
+ */
+function closesBlock(lineBeforeCaret: string): boolean {
+  const code = stripComment(lineBeforeCaret);
+  return TERMINATOR.test(code) && bracketDepth(code) === 0 && !code.trimEnd().endsWith("\\");
+}
 
 /** Python 3.12's keyword.kwlist, which already includes True, False and None. */
 const KEYWORDS: readonly string[] = [
@@ -308,8 +345,12 @@ export const PYTHON: LanguageProfile = {
   ],
   quotes: ['"', "'"],
   opensBlock,
-  dedentOnType: [],
+  // A closing bracket typed on its own line returns to the line that opened it.
+  dedentOnType: [")", "]", "}"],
+  alignOnColon: ALIGN_ON_COLON,
+  closesBlock,
   templates: TEMPLATES,
+  postfixTemplates: POSTFIX,
   keywords: KEYWORDS,
   globals: GLOBALS,
   members: MEMBERS,

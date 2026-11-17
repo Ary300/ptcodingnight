@@ -263,10 +263,15 @@ describe("Enter", () => {
     expect(press("    void f() {▮}", "Enter")).toBe("    void f() {\n        ▮\n    }");
   });
 
-  it("splits parentheses and brackets the same way, ignoring spaces inside them", () => {
-    expect(press("f( ▮)", "Enter")).toBe("f(\n    ▮\n)");
+  it("splits braces onto three lines, ignoring spaces inside them", () => {
     expect(press("int[] a = {▮ };", "Enter")).toBe("int[] a = {\n    ▮\n};");
     expect(press("xs = [▮]", "Enter", PYTHON)).toBe("xs = [\n    ▮\n]");
+  });
+
+  it("keeps the closer after the caret on a continuation line inside () and [], as IntelliJ does", () => {
+    expect(press("f( ▮)", "Enter")).toBe("f(\n        ▮)");
+    expect(press("        System.out.println(▮);", "Enter")).toBe("        System.out.println(\n                ▮);");
+    expect(press("a[▮]", "Enter", CPP)).toBe("a[\n        ▮]");
   });
 
   it("does not split two characters that are not a matching pair", () => {
@@ -532,7 +537,13 @@ describe("Tab live templates", () => {
 
   it("expands after an opener or other non-word character", () => {
     expect(press("{sout▮", "Tab")).toBe("{System.out.println(▮);");
-    expect(press("x.sout▮", "Tab")).toBe("x.System.out.println(▮);");
+  });
+
+  it("never expands a plain template after a member separator", () => {
+    // `x.sout` is a postfix template or nothing; it is never `x.System.out.println();`.
+    expect(press("x.sout▮", "Tab")).toBeNull();
+    expect(press("std::fori▮", "Tab", CPP)).toBeNull();
+    expect(press("p->sout▮", "Tab", CPP)).toBeNull();
   });
 
   it("does not expand an abbreviation that is part of a longer word", () => {

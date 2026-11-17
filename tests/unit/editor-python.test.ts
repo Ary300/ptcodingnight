@@ -31,7 +31,8 @@ describe("PYTHON profile", () => {
       ["{", "}"],
     ]);
     expect(profile.quotes).toEqual(['"', "'"]);
-    expect(profile.dedentOnType).toEqual([]);
+    // A closing bracket typed on its own line returns to its opener's indent.
+    expect(profile.dedentOnType).toEqual([")", "]", "}"]);
   });
 
   describe("opensBlock", () => {
@@ -89,9 +90,10 @@ describe("PYTHON profile", () => {
       const body = (abbreviation: string): string | undefined =>
         PYTHON.templates.find((t) => t.abbreviation === abbreviation)?.body;
       expect(body("main")).toBe('if __name__ == "__main__":\n    $END$');
-      expect(body("for")).toBe("for $END$ in :");
-      expect(body("fori")).toBe("for i in range($END$):");
-      expect(body("def")).toBe("def $END$():");
+      // Fields first (${n}), then $END$ on the indented body line, as PyCharm's Tab walks them.
+      expect(body("for")).toBe("for ${1} in ${2}:\n    $END$");
+      expect(body("fori")).toBe("for i in range(${1}):\n    $END$");
+      expect(body("def")).toBe("def ${1}(${2}):\n    $END$");
       expect(body("inp")?.replace(END, "")).toBe("input()");
       expect(body("readints")?.replace(END, "")).toBe("list(map(int, input().split()))");
       expect(body("sysin")?.replace(END, "")).toBe("import sys\ninput = sys.stdin.readline");

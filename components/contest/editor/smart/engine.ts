@@ -12,28 +12,38 @@
  *   typing     an opener inserts its closer, a closer typed in front of the same closer steps over
  *              it, a selection is wrapped, quotes pair up unless they would end a word or follow a
  *              backslash, and a "}" typed as the first thing on a line snaps to its block's indent.
- *   Backspace  between an empty pair deletes both halves.
- *   Enter      keeps the indent, adds one level after a block opener, splits "{|}" onto three
- *              lines, strips the trailing whitespace it leaves behind, and continues a "/** ... *"
+ *              A quote in front of an existing string opens a new one; only a closing quote is
+ *              typed over. Python's `else:`, `elif`, `except` and `finally` snap back to their
+ *              opener on the ":".
+ *   Backspace  between an empty pair deletes both halves; in the indentation it removes a level.
+ *   Enter      keeps the indent, adds one level after a block opener, a case label or a braceless
+ *              `if (a)`, drops one after Python's `return` and its kin, splits "{|}" onto three
+ *              lines (`};` after a C++ struct), leaves ")" after the caret on a continuation line,
+ *              strips the trailing whitespace it leaves behind, and continues a "/** ... *"
  *              comment. Shift+Enter is IntelliJ's "Start New Line": Enter from the end of the line.
+ *   Mod+Shift+Enter  Complete Current Statement. Plain Mod+Enter is never answered here: it is the
+ *              surface's submit key.
  *   Mod+/      toggles a line comment on every selected line.
  *   Mod+D      duplicates the line, or the selection.
+ *   Cmd+Backspace (Mac), Ctrl+Y (elsewhere)  deletes the line.
  *   Alt+Shift+Up/Down  moves the line, or every selected line.
- *   Tab        expands a live template whose abbreviation ends at the caret, and otherwise returns
- *              null so the surface keeps its own block indent.
+ *   Tab        expands a live template whose abbreviation ends at the caret (a postfix template
+ *              after a dot, as in `n.fori`), and otherwise returns null so the surface keeps its
+ *              own block indent. A template with fields carries `tabStops`, which the surface
+ *              walks with template-session.ts.
  *
  * Mod is Cmd on a Mac and Ctrl everywhere else. IME composition never reaches this function; the
  * surface filters it out first.
  */
 
-import type { Edit, EditState, KeyInput, LanguageProfile, LiveTemplate } from "./types";
+import { renderTemplate, shiftStops } from "./template";
+import type { Edit, EditState, KeyInput, LanguageProfile } from "./types";
 
 /** Java identifiers allow `$`, so it counts as a word character for pairing and templates. */
 const WORD_CHAR = /[A-Za-z0-9_$]/;
 const TRAILING_WORD = /[A-Za-z0-9_$]+$/;
 const LEADING_INLINE_SPACE = /^[ \t]*/;
 const TRAILING_INLINE_SPACE = /[ \t]+$/;
-const END_MARKER = "$END$";
 
 /** Languages with C-style braces and block comments. Python has neither. */
 const BRACE_LANGUAGES: ReadonlySet<LanguageProfile["id"]> = new Set(["java", "cpp"]);
@@ -95,7 +105,113 @@ function handleModKey(range: Range, input: KeyInput, profile: LanguageProfile): 
   // "/" is Shift+7 on several European layouts, so Shift is not held against it.
   if (input.key === "/") return toggleLineComment(range, profile);
   if ((input.key === "d" || input.key === "D") && !input.shiftKey) return duplicate(range);
+  // Mod+Shift+Enter is Complete Current Statement. Plain Mod+Enter is the surface's submit key.
+  if (input.key === "Enter") return input.shiftKey ? completeStatement(range, profile) : null;
+  // IntelliJ's Delete Line: Cmd+Backspace on a Mac, Ctrl+Y everywhere else.
+  if (input.shiftKey) return null;
+  if (input.isMac ? input.key === "Backspace" : input.key === "y" || input.key === "Y") return deleteLines(range);
   return null;
+}
+
+/* ------------------------------------------------------------------------------------------ */
+/* Mod+Shift+Enter and Delete Line                                                              */
+/* ------------------------------------------------------------------------------------------ */
+
+const PYTHON_HEADER = /^\s*(?:if|elif|else|for|while|def|class|try|except|finally|with)\b/;
+const BRACE_CONTROL = /^(?:\}\s*)?(?:(?:else\s+)?if|for|while|switch|catch|synchronized)\s*\(/;
+const BRACE_BARE_CONTROL: ReadonlySet<string> = new Set(["else", "} else", "do", "try", "finally", "} finally"]);
+
+/**
+ * IntelliJ's Complete Current Statement, for the line the caret is on: close what the line left
+ * open, then either end it with ";" (Java, C++), open its block (`if (x` becomes `if (x) {` with the
+ * caret on the indented line inside), or end a Python header with ":". A line with nothing left to
+ * complete gets a new line below it, which is what pressing the key twice does in IntelliJ.
+ */
+function completeStatement(range: Range, profile: LanguageProfile): Edit {
+  const { text } = range;
+  const lineStart = lineStartAt(text, range.end);
+  const lineEnd = lineEndAt(text, range.end);
+  const line = text.slice(lineStart, lineEnd).replace(TRAILING_INLINE_SPACE, "");
+  const indent = leadingSpace(line);
+  const unit = indent.includes("\t") ? "\t" : profile.indentUnit;
+  const code = line + unclosedClosers(line);
+  const trimmed = code.trim();
+  const replace = (insert: string, caret: number): Edit => ({
+    from: lineStart,
+    to: lineEnd,
+    insert,
+    selectionStart: lineStart + caret,
+    selectionEnd: lineStart + caret,
+  });
+
+  if (trimmed === "") return replace(`${line}\n${indent}`, line.length + 1 + indent.length);
+
+  if (!BRACE_LANGUAGES.has(profile.id)) {
+    const header = PYTHON_HEADER.test(code);
+    const completed = header && !code.endsWith(":") ? `${code}:` : code;
+    if (!header && completed === line) return replace(`${line}\n${indent}`, line.length + 1 + indent.length);
+    const below = header ? indent + unit : indent;
+    const insert = header ? `${completed}\n${below}` : completed;
+    return replace(insert, insert.length);
+  }
+
+  const opensBody =
+    trimmed.endsWith("{") ||
+    BRACE_BARE_CONTROL.has(trimmed) ||
+    (BRACE_CONTROL.test(trimmed) && trimmed.endsWith(")"));
+  if (opensBody) {
+    const head = trimmed.endsWith("{") ? code : `${code} {`;
+    const middle = `${head}\n${indent}${unit}`;
+    // A "{" the file already closes (the line ended in one) needs no second "}".
+    const closed = trimmed.endsWith("{") && braceDebt(text, profile) <= 0;
+    const closer = profile.id === "cpp" && CPP_AGGREGATE.test(head) ? "};" : "}";
+    return replace(closed ? middle : `${middle}\n${indent}${closer}`, middle.length);
+  }
+
+  const needsSemicolon = !/[;{}]$/.test(trimmed) && !/^(?:#|\/\/|\/\*|\*|@)/.test(trimmed);
+  const completed = needsSemicolon ? `${code};` : code;
+  if (completed === line) return replace(`${line}\n${indent}`, line.length + 1 + indent.length);
+  return replace(completed, completed.length);
+}
+
+/** The closers a line still owes, innermost first: `f(a[i` owes "])". Quotes are skipped. */
+function unclosedClosers(line: string): string {
+  const closerOf: Readonly<Record<string, string>> = { "(": ")", "[": "]" };
+  let stack: readonly string[] = [];
+  let quote: string | null = null;
+  for (let i = 0; i < line.length; i += 1) {
+    const ch = line[i] ?? "";
+    if (quote !== null) {
+      if (ch === "\\") i += 1;
+      else if (ch === quote) quote = null;
+    } else if (ch === '"' || ch === "'") {
+      quote = ch;
+    } else if (ch === "(" || ch === "[") {
+      stack = [...stack, closerOf[ch] ?? ""];
+    } else if ((ch === ")" || ch === "]") && stack[stack.length - 1] === ch) {
+      stack = stack.slice(0, -1);
+    }
+  }
+  return [...stack].reverse().join("");
+}
+
+/**
+ * Deletes the caret's line, or every line the selection touches, newline included. The caret
+ * keeps its column on the line that moves up into place, as IntelliJ's Delete Line does.
+ */
+function deleteLines(range: Range): Edit {
+  const { text, start } = range;
+  const span = selectedLines(range);
+  const column = start - span.start;
+  if (span.end < text.length) {
+    const nextLength = lineEndAt(text, span.end + 1) - (span.end + 1);
+    const caret = span.start + Math.min(column, nextLength);
+    return { from: span.start, to: span.end + 1, insert: "", selectionStart: caret, selectionEnd: caret };
+  }
+  if (span.start === 0) return { from: 0, to: span.end, insert: "", selectionStart: 0, selectionEnd: 0 };
+  const prevStart = lineStartAt(text, span.start - 1);
+  const caret = prevStart + Math.min(column, span.start - 1 - prevStart);
+  return { from: span.start - 1, to: span.end, insert: "", selectionStart: caret, selectionEnd: caret };
 }
 
 /* ------------------------------------------------------------------------------------------ */
@@ -120,6 +236,52 @@ function handleTyped(range: Range, ch: string, profile: LanguageProfile): Edit |
   }
 
   if (profile.dedentOnType.includes(ch)) return dedentOnType(range, ch, profile);
+  if (ch === ":" && profile.alignOnColon !== undefined) return alignClause(range, profile.alignOnColon);
+  return null;
+}
+
+/**
+ * PyCharm's dedent of a continuation clause: the ":" of `else:`, `elif x:`, `except E:` or
+ * `finally:` moves the line back to the `if` or `try` it continues. The opener is the nearest line
+ * above with less indent; if that line is not one the clause can continue, nothing moves, since
+ * the clause then belongs to something the editor cannot see.
+ */
+function alignClause(range: Range, openers: Readonly<Record<string, readonly string[]>>): Edit | null {
+  const { text, start: caret } = range;
+  const lineStart = lineStartAt(text, caret);
+  if (text.slice(caret, lineEndAt(text, caret)).trim() !== "") return null;
+  const before = text.slice(lineStart, caret);
+  const clause = /^[ \t]*([a-z]+)\b/.exec(before)?.[1];
+  const allowed = clause === undefined ? undefined : openers[clause];
+  if (allowed === undefined) return null;
+
+  const indent = leadingSpace(before);
+  const target = enclosingOpenerIndent(text, lineStart, indent.length, allowed);
+  if (target === null || target === indent) return null;
+  const insert = `${target}${before.slice(indent.length)}:`;
+  const after = lineStart + insert.length;
+  return { from: lineStart, to: caret, insert, selectionStart: after, selectionEnd: after };
+}
+
+/** Indent of the nearest code line above `lineStart` with less than `width` indent, if it opens with one of `words`. */
+function enclosingOpenerIndent(
+  text: string,
+  lineStart: number,
+  width: number,
+  words: readonly string[],
+): string | null {
+  let end = lineStart - 1;
+  while (end >= 0) {
+    const start = lineStartAt(text, end);
+    const line = text.slice(start, end);
+    end = start - 1;
+    const code = line.trim();
+    if (code === "" || code.startsWith("#")) continue;
+    const indent = leadingSpace(line);
+    if (indent.length >= width) continue;
+    const first = /^[a-z]+/.exec(code)?.[0];
+    return first !== undefined && words.includes(first) ? indent : null;
+  }
   return null;
 }
 
@@ -144,7 +306,9 @@ function typeQuote(range: Range, quote: string, profile: LanguageProfile): Edit 
   const prev = text[caret - 1];
   const next = text[caret];
 
-  if (next === quote) return caretOnly(caret, caret + 1);
+  // Only a CLOSING quote is typed over. In front of a string's opening quote, as in `f(|"abc")`,
+  // the key types one quote and leaves the existing literal alone, as IntelliJ does.
+  if (next === quote) return insideStringOnLine(text, caret, quote) ? caretOnly(caret, caret + 1) : null;
   if (prev === "\\" || isWordChar(next)) return null;
   if (isWordChar(prev) && !followsStringPrefix(text, caret, profile)) return null;
 
@@ -152,6 +316,25 @@ function typeQuote(range: Range, quote: string, profile: LanguageProfile): Edit 
   const opensTriple = caret >= 2 && text.slice(caret - 2, caret) === quote + quote && text[caret - 3] !== quote;
   const insert = opensTriple ? quote.repeat(4) : quote + quote;
   return { from: caret, to: caret, insert, selectionStart: caret + 1, selectionEnd: caret + 1 };
+}
+
+/**
+ * Whether the caret sits inside a `quote` string that opened earlier on its line. Escapes are
+ * honoured and the other quote character is text inside it, so `"it's|"` is still a string.
+ */
+function insideStringOnLine(text: string, caret: number, quote: string): boolean {
+  const line = text.slice(lineStartAt(text, caret), caret);
+  let open: string | null = null;
+  for (let i = 0; i < line.length; i += 1) {
+    const ch = line[i];
+    if (open !== null) {
+      if (ch === "\\") i += 1;
+      else if (ch === open) open = null;
+    } else if (ch === '"' || ch === "'") {
+      open = ch;
+    }
+  }
+  return open === quote;
 }
 
 function followsStringPrefix(text: string, caret: number, profile: LanguageProfile): boolean {
@@ -210,9 +393,27 @@ function deleteEmptyPair(range: Range, profile: LanguageProfile): Edit | null {
   const isPair =
     profile.pairs.some(([open, close]) => open === prev && close === next) ||
     (prev !== undefined && prev === next && profile.quotes.includes(prev));
-  if (!isPair) return null;
+  if (!isPair) return unindent(range, profile);
 
   return { from: caret - 1, to: caret + 1, insert: "", selectionStart: caret - 1, selectionEnd: caret - 1 };
+}
+
+/**
+ * IntelliJ's and PyCharm's smart Backspace: with only indentation before the caret, Backspace
+ * takes the line back one whole indent level (to the previous multiple of the unit, or one tab)
+ * instead of one space. Anywhere else it is the browser's Backspace.
+ */
+function unindent(range: Range, profile: LanguageProfile): Edit | null {
+  const { text, start: caret } = range;
+  const lineStart = lineStartAt(text, caret);
+  const before = text.slice(lineStart, caret);
+  if (before === "" || before.trim() !== "") return null;
+  if (before.endsWith("\t")) return null;
+  const unit = profile.indentUnit.length;
+  const trailingSpaces = /[ ]*$/.exec(before)?.[0].length ?? 0;
+  const remove = Math.min(trailingSpaces, ((before.length - 1) % unit) + 1);
+  if (remove <= 1) return null;
+  return { from: caret - remove, to: caret, insert: "", selectionStart: caret - remove, selectionEnd: caret - remove };
 }
 
 /* ------------------------------------------------------------------------------------------ */
@@ -236,12 +437,13 @@ function handleEnter(range: Range, profile: LanguageProfile, startNewLine: boole
 
   const from = lineStart + kept.length;
   const to = end + spaceAfter;
-  const shape = enterShape(text, start, end, { lineBefore, indent, kept, rest }, profile);
+  const shape = enterShape(text, start, end, { lineStart, lineBefore, indent, kept, rest }, profile);
   const caret = from + shape.caret;
-  return { from, to, insert: shape.insert, selectionStart: caret, selectionEnd: caret };
+  return { from, to: to + (shape.consume ?? 0), insert: shape.insert, selectionStart: caret, selectionEnd: caret };
 }
 
 interface EnterContext {
+  readonly lineStart: number;
   readonly lineBefore: string;
   readonly indent: string;
   /** The line before the caret with its trailing whitespace removed. */
@@ -254,6 +456,60 @@ interface EnterContext {
 interface EnterShape {
   readonly insert: string;
   readonly caret: number;
+  /** Characters after the caret's trailing space that the insert replaces (a "}" rewritten as "};"). */
+  readonly consume?: number;
+}
+
+/**
+ * A C++ struct, class, union or enum header, whose closing brace needs a ";" after it. CLion
+ * writes `};` for these, and a bare `}` is the "expected ';' after struct definition" error.
+ */
+const CPP_AGGREGATE = /^\s*(?:typedef\s+)?(?:template\s*<[^>]*>\s*)?(?:struct|class|union|enum)\b[^;()=]*\{$/;
+
+/**
+ * A control statement with no brace: `if (a)`, `else`, `for (...)`, `while (...)`, `else if (...)`
+ * and `do`. IntelliJ and CLion indent the single statement under it one level.
+ */
+function isBracelessHeader(code: string): boolean {
+  const line = code.trim().replace(/^\}\s*/, "");
+  if (line === "else" || line === "do") return true;
+  const head = /^(?:else\s+)?(?:if|for|while)\s*\(/.exec(line);
+  if (head === null || !line.endsWith(")")) return false;
+  const open = head[0].length - 1;
+  return matchingClose(line, open) === line.length - 1;
+}
+
+/** Index of the ")" that closes the "(" at `open`, or -1. Ignores parentheses inside quotes. */
+function matchingClose(line: string, open: number): number {
+  let depth = 0;
+  let quote: string | null = null;
+  for (let i = open; i < line.length; i += 1) {
+    const ch = line[i];
+    if (quote !== null) {
+      if (ch === "\\") i += 1;
+      else if (ch === quote) quote = null;
+    } else if (ch === '"' || ch === "'") {
+      quote = ch;
+    } else if (ch === "(") {
+      depth += 1;
+    } else if (ch === ")") {
+      depth -= 1;
+      if (depth === 0) return i;
+    }
+  }
+  return -1;
+}
+
+/** The code line above the one starting at `lineStart`, skipping blank lines, or null. */
+function codeLineAbove(text: string, lineStart: number): string | null {
+  let end = lineStart - 1;
+  while (end >= 0) {
+    const start = lineStartAt(text, end);
+    const line = text.slice(start, end);
+    if (line.trim() !== "") return line;
+    end = start - 1;
+  }
+  return null;
 }
 
 function enterShape(
@@ -264,22 +520,48 @@ function enterShape(
   profile: LanguageProfile,
 ): EnterShape {
   const brace = BRACE_LANGUAGES.has(profile.id);
-  if (brace && insideBlockComment(text, start)) return commentContinuation(text, end, ctx);
+  if (brace && insideBlockComment(text, start, profile)) return commentContinuation(text, end, ctx);
 
-  const unit = profile.indentUnit;
+  // A line indented with tabs keeps tabs, so Enter never mixes a tab with four spaces.
+  const unit = ctx.indent.includes("\t") ? "\t" : profile.indentUnit;
   const prev = ctx.kept[ctx.kept.length - 1];
   const next = ctx.rest[0];
+  const aggregate = profile.id === "cpp" && CPP_AGGREGATE.test(ctx.kept);
+
   if (profile.pairs.some(([open, close]) => open === prev && close === next)) {
+    if (brace && prev !== "{") {
+      // IntelliJ's Enter in `println(|)`: the ")" follows the caret onto a continuation line.
+      const insert = `\n${ctx.indent}${unit}${unit}`;
+      return { insert, caret: insert.length };
+    }
+    if (aggregate && ctx.rest[1] !== ";") return { ...splitPair(ctx.indent, unit, "};", true), consume: 1 };
     return splitPair(ctx.indent, unit, next ?? "");
   }
 
   if (brace && prev === "{" && ctx.rest === "" && braceDebt(text, profile) > 0) {
     // IntelliJ's "insert pair }": an Enter after an unbalanced "{" writes the closing brace.
-    return splitPair(ctx.indent, unit, "}", true);
+    return splitPair(ctx.indent, unit, aggregate ? "};" : "}", true);
   }
 
-  const insert = `\n${ctx.indent}${profile.opensBlock(ctx.lineBefore) ? unit : ""}`;
+  const insert = `\n${nextLineIndent(text, ctx, profile, unit)}`;
   return { insert, caret: insert.length };
+}
+
+/** The indent of a plain new line: one more after a block opener, one less after a block ends. */
+function nextLineIndent(text: string, ctx: EnterContext, profile: LanguageProfile, unit: string): string {
+  if (profile.opensBlock(ctx.lineBefore)) return ctx.indent + unit;
+  if (profile.closesBlock?.(ctx.lineBefore) === true) return removeOneIndent(ctx.indent, unit);
+  if (!BRACE_LANGUAGES.has(profile.id)) return ctx.indent;
+
+  const code = ctx.kept.trim();
+  if (isBracelessHeader(code)) return ctx.indent + unit;
+  // The one statement under a braceless header is done, so the next line goes back to the header.
+  const above = codeLineAbove(text, ctx.lineStart);
+  if (above !== null && code !== "" && !code.endsWith("{") && isBracelessHeader(above)) {
+    const headerIndent = leadingSpace(above);
+    if (ctx.indent.length > headerIndent.length) return headerIndent;
+  }
+  return ctx.indent;
 }
 
 /**
@@ -303,11 +585,27 @@ function commentContinuation(text: string, end: number, ctx: EnterContext): Ente
   return { insert, caret: insert.length };
 }
 
-function insideBlockComment(text: string, caret: number): boolean {
-  const open = text.lastIndexOf("/*", caret - 2);
-  if (open === -1) return false;
-  const close = text.lastIndexOf("*/", caret - 2);
-  return close < open + 2;
+/**
+ * Whether `caret` sits inside a block comment. The code is scanned the way the compiler reads it,
+ * so a "/*" inside a string (`"src/*.java"`) or after "//" opens nothing.
+ */
+function insideBlockComment(text: string, caret: number, profile: LanguageProfile): boolean {
+  let i = 0;
+  while (i < caret) {
+    if (text.startsWith(profile.lineComment, i)) {
+      i = lineEndAt(text, i);
+    } else if (text.startsWith("/*", i)) {
+      if (i + 2 > caret) return false;
+      const close = text.indexOf("*/", i + 2);
+      if (close === -1 || close + 2 > caret) return true;
+      i = close + 2;
+    } else if (profile.quotes.includes(text[i] ?? "")) {
+      i = skipString(text, i, text[i] ?? "");
+    } else {
+      i += 1;
+    }
+  }
+  return false;
 }
 
 /** Whether a "*" + "/" closes the comment before any later comment opens. */
@@ -493,33 +791,103 @@ function expandTemplate(range: Range, profile: LanguageProfile): Edit | null {
   const { text, start, end } = range;
   if (start !== end) return null;
 
-  const lineBefore = text.slice(lineStartAt(text, start), start);
+  const lineStart = lineStartAt(text, start);
+  const lineBefore = text.slice(lineStart, start);
   const word = TRAILING_WORD.exec(lineBefore)?.[0];
   if (word === undefined) return null;
+  const wordStart = start - word.length;
+  const separator = separatorEndingAt(text, wordStart);
+  if (separator === ".") return expandPostfix(range, word, wordStart, profile);
+  // `std::fori` or `p->sout` is a member being typed, never a template.
+  if (separator !== null) return null;
+
   const template = profile.templates.find((candidate) => candidate.abbreviation === word);
   if (template === undefined) return null;
-
-  const from = start - word.length;
-  const { body, caret } = renderTemplate(template, leadingSpace(lineBefore), profile.indentUnit);
-  return { from, to: start, insert: body, selectionStart: from + caret, selectionEnd: from + caret };
+  return templateEdit(wordStart, start, template.body, leadingSpace(lineBefore), profile);
 }
 
 /**
- * The template body with every continuation line indented to the line it was typed on, leading
- * tabs in the body widened to the profile's indent unit, and the $END$ marker turned into the
- * caret offset (the end of the body when there is no marker).
+ * IntelliJ's postfix completion: `x.sout` becomes `System.out.println(x);` and `n.fori` a loop up
+ * to n. The expression is the chain of names, calls and indexes before the dot on this line.
  */
-function renderTemplate(template: LiveTemplate, indent: string, unit: string): { body: string; caret: number } {
-  const lines = template.body.split("\n").map((line, i) => {
-    if (i === 0 || line === "") return line;
-    return indent + line.replace(/^\t+/, (tabs) => unit.repeat(tabs.length));
-  });
-  const joined = lines.join("\n");
-  const marker = joined.indexOf(END_MARKER);
-  const body = joined.split(END_MARKER).join("");
-  return { body, caret: marker === -1 ? body.length : marker };
+function expandPostfix(range: Range, word: string, wordStart: number, profile: LanguageProfile): Edit | null {
+  const template = (profile.postfixTemplates ?? []).find((candidate) => candidate.abbreviation === word);
+  if (template === undefined) return null;
+  const { text, start } = range;
+  const lineStart = lineStartAt(text, start);
+  const dot = wordStart - 1;
+  const exprStart = expressionStart(text, lineStart, dot);
+  if (exprStart === null) return null;
+  const expression = text.slice(exprStart, dot);
+  const indent = leadingSpace(text.slice(lineStart, start));
+  return templateEdit(exprStart, start, template.body, indent, profile, expression);
 }
 
+function templateEdit(
+  from: number,
+  to: number,
+  body: string,
+  indent: string,
+  profile: LanguageProfile,
+  expression = "",
+): Edit {
+  // A line indented with tabs keeps tabs, so the body does not mix the two.
+  const unit = indent.includes("\t") ? "\t" : profile.indentUnit;
+  const rendered = renderTemplate(body, indent, unit, expression);
+  const edit: Edit = {
+    from,
+    to,
+    insert: rendered.text,
+    selectionStart: from + rendered.selectionStart,
+    selectionEnd: from + rendered.selectionEnd,
+  };
+  return rendered.tabStops.length === 0 ? edit : { ...edit, tabStops: shiftStops(rendered.tabStops, from) };
+}
+
+/** The member separator ("." "::" "->") that ends exactly at `at`, if any. */
+function separatorEndingAt(text: string, at: number): string | null {
+  if (text.slice(Math.max(0, at - 2), at) === "::") return "::";
+  if (text.slice(Math.max(0, at - 2), at) === "->") return "->";
+  if (text[at - 1] === ".") return ".";
+  return null;
+}
+
+/**
+ * Start of the expression that ends at `end` (a dot), within the line starting at `lineStart`:
+ * names joined by "." with call arguments and indexes as links, as in `a.b(c)[i]`. Null when
+ * there is no such expression, or when it is a number, so `3.fori` is not a loop.
+ */
+function expressionStart(text: string, lineStart: number, end: number): number | null {
+  let i = end;
+  for (;;) {
+    const linkEnd = i;
+    while (i > lineStart && (text[i - 1] === ")" || text[i - 1] === "]")) {
+      const open = groupStart(text, lineStart, i - 1);
+      if (open === null) return null;
+      i = open;
+    }
+    while (i > lineStart && isWordChar(text[i - 1])) i -= 1;
+    if (i === linkEnd) return null;
+    if (/[0-9]/.test(text[i] ?? "")) return null;
+    if (i > lineStart && text[i - 1] === ".") i -= 1;
+    else return i;
+  }
+}
+
+/** Index of the opener matching the closer at `close`, scanning no further back than `lineStart`. */
+function groupStart(text: string, lineStart: number, close: number): number | null {
+  const closer = text[close];
+  const opener = closer === ")" ? "(" : "[";
+  let depth = 0;
+  for (let i = close; i >= lineStart; i -= 1) {
+    if (text[i] === closer) depth += 1;
+    else if (text[i] === opener) {
+      depth -= 1;
+      if (depth === 0) return i;
+    }
+  }
+  return null;
+}
 /* ------------------------------------------------------------------------------------------ */
 /* Text helpers                                                                                 */
 /* ------------------------------------------------------------------------------------------ */
