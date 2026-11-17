@@ -14,7 +14,7 @@ second pair can form. The trip shape (uniform, sorted, reversed,
 duplicate-heavy, equal halves, pair at the ends, boundary values) is drawn
 per trip so the test set is not just uniform noise.
 
-Sizes are kept casual on purpose: at most 1,000 flavors in a trip and 2,500
+Sizes are kept casual on purpose: at most 500 flavors in a trip and 2,500
 over a whole input, and every cost at most 10^6, so the budget and any sum
 of two costs fit comfortably in a 32-bit int and the obvious double loop
 over all pairs finishes well inside the time limit.
@@ -25,20 +25,20 @@ samples, and 03 and 04 are written by hand; none of them is generated):
   03  hand-written: the smallest trip, two flavors of equal cost "1 1", m = 2
   04  hand-written: two flavors at the cost ceiling "1000000 1000000",
       m = 2 * 10^6, the largest budget the constraints allow
-  05  trip uniform 1000 5
-  06  trip pair-last 1000 6      the answer is the last two flavors
-  07  trip pair-first 1000 7     the answer is the first two flavors
-  08  trip sorted 1000 8
-  09  trip reversed 1000 9
-  10  trip duplicates 1000 10    costs drawn from 50 values, many repeats
+  05  trip uniform 500 5
+  06  trip pair-last 500 6      the answer is the last two flavors
+  07  trip pair-first 500 7     the answer is the first two flavors
+  08  trip sorted 500 8
+  09  trip reversed 500 9
+  10  trip duplicates 500 10    costs drawn from 50 values, many repeats
   11  trips 11 24 37 24 17 33 9 24 3 25 41   ten small trips
-  12  trip boundary 1000 12      the answer is cost 1 plus cost 10^6
+  12  trip boundary 500 12      the answer is cost 1 plus cost 10^6
   13  32
   14  34
   15  36
   16  38
   17  40
-  18  trips 18 1000 1000 150 100 60 40 25 15 8 2   ten trips, 2,400 flavors
+  18  trips 18 500 500 500 500 150 100 60 40 25 15   ten trips, 2,390 flavors
 """
 
 import random
@@ -47,7 +47,7 @@ from collections import Counter
 from collections.abc import Callable
 
 MAX_T = 10
-MAX_N = 1000
+MAX_N = 500
 MAX_TOTAL_N = 2500
 MAX_COST = 10 ** 6
 
