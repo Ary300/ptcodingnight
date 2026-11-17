@@ -29,7 +29,7 @@ other character unchanged.
 
 ## Constraints
 
-- $1 \le n \le 10^4$
+- $1 \le n \le 1000$
 - $0 \le k \le 10^6$
 - $s$ consists of printable ASCII characters with codes $33$ through $126$ (letters,
   digits, and punctuation; never spaces)
