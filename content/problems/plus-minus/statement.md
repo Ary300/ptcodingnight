@@ -9,8 +9,11 @@ the entries were bonuses, what share were penalties, and what share changed noth
 
 You are given an array of $n$ integers. Compute the fraction of elements that are
 positive, the fraction that are negative, and the fraction that are zero, and print the
-three fractions as decimals with exactly $6$ digits after the decimal point, one per
-line. Answers within $10^{-4}$ of the true value are accepted.
+three fractions as decimal numbers, one per line.
+
+Any answer within $10^{-4}$ of the true value is accepted. You do not need a fixed number
+of digits after the decimal point: for a true value of $0.4$, the outputs `0.4`, `0.4000`
+and `0.400000` are all correct.
 
 ## Input
 
@@ -19,8 +22,8 @@ The second line contains $n$ space-separated integers $a_1, a_2, \dots, a_n$.
 
 ## Output
 
-Print three lines, each holding one decimal number with exactly $6$ digits after the
-decimal point:
+Print three lines, each holding one decimal number. Any answer within $10^{-4}$ of the
+true value is accepted.
 
 1. the fraction of the $n$ entries that are positive,
 2. the fraction of the $n$ entries that are negative,
@@ -48,8 +51,7 @@ Output:
 ```
 
 Of the $5$ entries, two are positive ($7$ and $2$), two are negative ($-3$ and $-8$),
-and one is zero. So the fractions are $2/5 = 0.400000$, $2/5 = 0.400000$, and
-$1/5 = 0.200000$.
+and one is zero. So the fractions are $2/5 = 0.4$, $2/5 = 0.4$, and $1/5 = 0.2$.
 
 **Example 2**
 
@@ -66,5 +68,6 @@ Output:
 ```
 
 Two of the $3$ entries are positive ($12$ and $4$), none are negative, and one is zero.
-The fractions are $2/3 = 0.666667$ (rounded to $6$ decimal places), $0/3 = 0.000000$,
-and $1/3 = 0.333333$. A category with no entries still gets its line.
+The fractions are $2/3$, $0/3$ and $1/3$. The expected output shows them rounded to $6$
+decimal places, but `0.6667`, `0` and `0.3333` would be accepted too, since each is within
+$10^{-4}$ of the true value. A category with no entries still gets its line.
