@@ -64,7 +64,8 @@ import { LANGUAGE_LABEL, LANGUAGE_TEMPLATE, type CodeEditorProps } from "./types
  * ## The toolbar strip
  *
  * HackerRank draws a thin tinted bar directly above the code (hr-challenge-live.png): the
- * language dropdown on the left, small icon actions — reset and full screen — on the right.
+ * language choice on the left (tabs here since 2026-11-16, a dropdown there), small icon
+ * actions, reset and full screen, on the right.
  * That strip lives HERE rather than in the workspace, because both of its actions are
  * properties of the editor: reset needs the starter template and the caret, and full screen
  * has to take the toolbar and the status strip with it or the student loses Line/Col and the
@@ -136,7 +137,7 @@ function lineEndAfter(value: string, index: number): number {
  * `LanguagePicker` out of the header bar into `toolbarStart`.
  */
 export interface CodeEditorSurfaceProps extends CodeEditorProps {
-  /** Rendered on the toolbar's left, where HackerRank keeps its language dropdown. */
+  /** Rendered on the toolbar's left, where HackerRank keeps its language dropdown and we keep the language tabs. */
   readonly toolbarStart?: ReactNode;
 }
 
@@ -499,7 +500,7 @@ export function CodeEditorSurface({
     <div ref={rootRef} className={isFullscreen ? "flex h-full flex-col bg-paper" : "flex flex-col"}>
       {/*
         The thin toolbar HackerRank draws directly above its editor (hr-challenge-live.png): a
-        tinted strip, the language dropdown on the left, small icon actions on the right. Same
+        tinted strip, the language tabs on the left, small icon actions on the right. Same
         tint as the workspace's header bar so the two read as one piece of chrome, and no bottom
         border — the dark band underneath is its own edge.
 
