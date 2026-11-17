@@ -47,7 +47,26 @@ export interface ContestStateActionsProps {
    * the same function.
    */
   readonly onChanged?: () => void;
+  /**
+   * Is the PUBLIC board frozen right now, by a pressed freeze or a scheduled one that has fired?
+   * End behaves differently then (`planEndNow`): it closes submissions and the board stays frozen,
+   * so the confirmation has to say so. Required, so no caller can fall back to the wrong sentence.
+   */
+  readonly boardFrozen: boolean;
+  /** Has the contest window already closed? A frozen board past its end has nothing left to end. */
+  readonly submissionsClosed: boolean;
 }
+
+/** The sentence under End contest's confirmation, which depends on whether the board is frozen. */
+export function endConfirmDescription(boardFrozen: boolean): string {
+  return boardFrozen
+    ? "Submissions close now. The board stays frozen until you press Unfreeze and reveal."
+    : "Submissions close now, and the final standings become public on the projector and every student screen.";
+}
+
+/** What the lifecycle panel says once a frozen contest's window has closed. */
+export const CLOSED_AND_FROZEN_NOTE =
+  "Submissions are closed. The board stays frozen until you press Unfreeze and reveal on the Live console tab, which ends the contest and shows the final standings.";
 
 /** What an organizer may do next, given where the contest is. Mirrors `setContestState`. */
 function nextStates(state: string): readonly { to: "SCHEDULED" | "RUNNING" | "ENDED"; label: string }[] {
@@ -69,7 +88,13 @@ function nextStates(state: string): readonly { to: "SCHEDULED" | "RUNNING" | "EN
   }
 }
 
-export function ContestStateActions({ contestId, state, onChanged }: ContestStateActionsProps) {
+export function ContestStateActions({
+  contestId,
+  state,
+  onChanged,
+  boardFrozen,
+  submissionsClosed,
+}: ContestStateActionsProps) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -101,6 +126,22 @@ export function ContestStateActions({ contestId, state, onChanged }: ContestStat
     }
   };
 
+  // A frozen contest whose window has closed has been ended as far as End can take it. What is
+  // left is the reveal, which lives on the console beside the frozen notice.
+  const closedAndFrozen =
+    boardFrozen && submissionsClosed && (state === "RUNNING" || state === "FROZEN");
+  if (closedAndFrozen && error === null) {
+    return (
+      <p
+        data-testid="closed-and-frozen"
+        className="font-semibold text-ink"
+        style={{ fontSize: "var(--text-sm)" }}
+      >
+        {CLOSED_AND_FROZEN_NOTE}
+      </p>
+    );
+  }
+
   const options = nextStates(state);
   if (options.length === 0 && error === null) {
     return (
@@ -120,6 +161,7 @@ export function ContestStateActions({ contestId, state, onChanged }: ContestStat
             key={option.to}
             label={option.label}
             confirmLabel="End it now"
+            description={endConfirmDescription(boardFrozen)}
             variant="secondary"
             disabled={busy}
             onConfirm={() => void go(option.to, option.label)}

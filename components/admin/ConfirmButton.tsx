@@ -36,6 +36,12 @@ export interface ConfirmButtonProps {
   accessibleName?: string;
   /** The same, for the armed confirm button. */
   confirmAccessibleName?: string;
+  /**
+   * What pressing the confirm button will do, in a sentence, shown beside it once armed and read
+   * out with it. For an action whose effect is not obvious from its name: End contest on a frozen
+   * board closes submissions and does NOT reveal, and the organizer has to know which happens.
+   */
+  description?: string;
 }
 
 export function ConfirmButton({
@@ -48,6 +54,7 @@ export function ConfirmButton({
   className,
   accessibleName,
   confirmAccessibleName,
+  description,
 }: ConfirmButtonProps) {
   const [armed, setArmed] = useState(false);
   // `components/ui/Button` is frozen and does not forward a ref, so focus is moved through
@@ -81,7 +88,7 @@ export function ConfirmButton({
     // the effect above, and the Buttons inside carry full-strength text on their own ground.
     <span
       ref={armedRef}
-      className="motion-swap-in inline-flex items-center gap-2"
+      className="motion-swap-in inline-flex flex-wrap items-center gap-2"
       onKeyDown={(event) => {
         if (event.key === "Escape") {
           event.stopPropagation();
@@ -105,8 +112,20 @@ export function ConfirmButton({
       <Button type="button" variant="quiet" size={size} onClick={() => setArmed(false)}>
         Cancel
       </Button>
+      {description !== undefined && (
+        <span
+          aria-hidden="true"
+          data-confirm-description
+          className="basis-full font-semibold text-ink"
+          style={{ fontSize: "var(--text-sm)" }}
+        >
+          {description}
+        </span>
+      )}
       <span role="status" className="sr-only">
-        {confirmLabel}. Press Escape to cancel.
+        {description === undefined
+          ? `${confirmLabel}. Press Escape to cancel.`
+          : `${confirmLabel}. ${description} Press Escape to cancel.`}
       </span>
     </span>
   );

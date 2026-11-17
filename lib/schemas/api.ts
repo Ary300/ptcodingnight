@@ -550,7 +550,14 @@ export const SetContestStateRequestSchema = z.object({
   state: z.enum(["SCHEDULED", "RUNNING", "ENDED"]),
   reason: z.string().trim().min(1, "Say why").max(300),
 });
-export const SetContestStateResponseSchema = z.object({ state: z.string() });
+export const SetContestStateResponseSchema = z.object({
+  state: z.string(),
+  /**
+   * True when End closed submissions on a frozen board and left it frozen. The final standings
+   * stay private until the organizer presses "Unfreeze and reveal" (`planEndNow` in gate.ts).
+   */
+  boardStaysFrozen: z.boolean(),
+});
 
 /**
  * One problem in the bank, as the organizer's screen shows it.
