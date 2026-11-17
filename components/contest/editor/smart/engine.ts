@@ -1149,6 +1149,21 @@ function expandTemplate(range: Range, profile: LanguageProfile): Edit | null {
 }
 
 /**
+ * The postfix template whose abbreviation ends at the caret after `expr.`, expanded, or null. The
+ * completion popup accepts its postfix rows through this, so a row and `x.sout` + Tab agree.
+ */
+export function expandPostfixAt(state: EditState, profile: LanguageProfile): Edit | null {
+  const range = normalise(state);
+  const { text, start, end } = range;
+  if (start !== end) return null;
+  const word = TRAILING_WORD.exec(text.slice(lineStartAt(text, start), start))?.[0];
+  if (word === undefined) return null;
+  const wordStart = start - word.length;
+  if (separatorEndingAt(text, wordStart) !== ".") return null;
+  return expandPostfix(range, word, wordStart, profile);
+}
+
+/**
  * IntelliJ's postfix completion: `x.sout` becomes `System.out.println(x);` and `n.fori` a loop up
  * to n. The expression is the chain of names, calls and indexes before the dot on this line.
  */

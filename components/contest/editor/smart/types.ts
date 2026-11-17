@@ -126,7 +126,9 @@ export type CompletionKind =
   | "field"
   | "function"
   | "variable"
-  | "snippet";
+  | "snippet"
+  /** A postfix template offered after `expr.`: `x.sout`, `n.fori`. */
+  | "postfix";
 
 export interface CompletionItem {
   /** What the popup shows, e.g. "println(String x)". */

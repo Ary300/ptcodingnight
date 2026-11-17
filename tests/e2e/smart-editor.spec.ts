@@ -286,6 +286,24 @@ test.describe("Java, the IntelliJ reflexes that used to misfire", () => {
     expect(text).toContain("Tab indents. Press Esc twice, then Tab, to move on. Ctrl / Cmd + Enter submits.");
   });
 
+  test("postfix templates are listed after `x.`, marked, and accepting one expands over x", async ({ page }) => {
+    const textarea = await openEmptyEditor(page, "Java 21");
+    await textarea.fill("int x = 3;\n");
+    await textarea.evaluate((element) => {
+      const area = element as HTMLTextAreaElement;
+      area.setSelectionRange(area.value.length, area.value.length);
+    });
+    await page.keyboard.type("x.");
+    await expect(popup(page)).toBeVisible();
+    for (const name of ["sout", "if", "fori"]) {
+      await expect(popup(page).getByRole("option", { name: new RegExp(`^postfix template ${name}\\b`) })).toBeVisible();
+    }
+    await page.keyboard.type("so");
+    await expect(popup(page).getByRole("option").first()).toHaveAccessibleName(/^postfix template sout\b/);
+    await page.keyboard.press("Enter");
+    await expect(textarea).toHaveValue("int x = 3;\nSystem.out.println(x);");
+  });
+
   test("Ctrl + Space opens completion on demand", async ({ page }) => {
     await openEmptyEditor(page, "Java 21");
     // Several suggestions (String, StringBuilder): an explicit call with exactly one inserts it.

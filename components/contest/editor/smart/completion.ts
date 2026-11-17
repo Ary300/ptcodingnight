@@ -13,6 +13,7 @@
  * then keywords, globals and live templates.
  */
 
+import { expandPostfixAt } from "./engine";
 import { withImport } from "./imports";
 import { inferType } from "./infer";
 import { fileMembers } from "./members";
@@ -525,8 +526,52 @@ function memberCandidates(ctx: CompletionContext, text: string, profile: Languag
   return [
     ...specific.map((item) => ({ item, group: 0 })),
     ...own.map((item) => ({ item, group: 1 })),
+    // Ahead of the general members, which would otherwise fill the list after an unknown `x.`.
+    ...postfixCandidates(ctx, text, profile).map((item) => ({ item, group: 1.5 })),
     ...general.map((item) => ({ item, group: 2 })),
   ];
+}
+
+/** The text with the typed word replaced by `word` and the caret after it. */
+function withWord(text: string, ctx: CompletionContext, word: string): EditState {
+  const caret = ctx.replaceFrom + word.length;
+  return { text: text.slice(0, ctx.replaceFrom) + word + text.slice(ctx.replaceTo), selectionStart: caret, selectionEnd: caret };
+}
+
+/**
+ * IntelliJ's postfix templates as rows after `expr.`, offered only where accepting one expands:
+ * after an expression, in code, never after a number or a package name in an import.
+ */
+function postfixCandidates(ctx: CompletionContext, text: string, profile: LanguageProfile): CompletionItem[] {
+  if (ctx.scope !== undefined || text.slice(ctx.replaceFrom - 1, ctx.replaceFrom) !== ".") return [];
+  return (profile.postfixTemplates ?? [])
+    .filter((template) => expandPostfixAt(withWord(text, ctx, template.abbreviation), profile) !== null)
+    .map((template) => {
+      const priority = POSTFIX_PRIORITY[template.abbreviation];
+      const item: CompletionItem = {
+        label: template.abbreviation,
+        insertText: template.abbreviation,
+        kind: "postfix",
+        detail: template.description,
+      };
+      return priority === undefined ? item : { ...item, priority };
+    });
+}
+
+/** The postfix templates contest code reaches for, first in a bare `x.` list of two dozen. */
+const POSTFIX_PRIORITY: Readonly<Record<string, number>> = { sout: 3, print: 3, cout: 3, fori: 2, if: 2, for: 1, return: 1 };
+
+/**
+ * Accepting a postfix row: the template expands over the expression before the dot. The engine
+ * expands in the text with the abbreviation typed in full; the edit is then stated against the
+ * text as it is, which differs only in the typed part of the word.
+ */
+function applyPostfix(state: EditState, ctx: CompletionContext, item: CompletionItem, profile: LanguageProfile): Edit | null {
+  const typed = withWord(state.text, ctx, item.insertText);
+  const expanded = expandPostfixAt(typed, profile);
+  if (expanded === null) return null;
+  const extra = item.insertText.length - (ctx.replaceTo - ctx.replaceFrom);
+  return { ...expanded, to: expanded.to - extra };
 }
 
 /**
@@ -627,7 +672,9 @@ export function applyCompletionReplacing(
 ): Edit {
   let wordEnd = ctx.replaceTo;
   while (wordEnd < state.text.length && /[A-Za-z0-9_$]/.test(state.text[wordEnd] ?? "")) wordEnd += 1;
-  if (wordEnd === ctx.replaceTo || item.kind === "snippet") return applyCompletion(state, ctx, item, profile);
+  if (wordEnd === ctx.replaceTo || item.kind === "snippet" || item.kind === "postfix") {
+    return applyCompletion(state, ctx, item, profile);
+  }
   const edit = applyCompletion(state, { ...ctx, replaceTo: wordEnd }, item, profile);
   const call = /\([^()]*\)$/.exec(item.insertText);
   if (call === null || state.text[wordEnd] !== "(" || !edit.insert.endsWith(item.insertText)) return edit;
@@ -706,6 +753,10 @@ export function applyCompletion(
   // the import an accepted class needs, and `new ArrayList<>()` after `new `.
   const profile = typeof indentOrProfile === "string" ? undefined : indentOrProfile;
   const indentUnit = typeof indentOrProfile === "string" ? indentOrProfile : indentOrProfile.indentUnit;
+  if (item.kind === "postfix" && profile !== undefined) {
+    const postfix = applyPostfix(state, ctx, item, profile);
+    if (postfix !== null) return postfix;
+  }
   if (item.kind === "snippet") {
     const indent = indentAt(state.text, ctx.replaceFrom);
     const template = profile?.templates.find((candidate) => candidate.abbreviation === item.label);
