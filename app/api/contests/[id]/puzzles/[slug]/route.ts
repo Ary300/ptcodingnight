@@ -45,6 +45,7 @@ export async function POST(
           teamId: participant?.teamId ?? null,
           viewerSetLabel: participant?.chosenSet?.label ?? null,
           contestId: id,
+          now,
         }),
       ),
       NO_STORE,

@@ -1,6 +1,8 @@
 import { prisma } from "@/lib/db";
 import { DomainError, NotFoundError } from "@/lib/errors";
 import { invalidateScoringInput } from "@/lib/contest/standings";
+import { AUDIT_ACTIONS, writeAudit } from "@/lib/contest/audit";
+import { assertCanSubmit } from "@/lib/contest/gate";
 
 /**
  * Browser puzzles: decode the binary, finish the sudoku, break the cipher.
@@ -53,6 +55,18 @@ function visibleWhere(viewerSetLabel: string | null): { OR: { forSetLabel: strin
   return viewerSetLabel === null
     ? { OR: [{ forSetLabel: null }] }
     : { OR: [{ forSetLabel: null }, { forSetLabel: viewerSetLabel }] };
+}
+
+/**
+ * Whether `scripts/seed-puzzles.ts` CREATES a puzzle shown. Always false.
+ *
+ * Paper puzzles are the plan for the night, so a fresh database shows no browser puzzle until an
+ * organizer turns one on from /admin/puzzles. The seat puzzles A to D used to start shown, which
+ * put a second puzzle on every student's screen beside the paper one. Applied on create only: a
+ * re-seed never changes `active` on a row that exists, so an organizer's choice survives it.
+ */
+export function seededPuzzleActiveOnCreate(): boolean {
+  return false;
 }
 
 /**
@@ -233,7 +247,21 @@ export async function attemptPuzzle(input: {
   readonly teamId: string | null;
   readonly viewerSetLabel: string | null;
   readonly contestId: string;
+  readonly now: Date;
 }): Promise<PuzzleAttemptResult> {
+  /*
+    The same window as a code submission: a solve is points, and points stop when submissions do.
+    Without this a team could keep answering puzzles after the contest ended, or before it opened,
+    and each answer paid. Checked before the answer, so a closed contest reveals nothing about
+    whether a guess was right.
+  */
+  const contest = await prisma.contest.findUnique({
+    where: { id: input.contestId },
+    select: { state: true, startsAt: true, endsAt: true, freezeAt: true },
+  });
+  if (contest === null) throw new NotFoundError("Contest");
+  assertCanSubmit(contest, input.now);
+
   const puzzle = await prisma.puzzle.findUnique({
     where: { slug: input.slug },
     select: {
@@ -290,7 +318,7 @@ export async function attemptPuzzle(input: {
           awardedPoints: puzzle.points,
         },
       });
-      await tx.teamSideActivity.create({
+      const award = await tx.teamSideActivity.create({
         data: {
           teamId,
           label: `Puzzle: ${puzzle.title}`,
@@ -299,7 +327,25 @@ export async function attemptPuzzle(input: {
           // the admin who typed it; this one names the machine that checked it.
           enteredBy: "puzzle",
         },
+        select: { id: true, label: true, points: true },
       });
+      // Every score change writes to the audit log, and this one has no organizer behind it, so
+      // the row is the only record of which seat solved which puzzle for how much.
+      await writeAudit(
+        {
+          actor: `participant:${input.participantId}`,
+          action: AUDIT_ACTIONS.sideActivity,
+          entity: `team:${teamId}`,
+          after: {
+            sideActivityId: award.id,
+            label: award.label,
+            points: award.points,
+            puzzle: input.slug,
+            source: "puzzle",
+          },
+        },
+        tx,
+      );
     });
   } catch (error: unknown) {
     const alreadySolved =
