@@ -1,7 +1,7 @@
 """Minimum Absolute Difference in an Array -- brute force.
 
 Definition-literal: examine every pair (i, j) with i < j and take the smallest
-|a_i - a_j|. O(n^2), which is fine at n <= 2000.
+|a_i - a_j|. O(n^2), which is fine at n <= 1000.
 """
 
 import sys

@@ -23,7 +23,8 @@ $i$-th range.
 ## Constraints
 
 - $1 \le q \le 100$
-- $1 \le a \le b \le 10^9$
+- $1 \le a \le b \le 10^6$
+- The total length of all ranges in one input, the sum of $b - a + 1$, is at most $10^6$
 
 ## Example
 

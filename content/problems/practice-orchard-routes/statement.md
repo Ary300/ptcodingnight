@@ -30,6 +30,7 @@ route exists, including the case where either endpoint holds a tree, print $0$.
 ## Constraints
 
 - $1 \le r, c \le 1000$
+- $r \cdot c \le 10^4$
 - Each grid character is either `.` or `#`.
 
 ## Example

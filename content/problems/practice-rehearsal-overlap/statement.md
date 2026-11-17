@@ -29,8 +29,8 @@ least one booking.
 
 ## Constraints
 
-- $1 \le n \le 10^5$
-- $0 \le s_i < e_i \le 10^9$
+- $1 \le n \le 1000$
+- $0 \le s_i < e_i \le 10^6$
 
 ## Example
 

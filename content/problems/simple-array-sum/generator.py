@@ -9,12 +9,27 @@ Seed layout:
   seeds 10-99   small inputs
   seeds 100-999 medium inputs
   seeds >= 1000 inputs at the constraint ceiling
+
+The ceiling is sized for a casual contest: n stays at or under 1,000 and every
+value at or under 1,000, so the largest possible answer is 10^6 and every
+input file stays a few kilobytes.
+
+Which seed made which test:
+  01  hand-written sample (Example 1 in statement.md), not generated
+  02  seed 1    (sample, Example 2)
+  03  seed 2    04  seed 3    05  seed 4    06  seed 5
+  07  seed 6    08  seed 7    09  seed 8
+  10  seed 42   11  seed 77
+  12  seed 250  13  seed 600
+  14  seed 1500
+  15  seed 9
+  16  seed 2026
 """
 
 import random
 import sys
 
-MAX_N = 100_000
+MAX_N = 1_000
 MAX_VALUE = 1000
 
 
@@ -45,24 +60,24 @@ def build_case(seed: int) -> tuple[int, list[int]]:
         return n, sorted((rng.randint(0, MAX_VALUE) for _ in range(n)), reverse=True)
     if seed == 7:
         # Heavy duplication: only a handful of distinct values.
-        n = rng.randint(100, 2_000)
+        n = rng.randint(100, MAX_N)
         palette = [rng.randint(0, MAX_VALUE) for _ in range(3)]
         return n, [rng.choice(palette) for _ in range(n)]
     if seed == 8:
-        # A long run of zeros: large n, smallest possible answer.
-        return 1_000, [0] * 1_000
+        # A long run of zeros: largest n, smallest possible answer.
+        return MAX_N, [0] * MAX_N
     if seed == 9:
-        # Maximum everything: the largest possible answer, 10^8.
+        # Maximum everything: the largest possible answer, 10^6.
         return MAX_N, [MAX_VALUE] * MAX_N
 
     if seed < 100:
         n = rng.randint(1, 15)
         ceiling = rng.choice([1, 10, 100, MAX_VALUE])
     elif seed < 1000:
-        n = rng.randint(50, 5_000)
+        n = rng.randint(50, 800)
         ceiling = rng.choice([100, MAX_VALUE])
     else:
-        n = rng.randint(MAX_N - 500, MAX_N)
+        n = rng.randint(MAX_N - 50, MAX_N)
         ceiling = MAX_VALUE
 
     values = [rng.randint(0, ceiling) for _ in range(n)]

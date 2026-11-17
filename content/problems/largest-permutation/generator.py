@@ -18,8 +18,15 @@ short of the swaps needed, so neither shortcut passes it.
 Generated tests, by command line:
   05 = 5 6 random short        06 = 6 9 tinyk
   09 = 9 10 ascending          11 = 11 40 neardesc short
-  15 = 15 99999 random         16 = 16 100000 neardesc short
-  17 = 17 100000 ascending short  19 = 19 100000 random
+  14 = 14 1000 random 2        15 = 15 999 random
+  16 = 16 1000 neardesc short  17 = 17 1000 ascending short
+  18 = 18 1000 random 500      19 = 19 1000 random
+
+Sizes are kept casual on purpose: n tops out at 1,000 and k at 10^6, so the
+obvious O(n^2) solution (scan the rest of the row for its maximum at every
+position) finishes well inside the time limit and every value fits a 32-bit
+int. The six largest tests used to sit at n = 10^4 and 10^5; they keep their
+seeds and shapes and now run at n = 1,000 (999 for 15, so one is odd).
 
 Shapes:
   random     uniform random permutation, k drawn across the whole legal range
@@ -38,8 +45,8 @@ Shapes:
 import random
 import sys
 
-MAX_N = 100000
-MAX_K = 10**9
+MAX_N = 1000
+MAX_K = 10**6
 
 SHAPES = ("random", "ascending", "descending", "neardesc", "zerok", "tinyk")
 

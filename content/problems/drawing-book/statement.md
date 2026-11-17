@@ -24,8 +24,8 @@ starting from whichever cover is cheaper.
 
 ## Constraints
 
-- $1 \le n \le 10^{9}$
-- $1 \le q \le 10^{5}$
+- $1 \le n \le 5000$
+- $1 \le q \le 500$
 - $1 \le p_i \le n$
 
 ## Example

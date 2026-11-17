@@ -8,14 +8,40 @@ be paired with any adversarial shape. Shapes cover uniform noise, all-equal
 prices, sorted and reverse-sorted shelves, an exact-prefix-sum budget
 boundary, a budget below every price, a budget covering everything, and heavy
 duplicates.
+
+Sizes are kept moderate for a casual contest: n <= 1000 and every price is at
+most 10^6, so the whole shelf costs at most 10^9 and every budget, running
+total and answer fits in a signed 32-bit int.
+
+Tests 01 and 02 are the hand-written samples. The rest come from these seeds:
+
+    test  seed  n     shape
+    03       8     1  0  uniform noise
+    04      13     1  5  nothing affordable
+    05      14     1  6  everything affordable
+    06      33    16  1  all equal
+    07      36    16  4  budget exactly on a prefix sum
+    08      50    36  2  sorted ascending
+    09      51    36  3  sorted descending
+    10      63    49  7  heavy duplicates
+    11      85   100  5  nothing affordable
+    12      94   121  6  everything affordable
+    13     160   400  0  uniform noise
+    14     252   961  4  budget exactly on a prefix sum
+    15     809  1000  1  all equal
+    16    1616  1000  0  uniform noise
+    17    2540  1000  4  budget one below a prefix sum
+    18    2551  1000  7  heavy duplicates
 """
 
 import random
 import sys
 
-MAX_N = 100000
-MAX_PRICE = 10**9
-MAX_K = 10**14
+MAX_N = 1000
+MAX_PRICE = 10**6
+# The whole shelf costs at most MAX_N * MAX_PRICE, so no budget beyond that
+# changes an answer, and it keeps k inside a signed 32-bit int.
+MAX_K = MAX_N * MAX_PRICE
 
 
 def choose_n(seed: int) -> int:

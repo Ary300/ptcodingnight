@@ -25,7 +25,7 @@ $n$ strings.
 ## Constraints
 
 - $1 \le n \le 100$
-- $1 \le |r_i| \le 1000$
+- $1 \le |r_i| \le 150$
 - each $r_i$ consists of lowercase English letters only
 
 ## Example

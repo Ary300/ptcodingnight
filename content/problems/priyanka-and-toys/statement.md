@@ -25,7 +25,7 @@ Print a single integer: the minimum number of crates needed to pack every toy.
 
 ## Constraints
 
-- $1 \le n \le 10^5$
+- $1 \le n \le 1000$
 - $0 \le w_i \le 10^4$
 
 ## Example

@@ -32,9 +32,9 @@ among those lines.
 
 ## Constraints
 
-- $1 \le n \le 100000$
-- $1 \le q \le 100000$
-- $1 \le b_i \le 10^9$
+- $1 \le n \le 500$
+- $1 \le q \le 300$
+- $1 \le b_i \le 10^6$
 - Every word consists of lowercase English letters only, with length between $1$ and $20$.
 
 ## Example

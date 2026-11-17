@@ -3,21 +3,35 @@
 Usage: python3 generator.py <seed>
 
 Deterministic per seed. Small seeds produce short names; large seeds push the
-length toward the 10^5 ceiling. The seed also selects the shape of the name so
+length toward the 10^4 ceiling. The seed also selects the shape of the name so
 the test set covers the degenerate cases (single letter, no uppercase at all,
 every letter after the first uppercase, one-letter words, one huge word) and not
 just uniform noise.
+
+Which seed made which test (01-02 are the statement's examples and 03-04 are
+hand-written: "a", the shortest name, and "aB", the shortest two-word name):
+
+    05 seed 6    (36, one word)          12 seed 40   (1600, realistic words)
+    06 seed 7    (49, all one-letter)    13 seed 75   (5625, rare uppercase)
+    07 seed 8    (64, alternating)       14 seed 123  (ceiling, rare uppercase)
+    08 seed 9    (81, rare uppercase)    15 seed 200  (ceiling, alternating)
+    09 seed 10   (100, realistic words)  16 seed 318  (ceiling, one word)
+    10 seed 11   (121, coin flip)        17 seed 319  (ceiling, all one-letter)
+    11 seed 23   (529, coin flip)        18 seed 322  (ceiling, realistic words)
+
+The ceiling is 10^4 characters so the largest file stays near 10 KB; a casual
+contest does not need a 10^5-character name to test a linear scan.
 """
 
 import random
 import string
 import sys
 
-MAX_LEN = 100000
+MAX_LEN = 10000
 
 
 def choose_len(seed: int) -> int:
-    """Grow with the seed: seed 1 -> 1 character, seed >= 317 -> the ceiling."""
+    """Grow with the seed: seed 1 -> 1 character, seed >= 100 -> the ceiling."""
     return max(1, min(MAX_LEN, seed * seed))
 
 

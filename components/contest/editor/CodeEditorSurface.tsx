@@ -76,7 +76,8 @@ import { useEditorKeys } from "./useEditorKeys";
  * ## The toolbar strip
  *
  * HackerRank draws a thin tinted bar directly above the code (hr-challenge-live.png): the
- * language dropdown on the left, small icon actions — reset and full screen — on the right.
+ * language choice on the left (tabs here since 2026-11-16, a dropdown there), small icon
+ * actions, reset and full screen, on the right.
  * That strip lives HERE rather than in the workspace, because both of its actions are
  * properties of the editor: reset needs the starter template and the caret, and full screen
  * has to take the toolbar and the status strip with it or the student loses Line/Col and the
@@ -139,7 +140,7 @@ const TOKEN_CLASS: Readonly<Record<TokenKind, string>> = {
  * `LanguagePicker` out of the header bar into `toolbarStart`.
  */
 export interface CodeEditorSurfaceProps extends CodeEditorProps {
-  /** Rendered on the toolbar's left, where HackerRank keeps its language dropdown. */
+  /** Rendered on the toolbar's left, where HackerRank keeps its language dropdown and we keep the language tabs. */
   readonly toolbarStart?: ReactNode;
   /**
    * Fill the parent's height instead of sizing to the textarea, the way full screen does. The
@@ -420,7 +421,7 @@ export function CodeEditorSurface({
     <div ref={rootRef} className={fillsBox ? "flex h-full flex-col bg-paper" : "flex flex-col"}>
       {/*
         The thin toolbar HackerRank draws directly above its editor (hr-challenge-live.png): a
-        tinted strip, the language dropdown on the left, small icon actions on the right. Same
+        tinted strip, the language tabs on the left, small icon actions on the right. Same
         tint as the workspace's header bar so the two read as one piece of chrome, and no bottom
         border — the dark band underneath is its own edge.
 
@@ -630,7 +631,7 @@ export function CodeEditorSurface({
             // Shorter on a phone: 22rem of editor plus the statement above it is a lot of
             // scrolling to reach Submit, and the box is resizable anyway. In full screen the
             // band's height is the layout's decision, so the resize handle and the caps go.
-            className={`relative block w-full overflow-auto bg-transparent p-3 font-mono text-transparent caret-gold outline-none selection:bg-paper/25 disabled:cursor-not-allowed ${
+            className={`relative block w-full overflow-auto bg-transparent p-3 font-mono text-transparent caret-gold outline-none focus-visible:outline-1! focus-visible:outline-gold/45! focus-visible:outline-offset-[-1px]! selection:bg-paper/25 disabled:cursor-not-allowed ${
               fillsBox ? "h-full resize-none" : "max-h-[70vh] min-h-[16rem] resize-y sm:min-h-[22rem]"
             }`}
             style={{ ...SHARED_TEXT }}

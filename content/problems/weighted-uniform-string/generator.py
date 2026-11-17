@@ -8,16 +8,33 @@ shape of the string (uniform noise, a single letter, a few long runs, strict
 alternation, sorted runs) and the queries mix guaranteed hits, near misses
 (an achievable weight plus or minus one), overshoots (a valid multiple of a
 letter weight that needs a longer run than exists), and the extremes 1 and
-10^7.
+10^6.
+
+Tests 01-09 are hand-written. Tests 10-17 come from this generator:
+
+    10  seed 7    few long runs     n = q = 49
+    11  seed 13   alternation       n = q = 169
+    12  seed 40   uniform noise     n = 300, q = 500
+    13  seed 101  one letter        n = 300, q = 500
+    14  seed 158  alternation       n = 300, q = 500
+    15  seed 234  sorted runs       n = 300, q = 500
+    16  seed 316  one letter        n = 300, q = 500
+    17  seed 320  uniform noise     n = 300, q = 500
+
+The ceilings are sized for a casual contest: every weight a run can reach is
+at most 26 * 300, and every query is at most 10^6, so all values fit in a
+32-bit int. n stays at 300 so that even the most literal solution (list the
+weight of every uniform substring from every start, then scan that list for
+each query) finishes well inside the time limit on a 300-letter single run.
 """
 
 import random
 import sys
 from itertools import groupby
 
-MAX_N = 100000
-MAX_Q = 100000
-MAX_X = 10**7
+MAX_N = 300
+MAX_Q = 500
+MAX_X = 10**6
 
 
 def choose_size(seed: int) -> tuple[int, int]:

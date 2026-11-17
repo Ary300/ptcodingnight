@@ -1,49 +1,46 @@
 "use client";
 
-import { useId } from "react";
+import { useLayoutEffect, useRef, type KeyboardEvent } from "react";
 
-import { Select } from "@/components/ui/Select";
-import { LanguageSchema, type Language } from "@/lib/schemas/judge";
+import type { Language } from "@/lib/schemas/judge";
 
+import { orderLanguages } from "./language-order";
 import { LANGUAGE_LABEL } from "./types";
 
 /**
- * The one dropdown a student touches, and the reason `components/ui/Select` grew a real popup.
+ * The editor's language tabs, one per language the problem allows.
  *
- * It used to be a native `<select>` on the argument that the platform control is keyboard
- * complete, screen-reader labelled, and the iOS and Android wheel on a phone. All three of those
- * were true and none of them are given up: `ui/Select` still renders the native element on a
- * coarse pointer and through hydration, and implements the full APG combobox keyboard on a fine
- * one. What the native control could not do was be SEEN. Its open list is an operating-system
- * window: not in the document, not styleable, not screenshottable, not visible to axe, and not
- * assertable — a pixel diff of the 700px below an open one differs from the closed capture in
- * exactly zero pixels. So the control a student uses ten times a night was the one surface of
- * this product that no gate had ever executed and no reviewer had ever looked at.
+ * It was a "Language" label and a `ui/Select` until 2026-11-16, when the organizers asked for tabs:
+ * the night is written in three languages, and a dropdown hides the two a student is not using
+ * behind a click they have to know to make.
  *
- * Nothing about THIS file's contract changed in that move: same props, same `onChange`, same
- * `<option>` children. The trigger's metrics are the same measurements too.
+ * ## The look, taken from `ui/TabStrip`
  *
- * The rationale used to read "it is two languages". It is ten — five runtimes and their compile
- * variants (`VARIANTS` in lib/judge/runtimes.ts), six human languages: Python, Java 8/11/17/21,
- * C, C++11/17, JavaScript, Go. A native select handles ten fine; the stale count is fixed here
- * because a comment that miscounts the thing the file exists for invites someone to "simplify"
- * the control on a premise that has not been true for months.
+ * Same type (`--text-sm`, semibold when active and medium at 70% ink when not), same bordered box
+ * with no bottom border, same tinted tray. What changes is the panel underneath. The problem
+ * page's tabs stand over paper, so the active tab is paper; these stand over the editor's dark
+ * band, so the active tab is ink and runs straight into it. That is the folder-tab effect
+ * TabStrip describes, kept: the selected tab and the code below it read as one surface.
  *
- * **The option list is `allowed` and nothing else.** It arrives as `ProblemDetail.allowedLanguages`
- * — the problem's own column, straight off the server — and the label for each id comes from
- * `LANGUAGE_LABEL`, which is built from the registry. Neither the ids nor the labels are restated
- * anywhere in this file: a hardcoded list here would silently disagree with what the judge will
- * actually accept, and the student would find out by having a submission refused.
+ * ## Order
  *
- * **The control is `components/ui/Select` and no longer drawn here.** It used to be `rounded`
- * (4px) on `border-ink/25` — neither of which is a token: DESIGN.md §5a has three radii and
- * §5b replaced eleven hand-picked `border-ink/N` alphas with three rule weights, and this
- * control was off both scales. Measured against the admin selects on the same commit it was
- * 34px tall at a 4px corner where they were 42px and flat, which is how one product ends up
- * with four dropdowns that look like four products.
+ * `orderLanguages`: Java 21, Python 3, C++17, then anything else the problem allows in registry
+ * order. The ids come from `ProblemDetail.allowedLanguages` and the labels from the registry, and
+ * neither is restated here.
  *
- * It stays `size="sm"`: this one lives in the editor's header strip beside `Button size="sm"`
- * and a `--text-xs` caption, and a 42px form-row control in that bar would tower over both.
+ * ## Keyboard
+ *
+ * A real `role="tablist"`. One tab is in the Tab order (the selected one); Left and Right move
+ * between tabs and wrap, Home and End jump to the ends. Selection follows focus, which the APG
+ * pattern recommends when showing the panel is instant, and here it is: each language keeps its
+ * own draft, so stepping through the tabs loses nothing.
+ *
+ * ## Narrow screens
+ *
+ * The row scrolls sideways inside itself and never widens the page. Its scrollbar is hidden,
+ * because a bar between the tabs and the editor would cut the selected tab off from its panel;
+ * the selected tab is scrolled into view instead, so a remembered language at the far end of
+ * the row is never off screen.
  */
 
 export interface LanguagePickerProps {
@@ -53,34 +50,87 @@ export interface LanguagePickerProps {
   disabled?: boolean;
 }
 
+const TAB_BASE =
+  "inline-flex shrink-0 items-center whitespace-nowrap border px-3 pt-1.5 pb-2 sm:px-5 " +
+  // Inset, so the ring is drawn inside the scroll box rather than clipped by it. `!` because the
+  // global `:focus-visible` rule in globals.css is unlayered and outranks any utility otherwise.
+  "focus-visible:outline-offset-[-4px]! disabled:cursor-not-allowed";
+
+const TAB_ACTIVE = "border-rule-edge border-b-transparent bg-ink font-semibold text-paper";
+
+const TAB_IDLE =
+  "border-transparent font-medium text-ink/70 hover:text-ink disabled:text-ink/40 disabled:hover:text-ink/40";
+
 export function LanguagePicker({ value, allowed, onChange, disabled = false }: LanguagePickerProps) {
-  const id = useId();
+  const languages = orderLanguages(allowed);
+  const listRef = useRef<HTMLDivElement>(null);
+  // A value the problem does not offer cannot be the roving stop, or no tab would be reachable.
+  const focusable = languages.includes(value) ? value : languages[0];
+
+  // Scroll the row, never the page: `scrollIntoView` would also move the window vertically.
+  useLayoutEffect(() => {
+    const list = listRef.current;
+    const tab = list?.querySelector<HTMLElement>('[aria-selected="true"]');
+    if (list === null || tab === null || tab === undefined) return;
+    // The list is `relative`, so a tab's offsetLeft is measured from the list's own edge.
+    const left = tab.offsetLeft;
+    const right = left + tab.offsetWidth;
+    if (left < list.scrollLeft) list.scrollLeft = left;
+    else if (right > list.scrollLeft + list.clientWidth) list.scrollLeft = right - list.clientWidth;
+  }, [value]);
+
+  function select(index: number) {
+    const next = languages[index];
+    if (next === undefined) return;
+    listRef.current?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[index]?.focus();
+    if (next !== value) onChange(next);
+  }
+
+  function onKeyDown(event: KeyboardEvent<HTMLButtonElement>, index: number) {
+    const last = languages.length - 1;
+    const target =
+      event.key === "ArrowRight"
+        ? index === last ? 0 : index + 1
+        : event.key === "ArrowLeft"
+          ? index === 0 ? last : index - 1
+          : event.key === "Home"
+            ? 0
+            : event.key === "End"
+              ? last
+              : null;
+    if (target === null) return;
+    event.preventDefault();
+    select(target);
+  }
 
   return (
-    <div className="flex min-w-0 items-center gap-2">
-      <label htmlFor={id} className="shrink-0 text-ink/70" style={{ fontSize: "var(--text-xs)" }}>
-        Language
-      </label>
-      <Select
-        id={id}
-        size="sm"
-        value={value}
-        disabled={disabled}
-        onChange={(event) => {
-          // The DOM hands back a string; narrow it rather than casting it.
-          const parsed = LanguageSchema.safeParse(event.target.value);
-          if (parsed.success) onChange(parsed.data);
-        }}
-        // Roomy like HackerRank's, which is a wide control rather than a squeezed one — but
-        // `max-w-full` so it shrinks instead of pushing the header bar past 360px.
-        shellClassName="w-52 max-w-full"
-      >
-        {allowed.map((language) => (
-          <option key={language} value={language}>
+    <div
+      ref={listRef}
+      role="tablist"
+      aria-label="Language"
+      aria-orientation="horizontal"
+      // `-mb-1` cancels the toolbar's bottom padding so the selected tab meets the editor band.
+      className="relative -mb-1 flex max-w-full overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+    >
+      {languages.map((language, index) => {
+        const selected = language === value;
+        return (
+          <button
+            key={language}
+            type="button"
+            role="tab"
+            aria-selected={selected}
+            tabIndex={language === focusable ? 0 : -1}
+            disabled={disabled}
+            onClick={() => select(index)}
+            onKeyDown={(event) => onKeyDown(event, index)}
+            className={`${TAB_BASE} ${selected ? TAB_ACTIVE : TAB_IDLE}`}
+            style={{ fontSize: "var(--text-sm)" }}
+          >
             {LANGUAGE_LABEL[language]}
-          </option>
-        ))}
-      </Select>
+          </button>
+        );
+      })}
     </div>
   );
 }

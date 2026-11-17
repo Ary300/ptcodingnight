@@ -22,9 +22,9 @@ Print a single integer on its own line: $a_1 + a_2 + \dots + a_n$.
 
 ## Constraints
 
-- $1 \le n \le 10^5$
+- $1 \le n \le 1000$
 - $0 \le a_i \le 1000$ for every $i$
-- The sum therefore never exceeds $10^8$, which fits comfortably in a 32-bit signed integer.
+- The sum therefore never exceeds $10^6$, which fits comfortably in a 32-bit signed integer.
 
 ## Example
 

@@ -1,15 +1,44 @@
 """Ice Cream Parlor -- input generator.
 
-Usage: python3 generator.py <seed>
+Usage:
+  python3 generator.py <seed>                 a mixed set of trips
+  python3 generator.py trip <shape> <n> <seed> one trip of one shape
+  python3 generator.py trips <seed> <n1> <n2> ...  one trip per size, shapes drawn
 
-Deterministic per seed. Small seeds produce a handful of tiny trips; larger
-seeds grow the trip count and sizes toward the constraint ceiling. Every trip
-is constructed so that EXACTLY one pair of distinct flavors sums to the
-budget: the answer pair is planted first, and each subsequent filler cost
-blocks its own complement from ever being chosen, so no accidental second
-pair can form. The trip shape (uniform, sorted, reversed, duplicate-heavy,
-equal halves, pair at the ends, boundary values) is drawn per trip so the
-test set is not just uniform noise.
+Deterministic per arguments. In seed mode, small seeds produce a handful of
+tiny trips; larger seeds grow the trip count and sizes toward the ceiling.
+Every trip is constructed so that EXACTLY one pair of distinct flavors sums
+to the budget: the answer pair is planted first, and each subsequent filler
+cost blocks its own complement from ever being chosen, so no accidental
+second pair can form. The trip shape (uniform, sorted, reversed,
+duplicate-heavy, equal halves, pair at the ends, boundary values) is drawn
+per trip so the test set is not just uniform noise.
+
+Sizes are kept casual on purpose: at most 1,000 flavors in a trip and 2,500
+over a whole input, and every cost at most 10^6, so the budget and any sum
+of two costs fit comfortably in a 32-bit int and the obvious double loop
+over all pairs finishes well inside the time limit.
+
+Which arguments made which test (01 and 02 are the hand-written statement
+samples, and 03 and 04 are written by hand; none of them is generated):
+
+  03  hand-written: the smallest trip, two flavors of equal cost "1 1", m = 2
+  04  hand-written: two flavors at the cost ceiling "1000000 1000000",
+      m = 2 * 10^6, the largest budget the constraints allow
+  05  trip uniform 1000 5
+  06  trip pair-last 1000 6      the answer is the last two flavors
+  07  trip pair-first 1000 7     the answer is the first two flavors
+  08  trip sorted 1000 8
+  09  trip reversed 1000 9
+  10  trip duplicates 1000 10    costs drawn from 50 values, many repeats
+  11  trips 11 24 37 24 17 33 9 24 3 25 41   ten small trips
+  12  trip boundary 1000 12      the answer is cost 1 plus cost 10^6
+  13  32
+  14  34
+  15  36
+  16  38
+  17  40
+  18  trips 18 1000 1000 150 100 60 40 25 15 8 2   ten trips, 2,400 flavors
 """
 
 import random
@@ -18,9 +47,9 @@ from collections import Counter
 from collections.abc import Callable
 
 MAX_T = 10
-MAX_N = 100000
-MAX_TOTAL_N = 300000
-MAX_COST = 10 ** 9
+MAX_N = 1000
+MAX_TOTAL_N = 2500
+MAX_COST = 10 ** 6
 
 SHAPES = (
     "uniform",
@@ -99,8 +128,8 @@ def make_trip(rng: random.Random, n: int, shape: str) -> tuple[int, list[int]]:
     elif shape == "boundary":
         def sample() -> int:
             if rng.random() < 0.5:
-                return rng.randint(2, 10 ** 6)
-            return rng.randint(MAX_COST - 10 ** 6, MAX_COST - 1)
+                return rng.randint(2, 10 ** 4)
+            return rng.randint(MAX_COST - 10 ** 4, MAX_COST - 1)
     else:
         sample = lambda: rng.randint(1, MAX_COST)
 
@@ -136,10 +165,7 @@ def write_input(out, trips: list[tuple[int, list[int]]]) -> None:
         out.write("\n")
 
 
-def main() -> None:
-    seed = int(sys.argv[1])
-    rng = random.Random(seed)
-
+def mixed_trips(rng: random.Random, seed: int) -> list[tuple[int, list[int]]]:
     scale = min(1.0, seed / 40)
     budget = max(4, int(MAX_TOTAL_N * scale * rng.uniform(0.6, 1.0)))
     t = rng.randint(1, MAX_T)
@@ -157,6 +183,21 @@ def main() -> None:
         trips.append(make_trip(rng, n, shape))
     if not trips:
         trips.append(make_trip(rng, 2, "uniform"))
+    return trips
+
+
+def main() -> None:
+    args = sys.argv[1:]
+    if args[0] == "trip":
+        shape, n, seed = args[1], int(args[2]), int(args[3])
+        trips = [make_trip(random.Random(seed), n, shape)]
+    elif args[0] == "trips":
+        seed = int(args[1])
+        rng = random.Random(seed)
+        trips = [make_trip(rng, int(n), rng.choice(SHAPES)) for n in args[2:]]
+    else:
+        seed = int(args[0])
+        trips = mixed_trips(random.Random(seed), seed)
 
     write_input(sys.stdout, trips)
 

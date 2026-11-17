@@ -7,17 +7,32 @@ the constraint ceiling. The seed also selects the shape of the line so the test
 set covers degenerate cases (single person, all counts even, all counts odd,
 alternating parity, two odd counts at opposite ends, guaranteed-NO parity) and
 not just uniform noise.
+
+Tests 01-12 are written by hand (01 and 02 are the statement's samples). The
+generated tests come from these seeds:
+
+    13  seed 41   shape 6, sparse odd counts       n = 1000
+    14  seed 63   shape 0, uniform noise           n = 1000
+    15  seed 40   shape 5, guaranteed NO           n = 1000
+    16  seed 24   shape 3, alternating parity      n = 576
+    17  seed 249  shape 4, odd counts at both ends n = 1000
+    18  seed 315  shape 0, uniform noise           n = 1000
+
+Seeds 63 and 315 replace the old 42 and 322 because, once n is capped, those
+two happen to land on NO, and 15 already covers NO at full size. The ceiling
+is 1000 people. This is a casual contest, and an O(n) sweep needs
+no large input to separate it from anything else a student would write.
 """
 
 import random
 import sys
 
-MAX_N = 100000
+MAX_N = 1000
 MAX_B = 1000
 
 
 def choose_n(seed: int) -> int:
-    """Grow with the seed: seed 1 -> 1 person, seed >= 317 -> the ceiling."""
+    """Grow with the seed: seed 1 -> 1 person, seed >= 32 -> the ceiling."""
     return max(1, min(MAX_N, seed * seed))
 
 

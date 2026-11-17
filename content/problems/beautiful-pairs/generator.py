@@ -8,17 +8,23 @@ so the test set covers the adversarial cases (perfect multiset match, one
 element away from perfect, disjoint value sets, one repeated value everywhere,
 sorted against reverse sorted, duplicate-heavy tiny alphabets) and not just
 uniform noise.
+
+Tests 01-09 are hand-written (01 and 02 are the statement samples). Tests
+10-18 come from this generator with seeds 5, 8, 18, 33, 44, 64, 221, 320 and
+321, in that order. Seeds 33 and above all land on the n = 1000 ceiling and
+differ only in shape: 33 shuffled copy, 44 one element away from perfect,
+64 and 320 uniform noise, 221 duplicate-heavy, 321 shuffled copy.
 """
 
 import random
 import sys
 
-MAX_N = 100000
+MAX_N = 1000
 MAX_VALUE = 100
 
 
 def choose_n(seed: int) -> int:
-    """Grow with the seed: seed 1 -> length 1, seed >= 317 -> the ceiling."""
+    """Grow with the seed: seed 1 -> length 1, seed >= 32 -> the ceiling."""
     return max(1, min(MAX_N, seed * seed))
 
 

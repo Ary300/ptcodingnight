@@ -27,7 +27,7 @@ rounding rules are applied.
 
 ## Constraints
 
-- $1 \le n \le 10^5$
+- $1 \le n \le 1000$
 - $0 \le g_i \le 100$
 
 ## Example

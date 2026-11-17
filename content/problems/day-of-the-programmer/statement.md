@@ -16,7 +16,7 @@ Print $T$ lines. On line $i$, print the calendar date of the $K$-th day of year 
 
 ## Constraints
 
-- $1 \le T \le 20000$
+- $1 \le T \le 1000$
 - $1600 \le Y \le 9999$
 - $1 \le K \le 366$, and $K$ never exceeds the number of days in year $Y$.
 

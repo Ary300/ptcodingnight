@@ -24,9 +24,11 @@ same mark. If no such beep exists, print `NEVER`.
 
 ## Constraints
 
-- $1 \le q \le 20000$
+- $1 \le q \le 800$
 - $0 \le s_1, s_2 \le 10^9$
 - $0 \le j_1, j_2 \le 10^6$
+- Every test except the second sample keeps $s_1, s_2 \le 10^5$ and $j_1, j_2 \le 10^3$.
+- When a pair does meet, the shared mark is at most $10^9$, so every value fits in a 32-bit integer.
 - A jump length of $0$ means that rover never moves.
 
 ## Example

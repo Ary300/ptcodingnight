@@ -28,8 +28,8 @@ was broken, then the number of times the lowest record was broken.
 
 ## Constraints
 
-- $1 \le n \le 5000$
-- $0 \le p_i \le 10^9$
+- $1 \le n \le 1000$
+- $0 \le p_i \le 10^6$
 
 ## Example
 

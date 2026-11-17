@@ -3,20 +3,26 @@
 Usage: python3 generator.py <seed>
 
 Deterministic per seed. Small seeds produce tiny rows; large seeds push n to
-the constraint ceiling. The seed also selects the shape of the station list so
+the constraint ceiling of 1,000 tables, small enough that the plain
+every-table-against-every-station scan finishes well inside the limit. The
+seed also selects the shape of the station list so
 the test set covers the degenerate cases (single station, every table a
 station, heavy duplicates, stations crowded at one end, one huge middle gap)
 and not just uniform noise.
+
+Generated tests: 03 = seed 1, 12 = seed 24, 13 = seed 31, 14 = seed 40,
+15 = seed 53, 18 = seed 318, 16 = seed 319, 17 = seed 320. Tests 01, 02 and
+04 to 11 are hand-written.
 """
 
 import random
 import sys
 
-MAX_N = 100000
+MAX_N = 1000
 
 
 def choose_n(seed: int) -> int:
-    """Grow with the seed: seed 1 -> 1 table, seed >= 317 -> the ceiling."""
+    """Grow with the seed: seed 1 -> 1 table, seed >= 32 -> the ceiling."""
     return max(1, min(MAX_N, seed * seed))
 
 

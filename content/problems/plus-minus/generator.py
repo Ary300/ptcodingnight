@@ -3,21 +3,42 @@
 Usage: python3 generator.py <seed>
 
 Deterministic per seed. Small seeds produce tiny arrays; large seeds push n to
-the constraint ceiling. The seed also selects the shape of the array so the
-test set covers degenerate cases (single element, one sign class only, an
+the constraint ceiling of 1,000. The seed also selects the shape of the array so
+the test set covers degenerate cases (single element, one sign class only, an
 entirely missing class, values pinned to the constraint bounds) and not just
 uniform noise.
+
+Values stay within +/- 1,000,000 and n within 1,000, so every input fits a
+signed 32-bit int and the largest file is about 9 KB.
+
+Which seed made which test (the rest are hand-written):
+
+    01, 02   hand-written; the two samples shown in statement.md
+    03       hand-written; n = 1, a single positive
+    04       hand-written; n = 1, the negative bound
+    05       hand-written; n = 1, a single zero
+    06       seed 8    n = 64,   all positive
+    07       seed 9    n = 81,   all negative
+    08       seed 10   n = 100,  all zeros
+    09       seed 12   n = 144,  only -MAX_ABS, 0 and MAX_ABS
+    10       hand-written; no zeros, both bounds present
+    11       hand-written; no positives
+    12       hand-written; no negatives
+    13       seed 35   n = 1000, uniform noise
+    14       seed 53   n = 1000, zero-heavy mix
+    15       seed 315  n = 1000, uniform noise
+    16       seed 322  n = 1000, uniform noise
 """
 
 import random
 import sys
 
-MAX_N = 100000
-MAX_ABS = 10**9
+MAX_N = 1000
+MAX_ABS = 10**6
 
 
 def choose_n(seed: int) -> int:
-    """Grow with the seed: seed 1 -> 1 element, seed >= 317 -> the ceiling."""
+    """Grow with the seed: seed 1 -> 1 element, seed >= 32 -> the ceiling."""
     return max(1, min(MAX_N, seed * seed))
 
 

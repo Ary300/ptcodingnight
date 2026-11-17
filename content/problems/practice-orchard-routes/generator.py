@@ -3,7 +3,10 @@
 Usage: python3 generator.py <seed>
 
 Deterministic per seed. Small seeds produce tiny maps; seeds of 32 and above
-push both dimensions to the 1000 x 1000 ceiling. The seed also selects the
+push both dimensions to the 100 x 100 ceiling. The ceiling is sized for a
+casual contest: a plain 2D table is instant, the route count still overflows
+the modulus many times over, and every intermediate (a + b with both below
+10^9 + 7) fits a signed 32-bit int. The seed also selects the
 shape of the map, so the test set covers empty orchards, sparse and dense tree
 cover, single rows and columns, diagonal windbreaks with one gap each, and a
 regular planting pattern, not just uniform noise.
@@ -12,13 +15,13 @@ regular planting pattern, not just uniform noise.
 import random
 import sys
 
-MAX_R = 1000
-MAX_C = 1000
+MAX_R = 100
+MAX_C = 100
 
 
 def choose_dims(seed: int, rng: random.Random) -> tuple[int, int]:
     """Grow with the seed: seed 1 -> 1x1 territory, seed >= 32 -> the ceiling."""
-    cap = max(1, min(MAX_R, seed * seed))
+    cap = max(1, min(MAX_R, seed * seed // 8))
     if cap >= MAX_R:
         return MAX_R, MAX_C
     return rng.randint(1, cap), rng.randint(1, cap)
@@ -101,6 +104,16 @@ def main() -> None:
     out = [f"{len(grid)} {len(grid[0])}"]
     out.extend(grid)
     sys.stdout.write("\n".join(out) + "\n")
+
+
+# Which seed made which test. Tests 01 to 08 are hand-written (01 and 02 are
+# the statement's samples; 05 and 06 are the 1 x 1000 and 1000 x 1 strips).
+#   09  seed 37  shape 1  open orchard, 100 x 100
+#   10  seed 36  shape 0  sparse-to-moderate cover, 100 x 100
+#   11  seed 35  shape 5  dense cover, 100 x 100
+#   12  seed 33  shape 3  diagonal windbreaks, 100 x 100
+#   13  seed 24  shape 0  sparse-to-moderate cover, 50 x 24 (non-square)
+#   14  seed 34  shape 4  odd-odd planting pattern, 100 x 100
 
 
 if __name__ == "__main__":

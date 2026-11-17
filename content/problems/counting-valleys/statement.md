@@ -27,7 +27,7 @@ Print a single integer: the number of valleys in the walk.
 
 ## Constraints
 
-- $2 \le n \le 10^6$
+- $2 \le n \le 10^4$
 - $n$ is even
 - The string contains exactly $n/2$ characters `U` and $n/2$ characters `D`, so the walk
   ends at elevation $0$

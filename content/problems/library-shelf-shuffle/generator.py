@@ -2,7 +2,9 @@
 
 Usage: python3 generator.py <seed>
 
-Deterministic per seed. Small seeds give short logs; the ceiling of 10^5 events is reached
+Deterministic per seed. Test NN is this generator run with seed NN, for seeds 3 to 16;
+tests 01 and 02 are the hand-written samples from the statement. Small seeds give short
+logs, seeds 9 to 11 give a few hundred events, and the ceiling of 1,000 events is reached
 by seed 12 and above. The seed also selects a shape so the test set covers a cart that is
 mostly empty when volunteers come, a cart that is never empty, a log that is all returns
 followed by all visits, long runs of the same call number, and uniformly mixed logs.
@@ -12,7 +14,7 @@ Every log has at least one visit, as the constraints promise.
 import random
 import sys
 
-MAX_N = 100_000
+MAX_N = 1_000
 MAX_CALL = 1_000_000
 
 
@@ -22,7 +24,7 @@ def choose_n(seed, rng):
     if seed <= 8:
         return rng.randint(10, 400)
     if seed <= 11:
-        return rng.randint(5_000, 60_000)
+        return rng.randint(200, 600)
     return MAX_N
 
 

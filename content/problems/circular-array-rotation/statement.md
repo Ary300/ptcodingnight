@@ -25,10 +25,10 @@ the ring has ticked $k$ times.
 
 ## Constraints
 
-- $1 \le n \le 10^5$
+- $1 \le n \le 1000$
 - $0 \le k \le 10^9$
-- $1 \le q \le 10^5$
-- $0 \le a_i \le 10^9$
+- $1 \le q \le 1000$
+- $0 \le a_i \le 10^6$
 - $0 \le j < n$ for every query
 
 ## Example

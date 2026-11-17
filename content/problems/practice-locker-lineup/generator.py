@@ -3,21 +3,27 @@
 Usage: python3 generator.py <seed>
 
 Deterministic per seed. The seed controls both the corridor length (small
-seeds give short corridors, seeds of 448 or more hit the ceiling) and the
+seeds give short corridors, seeds of 32 or more hit the ceiling) and the
 shape of the plate sequence, so the test set covers degenerate corridors
 (single locker, all plates equal, fully sorted, fully reversed, heavy
 duplicates, boundary values) and not just uniform noise.
+
+Tests 01-05 are hand-written (the two samples, a single locker, the two
+boundary values 1 and 10^6, and a flat pair). Tests 06-15 come from this
+generator with seeds 15, 30, 31, 25, 40, 41, 98, 203, 448, 449 in that order.
+The ceiling is kept small (1,000 lockers, plates up to 10^6) so the casual
+contest's big tests stay moderate and every value fits a 32-bit int.
 """
 
 import random
 import sys
 
-MAX_N = 200000
-MAX_VALUE = 10**9
+MAX_N = 1000
+MAX_VALUE = 10**6
 
 
 def choose_n(seed: int) -> int:
-    """Grow with the seed: seed 1 -> 1 locker, seed >= 448 -> the ceiling."""
+    """Grow with the seed: seed 1 -> 1 locker, seed >= 32 -> the ceiling."""
     return max(1, min(MAX_N, seed * seed))
 
 
@@ -55,7 +61,7 @@ def build_plates(seed: int, n: int, rng: random.Random) -> list[int]:
         high = rng.randint(MAX_VALUE // 2 + 1, MAX_VALUE)
         return [high if i % 2 else low for i in range(n)]
 
-    # shape == 6: only the boundary values 1 and 10^9 appear.
+    # shape == 6: only the boundary values 1 and 10^6 appear.
     return [rng.choice((1, MAX_VALUE)) for _ in range(n)]
 
 

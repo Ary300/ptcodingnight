@@ -9,12 +9,25 @@ distant clusters, values pinned to the constraint bounds). Seeds above 10 grow
 n roughly with the square of the seed and rotate through random families, and
 seeds 900+ force n to the ceiling: 900 is the adversarial maximum-crate-count
 input, 901+ are uniform noise at full size.
+
+The ceiling is n = 1000 on purpose, so the largest input stays under about 6 KB
+and the obvious solutions (even a quadratic one) finish well inside the limit.
+
+Seeds behind the committed tests (01-02 are the statement samples):
+
+    03-12  seeds 1-10   the fixed edge shapes above, in order
+    13     seed 11      n = 121, weights 0-40 with many collisions
+    14     seed 24      n = 576, uniform over the full weight range
+    15     seed 40      n = 1000, clumpy clusters
+    16     seed 102     n = 1000, uniform over the full weight range
+    17     seed 900     n = 1000, adversarial: 500 weights that never share a crate, each twice
+    18     seed 901     n = 1000, uniform noise
 """
 
 import random
 import sys
 
-MAX_N = 100000
+MAX_N = 1000
 MAX_W = 10000
 WIDTH = 4  # a crate at base w holds weights w .. w + WIDTH
 
@@ -59,9 +72,11 @@ def edge_case(seed: int, rng: random.Random) -> list[int]:
 
 def random_case(seed: int, rng: random.Random) -> list[int]:
     if seed == 900:
-        # Adversarial: as many crates as the weight range allows, at full n.
+        # Adversarial: weights spaced WIDTH + 1 apart across the whole range,
+        # so no two distinct weights share a crate; each weight appears twice.
         distinct = [v for v in range(0, MAX_W + 1, WIDTH + 1)]
-        toys = [distinct[i % len(distinct)] for i in range(MAX_N)]
+        chosen = rng.sample(distinct, MAX_N // 2)
+        toys = chosen + chosen
         rng.shuffle(toys)
         return toys
     if seed >= 901:

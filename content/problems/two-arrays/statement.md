@@ -33,9 +33,9 @@ $A_i + B_i \ge k$ hold at every index, and `NO` otherwise.
 ## Constraints
 
 - $1 \le q \le 10$
-- $1 \le n \le 10^4$
-- $0 \le a_i, b_i \le 10^9$
-- $0 \le k \le 2 \cdot 10^9$
+- $1 \le n \le 1000$
+- $0 \le a_i, b_i \le 10^6$
+- $0 \le k \le 2 \cdot 10^6$
 
 ## Example
 

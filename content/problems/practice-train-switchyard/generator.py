@@ -2,8 +2,9 @@
 
 Usage: python3 generator.py <seed>
 
-Deterministic per seed. Small seeds produce tiny yards; seeds of 448 and above
-push n to the constraint ceiling. The seed also selects the shape of the
+Deterministic per seed. Small seeds produce tiny yards; seeds of 32 and above
+push n to the constraint ceiling of 1,000 cars, which keeps every test small
+enough for a straightforward quadratic simulation. The seed also selects the shape of the
 arrival permutation so the test set covers the interesting regimes (already
 sorted, fully reversed, a single rotation that forces the worst answer,
 near-sorted, sortable-by-blocks) and not just uniform shuffles.
@@ -12,11 +13,11 @@ near-sorted, sortable-by-blocks) and not just uniform shuffles.
 import random
 import sys
 
-MAX_N = 200000
+MAX_N = 1000
 
 
 def choose_n(seed: int) -> int:
-    """Grow with the seed: seed 1 -> 1 car, seed >= 448 -> the ceiling."""
+    """Grow with the seed: seed 1 -> 1 car, seed >= 32 -> the ceiling."""
     return max(1, min(MAX_N, seed * seed))
 
 

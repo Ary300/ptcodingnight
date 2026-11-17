@@ -7,18 +7,41 @@ Deterministic per seed. Small seeds produce short strings; large seeds push
 so the test set covers the degenerate cases (single character, one repeated
 letter, no reduction at all, total reduction to empty, deeply nested
 cancellations, tiny alphabets) and not just uniform noise.
+
+Bounds are sized for a casual contest: |s| is at most 5,000, so the largest
+input stays near 5 KB and the obvious brute force (find the first adjacent
+pair, delete it, rescan from the left) finishes well inside the time limit.
+That brute force is quadratic in the worst case, so the two shapes that make
+it rescan far (nested palindromes, and noise over a tiny alphabet, where a
+long stable prefix builds up) are kept smaller still: the nested palindrome
+is capped at NESTED_MAX, and the "abc" test uses a mid-size seed.
+
+tests/01-02 are the two statement samples. tests/03-10, 12 and 13 are
+hand-built edge cases and medium strings (single letter, one pair, no pair,
+odd and even runs of one letter, every letter doubled, alternating "ab", a
+2,000-letter nested palindrome, 1,000 letters of noise, 5,000 letters of
+"ab"). tests/11 and 14-18 come from this generator, with these seeds:
+
+    11 <- 56     one letter, then a nested palindrome, 2,001 letters,
+                 reduces to that one letter
+    14 <- 46     "abc" noise, 2,116 letters, cascading cancellation
+    15 <- 76     "ab" noise, 5,000 letters
+    16 <- 71     doubled-letter blocks, 5,000 letters, reduces to empty
+    17 <- 99     no adjacent pair over 26 letters, 5,000 letters, unchanged
+    18 <- 72     uniform noise over 26 letters, 5,000 letters
 """
 
 import random
 import string
 import sys
 
-MAX_N = 100000
+MAX_N = 5000
+NESTED_MAX = 2000
 ALPHABET = string.ascii_lowercase
 
 
 def choose_n(seed: int) -> int:
-    """Grow with the seed: seed 1 -> 1 character, seed >= 317 -> the ceiling."""
+    """Grow with the seed: seed 1 -> 1 character, seed >= 71 -> the ceiling."""
     return max(1, min(MAX_N, seed * seed))
 
 
@@ -47,17 +70,21 @@ def build(seed: int, n: int, rng: random.Random) -> str:
 
     if shape == 2:
         # w + reverse(w): a fully nested palindrome, reduces to empty.
-        half = max(1, n // 2)
+        # Every other block of seeds puts one extra letter in front, so the
+        # same nesting unwinds completely and leaves exactly that letter.
+        half = max(1, min(n, NESTED_MAX) // 2)
         w = "".join(rng.choice(ALPHABET) for _ in range(half))
-        return w + w[::-1]
+        lead = rng.choice(ALPHABET) if (seed // 6) % 2 else ""
+        return lead + w + w[::-1]
 
     if shape == 3:
         # No adjacent equal pair anywhere: the string is its own answer.
-        return no_adjacent_pairs(n, min(4, 1 + seed % 26), rng)
+        return no_adjacent_pairs(n, 2 + seed % 25, rng)
 
     if shape == 4:
-        # Tiny alphabet noise: heavy, cascading cancellation.
-        return "".join(rng.choice("ab") for _ in range(n))
+        # Tiny alphabet noise ("ab" or "abc"): heavy, cascading cancellation.
+        letters = "abc"[: 2 + (seed // 6) % 2]
+        return "".join(rng.choice(letters) for _ in range(n))
 
     # shape == 5: doubled-letter blocks, everything cancels in shallow layers.
     out: list[str] = []

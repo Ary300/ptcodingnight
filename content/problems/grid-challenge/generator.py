@@ -1,20 +1,37 @@
 """Grid Challenge -- input generator.
 
-Usage: python3 generator.py <seed>
+Usage: python3 generator.py <seed> [shape] [n]
 
-Deterministic per seed. Small seeds produce a single tiny grid; larger seeds emit
-several grids per input and push n toward the ceiling. Beyond uniform noise the
-shapes cover the cases the wording could hide: guaranteed-YES grids built from a
-column-monotone matrix with every row shuffled, guaranteed-NO grids made by
-reversing the row order of a YES grid, all-identical letters, identical rows, a
-narrow alphabet full of duplicates, and n = 1.
+Deterministic per arguments. Small seeds (< 100) produce a single tiny grid; larger
+seeds emit several grids per input with n up to MAX_N. The optional `shape` forces
+every grid in the file to one shape (see build_case; -1 keeps it random per grid),
+and the optional `n` forces every grid to that side length. Whatever the arguments, a file never holds more
+than MAX_CELLS letters in total: grids are dropped from the end until it fits, so
+the largest input stays near 20 KB.
+
+Beyond uniform noise the shapes cover the cases the wording could hide:
+guaranteed-YES grids built from a column-monotone matrix with every row shuffled,
+guaranteed-NO grids made by reversing the row order of a YES grid, all-identical
+letters, identical rows, a narrow alphabet full of duplicates, and n = 1.
+
+Tests 01-10 are the two statement samples and hand-written edge cases (n = 1, a
+two-row NO, all-equal, identical rows, an already-sorted grid, one bad column,
+twenty small mixed grids). No seed of this generator produces them. The larger tests are:
+
+    11  python3 generator.py 157          16 grids, mixed shapes, n up to 95
+    12  python3 generator.py 182          10 grids, mixed shapes, n up to 92
+    13  python3 generator.py 683          9 grids, mixed shapes, n up to 97
+    14  python3 generator.py 238 1        9 grids, every one guaranteed YES
+    15  python3 generator.py 141 2        5 grids, every one guaranteed NO, one at n = 100
+    16  python3 generator.py 3 -1 100     two full-size 100 x 100 grids, one YES, one NO
 """
 
 import random
 import sys
 
 MAX_T = 20
-MAX_N = 300
+MAX_N = 100
+MAX_CELLS = 20_000
 ALPHA = "abcdefghijklmnopqrstuvwxyz"
 
 
@@ -86,25 +103,36 @@ def build_case(shape: int, n: int, rng: random.Random) -> list[str]:
 
 def main() -> None:
     seed = int(sys.argv[1])
+    # shape -1 (or omitted) means "pick a shape per grid at random".
+    forced_shape = int(sys.argv[2]) if len(sys.argv) > 2 else -1
+    forced_n = int(sys.argv[3]) if len(sys.argv) > 3 else None
     rng = random.Random(seed)
 
-    if seed < 100:
+    if forced_n is not None:
+        t = MAX_T
+        sizes = [max(1, min(MAX_N, forced_n))] * t
+    elif seed < 100:
         t = 1
         sizes = [max(1, min(MAX_N, seed))]
     else:
         t = rng.randint(2, MAX_T)
         sizes = [rng.randint(1, min(MAX_N, seed)) for _ in range(t)]
 
+    # Keep the whole file under the cell budget by dropping grids from the end.
+    while len(sizes) > 1 and sum(n * n for n in sizes) > MAX_CELLS:
+        sizes.pop()
+    t = len(sizes)
+
     out = sys.stdout
     out.write(f"{t}\n")
     for n in sizes:
-        grid = build_case(rng.randrange(6), n, rng)
+        shape = rng.randrange(6) if forced_shape < 0 else forced_shape
+        grid = build_case(shape, n, rng)
         assert len(grid) == n and all(len(r) == n for r in grid)
         assert all(all("a" <= c <= "z" for c in r) for r in grid)
         out.write(f"{n}\n")
         for r in grid:
             out.write(r + "\n")
-
 
 if __name__ == "__main__":
     main()

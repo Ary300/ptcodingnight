@@ -35,7 +35,7 @@ departure order the yard can achieve.
 
 ## Constraints
 
-- $1 \le n \le 200000$
+- $1 \le n \le 1000$
 - $c_1, c_2, \dots, c_n$ is a permutation of $1, 2, \dots, n$
 
 ## Example

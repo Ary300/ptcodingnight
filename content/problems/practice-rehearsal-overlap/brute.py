@@ -7,9 +7,9 @@ Concurrency is constant inside an elementary segment, so the peak is the max
 count over segments, and the covered minutes are the summed lengths of the
 segments with a nonzero count.
 
-O(n^2). Used only by the stress harness on small inputs; on the max tests
-(n = 10^5) this is ~10^10 booking checks and would take hours, which is the
-point: it validates the sweep by definition, not by speed.
+O(n^2). It validates the sweep by definition, not by speed. At the current
+bound (n <= 1000) the largest test is about 2 * 10^6 booking checks, so it
+cross-checks every test in the suite in well under a second each.
 """
 
 import sys

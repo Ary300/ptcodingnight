@@ -26,9 +26,9 @@ Print `Yes` if $s$ can be converted into $t$ in exactly $k$ operations, and `No`
 
 ## Constraints
 
-- $1 \le |s| \le 10^4$
-- $1 \le |t| \le 10^4$
-- $1 \le k \le 10^9$
+- $1 \le |s| \le 1000$
+- $1 \le |t| \le 1000$
+- $1 \le k \le 10^5$
 - $s$ and $t$ consist of lowercase English letters only
 
 ## Example

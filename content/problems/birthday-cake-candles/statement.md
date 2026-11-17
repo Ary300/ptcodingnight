@@ -24,8 +24,8 @@ the cake.
 
 ## Constraints
 
-- $1 \le n \le 10^5$
-- $1 \le h_i \le 10^7$
+- $1 \le n \le 1000$
+- $1 \le h_i \le 10^6$
 
 ## Example
 

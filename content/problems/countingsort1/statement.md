@@ -25,7 +25,7 @@ the line is the number of times the value $v$ occurs in the list, for $v = 0, 1,
 
 ## Constraints
 
-- $1 \le n \le 10^5$
+- $1 \le n \le 1000$
 - $0 \le a_i \le 99$
 
 ## Example

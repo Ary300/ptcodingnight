@@ -2,8 +2,10 @@
 
 Usage: python3 generator.py <seed>
 
-Deterministic per seed. Small seeds give a handful of days; seed 12 and above hit the 10^5
-ceiling. The seed also selects a shape so the test set covers logs where no day meets the
+Seed N writes tests/N.in for N = 03 to 16; tests 01 and 02 are the hand-written samples from
+the statement. Deterministic per seed. Small seeds give a handful of days; seed 12 and above
+hit the 1,000-day ceiling, which keeps a casual contest's inputs readable and even a
+quadratic solution fast. The seed also selects a shape so the test set covers logs where no day meets the
 goal, logs where every day does (one streak of maximum length and total), logs built from
 many streaks of the same length so the total has to break the tie, counts sitting exactly on
 the goal, and uniformly random logs.
@@ -12,7 +14,7 @@ the goal, and uniformly random logs.
 import random
 import sys
 
-MAX_N = 100_000
+MAX_N = 1_000
 MAX_COUNT = 5000
 MAX_GOAL = 5000
 
@@ -23,7 +25,7 @@ def choose_n(seed, rng):
     if seed <= 8:
         return rng.randint(12, 500)
     if seed <= 11:
-        return rng.randint(5_000, 60_000)
+        return rng.randint(500, 900)
     return MAX_N
 
 

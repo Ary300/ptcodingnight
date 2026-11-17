@@ -32,10 +32,10 @@ the two chosen flavors, in increasing order.
 ## Constraints
 
 - $1 \le t \le 10$
-- $2 \le n \le 10^5$ for each trip
-- the total of $n$ over all trips in one input does not exceed $3 \times 10^5$
-- $1 \le c_i \le 10^9$
-- $2 \le m \le 2 \times 10^9$
+- $2 \le n \le 1000$ for each trip
+- the total of $n$ over all trips in one input does not exceed $2500$
+- $1 \le c_i \le 10^6$
+- $2 \le m \le 2 \times 10^6$
 - in every trip, exactly one pair of distinct flavors $i < j$ has $c_i + c_j = m$
 - two distinct flavors may have the same cost
 

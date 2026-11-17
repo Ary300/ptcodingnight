@@ -29,7 +29,7 @@ stamped numbers sum to $d$.
 
 ## Constraints
 
-- $1 \le n \le 100000$
+- $1 \le n \le 1000$
 - $1 \le s_i \le 9$
 - $1 \le d \le 31$
 - $1 \le m \le \min(12, n)$

@@ -30,11 +30,11 @@ overcharge.
 
 ## Constraints
 
-- $2 \le n \le 10^5$
+- $2 \le n \le 1000$
 - $1 \le k \le n$
 - $0 \le p_i \le 10^4$
 - The sum of all prices excluding $p_k$ is even.
-- $f \le b \le 10^9$, where $f$ is the fair charge.
+- $f \le b \le 10^7$, where $f$ is the fair charge.
 
 ## Example
 

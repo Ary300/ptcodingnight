@@ -33,7 +33,7 @@ diagonal sum.
 
 ## Constraints
 
-- $1 \le n \le 1000$
+- $1 \le n \le 50$
 - $-10^4 \le a_{i,j} \le 10^4$ for every entry
 
 ## Example

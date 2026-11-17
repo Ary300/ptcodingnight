@@ -7,15 +7,23 @@ the test set covers the degenerate rows (single tile, sorted, reverse sorted,
 maximum first, maximum last), rows engineered for a specific number of prefix
 maxima, many tiny games at the game-count ceiling, and full-size random rows,
 not just uniform noise. Values within a game are always distinct.
+
+Sizes are kept moderate on purpose for a casual contest: at most 1,000 tiles in
+a game, 2,000 across a file, and values up to 10^6, so every input file stays
+under 20 KB and a move-by-move simulation finishes well inside the time limit.
+
+Which seed made which test: 07 = 4, 09 = 1, 10 = 5, 11 = 8, 12 = 9, 13 = 13,
+14 = 2, 15 = 6, 16 = 10, 17 = 3, 18 = 7, 19 = 11. Tests 01-06 and 08 are
+written by hand (01 and 02 are the statement's examples).
 """
 
 import random
 import sys
 
 MAX_G = 100
-MAX_N = 100000
-MAX_TOTAL = 200000
-MAX_VALUE = 10**9
+MAX_N = 1000
+MAX_TOTAL = 2000
+MAX_VALUE = 10**6
 
 
 def distinct_values(rng: random.Random, n: int) -> list[int]:
@@ -65,12 +73,13 @@ def build_games(seed: int, rng: random.Random) -> list[list[int]]:
     if band == 0:
         # Many tiny games, up to the game-count ceiling.
         g = rng.randint(MAX_G // 2, MAX_G)
-        return [shaped_row(rng, rng.randint(1, 40), rng.randrange(6))
+        return [shaped_row(rng, rng.randint(1, MAX_TOTAL // MAX_G),
+                           rng.randrange(6))
                 for _ in range(g)]
     if band == 1:
         # A handful of small-to-medium games.
         g = rng.randint(1, 10)
-        return [shaped_row(rng, rng.randint(1, 2000), rng.randrange(6))
+        return [shaped_row(rng, rng.randint(1, MAX_N // 5), rng.randrange(6))
                 for _ in range(g)]
     if band == 2:
         # One full-size game.

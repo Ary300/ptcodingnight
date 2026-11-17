@@ -25,7 +25,7 @@ chosen values differs by at most $1$.
 
 ## Constraints
 
-- $1 \le n \le 10^5$
+- $1 \le n \le 1000$
 - $1 \le a_i \le 100$
 
 ## Example

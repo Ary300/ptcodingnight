@@ -31,7 +31,7 @@ volunteer arrived, print `empty` instead; the volunteer leaves and the cart stay
 
 ## Constraints
 
-- $1 \le n \le 10^5$
+- $1 \le n \le 1000$
 - $0 \le e_i \le 10^6$
 - At least one event has $e_i = 0$.
 

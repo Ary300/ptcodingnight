@@ -27,8 +27,8 @@ value. A value that belongs to two tied pairs appears once in each of its pairs.
 
 ## Constraints
 
-- $2 \le n \le 3000$
-- $-10^7 \le a_i \le 10^7$
+- $2 \le n \le 700$
+- $-10^6 \le a_i \le 10^6$
 - All $a_i$ are distinct.
 
 ## Example

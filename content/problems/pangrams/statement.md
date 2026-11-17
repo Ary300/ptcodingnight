@@ -24,7 +24,7 @@ Otherwise print `not pangram`.
 
 ## Constraints
 
-- $1 \le |s| \le 10^5$
+- $1 \le |s| \le 10^4$
 - $s$ contains only the characters `A`-`Z`, `a`-`z`, and the space character
 
 ## Example

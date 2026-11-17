@@ -2,18 +2,39 @@
 
 Usage: python3 generator.py <seed>
 
-Deterministic per seed. Small seeds produce a handful of commitments; the size ceiling is
-reached once the seed passes 1000. The seed also picks the shape of the day so the test set
-covers a single commitment, a day covered end to end (answer 0), nested commitments that
-punish the sort-and-look-at-neighbours shortcut, blocks that touch exactly, a crowded day
-where every block falls inside a few windows so a real gap survives at the largest n, and
-the biggest schedule the constraints allow.
+Deterministic per seed. Small seeds produce a handful of commitments; the size ceiling of
+1,000 commitments is reached once the seed passes 1000. The seed also picks the shape of the
+day so the test set covers a single commitment, a day covered end to end (answer 0), nested
+commitments that punish the sort-and-look-at-neighbours shortcut, blocks that touch exactly,
+a crowded day where every block falls inside a few windows so a real gap survives at the
+largest n, and the biggest schedule the constraints allow.
+
+The ceiling is kept moderate on purpose: this is a casual contest, so a student who marks
+every busy minute of the day in a list still passes. Every value is a minute of the day, so
+nothing comes near the 32-bit range.
+
+Tests 01 and 02 are the hand-written samples from statement.md. The rest come from:
+
+    03  seed 0     n=1      one commitment, three-quarters shape
+    04  seed 16    n=12     one block covers the whole day (answer 0)
+    05  seed 2     n=1      clustered, day starts mid-afternoon
+    06  seed 492   n=413    blocks fill about three quarters of the day
+    07  seed 481   n=348    clustered into a few windows over a full day
+    08  seed 17    n=17     nested
+    09  seed 40    n=30     nested
+    10  seed 350   n=186    nested
+    11  seed 900   n=640    clustered
+    12  seed 1022  n=1000   short scattered blocks that still cover every minute (answer 0)
+    13  seed 1006  n=1000   nested
+    14  seed 1011  n=1000   nested, an 88-minute day
+    15  seed 1012  n=1000   clustered, a 66-minute day
+    16  seed 1007  n=1000   clustered
 """
 
 import random
 import sys
 
-MAX_N = 100_000
+MAX_N = 1_000
 MAX_MINUTE = 1440
 
 
@@ -54,7 +75,7 @@ def build(rng: random.Random, n: int, first: int, last: int, shape: float) -> li
         # Short blocks scattered over the day: lots of real gaps.
         return [random_block(rng, first, last, max(1, span // 20)) for _ in range(n)]
     if shape < 0.80:
-        # Clustered: every block falls inside one of a few windows, so even a hundred thousand
+        # Clustered: every block falls inside one of a few windows, so even a thousand
         # commitments leave the minutes between the windows free.
         windows = rng.randint(1, 4)
         cuts = sorted(rng.sample(range(first + 1, last), min(2 * windows, span - 1))) if span > 2 else []

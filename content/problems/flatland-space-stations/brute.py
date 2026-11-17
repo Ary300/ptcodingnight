@@ -4,9 +4,8 @@ The definition read literally: for every table, find the distance to its
 nearest station, then take the maximum over all tables. Each per-table lookup
 is a bisect into the sorted station list, so this is O(n log m) rather than
 the O(m log m) gap scan of the reference; the mechanism is per-table nearest
-neighbour, not gap arithmetic. The fully naive O(n * m) pairwise scan cannot
-finish n = m = 10^5 inside the limit, so this is the most definition-literal
-implementation that still passes the largest test.
+neighbour, not gap arithmetic. With n capped at 1,000 the fully naive
+O(n * m) pairwise scan also fits inside the limit.
 """
 
 import bisect

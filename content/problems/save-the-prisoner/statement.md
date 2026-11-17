@@ -22,9 +22,9 @@ $i$.
 
 ## Constraints
 
-- $1 \le q \le 100000$
-- $1 \le n \le 10^9$
-- $1 \le m \le 10^9$
+- $1 \le q \le 500$
+- $1 \le n \le 1000$
+- $1 \le m \le 5000$
 - $1 \le s \le n$
 
 ## Example

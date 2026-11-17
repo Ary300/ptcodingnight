@@ -31,7 +31,7 @@ changing exactly one element of $b$ to a different value between $1$ and $100$.
 
 ## Constraints
 
-- $1 \le n \le 10^5$
+- $1 \le n \le 1000$
 - $1 \le a_i \le 100$ and $1 \le b_i \le 100$
 - The replacement value is an integer between $1$ and $100$ and must differ from the
   value it replaces.

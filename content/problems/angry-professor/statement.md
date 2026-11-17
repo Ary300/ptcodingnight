@@ -28,8 +28,8 @@ the quorum, or `CANCELLED` if fewer than $K$ did.
 
 ## Constraints
 
-- $1 \le T \le 100$
-- $1 \le N \le 1000$
+- $1 \le T \le 20$
+- $1 \le N \le 500$
 - $1 \le K \le N$
 - $-60 \le a_i \le 60$
 

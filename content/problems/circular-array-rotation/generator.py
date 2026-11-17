@@ -5,15 +5,26 @@ Usage: python3 generator.py <seed>
 The seed controls two independent things:
   * magnitude  -> input size (small seeds give tiny inputs, large seeds hit the ceiling)
   * seed % 8   -> which shape of input is produced (random, all-equal, k=0, ...)
+
+The ceiling is n, q <= 1000 so the largest input stays near 12 KB and even a
+solution that rebuilds the rotated ring on every query does about a million
+steps. Values are at most 10^6. k still goes up to 10^9, because a tick count
+far larger than the ring is what the problem is about; every value and every
+intermediate such as j - k or j + k fits in a signed 32-bit int.
+
+Which seed made which test: 03 = 5, 04 = 7, 05 = 9, 06 = 42, 07 = 51,
+08 = 100, 09 = 342, 10 = 777, 11 = 1234, 12 = 5000, 13 = 5003, 14 = 5006,
+15 = 5005, 16 = 99999, 17 = 20000, 18 = 100004. 01 and 02 are the samples,
+written by hand.
 """
 
 import random
 import sys
 
-N_MAX = 100000
-Q_MAX = 100000
+N_MAX = 1000
+Q_MAX = 1000
 K_MAX = 10**9
-A_MAX = 10**9
+A_MAX = 10**6
 
 
 def size_ceiling(seed: int) -> int:
@@ -24,9 +35,9 @@ def size_ceiling(seed: int) -> int:
     if s < 100:
         return 50
     if s < 1000:
-        return 2000
+        return 300
     if s < 10000:
-        return 20000
+        return 700
     return N_MAX
 
 

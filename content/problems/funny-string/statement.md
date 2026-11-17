@@ -27,7 +27,7 @@ Print $q$ lines. The $k$-th line is `Funny` if the $k$-th string is funny, and
 ## Constraints
 
 - $1 \le q \le 20$
-- $2 \le |s| \le 10^5$
+- $2 \le |s| \le 1000$
 - $s$ consists of lowercase English letters only
 
 ## Example

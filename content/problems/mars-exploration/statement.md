@@ -28,7 +28,7 @@ Print a single integer: the number of characters in $m$ that differ from the rep
 
 ## Constraints
 
-- $3 \le |m| \le 10^5$
+- $3 \le |m| \le 10^4$
 - $|m|$ is a multiple of $3$
 - $m$ consists only of uppercase English letters (`A` to `Z`)
 
