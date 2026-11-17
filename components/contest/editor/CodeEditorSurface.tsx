@@ -8,15 +8,16 @@ import {
   useMemo,
   useRef,
   useState,
-  type KeyboardEvent,
   type ReactNode,
   type UIEvent,
 } from "react";
 
 import { Button } from "@/components/ui";
 
+import { CompletionPopup } from "./CompletionPopup";
 import { tokenize, type TokenKind } from "./highlight";
 import { LANGUAGE_LABEL, LANGUAGE_TEMPLATE, type CodeEditorProps } from "./types";
+import { useEditorKeys } from "./useEditorKeys";
 
 /**
  * The editing surface, loaded as its own chunk (see `CodeEditor.tsx`).
@@ -61,6 +62,17 @@ import { LANGUAGE_LABEL, LANGUAGE_TEMPLATE, type CodeEditorProps } from "./types
  * focus.** The current mode is announced in a live region and stated visibly under the
  * editor, because an escape hatch nobody knows about is not an escape hatch.
  *
+ * ## IntelliJ's keys, and the completion popup
+ *
+ * Students write Java in IntelliJ, so the editor answers the keys they already use there: pairs
+ * that close themselves, "}" snapping to its block, Enter inside "{}" opening a three-line block,
+ * Cmd/Ctrl + / and Cmd/Ctrl + D, live templates such as sout and psvm on Tab, and a completion
+ * list that opens while a name is typed and after "." or "::". Python gets PyCharm's version and
+ * C and C++ get CLion's. The rules are pure functions in `smart/`; `useEditorKeys` decides which
+ * of them a key press reaches, and every edit is applied through the browser's own insertText so
+ * Ctrl/Cmd + Z undoes it. The popup never takes focus: the textarea keeps it and names the active
+ * row with `aria-activedescendant`.
+ *
  * ## The toolbar strip
  *
  * HackerRank draws a thin tinted bar directly above the code (hr-challenge-live.png): the
@@ -81,7 +93,6 @@ import { LANGUAGE_LABEL, LANGUAGE_TEMPLATE, type CodeEditorProps } from "./types
  * a screen reader in every browser, and looks like a system fault mid-contest.
  */
 
-const INDENT = "    ";
 
 /**
  * Every metric the two layers must agree on, in one object so they cannot drift apart.
@@ -118,14 +129,6 @@ const TOKEN_CLASS: Readonly<Record<TokenKind, string>> = {
   punctuation: "text-paper/75",
 };
 
-function lineStartBefore(value: string, index: number): number {
-  return value.lastIndexOf("\n", index - 1) + 1;
-}
-
-function lineEndAfter(value: string, index: number): number {
-  const found = value.indexOf("\n", index);
-  return found === -1 ? value.length : found;
-}
 
 /**
  * The surface's own props: the shared contract plus the toolbar's left-hand seat.
@@ -160,7 +163,6 @@ export function CodeEditorSurface({
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const gutterRef = useRef<HTMLDivElement | null>(null);
   const overlayRef = useRef<HTMLPreElement | null>(null);
-  const [tabMovesFocus, setTabMovesFocus] = useState(false);
   const hintId = useId();
 
   const lineCount = useMemo(() => value.split("\n").length, [value]);
@@ -250,108 +252,17 @@ export function CodeEditorSurface({
     if (gutter !== null) gutter.scrollTop = element.scrollTop;
   }, [value, caret]);
 
-  const indentSelection = useCallback(
-    (element: HTMLTextAreaElement, dedent: boolean) => {
-      const source = element.value;
-      const start = element.selectionStart;
-      const end = element.selectionEnd;
-
-      if (start === end && !dedent) {
-        const next = source.slice(0, start) + INDENT + source.slice(end);
-        applyEdit(next, start + INDENT.length, start + INDENT.length);
-        return;
-      }
-
-      const blockStart = lineStartBefore(source, start);
-      const blockEnd = lineEndAfter(source, end);
-      const lines = source.slice(blockStart, blockEnd).split("\n");
-
-      let firstDelta = 0;
-      let totalDelta = 0;
-
-      const nextLines = lines.map((line, index) => {
-        let delta: number;
-        let output: string;
-
-        if (dedent) {
-          const leading = /^ {1,4}/.exec(line);
-          const removed = leading === null ? 0 : leading[0].length;
-          output = line.slice(removed);
-          delta = -removed;
-        } else {
-          output = INDENT + line;
-          delta = INDENT.length;
-        }
-
-        if (index === 0) firstDelta = delta;
-        totalDelta += delta;
-        return output;
-      });
-
-      const next = source.slice(0, blockStart) + nextLines.join("\n") + source.slice(blockEnd);
-      applyEdit(
-        next,
-        Math.max(blockStart, start + firstDelta),
-        Math.max(blockStart, end + totalDelta),
-      );
-    },
-    [applyEdit],
-  );
-
-  /** Enter keeps the current indent, and opens one level after `:` or `{`. */
-  const autoIndent = useCallback(
-    (element: HTMLTextAreaElement) => {
-      const source = element.value;
-      const start = element.selectionStart;
-      const end = element.selectionEnd;
-
-      const currentLine = source.slice(lineStartBefore(source, start), start);
-      const leading = /^[ \t]*/.exec(currentLine)?.[0] ?? "";
-      const opensBlock = /[:{[(]\s*$/.test(currentLine);
-      const insert = `\n${leading}${opensBlock ? INDENT : ""}`;
-
-      const next = source.slice(0, start) + insert + source.slice(end);
-      applyEdit(next, start + insert.length, start + insert.length);
-    },
-    [applyEdit],
-  );
-
-  const handleKeyDown = useCallback(
-    (event: KeyboardEvent<HTMLTextAreaElement>) => {
-      const element = event.currentTarget;
-
-      if (event.key === "Escape") {
-        setTabMovesFocus(true);
-        return;
-      }
-
-      if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
-        event.preventDefault();
-        onSubmitShortcut?.();
-        return;
-      }
-
-      if (event.key === "Tab") {
-        if (tabMovesFocus) {
-          // Let the browser move focus, then re-arm indenting for next time.
-          setTabMovesFocus(false);
-          return;
-        }
-        event.preventDefault();
-        indentSelection(element, event.shiftKey);
-        return;
-      }
-
-      if (event.key === "Enter") {
-        event.preventDefault();
-        autoIndent(element);
-        return;
-      }
-
-      if (tabMovesFocus) setTabMovesFocus(false);
-    },
-    [autoIndent, indentSelection, onSubmitShortcut, tabMovesFocus],
-  );
+  const { handleKeyDown, completion, profile, isMac, applyKeyEdit, tabMovesFocus } = useEditorKeys({
+    textareaRef,
+    language,
+    onSubmitShortcut,
+    syncCaret,
+  });
+  const listboxId = useId();
+  const optionId = useCallback((index: number) => `${listboxId}-option-${index}`, [listboxId]);
+  // The help line names the modifier this keyboard actually has, and a template this language has.
+  const modLabel = isMac ? "Cmd" : "Ctrl";
+  const templateExample = profile?.templates[0]?.abbreviation ?? "";
 
   /* ---- toolbar: reset to the starter template ---- */
 
@@ -385,12 +296,13 @@ export function CodeEditorSurface({
   }, [confirmingReset]);
 
   const resetToTemplate = useCallback(() => {
+    completion.close();
     applyEdit(template, 0, 0);
     // `setSelectionRange` on a collapsed caret fires no `select` event, so the derived caret
     // state has to be moved by hand or Line/Col keeps showing where the old code ended.
     setCaret({ line: 1, column: 1 });
     setConfirmingReset(false);
-  }, [applyEdit, template]);
+  }, [applyEdit, completion, template]);
 
   /* ---- toolbar: full screen ---- */
 
@@ -686,7 +598,14 @@ export function CodeEditorSurface({
             value={value}
             onChange={(event) => onChange(event.target.value)}
             onKeyDown={handleKeyDown}
-            onScroll={syncScroll}
+            onScroll={(event) => {
+              syncScroll(event);
+              // Typing past the edge scrolls the box; the open popup follows its word.
+              if (completion.popup !== null) completion.schedule();
+            }}
+            // A click puts the caret somewhere else, and leaving the editor ends the lookup.
+            onMouseDown={completion.close}
+            onBlur={completion.close}
             disabled={disabled}
             spellCheck={false}
             autoCapitalize="off"
@@ -695,6 +614,12 @@ export function CodeEditorSurface({
             wrap="off"
             aria-label={`${label}, ${LANGUAGE_LABEL[language]}`}
             aria-describedby={hintId}
+            // The list is announced through the textarea, which never gives up focus to it.
+            aria-autocomplete="list"
+            aria-controls={completion.popup === null ? undefined : listboxId}
+            aria-activedescendant={
+              completion.popup === null ? undefined : optionId(completion.popup.activeIndex)
+            }
             onSelect={(event) => syncCaret(event.currentTarget)}
             onKeyUp={(event) => syncCaret(event.currentTarget)}
             onClick={(event) => syncCaret(event.currentTarget)}
@@ -710,6 +635,27 @@ export function CodeEditorSurface({
             }`}
             style={{ ...SHARED_TEXT }}
           />
+
+          {completion.popup !== null && (
+            <CompletionPopup
+              id={listboxId}
+              items={completion.popup.items}
+              activeIndex={completion.popup.activeIndex}
+              top={completion.popup.top}
+              bottom={completion.popup.bottom}
+              left={completion.popup.left}
+              maxHeight={completion.popup.maxHeight}
+              optionId={optionId}
+              onHover={completion.setActive}
+              onPick={(index) => {
+                const element = textareaRef.current;
+                if (element === null) return;
+                const edit = completion.editFor(element, index);
+                completion.close();
+                if (edit !== null) applyKeyEdit(element, edit);
+              }}
+            />
+          )}
         </div>
       </div>
 
@@ -727,6 +673,16 @@ export function CodeEditorSurface({
           <kbd className="font-mono">Tab</kbd> to move on. <kbd className="font-mono">Ctrl</kbd>
           {" / "}
           <kbd className="font-mono">Cmd</kbd> + <kbd className="font-mono">Enter</kbd> submits.
+          {profile !== null && (
+            <>
+              {" "}
+              <kbd className="font-mono">{modLabel}</kbd> + <kbd className="font-mono">/</kbd>{" "}
+              comments a line, <kbd className="font-mono">{modLabel}</kbd> +{" "}
+              <kbd className="font-mono">D</kbd> duplicates it, and{" "}
+              <kbd className="font-mono">{templateExample}</kbd> then{" "}
+              <kbd className="font-mono">Tab</kbd> expands a template.
+            </>
+          )}
         </p>
         <p
           aria-hidden="true"
