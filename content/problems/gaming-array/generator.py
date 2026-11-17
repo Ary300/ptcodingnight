@@ -9,8 +9,8 @@ maxima, many tiny games at the game-count ceiling, and full-size random rows,
 not just uniform noise. Values within a game are always distinct.
 
 Sizes are kept moderate on purpose for a casual contest: at most 1,000 tiles in
-a game, 2,000 across a file, and values up to 10^6, so every input file stays
-under 20 KB and a move-by-move simulation finishes well inside the time limit.
+a game, 10,000 across a file, and values up to 10^6, so a move-by-move
+simulation finishes well inside the time limit.
 
 Which seed made which test: 07 = 4, 09 = 1, 10 = 5, 11 = 8, 12 = 9, 13 = 13,
 14 = 2, 15 = 6, 16 = 10, 17 = 3, 18 = 7, 19 = 11. Tests 01-06 and 08 are
@@ -22,7 +22,7 @@ import sys
 
 MAX_G = 100
 MAX_N = 1000
-MAX_TOTAL = 2000
+MAX_TOTAL = 10000
 MAX_VALUE = 10**6
 
 
@@ -86,7 +86,7 @@ def build_games(seed: int, rng: random.Random) -> list[list[int]]:
         return [shaped_row(rng, MAX_N, rng.randrange(6))]
     # band == 3: fill the total-tile budget with large games. The first game is
     # always the full-size strictly increasing row, which forces the maximum
-    # possible number of moves and punishes per-move simulation.
+    # possible number of moves.
     games: list[list[int]] = [shaped_row(rng, MAX_N, 1)]
     remaining = MAX_TOTAL - MAX_N
     while remaining > 0 and len(games) < MAX_G:
