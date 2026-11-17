@@ -124,6 +124,17 @@ export interface CompletionItem {
   readonly priority?: number;
   /** Caret position inside insertText after accepting; defaults to its end. */
   readonly caretOffset?: number;
+  /**
+   * The import line this name needs, written in full: "import java.io.BufferedReader;",
+   * "#include <vector>", "from collections import deque", "import math". Accepting the item adds
+   * it unless the file already has it or a wildcard that covers it (completion/imports.ts). The
+   * Edit stays ONE replacement spanning the import and the word, so it is one undo step.
+   */
+  readonly importLine?: string;
+  /** Quick Documentation: the signature, then one plain sentence. */
+  readonly doc?: string;
+  /** Java: a generic class, so `new` completes it with the diamond, `ArrayList<>()`. */
+  readonly generic?: boolean;
 }
 
 export interface LanguageProfile {
@@ -160,6 +171,24 @@ export interface LanguageProfile {
    * (length(), charAt(), size(), get(), add() ...), since the editor does not infer types.
    */
   readonly members: Readonly<Record<string, readonly CompletionItem[]>>;
+  /**
+   * Names that are offered at the top level but need an import first (Python's deque, heappush,
+   * sqrt). Each carries its `importLine`. Globals may carry one too (Java's ArrayList).
+   */
+  readonly importables?: readonly CompletionItem[];
+  /**
+   * What accepting a keyword appends, as IntelliJ does: " " after return or new, " ()" after if.
+   * A "|" in the tail marks the caret ("(|)"); otherwise the caret goes after it.
+   */
+  readonly keywordTails?: Readonly<Record<string, string>>;
+  /**
+   * Instance members by the receiver's lexically inferred type, keyed by the type's simple name
+   * ("String", "List", "vector", "str"). completion/infer.ts finds the type from the variable's
+   * declaration or its assignment; nothing here is a type checker.
+   */
+  readonly typeMembers?: Readonly<Record<string, readonly CompletionItem[]>>;
+  /** Names the import statement offers: Python modules and their members, Java packages. */
+  readonly importTargets?: Readonly<Record<string, readonly CompletionItem[]>>;
 }
 
 /** Where completion applies: the identifier being typed and what qualifies it, if anything. */
@@ -169,6 +198,12 @@ export interface CompletionContext {
   readonly replaceTo: number;
   /** "System.out" for `System.out.pri|`, "std" for `std::so|`, null at top level. */
   readonly qualifier: string | null;
+  /**
+   * Set inside an import statement ("import he|", "from collections import de|", "import
+   * java.util.Arr|"), where the qualifier names a module or package, and after "#include <",
+   * where the prefix is a header path. Absent everywhere else.
+   */
+  readonly scope?: "import" | "include";
 }
 
 /*

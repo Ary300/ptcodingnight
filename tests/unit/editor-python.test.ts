@@ -89,7 +89,8 @@ describe("PYTHON profile", () => {
     it("expands the contest templates to PyCharm's bodies", () => {
       const body = (abbreviation: string): string | undefined =>
         PYTHON.templates.find((t) => t.abbreviation === abbreviation)?.body;
-      expect(body("main")).toBe('if __name__ == "__main__":\n    $END$');
+      // PyCharm's main template uses single quotes (fixtures/editor-parity/python.json).
+      expect(body("main")).toBe("if __name__ == '__main__':\n    $END$");
       // Fields first (${n}), then $END$ on the indented body line, as PyCharm's Tab walks them.
       expect(body("for")).toBe("for ${1} in ${2}:\n    $END$");
       expect(body("fori")).toBe("for i in range(${1}):\n    $END$");
@@ -197,7 +198,8 @@ describe("PYTHON profile", () => {
       const find = (key: string, label: string): CompletionItem | undefined =>
         PYTHON.members[key]?.find((item) => item.label === label);
       expect(find("*", "append()")?.caretOffset).toBe("append(".length);
-      expect(find("*", "split()")?.caretOffset).toBe("split()".length);
+      // split(sep=None) takes an optional argument, so PyCharm leaves the caret inside.
+      expect(find("*", "split()")?.caretOffset).toBe("split(".length);
       expect(find("sys.stdin", "readline()")?.caretOffset).toBe("readline()".length);
       expect(find("math", "sqrt()")?.caretOffset).toBe("sqrt(".length);
     });

@@ -35,12 +35,26 @@ export function profileFor(languageId: LanguageId): LanguageProfile | null {
   return PROFILE[languageId] ?? null;
 }
 
-export { applyCompletion, completionContext, completionsFor } from "./completion";
+export {
+  applyCompletion,
+  autoPopupSuppressed,
+  completionContext,
+  completionsFor,
+  insertsSingleSuggestion,
+} from "./completion";
+export { docFor, quickDocAt, signatureAt, signaturesFor, type SignatureHelp } from "./docs";
 export { handleKey } from "./engine";
 export { cleanPastedText, reindentPaste } from "./paste";
 export { extendSelection, shrinkSelection } from "./selection";
 export { engineShortcuts, type EngineShortcut } from "./shortcuts";
 export { surroundKindsFor, surroundWith, type SurroundKind } from "./surround";
+export {
+  expandWord,
+  expandWordAnchor,
+  expandWordCandidates,
+  type ExpandWordAnchor,
+} from "./expand-word";
+export { importFixFor, type ContextAction } from "./imports";
 export type {
   CompletionContext,
   CompletionItem,

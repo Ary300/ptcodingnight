@@ -1,3 +1,10 @@
+import {
+  PYTHON_IMPORTABLES,
+  PYTHON_KEYWORD_TAILS,
+  PYTHON_MODULES,
+  PYTHON_TYPE_MEMBERS,
+  pythonImportTargets,
+} from "./python-extras";
 import type { CompletionItem, CompletionKind, LanguageProfile, LiveTemplate } from "./types";
 
 /**
@@ -71,8 +78,43 @@ function opensBlock(lineBeforeCaret: string): boolean {
 const TEMPLATES: readonly LiveTemplate[] = [
   {
     abbreviation: "main",
-    description: "The if __name__ == \"__main__\" guard",
-    body: 'if __name__ == "__main__":\n    $END$',
+    description: "The if __name__ == '__main__' guard",
+    body: "if __name__ == '__main__':\n    $END$",
+  },
+  { abbreviation: "iter", description: "Iterate (for ... in ...)", body: "for ${1} in ${2}:\n    $END$" },
+  {
+    abbreviation: "itere",
+    description: "Iterate (for ... in enumerate)",
+    body: "for ${1:i}, ${2:x} in enumerate(${3}):\n    $END$",
+  },
+  { abbreviation: "compl", description: "List comprehension", body: "[${1:x} for ${2:x} in ${3}]$END$" },
+  {
+    abbreviation: "compli",
+    description: "List comprehension with if",
+    body: "[${1:x} for ${2:x} in ${3} if ${4}]$END$",
+  },
+  {
+    abbreviation: "compd",
+    description: "Dict comprehension",
+    body: "{${1:k}: ${2:v} for ${3:k}, ${4:v} in ${5}}$END$",
+  },
+  {
+    abbreviation: "compdi",
+    description: "Dict comprehension with if",
+    body: "{${1:k}: ${2:v} for ${3:k}, ${4:v} in ${5} if ${6}}$END$",
+  },
+  { abbreviation: "comps", description: "Set comprehension", body: "{${1:x} for ${2:x} in ${3}}$END$" },
+  {
+    abbreviation: "compsi",
+    description: "Set comprehension with if",
+    body: "{${1:x} for ${2:x} in ${3} if ${4}}$END$",
+  },
+  { abbreviation: "compg", description: "Generator comprehension", body: "(${1:x} for ${2:x} in ${3})$END$" },
+  { abbreviation: "super", description: "super() call", body: "super().${1:__init__}($END$)" },
+  {
+    abbreviation: "prop",
+    description: "Property getter",
+    body: "@property\ndef ${1:name}(self):\n    return self._${2:name}$END$",
   },
   { abbreviation: "for", description: "A for loop over an iterable", body: "for ${1} in ${2}:\n    $END$" },
   { abbreviation: "fori", description: "A for loop over range()", body: "for i in range(${1}):\n    $END$" },
@@ -226,23 +268,12 @@ const BUILTIN_TYPES: readonly string[] = [
   "tuple",
 ];
 
-const MODULES: readonly string[] = [
-  "sys",
-  "math",
-  "collections",
-  "itertools",
-  "heapq",
-  "bisect",
-  "functools",
-  "string",
-];
-
 const GLOBALS: readonly CompletionItem[] = [
   ...BUILTIN_FUNCTIONS.map((name) =>
-    call(name, "function", "builtins", name !== "input"),
+    call(name, "function", "builtins"),
   ),
   ...BUILTIN_TYPES.map((name) => bare(name, "type", "builtins")),
-  ...MODULES.map((name) => bare(name, "variable", "module")),
+  ...PYTHON_MODULES,
 ];
 
 const MEMBERS: Readonly<Record<string, readonly CompletionItem[]>> = {
@@ -302,12 +333,12 @@ const MEMBERS: Readonly<Record<string, readonly CompletionItem[]>> = {
     call("reduce", "function", "value"),
   ],
   "*": [
-    call("split", "method", "list[str]", false),
-    call("strip", "method", "str", false),
+    call("split", "method", "list[str]"),
+    call("strip", "method", "str"),
     call("join", "method", "str"),
     call("append", "method", "None"),
-    call("pop", "method", "item", false),
-    call("sort", "method", "None", false),
+    call("pop", "method", "item"),
+    call("sort", "method", "None"),
     call("count", "method", "int"),
     call("index", "method", "int"),
     call("insert", "method", "None"),
@@ -354,4 +385,8 @@ export const PYTHON: LanguageProfile = {
   keywords: KEYWORDS,
   globals: GLOBALS,
   members: MEMBERS,
+  importables: PYTHON_IMPORTABLES,
+  keywordTails: PYTHON_KEYWORD_TAILS,
+  typeMembers: PYTHON_TYPE_MEMBERS,
+  importTargets: pythonImportTargets(MEMBERS),
 };

@@ -8,6 +8,7 @@
  * "*" key offers the common instance methods after any qualifier it does not recognise.
  */
 
+import { JAVA_KEYWORD_TAILS, JAVA_TYPE_MEMBERS, javaImportTargets } from "./java-extras";
 import type { CompletionItem, LanguageProfile, LiveTemplate } from "./types";
 
 /**
@@ -31,8 +32,17 @@ function field(name: string, fieldType: string): CompletionItem {
   return { label: name, insertText: name, kind: "field", detail: fieldType };
 }
 
+/** Collection classes IntelliJ completes with the diamond after `new`: `new ArrayList<>()`. */
+const GENERIC_TYPES: ReadonlySet<string> = new Set([
+  "List", "ArrayList", "LinkedList", "Map", "HashMap", "TreeMap", "LinkedHashMap", "Set", "HashSet",
+  "TreeSet", "LinkedHashSet", "Deque", "ArrayDeque", "Queue", "PriorityQueue", "Stack", "Comparator",
+]);
+
+/** A class, with the import IntelliJ adds when it is accepted (none for java.lang). */
 function javaType(name: string, pkg: string): CompletionItem {
-  return { label: name, insertText: name, kind: "type", detail: pkg };
+  const base: CompletionItem = { label: name, insertText: name, kind: "type", detail: pkg };
+  const imported = pkg === "java.lang" ? base : { ...base, importLine: `import ${pkg}.${name};` };
+  return GENERIC_TYPES.has(name) ? { ...imported, generic: true } : imported;
 }
 
 /**
@@ -127,6 +137,13 @@ const TEMPLATES: readonly LiveTemplate[] = [
   { abbreviation: "thr", description: "Inserts throw new", body: "throw new $END$" },
   { abbreviation: "psf", description: "Inserts public static final", body: "public static final $END$" },
   { abbreviation: "prsf", description: "Inserts private static final", body: "private static final $END$" },
+  { abbreviation: "psfi", description: "Inserts public static final int", body: "public static final int $END$" },
+  { abbreviation: "psfs", description: "Inserts public static final String", body: "public static final String $END$" },
+  {
+    abbreviation: "itar",
+    description: "Iterates over the elements of an array by index",
+    body: "for (int i = 0; i < ${1}.length; i++) {\n\t$END$\n}",
+  },
 ];
 
 const KEYWORDS: readonly string[] = [
@@ -171,11 +188,13 @@ const GLOBALS: readonly CompletionItem[] = [
   javaType("InputStreamReader", "java.io"),
   javaType("PrintWriter", "java.io"),
   javaType("IOException", "java.io"),
+  javaType("Stack", "java.util"),
+  javaType("LinkedHashMap", "java.util"),
 ];
 
 const PRINT_STREAM: readonly CompletionItem[] = [
-  method("println", "Object x", "void"),
-  method("print", "Object x", "void"),
+  method("println", "String x", "void"),
+  method("print", "String x", "void"),
   method("printf", "String format, Object... args", "PrintStream"),
   method("flush", "", "void"),
 ];
@@ -343,4 +362,7 @@ export const JAVA: LanguageProfile = {
   keywords: KEYWORDS,
   globals: GLOBALS,
   members: MEMBERS,
+  keywordTails: JAVA_KEYWORD_TAILS,
+  typeMembers: JAVA_TYPE_MEMBERS,
+  importTargets: javaImportTargets(GLOBALS),
 };

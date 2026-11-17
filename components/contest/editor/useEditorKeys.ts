@@ -342,7 +342,7 @@ export function useEditorKeys({
       // IntelliJ's basic completion: open the list for the word at the caret, on demand.
       if (event.key === " " && event.ctrlKey && !event.metaKey && !event.altKey) {
         event.preventDefault();
-        completion.schedule();
+        completion.schedule(true);
         return;
       }
 

@@ -13,6 +13,8 @@
  * then keywords, globals and live templates.
  */
 
+import { withImport } from "./imports";
+import { inferType } from "./infer";
 import { fileMembers } from "./members";
 import { renderTemplate, shiftStops } from "./template";
 import type { CompletionContext, CompletionItem, Edit, EditState, LanguageProfile } from "./types";
@@ -138,6 +140,47 @@ function separatorBefore(line: string, at: number): string | null {
   return null;
 }
 
+const PY_IMPORT_MODULE = /^\s*(?:import|from)\s+(\w*)$/;
+const PY_FROM_IMPORT = /^\s*from\s+([\w.]+)\s+import\s+(?:[\w\s,]*,\s*)?(\w*)$/;
+const JAVA_IMPORT_PATH = /^\s*import\s+(?:static\s+)?((?:\w+\.)*)(\w*)$/;
+const CPP_INCLUDE_PATH = /^\s*#\s*include\s*<([\w/.+]*)$/;
+
+/**
+ * Inside an import statement or after "#include <": the module, package or header being named.
+ * Python's "import he|" asks for a module (qualifier "#modules"), "from collections import de|"
+ * for that module's names; Java's "import java.util.Arr|" for that package's classes.
+ */
+function importStatementContext(line: string, lineStart: number, lineComment: string | undefined): CompletionContext | null {
+  const caret = lineStart + line.length;
+  if (lineComment !== "#") {
+    const include = CPP_INCLUDE_PATH.exec(line);
+    if (include !== null) {
+      const prefix = include[1] ?? "";
+      return { prefix, replaceFrom: caret - prefix.length, replaceTo: caret, qualifier: "#include", scope: "include" };
+    }
+  }
+  if (lineComment === "#") {
+    const from = PY_FROM_IMPORT.exec(line);
+    if (from !== null) {
+      const prefix = from[2] ?? "";
+      return { prefix, replaceFrom: caret - prefix.length, replaceTo: caret, qualifier: from[1] ?? "", scope: "import" };
+    }
+    const moduleMatch = PY_IMPORT_MODULE.exec(line);
+    if (moduleMatch !== null) {
+      const prefix = moduleMatch[1] ?? "";
+      return { prefix, replaceFrom: caret - prefix.length, replaceTo: caret, qualifier: "#modules", scope: "import" };
+    }
+    return null;
+  }
+  const java = lineComment === "//" ? JAVA_IMPORT_PATH.exec(line) : null;
+  if (java !== null) {
+    const prefix = java[2] ?? "";
+    const qualifier = (java[1] ?? "").replace(/\.$/, "") || "#packages";
+    return { prefix, replaceFrom: caret - prefix.length, replaceTo: caret, qualifier, scope: "import" };
+  }
+  return null;
+}
+
 /**
  * The identifier being typed at the caret, and what qualifies it.
  *
@@ -152,6 +195,8 @@ export function completionContext(
   if (caret < 0 || caret > text.length) return null;
   const lineStart = text.lastIndexOf("\n", caret - 1) + 1;
   const line = text.slice(lineStart, caret);
+  const special = importStatementContext(line, lineStart, lineComment);
+  if (special !== null) return special;
   if (endsInStringOrComment(line, lineComment)) return null;
 
   let start = line.length;
@@ -318,17 +363,72 @@ function fileIdentifiers(text: string, ctx: CompletionContext): string[] {
   return [...names];
 }
 
+/** What accepting `word` from the popup inserts: the keyword and the tail its profile gives it. */
+function keywordItem(word: string, profile: LanguageProfile): CompletionItem {
+  const tail = profile.keywordTails?.[word];
+  if (tail === undefined) return { label: word, insertText: word, kind: "keyword" };
+  const caret = tail.indexOf("|");
+  const clean = tail.replace("|", "");
+  return caret === -1
+    ? { label: word, insertText: word + clean, kind: "keyword" }
+    : { label: word, insertText: word + clean, kind: "keyword", caretOffset: word.length + caret };
+}
+
+const PY_DEF = /^[ \t]*def[ \t]+([A-Za-z_]\w*)[ \t]*\(([^)]*)\)/gm;
+const BRACE_METHOD = /\b[\w<>[\],]+[ \t]+([A-Za-z_]\w*)[ \t]*\(([^)]*)\)[ \t]*(?:const[ \t]*)?(?:throws[^{;]*)?\{/g;
+
+/**
+ * Functions the file defines, as calls: the caret goes inside "()" when the function takes
+ * parameters (`self` aside) and after it when it takes none, as PyCharm, IntelliJ and CLion do.
+ */
+function fileFunctions(text: string, profile: LanguageProfile): CompletionItem[] {
+  const keywords = new Set(profile.keywords);
+  const pattern = profile.id === "python" ? PY_DEF : BRACE_METHOD;
+  const seen = new Map<string, CompletionItem>();
+  for (const match of text.matchAll(pattern)) {
+    const name = match[1] ?? "";
+    if (keywords.has(name) || seen.has(name) || name === "main") continue;
+    const params = (match[2] ?? "")
+      .split(",")
+      .map((param) => param.trim())
+      .filter((param) => param !== "" && param !== "self" && param !== "void");
+    const insertText = `${name}()`;
+    seen.set(name, {
+      label: insertText,
+      insertText,
+      kind: "function",
+      caretOffset: params.length > 0 ? name.length + 1 : insertText.length,
+    });
+  }
+  return [...seen.values()];
+}
+
+/** Text before `at` on its line, enough to see a `new ` in front of the word. */
+const textBefore = (text: string, at: number): string => text.slice(Math.max(0, at - 40), at);
+const AFTER_NEW = /\bnew\s+$/;
+
+/** The Java types offered after `new `, as IntelliJ's constructor completion offers them. */
+function constructorCandidates(ctx: CompletionContext, text: string, profile: LanguageProfile): CompletionItem[] {
+  if (profile.id !== "java" || !AFTER_NEW.test(textBefore(text, ctx.replaceFrom))) return [];
+  return profile.globals.filter((item) => item.kind === "type" && item.label !== "Math" && item.label !== "System");
+}
+
 function topLevelCandidates(
   ctx: CompletionContext,
   text: string,
   profile: LanguageProfile,
 ): CompletionItem[] {
-  const keywords: CompletionItem[] = profile.keywords.map((word) => ({
-    label: word,
-    insertText: word,
-    kind: "keyword",
-  }));
-  const known = new Set<string>([...profile.keywords, ...profile.globals.map(matchKey)]);
+  const constructors = constructorCandidates(ctx, text, profile);
+  if (constructors.length > 0) return constructors;
+  const keywords: CompletionItem[] = profile.keywords.map((word) => keywordItem(word, profile));
+  const importables = profile.importables ?? [];
+  const functions = fileFunctions(text, profile);
+  const known = new Set<string>([
+    ...profile.keywords,
+    ...profile.globals.map(matchKey),
+    ...importables.map(matchKey),
+    ...functions.map(matchKey),
+  ]);
   const declared: CompletionItem[] = fileIdentifiers(text, ctx)
     .filter((name) => !known.has(name))
     .map((name) => ({ label: name, insertText: name, kind: "variable" }));
@@ -338,7 +438,21 @@ function topLevelCandidates(
     kind: "snippet",
     detail: template.description,
   }));
-  return dedupe([...declared, ...keywords, ...profile.globals, ...templates]);
+  return dedupe([...declared, ...functions, ...keywords, ...profile.globals, ...importables, ...templates]);
+}
+
+/** Inside an import statement: only the names that statement can import. */
+function importCandidates(ctx: CompletionContext, profile: LanguageProfile): Candidate[] {
+  const qualifier = ctx.qualifier ?? "";
+  const items = profile.importTargets?.[qualifier] ?? profile.members[qualifier] ?? [];
+  return dedupe(items).map((item) => ({ item, group: 0 }));
+}
+
+/** After "#include <": the headers whose path starts with what is typed, any case. */
+function includeCandidates(ctx: CompletionContext, profile: LanguageProfile, limit: number): CompletionItem[] {
+  const typed = ctx.prefix.toLowerCase();
+  const headers = profile.importTargets?.["#include"] ?? [];
+  return headers.filter((item) => item.label.toLowerCase().startsWith(typed)).slice(0, Math.max(0, limit));
 }
 
 /**
@@ -347,15 +461,23 @@ function topLevelCandidates(
  */
 function memberCandidates(ctx: CompletionContext, text: string, profile: LanguageProfile): Candidate[] {
   const qualifier = ctx.qualifier ?? "";
-  const specific = dedupe(qualifier === "*" ? [] : (profile.members[qualifier] ?? []));
+  // A variable whose type the text states (`List<Integer> xs`, `vector<int> v`, `s = ""`) gets
+  // that type's members, and only those, ahead of anything the file names after a dot.
+  const inferred =
+    profile.members[qualifier] === undefined ? inferType(text, qualifier, ctx.replaceFrom, profile.id) : null;
+  const typed = inferred === null ? undefined : profile.typeMembers?.[inferred];
+  const specific = dedupe(qualifier === "*" ? [] : (typed ?? profile.members[qualifier] ?? []));
   const named = new Set(specific.map(matchKey));
-  const general = dedupe(profile.members["*"] ?? []).filter((item) => !named.has(matchKey(item)));
+  const general =
+    typed !== undefined ? [] : dedupe(profile.members["*"] ?? []).filter((item) => !named.has(matchKey(item)));
   const library = new Set([...named, ...general.map(matchKey)]);
   // The file's own members (`self.val`, a Node's `next`). A call the library already lists keeps
   // the library's row, which knows its parameters; a field always gets its own row, since
   // `node.next` and Scanner's `next()` are different things that share a name.
   const chainStartsAt = ctx.replaceFrom - qualifier.length - 2;
-  const own: CompletionItem[] = fileMembers(text, profile.lineComment === "//", chainStartsAt, ctx.replaceFrom)
+  // A library type the text names (an inferred List, vector or str) has no members of the file's.
+  const ownMembers = typed !== undefined ? [] : fileMembers(text, profile.lineComment === "//", chainStartsAt, ctx.replaceFrom);
+  const own: CompletionItem[] = ownMembers
     .filter((member) => !(member.isMethod && library.has(member.name)))
     .filter((member) => !named.has(member.name))
     .map((member) =>
@@ -381,11 +503,38 @@ export function completionsFor(
   profile: LanguageProfile,
   limit: number = DEFAULT_COMPLETION_LIMIT,
 ): CompletionItem[] {
+  if (ctx.scope === "include") return includeCandidates(ctx, profile, limit);
   const candidates =
-    ctx.qualifier === null
-      ? topLevelCandidates(ctx, text, profile).map((item) => ({ item, group: 0 }))
-      : memberCandidates(ctx, text, profile);
+    ctx.scope === "import"
+      ? importCandidates(ctx, profile)
+      : ctx.qualifier === null
+        ? topLevelCandidates(ctx, text, profile).map((item) => ({ item, group: 0 }))
+        : memberCandidates(ctx, text, profile);
   return rank(ctx.prefix, candidates, limit);
+}
+
+/** Kinds whose accept, when the name is typed in full, would add nothing a student wants. */
+const SETTLED_KINDS: ReadonlySet<string> = new Set(["keyword", "variable", "field", "type"]);
+
+/**
+ * Whether the popup should stay closed while typing, so Enter and Tab keep their plain meaning:
+ * the top row is a name already typed in full (`return`, `n`, `String`), or every row is a word
+ * from the file spelled exactly as typed. A call typed in full (`max`) still opens, since
+ * accepting it adds the parentheses. An explicit Ctrl+Space ignores this.
+ */
+export function autoPopupSuppressed(ctx: CompletionContext, items: readonly CompletionItem[]): boolean {
+  const top = items[0];
+  if (top === undefined) return true;
+  if (matchKey(top) === ctx.prefix && SETTLED_KINDS.has(top.kind)) return true;
+  return items.every((item) => item.kind === "variable" && item.label === ctx.prefix);
+}
+
+/**
+ * Whether an explicit Ctrl+Space inserts its one suggestion without showing a list, as IntelliJ's
+ * "Insert single suggestion automatically" does. Only ever asked for an explicit invocation.
+ */
+export function insertsSingleSuggestion(items: readonly CompletionItem[]): boolean {
+  return items.length === 1;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -423,8 +572,12 @@ export function applyCompletion(
   state: EditState,
   ctx: CompletionContext,
   item: CompletionItem,
-  indentUnit: string = DEFAULT_INDENT_UNIT,
+  indentOrProfile: string | LanguageProfile = DEFAULT_INDENT_UNIT,
 ): Edit {
+  // Passing the profile (rather than only its indent unit) turns on what depends on the language:
+  // the import an accepted class needs, and `new ArrayList<>()` after `new `.
+  const profile = typeof indentOrProfile === "string" ? undefined : indentOrProfile;
+  const indentUnit = typeof indentOrProfile === "string" ? indentOrProfile : indentOrProfile.indentUnit;
   if (item.kind === "snippet") {
     const indent = indentAt(state.text, ctx.replaceFrom);
     const rendered = renderTemplate(item.insertText, indent, indent.includes("\t") ? "\t" : indentUnit);
@@ -439,14 +592,44 @@ export function applyCompletion(
       ? edit
       : { ...edit, tabStops: shiftStops(rendered.tabStops, ctx.replaceFrom) };
   }
-  const offset = item.caretOffset ?? item.insertText.length;
-  const clamped = Math.min(Math.max(offset, 0), item.insertText.length);
+  const { insertText, caretOffset } = shapedInsert(state.text, ctx, item, profile);
+  const offset = caretOffset ?? insertText.length;
+  const clamped = Math.min(Math.max(offset, 0), insertText.length);
   const caret = ctx.replaceFrom + clamped;
-  return {
+  const edit: Edit = {
     from: ctx.replaceFrom,
     to: ctx.replaceTo,
-    insert: item.insertText,
+    insert: insertText,
     selectionStart: caret,
     selectionEnd: caret,
   };
+  if (profile === undefined || ctx.scope !== undefined) return edit;
+  return withImport(state.text, edit, item.importLine, profile);
+}
+
+/**
+ * The text an accept inserts in its context: IntelliJ's `new ArrayList<>()` with the caret in the
+ * parentheses after `new `, and a header's closing ">" after "#include <" when none follows.
+ */
+function shapedInsert(
+  text: string,
+  ctx: CompletionContext,
+  item: CompletionItem,
+  profile: LanguageProfile | undefined,
+): { readonly insertText: string; readonly caretOffset: number | undefined } {
+  if (ctx.scope === "include") {
+    const closed = text.charAt(ctx.replaceTo) === ">";
+    return { insertText: closed ? item.insertText : `${item.insertText}>`, caretOffset: undefined };
+  }
+  const isConstructor =
+    profile?.id === "java" &&
+    item.kind === "type" &&
+    ctx.qualifier === null &&
+    AFTER_NEW.test(textBefore(text, ctx.replaceFrom)) &&
+    text.charAt(ctx.replaceTo) !== "(";
+  if (isConstructor) {
+    const head = `${item.insertText}${item.generic === true ? "<>" : ""}(`;
+    return { insertText: `${head})`, caretOffset: head.length };
+  }
+  return { insertText: item.insertText, caretOffset: item.caretOffset };
 }
