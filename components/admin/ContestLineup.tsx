@@ -601,14 +601,18 @@ export function ContestLineup({
               individual/group control was. Both are answered here, in the order the columns
               appear, rather than being left to be inferred from a table.
             */}
-            Every teammate works a different SET, so four teammates need sets A, B, C and D with
-            the same shape. A group question has no set: every team works it together. The CODE
-            is what a student sees beside the question, like A1.
-            <span className="mt-1 block">Saving updates the full line-up.</span>
+            Every teammate works a different SET, so a team of five needs sets A to E, each with the
+            same shape. A group question has no set: every team works it together. The CODE is what
+            a student sees beside the question, like A-E1 for the first Easy in set A.
+            <span className="mt-1 block">
+              The Sets tab fills every set for you. Its Build these sets replaces every question
+              that has a set letter, including ones added here by hand; group questions you add
+              here are kept. Saving updates the full line-up.
+            </span>
           </>
         }
       >
-        {slots.length > 0 && <SetShape slots={slots} />}
+        {slots.length > 0 && <SetShape slots={slots} divisions={divisions} />}
         {slots.length === 0 ? (
           <PanelNote>Nothing chosen yet. Pick from the bank below.</PanelNote>
         ) : (
@@ -1186,44 +1190,79 @@ export function ContestLineup({
  * screen said so until this line did. It counts what is on screen, unsaved rows included,
  * because that is what the organizer is about to save.
  */
-function SetShape({ slots }: { slots: readonly Slot[] }) {
-  const counts = new Map<string, number>();
-  let group = 0;
-  let unlettered = 0;
-  for (const slot of slots) {
-    if (slot.kind === "group") {
-      group += 1;
-      continue;
+function SetShape({
+  slots,
+  divisions,
+}: {
+  slots: readonly Slot[];
+  divisions: readonly LineupDivision[];
+}) {
+  /*
+    Counted PER DIVISION. Counted across the whole contest, a two-division round of one Easy and
+    two Medium per set read "Set A: 6", which reads as six questions per student. Intermediate A
+    and Advanced A are different columns that share a letter, so each division gets its own line.
+    A question on "All divisions" counts toward every division's line.
+  */
+  const scopes: readonly { id: string | null; name: string }[] =
+    divisions.length > 0
+      ? divisions.map((division) => ({ id: division.divisionId, name: division.name }))
+      : [{ id: null, name: "" }];
+  const lines = scopes.map((scope) => {
+    const counts = new Map<string, number>();
+    for (const slot of slots) {
+      if (slot.kind === "group") continue;
+      const label = slot.setLabel.trim().toUpperCase();
+      if (label === "") continue;
+      if (scope.id !== null && slot.divisionId !== null && slot.divisionId !== scope.id) continue;
+      counts.set(label, (counts.get(label) ?? 0) + 1);
     }
-    const label = slot.setLabel.trim().toUpperCase();
-    if (label === "") unlettered += 1;
-    else counts.set(label, (counts.get(label) ?? 0) + 1);
-  }
+    return { name: scope.name, sets: [...counts.entries()].sort(([a], [b]) => a.localeCompare(b)) };
+  });
+  const group = slots.filter((slot) => slot.kind === "group").length;
+  const unlettered = slots.filter(
+    (slot) => slot.kind !== "group" && slot.setLabel.trim() === "",
+  ).length;
 
-  const sets = [...counts.entries()].sort(([a], [b]) => a.localeCompare(b));
-  const sizes = sets.map(([, count]) => count);
-  const uneven = sizes.length > 1 && Math.min(...sizes) !== Math.max(...sizes);
-  const oneSetOnly = sets.length === 1;
+  const nonEmpty = lines.filter((line) => line.sets.length > 0);
+  const uneven = nonEmpty.some((line) => {
+    const sizes = line.sets.map(([, count]) => count);
+    return sizes.length > 1 && Math.min(...sizes) !== Math.max(...sizes);
+  });
+  const oneSetOnly = nonEmpty.some((line) => line.sets.length === 1);
 
   return (
-    <p className="mb-group text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
-      {sets.length === 0 && unlettered === 0
-        ? "No individual questions yet."
-        : sets
-            .map(([label, count]) => `Set ${label}: ${String(count)}`)
-            .concat(unlettered > 0 ? [`no set yet: ${String(unlettered)}`] : [])
-            .join(", ")}
-      {group > 0 && `, shared by every team: ${String(group)}`}
+    <div className="mb-group text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
+      {nonEmpty.length === 0 && unlettered === 0 ? (
+        <p>No individual questions yet.</p>
+      ) : (
+        nonEmpty.map((line) => (
+          <p key={line.name}>
+            {line.name === "" ? "" : `${line.name}: `}
+            {line.sets
+              .map(
+                ([label, count]) =>
+                  `set ${label} has ${String(count)} ${count === 1 ? "question" : "questions"}`,
+              )
+              .join(", ")}
+          </p>
+        ))
+      )}
+      {unlettered > 0 && (
+        <p>
+          {`${String(unlettered)} individual ${unlettered === 1 ? "question has" : "questions have"} no set letter yet.`}
+        </p>
+      )}
+      {group > 0 && <p>{`Shared by every team: ${String(group)}.`}</p>}
       {(uneven || oneSetOnly) && (
         // Said, not enforced: a deliberately uneven round is the organizer's call to make, and
         // a screen that refused it would be wrong more often than the organizer is.
-        <span className="mt-1 block font-semibold text-panther">
+        <p className="mt-1 font-semibold text-panther">
           {oneSetOnly
-            ? "Only one set exists, so every teammate would work the same questions. Add sets B, C and D for a team of four."
+            ? "Only one set exists, so every teammate would work the same questions. Add one set per member of the largest team: A to E for a team of five."
             : "The sets hold different numbers of questions, so teammates have unequal work."}
-        </span>
+        </p>
       )}
-    </p>
+    </div>
   );
 }
 
