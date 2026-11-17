@@ -167,6 +167,9 @@ export default async function ContestSetupPage({
           state={setup.state}
           boardFrozen={boardFrozen}
           submissionsClosed={submissionsClosed}
+          durationMinutes={Math.round(
+            (setup.endsAt.getTime() - setup.startsAt.getTime()) / 60_000,
+          )}
         />
       </Panel>
 

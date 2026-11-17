@@ -47,7 +47,8 @@ A private browser window for the wall also works, since it carries no session at
 fine habit to keep.
 
 Two warnings about the lifecycle buttons. **Open now** moves the whole window to the instant you
-press it, so pressing it at 6:58 closes submissions at 8:13.
+press it, so pressing it at 6:58 closes submissions at 8:13. It asks first, and the confirmation states how many minutes the window
+will run from the press.
 **End contest** depends on the board. On a frozen board it closes submissions now and nothing else:
 the board stays frozen, the console keeps its **Unfreeze and reveal** plate, and the confirmation
 says so in those words. On a board that is not frozen it ends the contest and the final standings

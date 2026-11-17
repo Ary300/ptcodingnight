@@ -19,12 +19,13 @@ import { ConfirmButton } from "./ConfirmButton";
  * three separate strings on screen promised the step — "students cannot see it until you publish
  * it", "Publish the contest when the line-up is settled", and the state pill's own hint.
  *
- * ## Ending is confirmed; publishing and opening are not
+ * ## Ending and opening are confirmed; publishing is not
  *
- * `setContestState` allows DRAFT → SCHEDULED → RUNNING → ENDED and offers no way back. Publishing
- * too early is recoverable by ending and rebuilding; **ending a contest early, with a room still
- * submitting, is not recoverable at all** — so that one is the only transition behind a
- * confirmation. Confirming everything trains people to click through confirmations.
+ * Publishing too early is recoverable by ending and rebuilding. **Ending a contest early, with a
+ * room still submitting**, closes the window for everyone, so it is confirmed. **Opening** is
+ * confirmed too: it moves the whole window to the instant of the press, so a press at 6:58
+ * closes submissions at 8:13, and End, Freeze and Reopen all asked first while Open now did not.
+ * Each confirmation says in a sentence what the press will do.
  *
  * ## The refusal is rendered, not swallowed
  *
@@ -55,6 +56,15 @@ export interface ContestStateActionsProps {
   readonly boardFrozen: boolean;
   /** Has the contest window already closed? A frozen board past its end has nothing left to end. */
   readonly submissionsClosed: boolean;
+  /** The window's length in whole minutes, which Open now keeps from the instant it is pressed. */
+  readonly durationMinutes: number;
+}
+
+/** The sentence under Open now's confirmation. */
+export function openConfirmDescription(durationMinutes: number): string {
+  return `The contest starts now and ends in ${String(durationMinutes)} ${
+    durationMinutes === 1 ? "minute" : "minutes"
+  }.`;
 }
 
 /** The sentence under End contest's confirmation, which depends on whether the board is frozen. */
@@ -94,6 +104,7 @@ export function ContestStateActions({
   onChanged,
   boardFrozen,
   submissionsClosed,
+  durationMinutes,
 }: ContestStateActionsProps) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -162,6 +173,16 @@ export function ContestStateActions({
             label={option.label}
             confirmLabel="End it now"
             description={endConfirmDescription(boardFrozen)}
+            variant="secondary"
+            disabled={busy}
+            onConfirm={() => void go(option.to, option.label)}
+          />
+        ) : option.to === "RUNNING" ? (
+          <ConfirmButton
+            key={option.to}
+            label={option.label}
+            confirmLabel={option.label}
+            description={openConfirmDescription(durationMinutes)}
             variant="secondary"
             disabled={busy}
             onConfirm={() => void go(option.to, option.label)}
