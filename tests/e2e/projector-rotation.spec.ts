@@ -14,7 +14,7 @@ import { closeTestDb, testDb } from "./helpers/seed";
  * half the room never saw its own standings unless somebody walked to the laptop. Read as rendered
  * text, with the browser's clock driven by hand so 20 seconds of wall time costs nothing.
  *
- * Fixture: two divisions, a team of FIVE in the first beside two teams of two, and two teams of
+ * Fixture: two divisions, a team of FOUR in the first beside two teams of two, and two teams of
  * two in the second. Screenshots at both projector resolutions, live and frozen, go to
  * `PROJECTOR_SHOTS_DIR` when it is set.
  */
@@ -66,12 +66,11 @@ test.beforeAll(async ({ playwright }) => {
     return found.divisionId;
   };
 
-  await addTeam(admin, "Fivefold", idOf("Intermediate"), [
-    "Ana Five",
-    "Bo Five",
-    "Cal Five",
-    "Dee Five",
-    "Eve Five",
+  await addTeam(admin, "Fourfold", idOf("Intermediate"), [
+    "Ana Four",
+    "Bo Four",
+    "Cal Four",
+    "Dee Four",
   ]);
   await addTeam(admin, "Pair One", idOf("Intermediate"), ["Fay One", "Gus One"]);
   await addTeam(admin, "Pair Two", idOf("Intermediate"), ["Hal Two", "Ida Two"]);
@@ -246,18 +245,18 @@ for (const frozen of [false, true]) {
         });
       }
 
-      // The team of five, opened. That pauses the rotation, and the wall says so.
+      // The team of four, opened. That pauses the rotation, and the wall says so.
       await page.getByRole("tab", { name: "Intermediate" }).click();
-      await page.getByRole("button", { name: /^Show 5 players for Fivefold$/ }).click();
-      await expect(page.getByText("Ana Five")).toBeVisible();
+      await page.getByRole("button", { name: /^Show 4 players for Fourfold$/ }).click();
+      await expect(page.getByText("Ana Four")).toBeVisible();
       await expect(page.getByText(/^Rotation paused/)).toBeVisible();
       await page.waitForTimeout(700);
-      expect(await overflowOf(page), `${label}, Fivefold open`).toEqual({
+      expect(await overflowOf(page), `${label}, Fourfold open`).toEqual({
         panel: 0,
         pageX: 0,
         pageY: 0,
       });
-      await shoot("Intermediate-team-of-five-open");
+      await shoot("Intermediate-team-of-four-open");
     });
   }
 }

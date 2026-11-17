@@ -13,7 +13,7 @@ import { closeTestDb, testDb } from "./helpers/seed";
  * The organizers reported three things on the team boards: the projector showed "top 7 of N" and
  * dropped teams to pay for an open breakdown, an open breakdown was drawn over the teams around
  * it, and there was no way to open or close every team at once. Fixture: two divisions, FIFTEEN
- * teams, twelve of them in Intermediate (one a team of five) and three in Advanced.
+ * teams, twelve of them in Intermediate (one a full team of four) and three in Advanced.
  *
  * The overlap check measures the very first frame after the click as well as the settled one,
  * because the reported overlap was a slide: rows were snapped up over the new panel and travelled
@@ -21,7 +21,7 @@ import { closeTestDb, testDb } from "./helpers/seed";
  */
 
 const ADMIN_PASSCODE = requiredEnv("ADMIN_PASSCODE");
-const FIVE = ["Ana Five", "Bo Five", "Cal Five", "Dee Five", "Eve Five"];
+const FOUR = ["Ana Four", "Bo Four", "Cal Four", "Dee Four"];
 const INTERMEDIATE_TEAMS = 12;
 const ADVANCED_TEAMS = 3;
 const SHOTS_DIR = join(process.cwd(), ".judge-tmp", "board");
@@ -64,7 +64,7 @@ test.beforeAll(async ({ playwright }) => {
     }
   };
 
-  await addTeam("Fivefold", idOf("Intermediate"), FIVE);
+  await addTeam("Fourfold", idOf("Intermediate"), FOUR);
   for (let index = 2; index <= INTERMEDIATE_TEAMS; index += 1) {
     const size = 2 + (index % 3);
     await addTeam(
@@ -179,13 +179,13 @@ test.describe("the projector", () => {
     await expect(page.getByRole("columnheader", { name: "Team", exact: true })).toBeInViewport();
   });
 
-  test("Expand all opens every team, the team of five shows five players, nothing overlaps", async ({
+  test("Expand all opens every team, the team of four shows four players, nothing overlaps", async ({
     page,
   }) => {
     await page.getByRole("button", { name: "Expand all" }).click();
     expect(new Set(await disclosureStates(page))).toEqual(new Set(["true"]));
-    for (const name of FIVE) {
-      await expect(page.locator("#team-roster-" + (await fivefoldId())).getByText(name)).toBeVisible();
+    for (const name of FOUR) {
+      await expect(page.locator("#team-roster-" + (await fourfoldId())).getByText(name)).toBeVisible();
     }
     await page.waitForTimeout(600);
     expect(await overlaps(page)).toEqual([]);
@@ -207,18 +207,18 @@ test.describe("the projector", () => {
   test("one team's breakdown pushes the rows below it down from the first frame", async ({
     page,
   }) => {
-    expect(await clickAndMeasureFirstFrame(page, /^Show 5 players for Fivefold$/)).toEqual([]);
+    expect(await clickAndMeasureFirstFrame(page, /^Show 4 players for Fourfold$/)).toEqual([]);
     expect(await clickAndMeasureFirstFrame(page, /^Show \d players for Inter 7$/)).toEqual([]);
     await page.waitForTimeout(600);
     expect(await overlaps(page)).toEqual([]);
-    // Independent: opening Inter 7 left Fivefold open, and closing it leaves Inter 7 open.
-    await page.getByRole("button", { name: "Hide players for Fivefold" }).click();
+    // Independent: opening Inter 7 left Fourfold open, and closing it leaves Inter 7 open.
+    await page.getByRole("button", { name: "Hide players for Fourfold" }).click();
     await expect(page.getByRole("button", { name: "Hide players for Inter 7" })).toBeVisible();
   });
 });
 
-async function fivefoldId(): Promise<string> {
-  const team = await testDb().team.findFirst({ where: { contestId, name: "Fivefold" } });
+async function fourfoldId(): Promise<string> {
+  const team = await testDb().team.findFirst({ where: { contestId, name: "Fourfold" } });
   return team?.id ?? "";
 }
 
@@ -232,7 +232,7 @@ test.describe("the organizer awards board", () => {
 
     await page.getByRole("tab", { name: "Intermediate" }).click();
     await expect(table.locator("tbody[data-flip-part='row']")).toHaveCount(INTERMEDIATE_TEAMS);
-    expect(await clickAndMeasureFirstFrame(page, /^Show 5 players for Fivefold$/)).toEqual([]);
+    expect(await clickAndMeasureFirstFrame(page, /^Show 4 players for Fourfold$/)).toEqual([]);
 
     await page.getByRole("button", { name: "Expand all" }).click();
     expect(new Set(await disclosureStates(page))).toEqual(new Set(["true"]));

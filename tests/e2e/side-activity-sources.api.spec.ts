@@ -11,7 +11,7 @@ import { closeTestDb, seedE2EContest, testDb } from "./helpers/seed";
  *
  * The night's puzzles are on paper, one per team member, and the organizers type the points, plus
  * the Kahoot placing after the contest. Their request: "identify the puzzle/Kahoot like where the
- * actual points came from". So a team of five holds five puzzle awards and a Kahoot placing, each
+ * actual points came from". So a team of four holds four puzzle awards and a Kahoot placing, each
  * with its own source, each edited or removed on its own, a second award with the same source is
  * refused until confirmed, and the Puzzle total always equals the awards listed under it.
  */
@@ -56,9 +56,9 @@ test.beforeAll(async ({ playwright }) => {
   admin = new ContestApi(await playwright.request.newContext(), contestId);
   await admin.adminLogin(ADMIN_PASSCODE);
 
-  const team = await readOk(await admin.createTeamAsAdminRaw({ name: "Paper Five" }));
+  const team = await readOk(await admin.createTeamAsAdminRaw({ name: "Paper Four" }));
   teamId = (team.data as { teamId: string }).teamId;
-  for (const name of ["Ava One", "Ben Two", "Cy Three", "Di Four", "Ed Five"]) {
+  for (const name of ["Ava One", "Ben Two", "Cy Three", "Di Four"]) {
     await readOk(await admin.addNamedParticipantRaw({ displayName: name, teamId }));
   }
 });
@@ -70,12 +70,11 @@ test.afterAll(async () => {
   await closeTestDb();
 });
 
-test("a team of five holds a puzzle award per member, each naming its source", async () => {
+test("a team of four holds a puzzle award per member, each naming its source", async () => {
   await award("Sudoku, seat A, Ava One", 25);
   await award("Cipher, seat B, Ben Two", 20);
   await award("Sudoku, seat C, Cy Three", 25);
   await award("Logic grid, seat D, Di Four", 15);
-  await award("Sudoku, seat E, Ed Five", 25);
 
   const awards = await teamAwards();
   expect(awards.activities.map((a) => a.label)).toEqual([
@@ -83,17 +82,16 @@ test("a team of five holds a puzzle award per member, each naming its source", a
     "Cipher, seat B, Ben Two",
     "Sudoku, seat C, Cy Three",
     "Logic grid, seat D, Di Four",
-    "Sudoku, seat E, Ed Five",
   ]);
-  expect(awards.total).toBe(110);
-  expect(await puzzleColumn()).toBe(110);
+  expect(awards.total).toBe(85);
+  expect(await puzzleColumn()).toBe(85);
 
   // The contest-wide breakdown the awards screen reads carries the same awards.
   const breakdown = ContestSideActivitiesSchema.parse(
     (await readOk(await admin.contestSideActivitiesRaw())).data,
   );
   const mine = breakdown.teams.find((team) => team.teamId === teamId);
-  expect(mine?.activities.reduce((sum, a) => sum + a.points, 0)).toBe(110);
+  expect(mine?.activities.reduce((sum, a) => sum + a.points, 0)).toBe(85);
 });
 
 test("the same source twice is refused until confirmed, and the refusal names the first", async () => {
@@ -102,7 +100,7 @@ test("the same source twice is refused until confirmed, and the refusal names th
   );
   expect(refusal.status).toBe(409);
   expect(refusal.message).toContain("Sudoku, seat A, Ava One");
-  expect(await puzzleColumn()).toBe(110);
+  expect(await puzzleColumn()).toBe(85);
 
   const confirmed = await readOk(
     await admin.addSideActivityRaw(teamId, {
@@ -111,13 +109,13 @@ test("the same source twice is refused until confirmed, and the refusal names th
       confirmDuplicate: true,
     }),
   );
-  expect(await puzzleColumn()).toBe(135);
+  expect(await puzzleColumn()).toBe(110);
 
   // Fixable: the second one comes off on its own and the first stays.
   await readOk(
     await admin.removeSideActivityRaw(teamId, (confirmed.data as { id: string }).id),
   );
-  expect(await puzzleColumn()).toBe(110);
+  expect(await puzzleColumn()).toBe(85);
   expect((await teamAwards()).activities.filter((a) => a.label.startsWith("Sudoku, seat A"))).toHaveLength(1);
 });
 
@@ -128,7 +126,7 @@ test("one award is edited on its own, and the audit log keeps what it said befor
   await readOk(
     await admin.editSideActivityRaw(teamId, cipher?.id ?? "", { points: 10, label: "Cipher, seat B, Ben Two" }),
   );
-  expect(await puzzleColumn()).toBe(100);
+  expect(await puzzleColumn()).toBe(75);
 
   const audit = await testDb().auditLog.findFirst({
     where: { action: "team.side_activity_edited", entity: `team:${teamId}` },
@@ -142,9 +140,9 @@ test("one award is removed on its own", async () => {
   const logic = (await teamAwards()).activities.find((a) => a.label.startsWith("Logic grid"));
   await readOk(await admin.removeSideActivityRaw(teamId, logic?.id ?? ""));
   const awards = await teamAwards();
-  expect(awards.activities).toHaveLength(4);
-  expect(awards.total).toBe(85);
-  expect(await puzzleColumn()).toBe(85);
+  expect(awards.activities).toHaveLength(3);
+  expect(awards.total).toBe(60);
+  expect(await puzzleColumn()).toBe(60);
 });
 
 test("while frozen, an award on the frozen board keeps its points; the Kahoot after it does not", async () => {
@@ -167,5 +165,5 @@ test("while frozen, an award on the frozen board keeps its points; the Kahoot af
   // The Kahoot is entered after the freeze, so it is not on the frozen board and stays fixable.
   const kahoot = await award("Kahoot", 60);
   await readOk(await admin.editSideActivityRaw(teamId, kahoot, { points: 40 }));
-  expect(await puzzleColumn()).toBe(125);
+  expect(await puzzleColumn()).toBe(100);
 });
