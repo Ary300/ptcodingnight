@@ -6,6 +6,7 @@ import { TeamStandingsBoard, useTeamStandings } from "@/components/leaderboard";
 import { Crumbs } from "@/components/ui";
 
 import { useParticipant } from "../data/participant";
+import { BoardFrozenNotice } from "../lobby/BoardFrozenNotice";
 import { SignInRequired } from "../lobby/SignInRequired";
 
 /**
@@ -225,7 +226,9 @@ export function MyTeamView() {
             set, group and side columns" — described something that did not happen: the page moved
             instead, and a student who followed the instruction dragged the layout off screen.
           */
-          <div className="relative min-w-0 overflow-x-clip">
+          <div className="relative flex min-w-0 flex-col gap-tight overflow-x-clip">
+            {/* The board below is as of the freeze, so a post-freeze AC is not in it yet. */}
+            {standings.frozen && <BoardFrozenNotice />}
             <TeamStandingsBoard
               teams={standings.teams}
               divisions={standings.divisions}
