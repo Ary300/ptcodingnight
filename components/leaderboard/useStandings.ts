@@ -65,8 +65,9 @@ export function useStandings(contestId: string | null): UseStandingsResult {
     let requestController: AbortController | null = null;
 
     // Omitting the id is meaningful, not a fallback: the projector shows whichever contest is
-    // running, because nobody types an id into a screen on a wall.
-    const url = API_ROUTES.publicStandings(contestId ?? undefined);
+    // running, because nobody types an id into a screen on a wall. Always the PUBLIC view: this
+    // screen runs on an organizer's laptop, and the organizer's cookie must not unfreeze the wall.
+    const url = API_ROUTES.projectorStandings(contestId ?? undefined);
 
     const poll = async () => {
       requestController = new AbortController();
@@ -78,6 +79,9 @@ export function useStandings(contestId: string | null): UseStandingsResult {
           // Revalidate every time, never reuse unasked: the browser sends the board's ETag and an
           // unchanged board comes back as a 304 with no body. See `jsonOkRevalidated`.
           cache: "no-cache",
+          // The wall needs no identity, so it sends none. `view=public` already scores it as
+          // anonymous; omitting the cookie as well means no route change can undo that.
+          credentials: "omit",
           headers: { accept: "application/json" },
         });
         noteServerDate(response.headers.get("date"));

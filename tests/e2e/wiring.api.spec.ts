@@ -64,6 +64,12 @@ const PROBES: { name: string; probe: string; method: "GET" | "POST" }[] = [
   { name: "problem", probe: API_ROUTES.problem("no-such-contest", "no-such-slug"), method: "GET" },
   { name: "standings", probe: API_ROUTES.standings("no-such-contest"), method: "GET" },
   { name: "publicStandings", probe: API_ROUTES.publicStandings(), method: "GET" },
+  { name: "projectorStandings", probe: API_ROUTES.projectorStandings(), method: "GET" },
+  {
+    name: "projectorTeamStandings",
+    probe: API_ROUTES.projectorTeamStandings("no-such-contest"),
+    method: "GET",
+  },
   { name: "stream", probe: API_ROUTES.stream("no-such-contest"), method: "GET" },
   { name: "runSamples", probe: API_ROUTES.runSamples, method: "POST" },
   { name: "submissions", probe: API_ROUTES.submissions, method: "GET" },

@@ -3,7 +3,7 @@ import type { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { NO_STORE, handle, jsonOk, jsonOkRevalidated } from "@/lib/contest/http";
 import { getTeamStandings } from "@/lib/contest/standings";
-import { viewerFromRequest } from "@/lib/contest/viewer";
+import { boardViewerFromRequest } from "@/lib/contest/viewer";
 
 /**
  * `GET /api/team-standings?contest=<id>` — the spectator TEAM board.
@@ -90,7 +90,7 @@ export async function GET(request: Request): Promise<NextResponse> {
     */
     if (contestId === null) return jsonOk(null, NO_STORE);
 
-    const viewer = await viewerFromRequest(request, now);
+    const viewer = await boardViewerFromRequest(request, now);
 
     // Never in a SHARED cache, matching both siblings: the response DIFFERS BY VIEWER — an organizer
     // sees through a freeze and nobody else does. See `jsonOkRevalidated`.

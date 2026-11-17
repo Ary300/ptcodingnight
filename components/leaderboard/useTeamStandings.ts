@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-import { TeamStandingsResponseSchema, type TeamStandingsResponse } from "@/lib/schemas/api";
+import { API_ROUTES, TeamStandingsResponseSchema, type TeamStandingsResponse } from "@/lib/schemas/api";
 
 import { POLL_INTERVAL_MS } from "./constants";
 import { noteServerDate } from "./server-clock";
@@ -46,10 +46,20 @@ export interface UseTeamStandingsResult {
  * that table; both belong there, and `tests/e2e/wiring.api.spec.ts` is the check that keeps the
  * two halves on the same URL.
  */
-function urlFor(contestId: string | null): string {
+function urlFor(contestId: string | null, publicView: boolean): string {
+  if (publicView) return API_ROUTES.projectorTeamStandings(contestId ?? undefined);
   return contestId === null
     ? "/api/team-standings"
     : `/api/contests/${encodeURIComponent(contestId)}/team-standings`;
+}
+
+export interface UseTeamStandingsOptions {
+  /**
+   * Ask for the PUBLIC board whoever is signed in, and send no cookie. The projector sets this,
+   * because it runs on an organizer's laptop and the organizer's session would otherwise show the
+   * room the live scores through a freeze. Awards and the console leave it off and see through it.
+   */
+  readonly publicView?: boolean;
 }
 
 /** Accepts the API envelope or a bare body, same as the individual board's reader. */
@@ -94,7 +104,11 @@ function envelopeError(body: unknown): string | null {
   return typeof message === "string" && message.length > 0 ? message : null;
 }
 
-export function useTeamStandings(contestId: string | null): UseTeamStandingsResult {
+export function useTeamStandings(
+  contestId: string | null,
+  options: UseTeamStandingsOptions = {},
+): UseTeamStandingsResult {
+  const publicView = options.publicView === true;
   const [standings, setStandings] = useState<TeamStandingsResponse | null>(null);
   const [source, setSource] = useState<TeamStandingsSource>("pending");
   const [error, setError] = useState<string | null>(null);
@@ -103,7 +117,7 @@ export function useTeamStandings(contestId: string | null): UseTeamStandingsResu
     let cancelled = false;
     let timer: number | null = null;
     let requestController: AbortController | null = null;
-    const url = urlFor(contestId);
+    const url = urlFor(contestId, publicView);
 
     const poll = async (): Promise<void> => {
       requestController = new AbortController();
@@ -115,6 +129,7 @@ export function useTeamStandings(contestId: string | null): UseTeamStandingsResu
           // Revalidate every time, never reuse unasked: the browser sends the board's ETag and an
           // unchanged board comes back as a 304 with no body. See `jsonOkRevalidated`.
           cache: "no-cache",
+          credentials: publicView ? "omit" : "same-origin",
           headers: { accept: "application/json" },
         });
         noteServerDate(response.headers.get("date"));
@@ -161,7 +176,7 @@ export function useTeamStandings(contestId: string | null): UseTeamStandingsResu
       requestController?.abort();
       if (timer !== null) window.clearTimeout(timer);
     };
-  }, [contestId]);
+  }, [contestId, publicView]);
 
   return { standings, source, error };
 }

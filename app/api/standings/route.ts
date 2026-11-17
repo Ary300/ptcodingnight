@@ -4,7 +4,7 @@ import { prisma } from "@/lib/db";
 import { NotFoundError } from "@/lib/errors";
 import { handle, jsonOkRevalidated } from "@/lib/contest/http";
 import { getStandings } from "@/lib/contest/standings";
-import { viewerFromRequest } from "@/lib/contest/viewer";
+import { boardViewerFromRequest } from "@/lib/contest/viewer";
 
 /**
  * `GET /api/standings?contestId=<id>` — the spectator board.
@@ -78,7 +78,7 @@ export async function GET(request: Request): Promise<NextResponse> {
     const now = new Date();
     const requested = new URL(request.url).searchParams.get("contestId");
     const contestId = requested !== null && requested.length > 0 ? requested : await currentContestId(now);
-    const viewer = await viewerFromRequest(request, now);
+    const viewer = await boardViewerFromRequest(request, now);
 
     return jsonOkRevalidated(request, await getStandings(contestId, viewer, now));
   });

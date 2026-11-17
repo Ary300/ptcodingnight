@@ -3,6 +3,7 @@ import { z } from "zod";
 import { mintCompetitorSession } from "./session";
 
 import {
+  API_ROUTES,
   ApiErrorSchema,
   ProblemDetailSchema,
   ProblemSummarySchema,
@@ -278,6 +279,25 @@ export class ContestApi {
 
   async teamStandings(): Promise<TeamStandingsResponse> {
     return unwrap(await this.teamStandingsRaw(), TeamStandingsResponseSchema);
+  }
+
+  /**
+   * The boards exactly as the WALL asks for them: `API_ROUTES.projector*`, `view=public`, sent
+   * with whatever session this client holds. `scoped` picks the contest-scoped route over the
+   * un-scoped one with `?contest=`/`?contestId=`.
+   */
+  async projectorTeamStandings(scoped: boolean): Promise<TeamStandingsResponse> {
+    const url = scoped
+      ? API_ROUTES.projectorTeamStandings(this.contestId)
+      : `/api/team-standings?contest=${encodeURIComponent(this.contestId)}&view=public`;
+    return unwrap(await this.req().get(url), TeamStandingsResponseSchema);
+  }
+
+  async projectorStandings(scoped: boolean): Promise<StandingsResponse> {
+    const url = scoped
+      ? `/api/contests/${encodeURIComponent(this.contestId)}/standings?view=public`
+      : API_ROUTES.projectorStandings(this.contestId);
+    return unwrap(await this.req().get(url), StandingsResponseSchema);
   }
 
   // --- teams ---------------------------------------------------------------

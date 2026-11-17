@@ -62,6 +62,22 @@ export const API_ROUTES = {
     contestId === undefined
       ? "/api/standings"
       : `/api/standings?contestId=${encodeURIComponent(contestId)}`,
+  /**
+   * What the WALL polls: the same boards, always with `view=public`.
+   *
+   * The projector runs on an organizer's laptop, so its fetches carry the organizer's cookie, and a
+   * board keyed only on the cookie showed the room the live scores through a freeze. `view=public`
+   * makes the route score for an anonymous viewer whoever is signed in. See
+   * `boardViewerFromRequest`.
+   */
+  projectorStandings: (contestId?: string) =>
+    contestId === undefined
+      ? "/api/standings?view=public"
+      : `/api/standings?contestId=${encodeURIComponent(contestId)}&view=public`,
+  projectorTeamStandings: (contestId?: string) =>
+    contestId === undefined
+      ? "/api/team-standings?view=public"
+      : `/api/contests/${encodeURIComponent(contestId)}/team-standings?view=public`,
   /** Contest-level SSE. One stream carries verdicts, standings and contest state. */
   stream: (contestId: string) =>
     `/api/contests/${encodeURIComponent(contestId)}/stream`,
