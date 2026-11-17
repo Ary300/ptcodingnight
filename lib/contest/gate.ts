@@ -246,6 +246,16 @@ export function planEndNow(contest: ContestGateInput, now: Date): EndNowPlan {
 }
 
 /**
+ * Why a roster or team change is refused while the public board is frozen.
+ *
+ * It used to say "Unfreeze it before changing teams", which on the night tells the organizer to
+ * spoil the reveal to fix a seat. The change is locked, and it can wait until after the reveal.
+ * Exported so the Teams page can say the same thing BEFORE the organizer opens the move form.
+ */
+export const FROZEN_ROSTER_MESSAGE =
+  "Team moves and roster changes are locked while the public board is frozen, because they would change the frozen standings. Make them after the reveal.";
+
+/**
  * Refuse a mutation whose result is part of the public standings payload while its cutoff is
  * frozen or after its final reveal. Score events may continue during a freeze and are replayed
  * temporally; roster/team identity has no temporal history, so changing it would rewrite the
@@ -261,7 +271,7 @@ export function assertCanMutateStandingsInputs(contest: ContestGateInput, now: D
   if (isPublicBoardFrozen(contest, now)) {
     throw new DomainError(
       "CONFLICT",
-      "The public board is frozen. Unfreeze it before changing teams or roster membership.",
+      FROZEN_ROSTER_MESSAGE,
     );
   }
 }

@@ -13,6 +13,7 @@ import {
   effectiveUnlockAt,
   isPublicBoardFrozen,
   clockShouldEnd,
+  FROZEN_ROSTER_MESSAGE,
   planEndNow,
   isUnlocked,
   assertCanListProblems,
@@ -235,6 +236,16 @@ describe("assertCanMutateStandingsInputs", () => {
     expect(() =>
       assertCanMutateStandingsInputs(contest({ freezeAt: FREEZE }), FREEZE),
     ).toThrow(/public board is frozen/i);
+  });
+
+  it("says the move waits for the reveal, and never tells the organizer to unfreeze", () => {
+    // "Unfreeze it before changing teams" sent an organizer to spoil the reveal to fix a seat.
+    expect(() =>
+      assertCanMutateStandingsInputs(contest({ state: "FROZEN", freezeAt: FREEZE }), ENDS),
+    ).toThrow(FROZEN_ROSTER_MESSAGE);
+    expect(FROZEN_ROSTER_MESSAGE).toMatch(/locked while the public board is frozen/);
+    expect(FROZEN_ROSTER_MESSAGE).toMatch(/after the reveal/);
+    expect(FROZEN_ROSTER_MESSAGE).not.toMatch(/unfreeze/i);
   });
 
   it("refuses mutations while manually frozen and allows them again after unfreeze", () => {
