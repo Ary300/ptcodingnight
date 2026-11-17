@@ -75,15 +75,20 @@ function completion({ isMac, smart }: ShortcutOptions): ShortcutGroup | null {
       { keys: [`${mod} + P`], action: "Parameter info" },
       { keys: [isMac ? "F1" : "Ctrl + Q"], or: [`${mod} + J`], action: "Quick documentation" },
       { keys: [`${alt} + Enter`], action: "Add the missing import" },
+      { keys: [`${alt} + /`], or: [`${alt} + Shift + /`], action: "Complete the word from the file" },
     ],
   };
 }
 
 function navigation({ isMac }: ShortcutOptions): ShortcutGroup {
+  const mod = isMac ? "Cmd" : "Ctrl";
+  const alt = isMac ? "Option" : "Alt";
   return {
     title: "Navigation",
     rows: [
       { keys: [isMac ? "Cmd + L" : "Ctrl + G"], action: "Go to line and column" },
+      { keys: ["F2"], or: [`${mod} + ${alt} + Down`], action: "Next error line from the last run" },
+      { keys: ["Shift + F2"], or: [`${mod} + ${alt} + Up`], action: "Previous error line" },
       { keys: [isMac ? "Ctrl + G" : "Alt + J"], action: "Select the next copy of the word" },
       { keys: [isMac ? "Cmd + Ctrl + G" : "Ctrl + Alt + Shift + J"], action: "Select every copy, then type to rename" },
       { keys: [isMac ? "Ctrl + Shift + G" : "Alt + Shift + J"], action: "Unselect the last copy" },

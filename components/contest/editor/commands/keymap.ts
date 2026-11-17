@@ -37,7 +37,11 @@ export type CommandId =
   | "fontSmaller"
   | "selectNextOccurrence"
   | "selectAllOccurrences"
-  | "unselectOccurrence";
+  | "unselectOccurrence"
+  | "expandWord"
+  | "expandWordBackward"
+  | "nextError"
+  | "previousError";
 
 /** The parts of a KeyboardEvent the keymap reads. */
 export interface Chord {
@@ -94,6 +98,25 @@ function functionKeyCommand(chord: Chord): CommandId | null {
   if (chord.key === "F1" && !chord.shiftKey) return "quickDoc";
   // IntelliJ's Run on Windows and Linux. A Mac needs fn for it, so Mod+' is the other way.
   if (chord.key === "F10" && chord.shiftKey) return "run";
+  if (chord.key === "F2") return chord.shiftKey ? "previousError" : "nextError";
+  return null;
+}
+
+/**
+ * Cyclic Expand Word: Alt+/ (Option+/ on a Mac), with Shift backward. Matched on `code`, because
+ * Option+/ types "÷" on a Mac and so `key` never names the slash.
+ */
+function expandWordCommand(chord: Chord): CommandId | null {
+  if (!chord.altKey || chord.ctrlKey || chord.metaKey) return null;
+  if (chord.code !== "Slash" && !(chord.code === "" && (chord.key === "/" || chord.key === "?"))) return null;
+  return chord.shiftKey ? "expandWordBackward" : "expandWord";
+}
+
+/** Next and previous error without F-keys (Chromebooks, and MacBooks without fn): Mod+Alt+Down/Up. */
+function errorArrowCommand(chord: Chord): CommandId | null {
+  if (!modOnly(chord) || !chord.altKey || chord.shiftKey) return null;
+  if (chord.key === "ArrowDown") return "nextError";
+  if (chord.key === "ArrowUp") return "previousError";
   return null;
 }
 
@@ -146,6 +169,12 @@ export function commandFor(chord: Chord): CommandId | null {
 
   const functionKey = functionKeyCommand(chord);
   if (functionKey !== null) return functionKey;
+
+  const expand = expandWordCommand(chord);
+  if (expand !== null) return expand;
+
+  const errorArrow = errorArrowCommand(chord);
+  if (errorArrow !== null) return errorArrow;
 
   const occurrence = occurrenceCommand(chord, letter);
   if (occurrence !== null) return occurrence;

@@ -20,7 +20,7 @@ import { MatchLayer } from "./commands/MatchLayer";
 import { editorShortcutGroups } from "./commands/shortcuts";
 import { useEditorCommands } from "./commands/useEditorCommands";
 import { CompletionPopup } from "./CompletionPopup";
-import type { DiagnosticsInput } from "./decorations/diagnostics";
+import type { DiagnosticsInput, EditorDiagnostic } from "./decorations/diagnostics";
 import { offsetOfLineColumn, type EditorHandle } from "./decorations/goto";
 import { OverlayContent } from "./decorations/OverlayContent";
 import { useDecorations } from "./decorations/useDecorations";
@@ -301,6 +301,9 @@ export function CodeEditorSurface({
   /* ---- commands: find, go to line, surround, info popups, save, run, font size ---- */
 
   const commandProfile = useMemo(() => profileFor(language), [language]);
+  // The marks are computed below the commands; F2 reads the latest through this ref.
+  const diagnosticsRef = useRef<readonly EditorDiagnostic[]>([]);
+  const currentDiagnostics = useCallback(() => diagnosticsRef.current, []);
   // The key hook is created after the commands (it needs their hooks), so a command's edit reaches
   // its `applyKeyEdit` through this ref: Surround With's Tab stops then start a template session.
   const applyKeyEditRef = useRef<((element: HTMLTextAreaElement, edit: Edit) => void) | null>(null);
@@ -325,6 +328,7 @@ export function CodeEditorSurface({
     onSaveShortcut,
     onRunShortcut,
     applyEdit: applyCommandEdit,
+    diagnostics: currentDiagnostics,
   });
   // Every layer that draws glyphs takes the same size, or the overlay slides off the caret.
   const textStyle = useMemo(
@@ -354,6 +358,9 @@ export function CodeEditorSurface({
     diagnostics,
     indentUnit: profile?.indentUnit.length ?? 4,
   });
+  useEffect(() => {
+    diagnosticsRef.current = decorations.diagnostics;
+  }, [decorations.diagnostics]);
 
   useImperativeHandle(
     handleRef,

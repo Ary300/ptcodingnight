@@ -13,7 +13,10 @@ import {
   type RefObject,
 } from "react";
 
+import type { EditorDiagnostic } from "../decorations/diagnostics";
+import { offsetOfLineColumn } from "../decorations/goto";
 import { quickDocAt, signatureAt } from "../smart/docs";
+import { expandWord, expandWordAnchor, type ExpandWordAnchor } from "../smart/expand-word";
 import { importFixFor, type ContextAction } from "../smart/imports";
 import { reindentPaste } from "../smart/paste";
 import { surroundKindsFor, surroundWith, type SurroundKind } from "../smart/surround";
@@ -22,6 +25,7 @@ import type { CompletionItem, Edit, EditState, LanguageProfile } from "../smart/
 import { CommandMenu } from "./CommandMenu";
 import { applyInEditor, belowCaret, revealOffset, selectInEditor } from "./editor-dom";
 import { caretKey, clampFontSize, readCaret, readFontSize, writeCaret, writeFontSize } from "./editor-memory";
+import { nextDiagnostic } from "./errors";
 import { offsetOf, type MatchRange } from "./find";
 import { FindBar } from "./FindBar";
 import { GoToLineBar } from "./GoToLineBar";
@@ -75,6 +79,17 @@ export interface EditorCommandsOptions {
    * edit is applied natively with no template session.
    */
   readonly applyEdit?: (element: HTMLTextAreaElement, edit: Edit) => void;
+  /** The last run's error lines, mapped onto the code as it is now, for F2 and Shift+F2. */
+  readonly diagnostics?: () => readonly EditorDiagnostic[];
+}
+
+/** A Cyclic Expand Word in progress: the next press continues it only from where it left off. */
+interface ExpandWordRun {
+  readonly anchor: ExpandWordAnchor;
+  readonly press: number;
+  readonly direction: 1 | -1;
+  readonly text: string;
+  readonly caret: number;
 }
 
 export interface EditorCommands {
@@ -135,7 +150,8 @@ function pastesAsIs(element: HTMLTextAreaElement, clipboard: string, edit: Edit)
 }
 
 export function useEditorCommands(options: EditorCommandsOptions): EditorCommands {
-  const { textareaRef, value, language, profile, isMac, syncCaret, onSaveShortcut, onRunShortcut, applyEdit } = options;
+  const { textareaRef, value, language, profile, isMac, syncCaret, onSaveShortcut, onRunShortcut, applyEdit, diagnostics } =
+    options;
   const find = useFind(textareaRef, value, syncCaret);
   const infoId = useId();
 
@@ -149,6 +165,7 @@ export function useEditorCommands(options: EditorCommandsOptions): EditorCommand
   const [session, setSessionState] = useState<OccurrenceSession | null>(null);
   const sessionRef = useRef<OccurrenceSession | null>(null);
   const rawPaste = useRef(false);
+  const expandRun = useRef<ExpandWordRun | null>(null);
 
   const setSession = useCallback((next: OccurrenceSession | null) => {
     sessionRef.current = next;
@@ -272,9 +289,59 @@ export function useEditorCommands(options: EditorCommandsOptions): EditorCommand
     [profile, showInfo],
   );
 
+  /** Cyclic Expand Word: a press right after the last one moves to the next candidate. */
+  const expandWordAt = useCallback(
+    (element: HTMLTextAreaElement, direction: 1 | -1) => {
+      const caret = element.selectionStart;
+      const last = expandRun.current;
+      const continues =
+        last !== null &&
+        last.direction === direction &&
+        last.caret === caret &&
+        last.text === element.value &&
+        element.selectionEnd === caret;
+      const anchor = continues ? last.anchor : expandWordAnchor(element.value, caret);
+      const press = continues ? last.press + 1 : 0;
+      expandRun.current = null;
+      if (anchor === null || element.selectionEnd !== caret) return;
+      const edit = expandWord(element.value, caret, anchor, press, direction);
+      if (edit === null) return;
+      (applyEdit ?? applyInEditor)(element, edit);
+      syncCaret(element);
+      expandRun.current = { anchor, press, direction, text: element.value, caret: element.selectionStart };
+    },
+    [applyEdit, syncCaret],
+  );
+
+  /** F2 and Shift+F2: the caret to the next or previous error line, with its message shown. */
+  const goToError = useCallback(
+    (element: HTMLTextAreaElement, direction: 1 | -1) => {
+      const caretLine = element.value.slice(0, element.selectionStart).split("\n").length;
+      const target = nextDiagnostic(diagnostics?.() ?? [], caretLine, direction);
+      if (target === null) {
+        showInfo(element, { kind: "none", message: "No errors from the last run" });
+        return;
+      }
+      const offset = offsetOfLineColumn(element.value, target.line, target.column);
+      element.setSelectionRange(offset, offset);
+      revealOffset(element, offset);
+      syncCaret(element);
+      showInfo(element, { kind: "doc", title: `Line ${String(target.line)}`, body: target.message });
+    },
+    [diagnostics, showInfo, syncCaret],
+  );
+
   const run = useCallback(
     (id: CommandId, element: HTMLTextAreaElement, activeItem?: CompletionItem): boolean => {
       switch (id) {
+        case "expandWord":
+        case "expandWordBackward":
+          expandWordAt(element, id === "expandWord" ? 1 : -1);
+          return true;
+        case "nextError":
+        case "previousError":
+          goToError(element, id === "nextError" ? 1 : -1);
+          return true;
         case "save":
           onSaveShortcut?.();
           flash("Saved");
@@ -331,7 +398,20 @@ export function useEditorCommands(options: EditorCommandsOptions): EditorCommand
           return false;
       }
     },
-    [endSession, find, flash, fontPx, occurrenceCommand, onRunShortcut, onSaveShortcut, parameterInfo, profile, showInfo],
+    [
+      endSession,
+      expandWordAt,
+      find,
+      flash,
+      fontPx,
+      goToError,
+      occurrenceCommand,
+      onRunShortcut,
+      onSaveShortcut,
+      parameterInfo,
+      profile,
+      showInfo,
+    ],
   );
 
   const interceptKey = useCallback(
