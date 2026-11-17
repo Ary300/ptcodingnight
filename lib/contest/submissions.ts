@@ -9,7 +9,7 @@ import {
 import { prisma } from "@/lib/db";
 import type { z } from "zod";
 
-import type { PublicTestResult, SubmissionView } from "@/lib/schemas/api";
+import type { SubmissionView } from "@/lib/schemas/api";
 import type { RunSamplesResponseSchema } from "@/lib/schemas/api";
 import {
   ComparatorSchema,
@@ -43,7 +43,7 @@ import { assertPracticeOpen } from "@/lib/contest/practice-guest";
 import { normalizeJudgeScore } from "@/lib/contest/score-normalization";
 import { preserveCurrentScoreRevision } from "@/lib/contest/score-revisions";
 import {
-  toPublicTestResult,
+  toRunSamplesResponse,
   toSubmissionView,
   type TestResultRow,
 } from "@/lib/contest/serialize";
@@ -879,44 +879,6 @@ export async function runSamples(
   );
   const result = await runJobAndWait(job, timeoutMs);
 
-  return { results: samplesToPublic(result, job.testCases) };
+  return toRunSamplesResponse(result, job.testCases);
 }
 
-function samplesToPublic(
-  result: JudgeResult,
-  testCases: readonly {
-    testCaseId: string;
-    ordinal: number;
-    isSample: boolean;
-  }[],
-): PublicTestResult[] {
-  // A compile failure runs no tests, and `RunSamplesResponse` carries only rows — so the
-  // compiler's message rides in on one synthetic row rather than vanishing. The text is the
-  // compiler talking about the student's own code, so nothing hidden is disclosed (PRD §7.2).
-  if (result.verdict === "CE") {
-    return [
-      toPublicTestResult({
-        ordinal: 0,
-        isSample: true,
-        verdict: "CE",
-        runtimeMs: null,
-        diffSnippet: result.compileError,
-      }),
-    ];
-  }
-
-  const byId = new Map(testCases.map((t) => [t.testCaseId, t]));
-
-  return result.testResults.map((test) => {
-    const testCase = byId.get(test.testCaseId);
-    return toPublicTestResult({
-      ordinal: testCase?.ordinal ?? 0,
-      // Unknown case: treat it as hidden. Guessing "sample" here would publish a diff for a
-      // case we cannot prove is one.
-      isSample: testCase?.isSample ?? false,
-      verdict: test.verdict,
-      runtimeMs: test.runtimeMs,
-      diffSnippet: test.diffSnippet,
-    });
-  });
-}

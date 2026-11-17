@@ -16,6 +16,8 @@ export interface ResultsSummaryInput {
   readonly error: string | null;
   readonly sampleBusy: boolean;
   readonly sampleResults: readonly PublicTestResult[];
+  /** The compiler's output when the last sample run did not compile. Absent means it compiled. */
+  readonly sampleCompileError?: string | null;
   readonly submitBusy: boolean;
   readonly judging: boolean;
   readonly verdict: Verdict | null;
@@ -26,6 +28,9 @@ export function resultsSummary(input: ResultsSummaryInput): string | null {
   if (input.error !== null) return "Did not finish";
   if (input.action === "samples") {
     if (input.sampleBusy) return "Running samples";
+    if (input.sampleCompileError !== undefined && input.sampleCompileError !== null) {
+      return VERDICT_DISPLAY.CE.label;
+    }
     const total = input.sampleResults.length;
     if (total === 0) return "No samples ran";
     const passed = input.sampleResults.filter((row) => row.verdict === "AC").length;

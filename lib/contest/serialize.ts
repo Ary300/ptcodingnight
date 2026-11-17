@@ -1,7 +1,9 @@
 import {
   PublicTestResultSchema,
+  RunSamplesResponseSchema,
   SubmissionViewSchema,
   type PublicTestResult,
+  type RunSamplesResponse,
   type QueuePosition,
   type SubmissionView,
 } from "@/lib/schemas/api";
@@ -41,6 +43,47 @@ export function toPublicTestResult(row: TestResultRow): PublicTestResult {
     runtimeMs: row.runtimeMs === null ? null : Math.max(0, Math.round(row.runtimeMs)),
     diffSnippet,
   });
+}
+
+/** What a sample run answers: the rows, or the compiler's output when nothing ran. */
+export interface SampleRunResult {
+  readonly verdict: Verdict;
+  readonly compileError: string | null;
+  readonly testResults: readonly {
+    readonly testCaseId: string;
+    readonly verdict: Verdict;
+    readonly runtimeMs: number | null;
+    readonly diffSnippet: string | null;
+  }[];
+}
+
+/**
+ * A sample run as the client sees it. A compile failure runs no tests, so it answers with no
+ * rows and the compiler's output in full, the same text `SubmissionView.compileError` carries.
+ * It used to ride in on a synthetic row with ordinal 0, which the wire schema (ordinals are
+ * 1-based) rejected, so every sample run of code that did not compile was a 400.
+ */
+export function toRunSamplesResponse(
+  result: SampleRunResult,
+  testCases: readonly { readonly testCaseId: string; readonly ordinal: number; readonly isSample: boolean }[],
+): RunSamplesResponse {
+  if (result.verdict === "CE") {
+    return RunSamplesResponseSchema.parse({ results: [], compileError: result.compileError ?? "" });
+  }
+  const byId = new Map(testCases.map((t) => [t.testCaseId, t]));
+  const results = result.testResults.map((test) => {
+    const testCase = byId.get(test.testCaseId);
+    return toPublicTestResult({
+      ordinal: testCase?.ordinal ?? 1,
+      // Unknown case: treat it as hidden. Guessing "sample" here would publish a diff for a
+      // case we cannot prove is one.
+      isSample: testCase?.isSample ?? false,
+      verdict: test.verdict,
+      runtimeMs: test.runtimeMs,
+      diffSnippet: test.diffSnippet,
+    });
+  });
+  return { results, compileError: null };
 }
 
 /** Ordinal order, so the verdict panel does not reshuffle between polls. */

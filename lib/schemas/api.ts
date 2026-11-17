@@ -1164,7 +1164,14 @@ export type SubmissionSource = z.infer<typeof SubmissionSourceSchema>;
 export const RunSamplesRequestSchema = SubmitRequestSchema;
 export const RunSamplesResponseSchema = z.object({
   results: z.array(PublicTestResultSchema),
+  /**
+   * The compiler's output when the code did not compile, and then `results` is empty. It is the
+   * compiler talking about the student's own code, exactly as `SubmissionView.compileError` is,
+   * so nothing hidden is disclosed (PRD §7.2). Absent or null when the code compiled.
+   */
+  compileError: z.string().nullable().optional(),
 });
+export type RunSamplesResponse = z.infer<typeof RunSamplesResponseSchema>;
 
 // ---------------------------------------------------------------------------
 // Standings

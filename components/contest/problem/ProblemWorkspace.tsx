@@ -175,6 +175,8 @@ export function ProblemWorkspace({ slug }: ProblemWorkspaceProps) {
 
   const [lastAction, setLastAction] = useState<"samples" | "judged" | null>(null);
   const [sampleResults, setSampleResults] = useState<readonly PublicTestResult[]>([]);
+  // The compiler's output when the last sample run did not compile; it then has no rows.
+  const [sampleCompileError, setSampleCompileError] = useState<string | null>(null);
   const [sampleBusy, setSampleBusy] = useState(false);
   const [submitBusy, setSubmitBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -259,6 +261,7 @@ export function ProblemWorkspace({ slug }: ProblemWorkspaceProps) {
         sourceCode: source,
       });
       setSampleResults(response.results);
+      setSampleCompileError(response.compileError ?? null);
     } catch (caught: unknown) {
       setActionError(errorMessageOf(caught));
     } finally {
@@ -337,7 +340,7 @@ export function ProblemWorkspace({ slug }: ProblemWorkspaceProps) {
         samples: {
           source: sampleRun?.source ?? null,
           language: sampleRun?.language ?? null,
-          compileError: null,
+          compileError: sampleCompileError,
           results: sampleResults,
         },
         judged: {
@@ -347,7 +350,7 @@ export function ProblemWorkspace({ slug }: ProblemWorkspaceProps) {
           results: submission?.testResults ?? [],
         },
       }),
-    [shownAction, sampleBusy, submitBusy, stream.status, activeLanguage, sampleRun, sampleResults, judgedSource, lastSentCode, submission],
+    [shownAction, sampleBusy, submitBusy, stream.status, activeLanguage, sampleRun, sampleResults, sampleCompileError, judgedSource, lastSentCode, submission],
   );
 
   if (participant.status === "loading" || problem.status === "loading") {
@@ -577,10 +580,10 @@ export function ProblemWorkspace({ slug }: ProblemWorkspaceProps) {
       {shownAction === "samples" && (
         <VerdictPanel
           mode="samples"
-          verdict={null}
+          verdict={!sampleBusy && sampleCompileError !== null ? "CE" : null}
           score={null}
           results={sampleResults}
-          compileError={null}
+          compileError={sampleBusy ? null : sampleCompileError}
           busy={sampleBusy}
           language={activeLanguage}
           source={source}
@@ -682,6 +685,7 @@ export function ProblemWorkspace({ slug }: ProblemWorkspaceProps) {
               error: actionError,
               sampleBusy,
               sampleResults,
+              sampleCompileError,
               submitBusy,
               judging,
               verdict: stream.submission?.verdict ?? null,

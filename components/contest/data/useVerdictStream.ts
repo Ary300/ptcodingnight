@@ -155,7 +155,13 @@ export function useVerdictStream(seed: SubmissionView | null): VerdictStreamStat
             },
           };
         });
-        if (frame.verdict !== null) stop();
+        if (frame.verdict !== null) {
+          stop();
+          // A frame carries the verdict and the rows, never the compiler's output, so a CE settled
+          // by the stream showed "The compiler output is below." with nothing below it until a
+          // reload. One read of the full view brings the output in.
+          if (frame.verdict === "CE") void poll();
+        }
       });
 
       // The stream only announces verdicts that land after it primed itself, so a verdict that
