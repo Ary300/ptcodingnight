@@ -8,7 +8,7 @@ import { useEffect, useId, useRef, useState } from "react";
  *
  * The stacked page keeps its full sentence of help under the editor. Side by side, that sentence
  * took three rows of the pane and the organizers asked for it to go. What it said still matters,
- * Esc-then-Tab above all, because it is how a keyboard user leaves a textarea that keeps Tab for
+ * Esc, Esc, Tab above all, because it is how a keyboard user leaves a textarea that keeps Tab for
  * itself. So it moves to two places: the textarea's `aria-describedby` (owned by the surface,
  * read on focus) and this popover, where it is listed first.
  *
@@ -108,7 +108,8 @@ export function EditorStatusBar({ line, column, shortcuts }: EditorStatusBarProp
             <div key={shortcut.action} className="contents">
               <dt className="whitespace-nowrap">
                 {shortcut.keys.map((key, index) => (
-                  <span key={key}>
+                  // By position: a key can repeat (Esc, Esc, Tab).
+                  <span key={index}>
                     {index > 0 && <span className="text-ink/70">, then </span>}
                     <kbd className="rounded-flat border border-rule-edge bg-ink/[0.04] px-1 font-mono">
                       {key}

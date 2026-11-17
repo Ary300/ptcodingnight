@@ -62,8 +62,9 @@ import { useEditorKeys } from "./useEditorKeys";
  * The resolution is the established one, with one change for IntelliJ users: **Tab indents while
  * typing; Escape twice, then Tab, moves focus.** A single Escape is a reflex in IntelliJ (it
  * dismisses things), and when one Escape armed the exit, the next Tab left the editor instead of
- * indenting. The current mode is announced in a live region and stated visibly under the editor,
- * because an escape hatch nobody knows about is not an escape hatch.
+ * indenting. The current mode is announced in a live region and is the textarea's description,
+ * stated visibly under the editor when stacked and in the shortcuts popover side by side, because
+ * an escape hatch nobody knows about is not an escape hatch.
  *
  * ## IntelliJ's keys, and the completion popup
  *
@@ -678,19 +679,24 @@ export function CodeEditorSurface({
       {/*
         Filling a pane (side by side), the sentence goes and HackerRank's slim status bar takes its
         place: `Ln N, Col M` and a shortcuts button. The sentence screen readers need stays, as the
-        textarea's description, and the popover lists Esc-then-Tab first. See EditorStatusBar.
+        textarea's description, and the popover lists Esc, Esc, Tab first. See EditorStatusBar.
+        The description follows the armed state the way the stacked sentence does, so focusing
+        back into the editor reads the mode it is actually in; the live region below announces
+        the change as it happens.
       */}
       {fill ? (
         <>
           <p id={hintId} className="sr-only">
-            Tab indents. Press Escape, then Tab, to move focus out of the editor. Control or
-            Command plus Enter submits.
+            {tabMovesFocus
+              ? "Tab now moves to the next control."
+              : "Tab indents. Press Escape twice, then Tab, to move focus out of the editor."}{" "}
+            Control or Command plus Enter submits.
           </p>
           <EditorStatusBar
             line={caret.line}
             column={caret.column}
             shortcuts={[
-              { keys: ["Esc", "Tab"], action: "Move focus out of the editor" },
+              { keys: ["Esc", "Esc", "Tab"], action: "Move focus out of the editor" },
               { keys: ["Tab"], action: "Indent" },
               { keys: ["Ctrl / Cmd + Enter"], action: "Submit for judging" },
               ...(profile === null

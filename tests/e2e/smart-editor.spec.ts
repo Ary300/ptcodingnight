@@ -43,6 +43,11 @@ function editor(page: Page): Locator {
   return page.getByRole("textbox", { name: new RegExp(`^Solution for ${title}`) });
 }
 
+/** The editor's polite live region, which says what Tab does now. */
+function announcement(page: Page): Locator {
+  return page.locator('[aria-live="polite"]', { hasText: /^Tab will / });
+}
+
 function popup(page: Page): Locator {
   return page.getByRole("listbox", { name: "Suggestions" });
 }
@@ -244,9 +249,16 @@ test.describe("Java, the IntelliJ reflexes that used to misfire", () => {
     await expect(textarea).toBeFocused();
     await expect(textarea).toHaveValue("    ");
 
+    await expect(announcement(page)).toHaveText("Tab will insert an indent.");
+
     await page.keyboard.press("Escape");
     await page.keyboard.press("Escape");
-    await expect(page.getByTestId("tab-leaves-editor")).toHaveText("Tab now moves to the next control.");
+    // "Says so" in words a screen reader gets in either layout: the live region announces the
+    // change, and the textarea's description states the mode. Stacked, the description is the
+    // visible sentence under the editor; side by side the sentence is gone (the shortcuts
+    // popover replaced it), so it is only the description, and that is all this can require.
+    await expect(announcement(page)).toHaveText("Tab will now move focus out of the editor.");
+    await expect(textarea).toHaveAccessibleDescription(/^Tab now moves to the next control\./);
     await page.keyboard.press("Tab");
     await expect(textarea).not.toBeFocused();
   });
@@ -260,6 +272,9 @@ test.describe("Java, the IntelliJ reflexes that used to misfire", () => {
   });
 
   test("the hint under the editor reads as plain sentences", async ({ page }) => {
+    // The visible sentence is the STACKED page's; side by side, the shortcuts popover replaced
+    // it. Desktop Chrome's 1280px window opens side by side, so choose stacked as a student would.
+    await page.addInitScript(() => window.localStorage.setItem("ptcn.problem-layout.v1", "stacked"));
     await openEmptyEditor(page, "Java 21");
     const hint = page.locator("p", { hasText: "Tab indents." });
     const text = await hint.evaluate((element) => (element as HTMLElement).innerText);
