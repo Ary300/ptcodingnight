@@ -46,6 +46,7 @@
 
 import { hasOpenAngle, opensAngle } from "./angle";
 import { toggleBlockComment } from "./block-comment";
+import { combineEdit, importForTypedName } from "./imports";
 import {
   deleteWordBackward,
   deleteWordForward,
@@ -388,7 +389,24 @@ function deleteLines(range: Range): Edit {
 /* Typing a character                                                                           */
 /* ------------------------------------------------------------------------------------------ */
 
+/**
+ * A typed character, plus the import IntelliJ's unambiguous auto-import (and CLion's) would add
+ * for a name typed in full: `Arrays.` in Java, `std::sort(` or `std::vector<` in C++. Accepting
+ * the name from completion already added it (completion.ts); typing it straight through did not,
+ * so the file failed to compile without `import java.util.*`. The import and the character are
+ * ONE replacement, so one undo takes both back.
+ */
 function handleTyped(range: Range, ch: string, profile: LanguageProfile): Edit | null {
+  const edit = typedEdit(range, ch, profile);
+  if (range.start !== range.end || regionAt(range.text, range.start, profile) !== "code") return edit;
+  const change = importForTypedName(range.text, range.start, ch, profile);
+  if (change === null) return edit;
+  const caret = range.start;
+  const base: Edit = edit ?? { from: caret, to: caret, insert: ch, selectionStart: caret + 1, selectionEnd: caret + 1 };
+  return combineEdit(range.text, base, change);
+}
+
+function typedEdit(range: Range, ch: string, profile: LanguageProfile): Edit | null {
   if (range.start !== range.end) return wrapSelection(range, ch, profile);
 
   const { text, start: caret } = range;
