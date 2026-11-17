@@ -674,3 +674,19 @@ reasoning behind it (`seed-practice.ts`) still holds. Reaching it again needs on
 
 Until one of those happens, a student with no slip has no way in, and that is the state the organizer
 chose.
+
+## T18 — The editor re-renders every row of a long file on each key
+
+Measured on the smart editor with a 3,000-line Java file (about 100KB) on a production build, with
+4x CPU throttling standing in for a school Chromebook: plain typing near the top had a median of
+168ms per key and a worst case of 672ms, Enter 288ms, and the popup 292ms after the key. On an
+unthrottled Mac the same file typed at 24 to 40ms. Plain typing was just as slow before the smart
+editor existed, because the highlight overlay and the line gutter render one element per line and
+both re-render on every keystroke.
+
+What is fixed: the completion lookup no longer tokenizes the whole file a second time per key; it
+reuses the overlay's tokens (`tokenizeCached` in `components/contest/editor/highlight.ts`).
+
+What is not: virtualising the overlay and gutter to the rows on screen, and making the `}` and Enter
+scans incremental. Contest solutions are a few hundred lines at most, where none of this is felt, so
+it waits until a measured contest file is slow.
