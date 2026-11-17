@@ -41,6 +41,19 @@ test("the API answers 'nothing running' as an empty 200, not a 404", async ({ re
   expect(await response.json()).toEqual({ success: true, data: null, error: null });
 });
 
+test("the individual board's 'nothing running' 404 is a sentence, not a URL template", async ({
+  request,
+}) => {
+  const response = await request.get("/api/standings");
+  expect(response.status()).toBe(404);
+  const body = (await response.json()) as { error: { message: string } };
+  expect(body.error.message).toBe(
+    "No contest is running right now. Open the projector from a contest to show its board.",
+  );
+  expect(body.error.message).not.toContain("<id>");
+  expect(body.error.message).not.toContain("not found");
+});
+
 test("the wall says no contest is running, and how to show one", async ({ page }) => {
   const failures: string[] = [];
   page.on("response", (response) => {
