@@ -1,3 +1,4 @@
+import { CONTEST_OVER_MESSAGE } from "@/lib/contest/gate";
 import type { PublicTestResult } from "@/lib/schemas/api";
 import type { Verdict } from "@/lib/schemas/judge";
 
@@ -21,11 +22,22 @@ export interface ResultsSummaryInput {
   readonly submitBusy: boolean;
   readonly judging: boolean;
   readonly verdict: Verdict | null;
+  /** The contest window has closed, so a refused press was refused for that reason. */
+  readonly windowClosed?: boolean;
 }
+
+/** The header when a press was refused because the contest window has closed. */
+export const SUBMISSIONS_CLOSED_SUMMARY = "Submissions are closed";
 
 /** `null` before anything has run: the header then reads "Results" and nothing else. */
 export function resultsSummary(input: ResultsSummaryInput): string | null {
-  if (input.error !== null) return "Did not finish";
+  if (input.error !== null) {
+    // A late press is not the student's code failing, so it does not read "Did not finish".
+    if (input.windowClosed === true || input.error === CONTEST_OVER_MESSAGE) {
+      return SUBMISSIONS_CLOSED_SUMMARY;
+    }
+    return "Did not finish";
+  }
   if (input.action === "samples") {
     if (input.sampleBusy) return "Running samples";
     if (input.sampleCompileError !== undefined && input.sampleCompileError !== null) {
