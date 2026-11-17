@@ -25,7 +25,8 @@ permutation of 0..99):
     16  seed 702   n = 10000   already sorted
     17  seed 1005  n = 10000   only 0 and 99
 
-Every value is at most 99 and n is at most 10,000, so nothing comes near the 32-bit range.
+Every value is at most 99 and n is at most 10,000, so nothing comes near the
+32-bit range.
 """
 
 import random
