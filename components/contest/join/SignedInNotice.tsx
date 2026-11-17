@@ -1,73 +1,50 @@
-"use client";
-
 import Link from "next/link";
-import { useState } from "react";
 
-import { Button } from "@/components/ui";
+import type { Door } from "@/lib/contest/door";
 
-import { forgetDrafts } from "../data/draft-storage";
-import { clearParticipant } from "../data/participant";
+import { ContinueAsCard } from "./ContinueAsCard";
 
 export interface SignedInNoticeProps {
-  displayName: string;
-  /** Null when the contest row could not be read; the link still goes to the contest. */
-  contestName: string | null;
+  /** Only the two competitor doors have anything to say above the form. */
+  readonly door: Extract<Door, { kind: "seat" } | { kind: "practice" }>;
 }
 
 /**
  * The top of `/join` for somebody who is already signed in.
  *
- * It used to show the empty code form and nothing else, so a student who came back to this page
- * could not tell whether they were in, and typing a second code was the only thing on offer. Now
- * it says who is signed in, links to their contest, and offers to sign out, which is what a
- * student at a shared laptop needs before typing their own code.
+ * A student holding a seat gets the same card the home page shows: their mark, "Continue as Jo",
+ * and "Not you? Sign out", which is what a student at a shared laptop needs before typing their
+ * own code. The code form stays below it for somebody else's slip.
  *
- * Signing out is the same three steps the competitor menu takes: end the session on the server,
- * forget this tab's identity, forget the drafts. Then the page reloads, signed out, with the form
- * ready.
+ * A practice guest is not recognised the same way, because a guest is not who they will be on the
+ * night. They came here to type a code, so the form is the page and this is one quiet line that
+ * says which guest they are, with a way back to their problems. Typing a code signs the browser in
+ * as the seat and leaves the guest behind.
  */
-export function SignedInNotice({ displayName, contestName }: SignedInNoticeProps) {
-  const [busy, setBusy] = useState(false);
-
-  const signOut = (): void => {
-    setBusy(true);
-    void (async () => {
-      try {
-        await fetch("/api/auth/session", { method: "DELETE" });
-      } catch {
-        // Best effort, as in the competitor menu: the reload below shows whether it worked.
-      } finally {
-        clearParticipant();
-        forgetDrafts();
-        window.location.assign("/join");
-      }
-    })();
-  };
-
-  return (
-    <section
-      aria-label="Signed in"
-      className="mb-6 rounded-panel border border-rule-edge bg-paper p-4"
-    >
-      <p style={{ fontSize: "var(--text-sm)" }}>
-        You are signed in as <strong>{displayName}</strong>
-        {contestName === null ? "." : <> for {contestName}.</>}
-      </p>
-      <div className="mt-3 flex flex-wrap items-center gap-3">
+export function SignedInNotice({ door }: SignedInNoticeProps) {
+  if (door.kind === "practice") {
+    return (
+      <p className="mb-6 text-ink/70" style={{ fontSize: "var(--text-xs)" }}>
+        You are practicing as {door.displayName}.{" "}
         <Link
           href="/contest"
-          className="rounded-chip bg-panther px-3 py-1.5 font-semibold text-paper hover:bg-panther-deep"
-          style={{ fontSize: "var(--text-xs)" }}
+          className="font-semibold text-ink underline underline-offset-2 hover:text-panther"
         >
-          Open the contest
+          Back to practice
         </Link>
-        <Button type="button" variant="quiet" size="sm" disabled={busy} onClick={signOut}>
-          Sign out
-        </Button>
-      </div>
-      <p className="mt-2 text-ink/70" style={{ fontSize: "var(--text-xs)" }}>
-        Sign out first if this is not you, then enter your own code below.
       </p>
-    </section>
+    );
+  }
+
+  return (
+    <div className="mb-6">
+      <ContinueAsCard
+        displayName={door.displayName}
+        firstName={door.firstName}
+        participantId={door.participantId}
+        contestName={door.contestName}
+        signedOutHref="/join"
+      />
+    </div>
   );
 }

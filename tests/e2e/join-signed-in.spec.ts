@@ -48,10 +48,11 @@ test("a signed-in student sees who, a link to their contest, and can sign out", 
 
   const notice = page.getByRole("region", { name: "Signed in" });
   await expect(notice).toBeVisible({ timeout: 30_000 });
-  expect(await notice.innerText()).toContain(
-    "You are signed in as Jo Notice for E2E Join Notice Night.",
-  );
-  await expect(notice.getByRole("link", { name: "Open the contest" })).toHaveAttribute(
+  const text = (await notice.innerText()).replace(/\s+/g, " ");
+  expect(text).toContain("Jo Notice");
+  expect(text).toContain("E2E Join Notice Night");
+  expect(text).toContain("Not you? Sign out");
+  await expect(notice.getByRole("link", { name: "Continue as Jo" })).toHaveAttribute(
     "href",
     "/contest",
   );

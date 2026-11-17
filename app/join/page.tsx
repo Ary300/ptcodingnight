@@ -5,8 +5,7 @@ import { BrandPanel } from "@/components/contest/join/BrandPanel";
 import { JoinCodeForm } from "@/components/contest/join/JoinCodeForm";
 import { PracticeStartButton } from "@/components/contest/join/PracticeStartButton";
 import { SignedInNotice } from "@/components/contest/join/SignedInNotice";
-import { contestNameFor } from "@/lib/contest/contests";
-import { viewerFromCookies } from "@/lib/contest/viewer";
+import { doorFromCookies } from "@/lib/contest/door-viewer";
 
 export const metadata: Metadata = {
   title: "Join with a code | Coding Night",
@@ -27,11 +26,8 @@ export const metadata: Metadata = {
  */
 export default async function JoinPage() {
   // A student who is already in a contest is told so above the form, with a way in and a way out.
-  const viewer = await viewerFromCookies();
-  const signedIn =
-    viewer.kind === "competitor"
-      ? { displayName: viewer.displayName, contestName: await contestNameFor(viewer.contestId) }
-      : null;
+  // A practice guest gets one quiet line instead, and the form stays the page.
+  const door = await doorFromCookies();
 
   /*
     Arrival motion via a class on the page root, matching the two sibling doors exactly: this
@@ -59,12 +55,7 @@ export default async function JoinPage() {
       */}
       <main className="motion-swap-in flex min-w-0 items-center justify-center px-4 py-10">
         <div className="w-full min-w-0 max-w-md">
-          {signedIn !== null && (
-            <SignedInNotice
-              displayName={signedIn.displayName}
-              contestName={signedIn.contestName}
-            />
-          )}
+          {(door.kind === "seat" || door.kind === "practice") && <SignedInNotice door={door} />}
           {/* Practice above the code form, out of it, by the organizers' call. */}
           <div className="flex flex-wrap items-center justify-between gap-3">
             <Link
@@ -74,7 +65,10 @@ export default async function JoinPage() {
             >
               Back to the home page
             </Link>
-            <PracticeStartButton variant="bar" />
+            {/* Never to a seat: starting practice would replace the night's session. */}
+            {door.kind !== "seat" && (
+              <PracticeStartButton variant="bar" resume={door.kind === "practice"} />
+            )}
           </div>
 
           <h1 className="mt-4 font-display font-bold" style={{ fontSize: "var(--text-xl)" }}>
