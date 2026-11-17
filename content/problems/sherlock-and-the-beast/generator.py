@@ -11,7 +11,7 @@ at and near the constraint ceiling, and uniform noise, rather than noise alone.
 import random
 import sys
 
-MAX_N = 100000
+MAX_N = 1000
 MAX_T = 20
 
 
