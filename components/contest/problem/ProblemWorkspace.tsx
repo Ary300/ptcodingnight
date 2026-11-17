@@ -13,6 +13,8 @@ import { useParticipant } from "../data/participant";
 import { useResource } from "../data/useResource";
 import { useVerdictStream } from "../data/useVerdictStream";
 import { CodeEditor } from "../editor/CodeEditor";
+import { runDiagnostics } from "../editor/decorations/run-diagnostics";
+import type { EditorHandle } from "../editor/decorations/goto";
 import { LanguagePicker } from "../editor/LanguagePicker";
 import { UploadCode } from "../editor/UploadCode";
 import { LANGUAGE_TEMPLATE } from "../editor/types";
@@ -177,6 +179,13 @@ export function ProblemWorkspace({ slug }: ProblemWorkspaceProps) {
   const [submitBusy, setSubmitBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [seed, setSeed] = useState<SubmissionView | null>(null);
+  // The code each kind of run was sent with, so its error lines can follow later edits.
+  const [sampleRun, setSampleRun] = useState<{ source: string; language: Language } | null>(null);
+  const [judgedSource, setJudgedSource] = useState<string | null>(null);
+  const editorHandle = useRef<EditorHandle | null>(null);
+  const goToLine = useCallback((line: number, column: number | null) => {
+    editorHandle.current?.goTo(line, column);
+  }, []);
 
   // The student's choice holds on every width; it only takes effect where two panes fit.
   const layoutChoice = useSyncExternalStore(
@@ -242,6 +251,7 @@ export function ProblemWorkspace({ slug }: ProblemWorkspaceProps) {
     setActionError(null);
     setLastAction("samples");
     setResultsOpen(true);
+    setSampleRun({ source, language: activeLanguage });
     try {
       const response = await contestApi.runSamples({
         contestProblemId: detail.contestProblemId,
@@ -282,6 +292,7 @@ export function ProblemWorkspace({ slug }: ProblemWorkspaceProps) {
       // The contract has no `sourceCode` on `SubmissionView`, so "my submissions" cannot
       // show the code without this. See submissions/source-cache.ts.
       rememberSource(created.submissionId, source);
+      setJudgedSource(source);
       setSeed(created);
     } catch (caught: unknown) {
       setActionError(errorMessageOf(caught));
@@ -290,6 +301,30 @@ export function ProblemWorkspace({ slug }: ProblemWorkspaceProps) {
       setSubmitBusy(false);
     }
   }, [activeLanguage, detail, source, verdictPending]);
+
+  // The error lines of the run on screen, for the editor's gutter and underlines.
+  const submission = stream.submission;
+  const diagnostics = useMemo(
+    () =>
+      runDiagnostics({
+        shown: shownAction,
+        busy: shownAction === "samples" ? sampleBusy : submitBusy || stream.status === "waiting",
+        editorLanguage: activeLanguage,
+        samples: {
+          source: sampleRun?.source ?? null,
+          language: sampleRun?.language ?? null,
+          compileError: null,
+          results: sampleResults,
+        },
+        judged: {
+          source: judgedSource ?? lastSentCode ?? null,
+          language: submission?.language ?? null,
+          compileError: submission?.compileError ?? null,
+          results: submission?.testResults ?? [],
+        },
+      }),
+    [shownAction, sampleBusy, submitBusy, stream.status, activeLanguage, sampleRun, sampleResults, judgedSource, lastSentCode, submission],
+  );
 
   if (participant.status === "loading" || problem.status === "loading") {
     return (
@@ -429,6 +464,8 @@ export function ProblemWorkspace({ slug }: ProblemWorkspaceProps) {
       onSubmitShortcut={() => void submit()}
       label={`Solution for ${detail.title}`}
       fill={sideBySide}
+      diagnostics={diagnostics}
+      handleRef={editorHandle}
       toolbarStart={
         <LanguagePicker
           value={activeLanguage}
@@ -519,6 +556,7 @@ export function ProblemWorkspace({ slug }: ProblemWorkspaceProps) {
           language={activeLanguage}
           source={source}
           quiet={sideBySide}
+          onGoToLine={goToLine}
         />
       )}
 
@@ -536,6 +574,7 @@ export function ProblemWorkspace({ slug }: ProblemWorkspaceProps) {
           submittedAt={stream.submission?.submittedAt ?? null}
           language={stream.submission?.language ?? null}
           source={source}
+          onGoToLine={goToLine}
         />
       )}
     </>
