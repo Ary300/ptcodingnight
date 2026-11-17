@@ -64,6 +64,36 @@ export function formatEventStamp(value: string | Date): string {
   return `${parts.date} ${parts.time} ET`;
 }
 
+/**
+ * "2026-11-18_19-41-09" in the event zone, for a FILENAME. Sortable, 24-hour, and free of the
+ * colons Windows refuses. Exports used to stamp the UTC instant, so a file saved at 7:41 PM in the
+ * room read 00-41 the next day.
+ */
+export function eventFileStamp(value: string | Date): string {
+  const date = parse(value);
+  if (date === null) return "undated";
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: EVENT_TIME_ZONE,
+    hourCycle: "h23",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).formatToParts(date);
+  const get = (type: string): string => parts.find((part) => part.type === type)?.value ?? "00";
+  return `${get("year")}-${get("month")}-${get("day")}_${get("hour")}-${get("minute")}-${get("second")}`;
+}
+
+/** "2026-11-18 7:41:09 PM ET": a stamp with seconds, for an export column where order matters. */
+export function formatEventStampSeconds(value: string | Date): string {
+  const date = parse(value);
+  if (date === null) return typeof value === "string" ? value : "";
+  const day = date.toLocaleDateString("en-CA", { timeZone: EVENT_TIME_ZONE });
+  return `${day} ${formatEventTimeSeconds(date)} ET`;
+}
+
 /*
   The other direction: an organizer types "7:00 PM" and means 7:00 PM in Indianapolis.
 

@@ -60,9 +60,15 @@ describe("standingsToCsv", () => {
 });
 
 describe("exportFilename", () => {
-  it("slugs the contest name and makes the timestamp filename-safe", () => {
+  it("slugs the contest name and stamps the file in Indiana time", () => {
     expect(exportFilename("Coding Night 2026!", "2026-07-29T20:00:00.000Z")).toBe(
-      "coding-night-2026-standings-2026-07-29T20-00-00.000Z.csv",
+      "coding-night-2026-standings-2026-07-29_16-00-00.csv",
+    );
+  });
+
+  it("dates an evening export the evening it was made, not the next UTC day", () => {
+    expect(exportFilename("Coding Night", "2026-11-19T00:41:09.000Z")).toBe(
+      "coding-night-standings-2026-11-18_19-41-09.csv",
     );
   });
 

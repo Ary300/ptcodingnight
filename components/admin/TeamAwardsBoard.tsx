@@ -95,7 +95,7 @@ export function TeamAwardsBoard({
             size="sm"
             onClick={() => {
               downloadBlob(
-                teamSafeFilename(contestName, "csv"),
+                teamSafeFilename(contestName, "csv", new Date()),
                 gridToCsv(teamStandingsToGrid(standings)),
                 "text/csv;charset=utf-8",
               );
@@ -109,7 +109,7 @@ export function TeamAwardsBoard({
             size="sm"
             onClick={() => {
               downloadBlob(
-                teamSafeFilename(contestName, "xlsx"),
+                teamSafeFilename(contestName, "xlsx", new Date()),
                 gridToXlsx(teamStandingsToGrid(standings)),
                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
               );
