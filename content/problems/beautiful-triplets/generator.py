@@ -32,7 +32,7 @@ MAX_D = 10**6
 
 
 def choose_n(seed: int) -> int:
-    """Grow with the seed: seed 1 -> 1 element, seed >= 32 -> the ceiling."""
+    """Grow with the seed: seed 1 -> 1 element, seed >= 15 -> the ceiling."""
     return max(1, min(MAX_N, seed * seed))
 
 
