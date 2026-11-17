@@ -1,10 +1,9 @@
 import Image from "next/image";
 import Link from "next/link";
 
-import {
-  PracticeStartButton,
-} from "@/components/contest/join/PracticeStartButton";
-import { viewerFromCookies } from "@/lib/contest/viewer";
+import { ContinueAsCard } from "@/components/contest/join/ContinueAsCard";
+import { PracticeStartButton } from "@/components/contest/join/PracticeStartButton";
+import { doorFromCookies } from "@/lib/contest/door-viewer";
 
 /** The public front door for students, families, and organizers. */
 
@@ -258,10 +257,25 @@ export default async function Home() {
     One read of the session cookie decides every call to action on the page at once. The
     marketing copy stays for everyone; what changes is where the buttons point.
   */
-  const viewer = await viewerFromCookies();
-  const destination = viewer.kind === "admin" ? "/admin" : "/contest";
-  const enterLabel = viewer.kind === "admin" ? "Open the organizer console" : "Open the contest";
-  const signedIn = viewer.kind !== "anonymous";
+  /*
+    Each button keeps its name and its place, and takes a returning person straight back in. A
+    practice guest keeps the stranger's page: Practice returns them to their own problems, and the
+    code on the slip is still their door to the night. A student holding a seat is recognised by
+    name, with a way out, and is never offered Practice, which would replace their seat's session.
+  */
+  const door = await doorFromCookies();
+  const primary =
+    door.kind === "admin"
+      ? { href: "/admin", label: "Open the organizer console" }
+      : door.kind === "seat"
+        ? { href: "/contest", label: `Continue as ${door.firstName}` }
+        : { href: "/join", label: "Enter your join code" };
+  const bandLine =
+    door.kind === "admin"
+      ? "Open the organizer console to manage the contest."
+      : door.kind === "seat"
+        ? "Continue to see your team and assigned problems."
+        : "Enter it to sign in and join your team.";
 
   return (
     <div className="flex min-h-full flex-col bg-ink/[0.035]">
@@ -320,28 +334,20 @@ export default async function Home() {
             </Link>
             {/* Practice sits up here, out of the hero, by the organizers' call: it needs no code
                 and is for before the night, so it should not compete with the join code. */}
-            {!signedIn && <PracticeStartButton variant="bar" />}
-            {signedIn ? (
-              <Link
-                href={destination}
-                className="rounded-chip bg-panther px-3 py-1.5 font-semibold text-paper hover:bg-panther-deep"
-                style={{ fontSize: "var(--text-xs)" }}
-              >
-                {enterLabel}
-              </Link>
-            ) : (
-              /*
-                The same label as the hero and the closing band, so the action keeps one name
-                from the first thing a student reads to the heading on `/join`.
-              */
-              <Link
-                href="/join"
-                className="rounded-chip bg-panther px-3 py-1.5 font-semibold whitespace-nowrap text-paper hover:bg-panther-deep"
-                style={{ fontSize: "var(--text-xs)" }}
-              >
-                Enter your join code
-              </Link>
+            {(door.kind === "anonymous" || door.kind === "practice") && (
+              <PracticeStartButton variant="bar" resume={door.kind === "practice"} />
             )}
+            {/*
+              The same label as the hero and the closing band, so the action keeps one name
+              from the first thing a student reads to the heading on `/join`.
+            */}
+            <Link
+              href={primary.href}
+              className="rounded-chip bg-panther px-3 py-1.5 font-semibold whitespace-nowrap text-paper hover:bg-panther-deep"
+              style={{ fontSize: "var(--text-xs)" }}
+            >
+              {primary.label}
+            </Link>
           </nav>
         </div>
       </header>
@@ -431,13 +437,25 @@ export default async function Home() {
 
             {/* Three actions, one obviously primary. Practice is a secondary chip: it needs no code. */}
             <div className="mt-8 flex flex-wrap items-center gap-3">
-              <Link
-                href={signedIn ? destination : "/join"}
-                className="rounded-chip bg-panther px-5 py-2.5 font-semibold text-paper hover:bg-panther-deep"
-                style={{ fontSize: "var(--text-sm)" }}
-              >
-                {signedIn ? enterLabel : "Enter your join code"}
-              </Link>
+              {door.kind === "seat" ? (
+                <div className="w-full max-w-sm">
+                  <ContinueAsCard
+                    displayName={door.displayName}
+                    firstName={door.firstName}
+                    participantId={door.participantId}
+                    contestName={door.contestName}
+                    signedOutHref="/"
+                  />
+                </div>
+              ) : (
+                <Link
+                  href={primary.href}
+                  className="rounded-chip bg-panther px-5 py-2.5 font-semibold text-paper hover:bg-panther-deep"
+                  style={{ fontSize: "var(--text-sm)" }}
+                >
+                  {primary.label}
+                </Link>
+              )}
               <Link
                 href="/projector"
                 className="rounded-chip border border-rule-edge px-5 py-2.5 font-semibold hover:border-rule-firm hover:bg-ink/[0.03]"
@@ -629,17 +647,15 @@ export default async function Home() {
               Have your join code?
             </h2>
             <p className="mt-1.5 text-paper/80" style={{ fontSize: "var(--text-sm)" }}>
-              {signedIn
-                ? "Open the contest to see your team and assigned problems."
-                : "Enter it to sign in and join your team."}
+              {bandLine}
             </p>
           </div>
           <Link
-            href={signedIn ? destination : "/join"}
+            href={primary.href}
             className="rounded-chip bg-panther px-5 py-2.5 font-semibold text-paper hover:bg-panther-deep"
             style={{ fontSize: "var(--text-sm)" }}
           >
-            {signedIn ? enterLabel : "Enter your join code"}
+            {primary.label}
           </Link>
         </div>
       </section>

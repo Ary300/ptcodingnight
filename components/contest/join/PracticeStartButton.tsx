@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 
 /**
@@ -31,6 +32,17 @@ const STYLES = {
 
 interface PracticeStartButtonProps {
   readonly variant: keyof typeof STYLES;
+  /**
+   * The browser already holds a practice guest. The button keeps its name and its place and
+   * becomes a plain link back to `/contest`, so a returning guest lands on their own problems
+   * with their progress, and no request is made that could mint a second guest.
+   */
+  readonly resume?: boolean;
+}
+
+function fontSizeFor(variant: keyof typeof STYLES): string {
+  if (variant === "block") return "var(--text-md)";
+  return variant === "bar" ? "var(--text-xs)" : "var(--text-sm)";
 }
 
 /** The top bar has room for one word; everywhere else the button says what it does in full. */
@@ -48,10 +60,22 @@ function serverMessage(body: unknown): string | undefined {
   return typeof message === "string" && message !== "" ? message : undefined;
 }
 
-export function PracticeStartButton({ variant }: PracticeStartButtonProps) {
+export function PracticeStartButton({ variant, resume = false }: PracticeStartButtonProps) {
   const labels = labelsFor(variant);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  if (resume) {
+    return (
+      <Link
+        href="/contest"
+        className={`inline-flex items-center justify-center ${STYLES[variant]}`}
+        style={{ fontSize: fontSizeFor(variant) }}
+      >
+        {labels.idle}
+      </Link>
+    );
+  }
 
   const start = async (): Promise<void> => {
     setBusy(true);
@@ -82,10 +106,7 @@ export function PracticeStartButton({ variant }: PracticeStartButtonProps) {
         disabled={busy}
         onClick={() => void start()}
         className={STYLES[variant]}
-        style={{
-          fontSize:
-            variant === "block" ? "var(--text-md)" : variant === "bar" ? "var(--text-xs)" : "var(--text-sm)",
-        }}
+        style={{ fontSize: fontSizeFor(variant) }}
       >
         <span aria-hidden="true" className="invisible">
           {labels.idle}
