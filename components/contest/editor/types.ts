@@ -24,6 +24,10 @@ export interface CodeEditorProps {
   disabled?: boolean;
   /** Ctrl/Cmd+Enter. Judged submit is a deliberate action, so this confirms nothing. */
   onSubmitShortcut?: () => void;
+  /** Ctrl/Cmd+S. Drafts already save on every keystroke; this marks the code as saved. */
+  onSaveShortcut?: () => void;
+  /** Ctrl/Cmd+' (and Ctrl+R on a Mac, Shift+F10 elsewhere): run the samples, never submit. */
+  onRunShortcut?: () => void;
   /** Accessible name for the editing surface. */
   label: string;
 }

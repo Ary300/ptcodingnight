@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useId, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import { Button } from "@/components/ui";
 import type { PublicTestResult, SubmissionView } from "@/lib/schemas/api";
@@ -276,6 +276,29 @@ export function ProblemWorkspace({ slug }: ProblemWorkspaceProps) {
   const submitInFlight = useRef(false);
   const verdictPending = stream.status === "waiting";
 
+  /*
+    Leaving with code that was never submitted or saved asks first.
+
+    Ctrl+W, Cmd+W, Ctrl+Shift+W and Cmd+Q are IntelliJ habits (Extend Selection, close the editor
+    tab) that no page can intercept, and the browser closes the contest tab on them. The draft
+    survives, but the student loses the page mid-thought. So `beforeunload` asks, and only while
+    the editor holds code that differs from the starter, the last submission and the last
+    Ctrl/Cmd+S: a student who submitted or saved can leave without a prompt.
+  */
+  const [keptSource, setKeptSource] = useState<string | null>(null);
+  const unsaved =
+    source !== activeStarter && source !== lastSentCode && source !== keptSource;
+  useEffect(() => {
+    if (!unsaved) return undefined;
+    const onBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      // Older Chrome and Safari still need returnValue set to show the prompt.
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [unsaved]);
+
   const submit = useCallback(async () => {
     if (detail === null || submitInFlight.current || verdictPending) return;
     submitInFlight.current = true;
@@ -293,6 +316,7 @@ export function ProblemWorkspace({ slug }: ProblemWorkspaceProps) {
       // show the code without this. See submissions/source-cache.ts.
       rememberSource(created.submissionId, source);
       setJudgedSource(source);
+      setKeptSource(source);
       setSeed(created);
     } catch (caught: unknown) {
       setActionError(errorMessageOf(caught));
@@ -462,6 +486,11 @@ export function ProblemWorkspace({ slug }: ProblemWorkspaceProps) {
       template={activeStarter}
       disabled={submitBusy}
       onSubmitShortcut={() => void submit()}
+      onSaveShortcut={() => setKeptSource(source)}
+      // The same guard as the Run samples button, so a held shortcut is one run.
+      onRunShortcut={() => {
+        if (!sampleBusy && !submitBusy) void runSamples();
+      }}
       label={`Solution for ${detail.title}`}
       fill={sideBySide}
       diagnostics={diagnostics}

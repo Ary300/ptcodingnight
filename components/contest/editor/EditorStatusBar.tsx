@@ -2,6 +2,8 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 
+import type { ShortcutGroup } from "./commands/shortcuts";
+
 /**
  * The slim strip under the editor when it fills a pane: HackerRank's status bar, `Ln 17, Col 22`
  * on the right and nothing else in view, with the keyboard contract one click away in a popover.
@@ -12,19 +14,20 @@ import { useEffect, useId, useRef, useState } from "react";
  * itself. So it moves to two places: the textarea's `aria-describedby` (owned by the surface,
  * read on focus) and this popover, where it is listed first.
  *
+ * The popover lists every shortcut the editor has, grouped as IntelliJ's keymap reference groups
+ * them (Editing, Completion, Navigation, Find), for the keyboard the student actually has.
+ *
  * The popover is a disclosure, not a dialog: the button says whether it is open, focus stays on
  * the button, and Escape or a click anywhere else closes it.
  */
 
-export interface EditorShortcut {
-  readonly keys: readonly string[];
-  readonly action: string;
-}
-
 export interface EditorStatusBarProps {
   readonly line: number;
   readonly column: number;
-  readonly shortcuts: readonly EditorShortcut[];
+  /** Grouped as Editing, Completion, Navigation and Find; see commands/shortcuts.ts. */
+  readonly groups: readonly ShortcutGroup[];
+  /** A brief status word after a command, such as "Saved". */
+  readonly notice?: string | null;
 }
 
 function KeyboardIcon() {
@@ -45,7 +48,11 @@ function KeyboardIcon() {
   );
 }
 
-export function EditorStatusBar({ line, column, shortcuts }: EditorStatusBarProps) {
+function Key({ label }: { label: string }) {
+  return <kbd className="rounded-flat border border-rule-edge bg-ink/[0.04] px-1 font-mono">{label}</kbd>;
+}
+
+export function EditorStatusBar({ line, column, groups, notice = null }: EditorStatusBarProps) {
   const [open, setOpen] = useState(false);
   const panelId = useId();
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -77,6 +84,9 @@ export function EditorStatusBar({ line, column, shortcuts }: EditorStatusBarProp
       ref={rootRef}
       className="relative flex shrink-0 items-center justify-end gap-3 border-t border-rule-edge bg-ink/[0.03] px-3 py-0.5"
     >
+      <p role="status" data-testid="editor-notice" className="text-ink/70" style={{ fontSize: "var(--text-xs)" }}>
+        {notice ?? ""}
+      </p>
       <button
         ref={buttonRef}
         type="button"
@@ -101,26 +111,43 @@ export function EditorStatusBar({ line, column, shortcuts }: EditorStatusBarProp
         id={panelId}
         aria-label="Keyboard shortcuts"
         hidden={!open}
-        className="motion-swap-in absolute right-2 bottom-full z-30 mb-1 w-[27rem] max-w-[calc(100%-1rem)] rounded-panel border border-rule-edge bg-paper p-3 shadow-lg"
+        // Scrolls when the list is taller than the room above the strip, and is focusable so a
+        // keyboard can scroll it too.
+        tabIndex={open ? 0 : undefined}
+        className="motion-swap-in absolute right-2 bottom-full z-30 mb-1 max-h-[min(36rem,70vh)] w-[30rem] max-w-[calc(100%-1rem)] overflow-y-auto rounded-panel border border-rule-edge bg-paper p-3 shadow-lg"
       >
-        <dl className="grid grid-cols-[auto_minmax(0,1fr)] items-baseline gap-x-4 gap-y-1.5" style={{ fontSize: "var(--text-xs)" }}>
-          {shortcuts.map((shortcut) => (
-            <div key={shortcut.action} className="contents">
-              <dt className="whitespace-nowrap">
-                {shortcut.keys.map((key, index) => (
-                  // By position: a key can repeat (Esc, Esc, Tab).
-                  <span key={index}>
-                    {index > 0 && <span className="text-ink/70">, then </span>}
-                    <kbd className="rounded-flat border border-rule-edge bg-ink/[0.04] px-1 font-mono">
-                      {key}
-                    </kbd>
-                  </span>
-                ))}
-              </dt>
-              <dd className="text-ink/80">{shortcut.action}</dd>
-            </div>
-          ))}
-        </dl>
+        {groups.map((group) => (
+          <div key={group.title} className="mb-2 last:mb-0">
+            <h3 className="mb-1 font-semibold text-ink" style={{ fontSize: "var(--text-xs)" }}>
+              {group.title}
+            </h3>
+            <dl
+              className="grid grid-cols-[auto_minmax(0,1fr)] items-baseline gap-x-4 gap-y-1.5"
+              style={{ fontSize: "var(--text-xs)" }}
+            >
+              {group.rows.map((shortcut) => (
+                <div key={shortcut.action} className="contents">
+                  <dt className="whitespace-nowrap">
+                    {shortcut.keys.map((key, index) => (
+                      // By position: a key can repeat (Esc, Esc, Tab).
+                      <span key={index}>
+                        {index > 0 && <span className="text-ink/70">, then </span>}
+                        <Key label={key} />
+                      </span>
+                    ))}
+                    {(shortcut.or ?? []).map((key) => (
+                      <span key={key}>
+                        <span className="text-ink/70"> or </span>
+                        <Key label={key} />
+                      </span>
+                    ))}
+                  </dt>
+                  <dd className="text-ink/80">{shortcut.action}</dd>
+                </div>
+              ))}
+            </dl>
+          </div>
+        ))}
       </section>
     </div>
   );
