@@ -12,7 +12,7 @@ A single integer: how many ticket numbers $n$ with $a \le n \le b$ satisfy that 
 
 ## Constraints
 
-- $1 \le a \le b \le 1{,}000{,}000$
+- $1 \le a \le b \le 100{,}000$
 - $1 \le k \le 20$
 
 ## Example

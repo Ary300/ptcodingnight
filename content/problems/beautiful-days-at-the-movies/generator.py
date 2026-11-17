@@ -3,12 +3,16 @@
 Usage: python3 generator.py <seed>
 
 Small seeds produce small ranges; large seeds push toward the constraint
-ceiling (b up to 1,000,000).
+ceiling (b up to 100,000), so the plain loop over every ticket number
+stays quick in Python.
+
+Which seed made which test: 12 = 42, 13 = 137, 14 = 999, 15 = 5000,
+16 = 123456. 01-11 are written by hand.
 """
 import random
 import sys
 
-MAX_N = 1_000_000
+MAX_N = 100_000
 MAX_K = 20
 
 
@@ -19,7 +23,7 @@ def ceiling_for(seed: int) -> int:
     if seed < 100:
         return 10_000
     if seed < 1_000:
-        return 200_000
+        return 50_000
     return MAX_N
 
 
