@@ -1,7 +1,7 @@
 {
   "slug": "jim-and-the-orders",
   "title": "Jim and the Orders",
-  "difficulty": "E",
+  "difficulty": "M",
   "timeLimitMs": 2000,
   "memoryLimitMb": 256,
   "allowedLanguages": [
