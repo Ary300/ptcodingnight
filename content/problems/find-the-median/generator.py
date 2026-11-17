@@ -3,8 +3,8 @@
 Usage: python3 generator.py <seed>
 
 Deterministic per seed. Small seeds produce tiny lists; large seeds push n
-toward the constraint ceiling (999, the largest odd n <= 1000). The seed
-also selects the shape of the list so the test set covers degenerate cases
+to the constraint ceiling (1001, the largest allowed n, which is odd). The
+seed also selects the shape of the list so the test set covers degenerate cases
 (single element, all equal, already sorted, reverse sorted, values pinned to
 the constraint bounds, heavy duplication around the middle) and not just
 uniform noise.
@@ -17,16 +17,16 @@ Which seed made which test (tests 01-03 and 05-10 are hand-written):
     04  seed 1    n = 1    single element at the lower value bound
     11  seed 10   n = 99   reverse sorted
     12  seed 25   n = 625  tiny value alphabet, heavy duplication
-    13  seed 47   n = 999  both value bounds present, noise between
-    14  seed 101  n = 999  reverse sorted
-    15  seed 320  n = 999  both value bounds present, noise between
-    16  seed 322  n = 999  uniform noise over the full value range
+    13  seed 47   n = 1001 both value bounds present, noise between
+    14  seed 101  n = 1001 reverse sorted
+    15  seed 320  n = 1001 both value bounds present, noise between
+    16  seed 322  n = 1001 uniform noise over the full value range
 """
 
 import random
 import sys
 
-MAX_N = 999  # largest odd n within 1 <= n <= 1000
+MAX_N = 1001  # largest odd n within 1 <= n <= 1001
 MIN_VALUE = -(10 ** 6)
 MAX_VALUE = 10 ** 6
 
