@@ -100,8 +100,8 @@ describe("CPP profile", () => {
       const body = (a: string): string | undefined =>
         CPP.templates.find((t) => t.abbreviation === a)?.body;
       expect(body("fastio")).toBe("ios::sync_with_stdio(false);\ncin.tie(nullptr);$END$");
-      expect(body("fori")).toBe("for (int i = 0; i < $END$; i++) {\n}");
-      expect(body("forr")).toBe("for (auto &x : $END$) {\n}");
+      expect(body("fori")).toBe("for (int i = 0; i < ${1}; i++) {\n\t$END$\n}");
+      expect(body("forr")).toBe("for (auto &${2:x} : ${1}) {\n\t$END$\n}");
       expect(body("cin")).toBe("cin >> $END$;");
       expect(body("vi")).toBe("vector<int> $END$;");
       expect(body("ll")).toBe("long long $END$;");

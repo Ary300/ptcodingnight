@@ -10,9 +10,10 @@ import { joinContest, placeInDivisionAndSet } from "./helpers/journey";
  * student who needs it finds out during the contest.
  *
  * The editor is the interesting part. Tab has to indent inside it (PRD §9.1) *and* must not
- * become a keyboard trap, so the surface documents Escape-then-Tab as the way out
- * (`CodeEditorSurface.tsx`). Both halves of that bargain are asserted below: Tab inserts an
- * indent, and Escape-then-Tab moves focus on to the buttons.
+ * become a keyboard trap, so the surface documents Escape twice, then Tab, as the way out
+ * (`CodeEditorSurface.tsx`; one Escape is an IntelliJ reflex and must not change what Tab does).
+ * Both halves of that bargain are asserted below: Tab inserts an indent, and Escape twice, then
+ * Tab, moves focus on to the buttons.
  */
 
 const MAX_TABS = 40;
@@ -127,12 +128,13 @@ test.describe("keyboard-only", () => {
     ).toBe("textarea");
     expect(await editor.inputValue()).toContain("    ");
 
-    // ...and Escape then Tab is the documented way out. Without this the editor is a trap.
+    // ...and Escape twice, then Tab, is the documented way out. Without it the editor is a trap.
+    await page.keyboard.press("Escape");
     await page.keyboard.press("Escape");
     await page.keyboard.press("Tab");
     expect(
       (await focused(page)).tag,
-      "Escape then Tab must move focus out of the editor",
+      "Escape twice, then Tab, must move focus out of the editor",
     ).not.toBe("textarea");
 
     // --- submit --------------------------------------------------------------

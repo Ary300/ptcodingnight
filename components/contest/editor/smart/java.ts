@@ -56,11 +56,41 @@ function javaOpensBlock(lineBeforeCaret: string): boolean {
       break;
     }
   }
-  const last = code.trimEnd().slice(-1);
+  const trimmed = code.trimEnd();
+  // A `case 1:` or `default:` label: its statements sit one level in, as IntelliJ formats them.
+  if (SWITCH_LABEL.test(trimmed)) return true;
+  const last = trimmed.slice(-1);
   return last === "{" || last === "(" || last === "[";
 }
 
+const SWITCH_LABEL = /^\s*(?:case\b.*|default\s*):$/;
+
 const MAIN_BODY = "public static void main(String[] args) {\n    $END$\n}";
+const ITERATE = "for (${2:int} ${3:x} : ${1}) {\n\t$END$\n}";
+
+/**
+ * IntelliJ's postfix templates, typed after an expression and a dot: `x.sout` prints x, `n.fori`
+ * counts to n, `list.for` iterates it. $EXPR$ is the expression before the dot.
+ */
+const POSTFIX: readonly LiveTemplate[] = [
+  { abbreviation: "sout", description: "Prints the expression", body: "System.out.println($EXPR$);$END$" },
+  {
+    abbreviation: "soutv",
+    description: "Prints the expression with its name",
+    body: 'System.out.println("$EXPR$ = " + $EXPR$);$END$',
+  },
+  { abbreviation: "fori", description: "Counts up to the expression", body: "for (int i = 0; i < $EXPR$; i++) {\n\t$END$\n}" },
+  { abbreviation: "forr", description: "Counts down from the expression", body: "for (int i = $EXPR$ - 1; i >= 0; i--) {\n\t$END$\n}" },
+  { abbreviation: "for", description: "Iterates over the expression", body: "for (${1:int} ${2:x} : $EXPR$) {\n\t$END$\n}" },
+  { abbreviation: "iter", description: "Iterates over the expression", body: "for (${1:int} ${2:x} : $EXPR$) {\n\t$END$\n}" },
+  { abbreviation: "if", description: "Checks the expression", body: "if ($EXPR$) {\n\t$END$\n}" },
+  { abbreviation: "else", description: "Checks the expression is false", body: "if (!$EXPR$) {\n\t$END$\n}" },
+  { abbreviation: "while", description: "Loops while the expression holds", body: "while ($EXPR$) {\n\t$END$\n}" },
+  { abbreviation: "nn", description: "Checks the expression is not null", body: "if ($EXPR$ != null) {\n\t$END$\n}" },
+  { abbreviation: "null", description: "Checks the expression is null", body: "if ($EXPR$ == null) {\n\t$END$\n}" },
+  { abbreviation: "not", description: "Negates the expression", body: "!$EXPR$$END$" },
+  { abbreviation: "return", description: "Returns the expression", body: "return $EXPR$;$END$" },
+];
 
 const TEMPLATES: readonly LiveTemplate[] = [
   { abbreviation: "sout", description: "Prints a string to System.out", body: "System.out.println($END$);" },
@@ -80,16 +110,14 @@ const TEMPLATES: readonly LiveTemplate[] = [
   {
     abbreviation: "fori",
     description: "Creates an indexed for loop",
-    body: "for (int i = 0; i < $END$; i++) {\n}",
+    body: "for (int i = 0; i < ${1}; i++) {\n\t$END$\n}",
   },
-  { abbreviation: "foreach", description: "Creates a for-each loop", body: "for (int x : $END$) {\n}" },
-  {
-    abbreviation: "iter",
-    description: "Iterates over an array or a collection",
-    body: "for (int x : $END$) {\n}",
-  },
-  { abbreviation: "ifn", description: "Inserts an if null statement", body: "if ($END$ == null) {\n}" },
-  { abbreviation: "inn", description: "Inserts an if not null statement", body: "if ($END$ != null) {\n}" },
+  // The iterable first, then the element type and name, which is IntelliJ's order. The editor
+  // cannot infer the element type, so it is a field holding `int` that typing `String` replaces.
+  { abbreviation: "foreach", description: "Creates a for-each loop", body: ITERATE },
+  { abbreviation: "iter", description: "Iterates over an array or a collection", body: ITERATE },
+  { abbreviation: "ifn", description: "Inserts an if null statement", body: "if (${1} == null) {\n\t$END$\n}" },
+  { abbreviation: "inn", description: "Inserts an if not null statement", body: "if (${1} != null) {\n\t$END$\n}" },
   {
     abbreviation: "scanner",
     description: "Creates a Scanner that reads standard input",
@@ -311,6 +339,7 @@ export const JAVA: LanguageProfile = {
   opensBlock: javaOpensBlock,
   dedentOnType: ["}"],
   templates: TEMPLATES,
+  postfixTemplates: POSTFIX,
   keywords: KEYWORDS,
   globals: GLOBALS,
   members: MEMBERS,

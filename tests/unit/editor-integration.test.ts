@@ -10,7 +10,7 @@ import {
 import { tokenize } from "@/components/contest/editor/highlight";
 import { applyNativeEdit } from "@/components/contest/editor/native-edit";
 import { completionContext, profileFor } from "@/components/contest/editor/smart";
-import { CPP } from "@/components/contest/editor/smart/cpp";
+import { C, CPP } from "@/components/contest/editor/smart/cpp";
 import { JAVA } from "@/components/contest/editor/smart/java";
 import { PYTHON } from "@/components/contest/editor/smart/python";
 import type { CompletionContext, Edit } from "@/components/contest/editor/smart/types";
@@ -33,10 +33,12 @@ describe("profileFor", () => {
     expect(profileFor("PYTHON_312")).toBe(PYTHON);
   });
 
-  it("gives C and both C++ variants the CLion profile", () => {
-    for (const id of ["C_17", "CPP_11", "CPP_17"] as const) {
+  it("gives both C++ variants the CLion profile, and C its own C names on CLion's editing", () => {
+    for (const id of ["CPP_11", "CPP_17"] as const) {
       expect(profileFor(id)).toBe(CPP);
     }
+    expect(profileFor("C_17")).toBe(C);
+    expect(C.id).toBe("cpp");
   });
 
   it("leaves JavaScript and Go on the plain editor", () => {

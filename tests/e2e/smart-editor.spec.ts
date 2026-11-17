@@ -191,6 +191,172 @@ test.describe("Java, as IntelliJ does it", () => {
   });
 });
 
+test.describe("Java, the IntelliJ reflexes that used to misfire", () => {
+  test("Ctrl/Cmd + Shift + Enter completes the statement and never submits", async ({ page }) => {
+    const textarea = await openEmptyEditor(page, "Java 21");
+    const mod = await intellijModifier(page);
+    const submissions: string[] = [];
+    page.on("request", (request) => {
+      if (request.method() === "POST" && request.url().includes("/api/submissions")) submissions.push(request.url());
+    });
+
+    await textarea.fill("System.out.println(x)");
+    await textarea.evaluate((element) => (element as HTMLTextAreaElement).setSelectionRange(20, 20));
+    await page.keyboard.press(`${mod}+Shift+Enter`);
+    await expect(textarea).toHaveValue("System.out.println(x);");
+    await page.keyboard.press("Control+Shift+Enter");
+    await page.waitForTimeout(300);
+    expect(submissions).toEqual([]);
+    await expect(page.getByText("Judging your submission")).toHaveCount(0);
+  });
+
+  test("Enter after a declared name, with the popup open, keeps the name", async ({ page }) => {
+    const textarea = await openEmptyEditor(page, "Java 21");
+    await textarea.fill("int n = 5;\n");
+    await textarea.evaluate((element) => (element as HTMLTextAreaElement).setSelectionRange(11, 11));
+    await page.keyboard.type("int x = n", { delay: 90 });
+    await expect(popup(page)).toBeVisible();
+    await page.keyboard.press("Enter");
+    await expect(textarea).toHaveValue("int n = 5;\nint x = n\n");
+  });
+
+  test("fori: Tab fills the bound, the next Tab lands inside the loop", async ({ page }) => {
+    const textarea = await openEmptyEditor(page, "Java 21");
+    await page.keyboard.type("fori");
+    await page.keyboard.press("Tab");
+    await page.keyboard.type("10");
+    await page.keyboard.press("Tab");
+    await expect(textarea).toHaveValue("for (int i = 0; i < 10; i++) {\n    \n}");
+    expect(await caretOf(textarea)).toBe("for (int i = 0; i < 10; i++) {\n    ".length);
+  });
+
+  test("x.sout is a postfix template", async ({ page }) => {
+    const textarea = await openEmptyEditor(page, "Java 21");
+    await page.keyboard.type("x.sout");
+    await page.keyboard.press("Tab");
+    await expect(textarea).toHaveValue("System.out.println(x);");
+  });
+
+  test("one Escape leaves Tab indenting; a second arms it to leave, and says so", async ({ page }) => {
+    const textarea = await openEmptyEditor(page, "Java 21");
+    await page.keyboard.press("Escape");
+    await page.keyboard.press("Tab");
+    await expect(textarea).toBeFocused();
+    await expect(textarea).toHaveValue("    ");
+
+    await page.keyboard.press("Escape");
+    await page.keyboard.press("Escape");
+    await expect(page.getByTestId("tab-leaves-editor")).toHaveText("Tab now moves to the next control.");
+    await page.keyboard.press("Tab");
+    await expect(textarea).not.toBeFocused();
+  });
+
+  test("Shift+Tab outdents a line indented with a tab", async ({ page }) => {
+    const textarea = await openEmptyEditor(page, "Java 21");
+    await textarea.fill("\tx");
+    await textarea.evaluate((element) => (element as HTMLTextAreaElement).setSelectionRange(2, 2));
+    await page.keyboard.press("Shift+Tab");
+    await expect(textarea).toHaveValue("x");
+  });
+
+  test("the hint under the editor reads as plain sentences", async ({ page }) => {
+    await openEmptyEditor(page, "Java 21");
+    const hint = page.locator("p", { hasText: "Tab indents." });
+    const text = await hint.evaluate((element) => (element as HTMLElement).innerText);
+    expect(text).toContain("Tab indents. Press Esc twice, then Tab, to move on. Ctrl / Cmd + Enter submits.");
+  });
+
+  test("Ctrl + Space opens completion on demand", async ({ page }) => {
+    await openEmptyEditor(page, "Java 21");
+    await page.keyboard.type("Sys");
+    await expect(popup(page)).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(popup(page)).toHaveCount(0);
+    await page.keyboard.press("Control+Space");
+    await expect(popup(page)).toBeVisible();
+  });
+
+  test("the key that ends an IME composition is the IME's (Safari's event order)", async ({ page }) => {
+    const textarea = await openEmptyEditor(page, "Java 21");
+    await textarea.fill('String s = "";');
+    await textarea.evaluate((element) => {
+      const area = element as HTMLTextAreaElement;
+      area.setSelectionRange(12, 12);
+      area.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+      area.setRangeText("日本", 12, 12, "end");
+      area.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertCompositionText", data: "日本" }));
+      area.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true, data: "日本" }));
+      area.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Enter", keyCode: 229, isComposing: false, bubbles: true, cancelable: true }),
+      );
+      area.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Tab", keyCode: 229, isComposing: false, bubbles: true, cancelable: true }),
+      );
+    });
+    await expect(textarea).toHaveValue('String s = "日本";');
+  });
+
+  test("a soft keyboard still pairs brackets and opens the popup", async ({ page }) => {
+    const textarea = await openEmptyEditor(page, "Java 21");
+    await textarea.fill("f");
+    await textarea.evaluate((element) => (element as HTMLTextAreaElement).setSelectionRange(1, 1));
+    const softKey = async () =>
+      textarea.evaluate((element) =>
+        element.dispatchEvent(
+          new KeyboardEvent("keydown", { key: "Unidentified", keyCode: 229, bubbles: true, cancelable: true }),
+        ),
+      );
+    await softKey();
+    await page.keyboard.insertText("(");
+    await expect(textarea).toHaveValue("f()");
+    await textarea.fill("int x = ");
+    await textarea.evaluate((element) => (element as HTMLTextAreaElement).setSelectionRange(8, 8));
+    await softKey();
+    await page.keyboard.insertText("Sy");
+    await expect(popup(page)).toBeVisible();
+  });
+
+  test("the popup stays inside the window when the editor runs below the fold", async ({ page }) => {
+    await page.setViewportSize({ width: 1400, height: 900 });
+    const textarea = await openEmptyEditor(page, "Java 21");
+    await textarea.fill(Array.from({ length: 60 }, (_, i) => `int v${i} = ${i};`).join("\n"));
+    await textarea.evaluate((element) => {
+      const area = element as HTMLTextAreaElement;
+      area.scrollTop = 0;
+      const lineHeight = parseFloat(getComputedStyle(area).lineHeight);
+      const top = area.getBoundingClientRect().top + window.scrollY;
+      // The editor's fifth line sits at the bottom edge of the window.
+      window.scrollTo(0, top + 12 + lineHeight * 5 - window.innerHeight);
+      const endOfLine4 = area.value.split("\n").slice(0, 4).join("\n").length;
+      area.setSelectionRange(endOfLine4, endOfLine4);
+    });
+    await page.keyboard.press("Enter");
+    await page.keyboard.type("S");
+    const list = popup(page);
+    await expect(list).toBeVisible();
+    const bottom = await list.evaluate((element) => element.getBoundingClientRect().bottom);
+    expect(bottom).toBeLessThanOrEqual(await page.evaluate(() => window.innerHeight));
+  });
+
+  test("the popup closes when the window is resized", async ({ page }) => {
+    await openEmptyEditor(page, "Java 21");
+    await page.keyboard.type("S");
+    await expect(popup(page)).toBeVisible();
+    const size = page.viewportSize() ?? { width: 1280, height: 720 };
+    await page.setViewportSize({ width: size.width - 100, height: size.height - 100 });
+    await expect(popup(page)).toHaveCount(0);
+  });
+
+  test("no serious axe violation with a long popup open", async ({ page }) => {
+    await openEmptyEditor(page, "Java 21");
+    await page.keyboard.type("S");
+    await expect(popup(page).getByRole("option")).not.toHaveCount(0);
+    const { default: AxeBuilder } = await import("@axe-core/playwright");
+    const results = await new AxeBuilder({ page }).include('[role="listbox"]').analyze();
+    expect(results.violations.map((violation) => violation.id)).toEqual([]);
+  });
+});
+
 test.describe("Python, as PyCharm does it", () => {
   test('Enter after ":" indents one level', async ({ page }) => {
     const textarea = await openEmptyEditor(page, "Python 3");
@@ -199,6 +365,42 @@ test.describe("Python, as PyCharm does it", () => {
     await page.keyboard.press("Enter");
     await expect(textarea).toHaveValue("if x:\n    ");
     expect(await caretOf(textarea)).toBe("if x:\n    ".length);
+  });
+
+  test("Enter after a short variable at a normal typing pace is a newline, never a keyword", async ({ page }) => {
+    const textarea = await openEmptyEditor(page, "Python 3");
+    // The editor indents the loop bodies itself, so the keys are typed with no leading spaces.
+    await page.keyboard.type("def f(n):", { delay: 90 });
+    await page.keyboard.press("Enter");
+    await page.keyboard.type("total = 0", { delay: 90 });
+    await page.keyboard.press("Enter");
+    await page.keyboard.type("for i in range(n):", { delay: 90 });
+    await page.keyboard.press("Enter");
+    await page.keyboard.type("total += i", { delay: 90 });
+    await expect(popup(page)).toBeVisible();
+    await page.keyboard.press("Enter");
+    await expect(textarea).toHaveValue("def f(n):\n    total = 0\n    for i in range(n):\n        total += i\n        ");
+
+    // `return n` after a pause, the case that became `return not`.
+    await textarea.fill("def f(n):\n    ");
+    await textarea.evaluate((element) => {
+      const area = element as HTMLTextAreaElement;
+      area.setSelectionRange(area.value.length, area.value.length);
+    });
+    await page.keyboard.type("return n", { delay: 90 });
+    await page.waitForTimeout(150);
+    await page.keyboard.press("Enter");
+    await expect(textarea).toHaveValue("def f(n):\n    return n\n");
+  });
+
+  test("else: snaps back to its if", async ({ page }) => {
+    const textarea = await openEmptyEditor(page, "Python 3");
+    await page.keyboard.type("if n > 0:");
+    await page.keyboard.press("Enter");
+    await page.keyboard.type("print(n)");
+    await page.keyboard.press("Enter");
+    await page.keyboard.type("else:");
+    await expect(textarea).toHaveValue("if n > 0:\n    print(n)\nelse:");
   });
 });
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useLayoutEffect, useRef } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 
 import type { CompletionItem, CompletionKind } from "./smart/types";
 
@@ -11,6 +11,11 @@ import type { CompletionItem, CompletionKind } from "./smart/types";
  * `aria-activedescendant`, which is how a screen reader hears each suggestion while the student
  * keeps typing. A pointer press on a row is cancelled at `mousedown` for the same reason: letting
  * it through would blur the textarea, and blur closes the list before the click could land.
+ *
+ * It never scrolls, either. It shows the rows that fit and slides that window as the arrows move,
+ * the way a scrolled list would look, with each option's place in the whole list stated through
+ * `aria-posinset` and `aria-setsize`. A scrolling list that cannot take focus is an axe
+ * "scrollable-region-focusable" violation, and making it focusable would let Tab land in it.
  *
  * It sits on `--ink` like the code it belongs to. Every colour here is one the overlay already
  * uses on that ground (DESIGN.md §2's measured table), so none of them is a new contrast claim.
@@ -26,6 +31,16 @@ const KIND_BADGE: Readonly<Record<CompletionKind, { readonly letter: string; rea
   variable: { letter: "v", name: "variable", className: "text-paper" },
   snippet: { letter: "t", name: "template", className: "text-gold" },
 };
+
+/** One row's height (`h-7`), and the list's padding and border, as the hook sizes them. */
+const ROW_PX = 28;
+const LIST_CHROME_PX = 10;
+
+/** The first row of a window of `size` rows that keeps `active` in view, moving as little as it can. */
+function windowStart(previous: number, active: number, size: number, count: number): number {
+  const wanted = active < previous ? active : active >= previous + size ? active - size + 1 : previous;
+  return Math.min(Math.max(0, wanted), Math.max(0, count - size));
+}
 
 export interface CompletionPopupProps {
   readonly id: string;
@@ -55,20 +70,19 @@ export function CompletionPopup({
   onHover,
 }: CompletionPopupProps) {
   const listRef = useRef<HTMLUListElement | null>(null);
+  const size = Math.max(1, Math.floor((maxHeight - LIST_CHROME_PX) / ROW_PX));
+  const [shownFrom, setShownFrom] = useState(0);
+  const first = windowStart(shownFrom, activeIndex, size, items.length);
+  // Derived from the previous window, as a scroll position would be; set during render, which
+  // React re-runs at once without painting the stale window.
+  if (first !== shownFrom) setShownFrom(first);
+  const shown = items.slice(first, first + size);
 
-  // Keep the active row in view as the arrows walk past the visible eight, and pull the popup
-  // back inside the editor when the caret is near the right edge. Both before paint, so the list
-  // never draws once in the wrong place.
+  // Pull the popup back inside the editor when the caret is near the right edge. Before paint,
+  // so the list never draws once in the wrong place.
   useLayoutEffect(() => {
     const list = listRef.current;
     if (list === null) return;
-    const active = list.querySelector<HTMLElement>(`[data-index="${activeIndex}"]`);
-    if (active !== null) {
-      const above = active.offsetTop < list.scrollTop;
-      const below = active.offsetTop + active.offsetHeight > list.scrollTop + list.clientHeight;
-      if (above) list.scrollTop = active.offsetTop;
-      else if (below) list.scrollTop = active.offsetTop + active.offsetHeight - list.clientHeight;
-    }
     const parent = list.offsetParent;
     if (parent instanceof HTMLElement) {
       const overflow = left + list.offsetWidth - parent.clientWidth;
@@ -82,7 +96,7 @@ export function CompletionPopup({
       id={id}
       role="listbox"
       aria-label="Suggestions"
-      className="absolute z-20 min-w-[14rem] max-w-[min(32rem,100%)] overflow-y-auto rounded-chip border border-rule-edge-inverse bg-ink py-1 font-mono text-paper shadow-lg"
+      className="absolute z-20 min-w-[14rem] max-w-[min(32rem,100%)] overflow-hidden rounded-chip border border-rule-edge-inverse bg-ink py-1 font-mono text-paper shadow-lg"
       style={{
         top: top ?? undefined,
         bottom: bottom ?? undefined,
@@ -91,7 +105,8 @@ export function CompletionPopup({
         maxHeight,
       }}
     >
-      {items.map((item, index) => {
+      {shown.map((item, offset) => {
+        const index = first + offset;
         const badge = KIND_BADGE[item.kind];
         const active = index === activeIndex;
         return (
@@ -101,6 +116,8 @@ export function CompletionPopup({
             data-index={index}
             role="option"
             aria-selected={active}
+            aria-posinset={index + 1}
+            aria-setsize={items.length}
             onMouseDown={(event) => {
               event.preventDefault();
               onPick(index);

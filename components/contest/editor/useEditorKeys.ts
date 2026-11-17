@@ -1,12 +1,13 @@
 "use client";
 
-import { useCallback, useMemo, useState, type KeyboardEvent, type RefObject } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type RefObject } from "react";
 
 import type { Language } from "@/lib/schemas/judge";
 
 import { isCompletionTrigger } from "./completion-session";
 import { applyNativeEdit } from "./native-edit";
 import { handleKey, profileFor, type Edit, type EditState, type KeyInput, type LanguageProfile } from "./smart";
+import { nextTemplateStop, startTemplateSession, type TemplateSession } from "./smart/template-session";
 import { useCompletion, type Completion } from "./useCompletion";
 
 /**
@@ -14,12 +15,18 @@ import { useCompletion, type Completion } from "./useCompletion";
  *
  * The order of the checks is the contract, and it is the order a student meets them in:
  *
- *   1. An IME composition owns every key until it ends.
+ *   1. An IME composition owns every key until it ends, including the key that ends it.
  *   2. The completion popup, when open, takes the arrows, Escape, Enter and Tab.
- *   3. Escape arms "Tab leaves the editor"; Ctrl/Cmd + Enter submits; an armed Tab leaves.
- *   4. The smart engine (smart/engine.ts) answers IntelliJ's keys for Java, Python and C++.
- *   5. What is left keeps the editor's original behaviour: Tab and Shift+Tab indent and dedent the
+ *   3. A live template being filled in takes Tab and Enter, to move to its next field.
+ *   4. Escape twice arms "Tab leaves the editor" (one Escape is an IntelliJ reflex and must not
+ *      change what Tab does); plain Ctrl/Cmd + Enter submits, and with Shift it never does;
+ *      Ctrl + Space opens completion; an armed Tab leaves.
+ *   5. The smart engine (smart/engine.ts) answers IntelliJ's keys for Java, Python and C++.
+ *   6. What is left keeps the editor's original behaviour: Tab and Shift+Tab indent and dedent the
  *      selected lines, Enter keeps the indent. JavaScript and Go, which have no profile, live here.
+ *
+ * A soft keyboard (Android's Gboard) sends every key as "Unidentified" and the text through input
+ * events, so the same engine is also driven from `beforeinput` for those keys.
  *
  * Every edit goes through `applyNativeEdit`, so each one is a single native undo step.
  */
@@ -34,6 +41,13 @@ function lineEndAfter(value: string, index: number): number {
   const found = value.indexOf("\n", index);
   return found === -1 ? value.length : found;
 }
+
+/**
+ * The keyCode a browser reports for a key the IME or a soft keyboard owns. Safari fires the key
+ * that ends a composition after `compositionend`, with `isComposing` false and this keyCode, so
+ * `isComposing` alone lets that Enter through to the engine.
+ */
+const IME_KEY_CODE = 229;
 
 /** Keys that change nothing on their own, so pressing one leaves the popup as it is. */
 const MODIFIER_KEYS: ReadonlySet<string> = new Set(["Shift", "Control", "Alt", "Meta", "CapsLock", "AltGraph"]);
@@ -73,8 +87,10 @@ export interface EditorKeys {
   readonly profile: LanguageProfile | null;
   readonly isMac: boolean;
   readonly applyKeyEdit: (element: HTMLTextAreaElement, edit: Edit) => void;
-  /** Escape was pressed, so the next Tab moves focus out instead of indenting. */
+  /** Escape was pressed twice, so the next Tab moves focus out instead of indenting. */
   readonly tabMovesFocus: boolean;
+  /** Ends a live template being filled in: the caret was moved by a click, or focus left. */
+  readonly endTemplate: () => void;
 }
 
 export function useEditorKeys({
@@ -84,6 +100,16 @@ export function useEditorKeys({
   syncCaret,
 }: EditorKeysOptions): EditorKeys {
   const [tabMovesFocus, setTabMovesFocus] = useState(false);
+  // One Escape seen with nothing to dismiss; a second in a row arms Tab to leave.
+  const escapeOnce = useRef(false);
+  // The live template being filled in, whose next field Tab and Enter move to.
+  const template = useRef<TemplateSession | null>(null);
+  // The last keydown came from a soft keyboard ("Unidentified", keyCode 229), not an IME.
+  const softKey = useRef(false);
+
+  const endTemplate = useCallback(() => {
+    template.current = null;
+  }, []);
 
   /**
    * Apply an edit the way typing would, so Ctrl/Cmd + Z takes it back in one step (see
@@ -93,6 +119,9 @@ export function useEditorKeys({
     (element: HTMLTextAreaElement, edit: Edit) => {
       applyNativeEdit(element, edit);
       syncCaret(element);
+      // A template with fields starts a session; an edit inside the field being filled (a pair,
+      // an accepted name) keeps the one already running.
+      if (edit.tabStops !== undefined) template.current = startTemplateSession(element.value, edit);
     },
     [syncCaret],
   );
@@ -121,7 +150,8 @@ export function useEditorKeys({
         let output: string;
 
         if (dedent) {
-          const leading = /^ {1,4}/.exec(line);
+          // One tab or up to four spaces, so code pasted with tab indents can be outdented.
+          const leading = /^(?:\t| {1,4})/.exec(line);
           const removed = leading === null ? 0 : leading[0].length;
           output = line.slice(removed);
           delta = -removed;
@@ -203,13 +233,53 @@ export function useEditorKeys({
     [applyKeyEdit, completion, isMac, profile],
   );
 
+  /** Moves to the active template's next field. True when it did, so the key is consumed. */
+  const nextTemplateField = useCallback(
+    (element: HTMLTextAreaElement): boolean => {
+      const session = template.current;
+      if (session === null) return false;
+      const step = nextTemplateStop(session, editStateOf(element));
+      template.current = step?.session ?? null;
+      if (step === null) return false;
+      completion.close();
+      applyNativeEdit(element, step.edit);
+      syncCaret(element);
+      return true;
+    },
+    [completion, syncCaret],
+  );
+
+  /** Escape with nothing else to dismiss: the second in a row arms Tab to leave the editor. */
+  const pressEscape = useCallback(() => {
+    completion.close();
+    if (template.current !== null) {
+      // IntelliJ's Escape ends the template and leaves the caret where it is.
+      template.current = null;
+      escapeOnce.current = false;
+      return;
+    }
+    if (escapeOnce.current) {
+      escapeOnce.current = false;
+      setTabMovesFocus(true);
+      return;
+    }
+    escapeOnce.current = true;
+  }, [completion]);
+
   const handleKeyDown = useCallback(
     (event: KeyboardEvent<HTMLTextAreaElement>) => {
       const element = event.currentTarget;
-      // An IME is mid-composition (Chinese, Japanese, Korean input): every key belongs to it.
-      if (event.nativeEvent.isComposing) return;
+      const native = event.nativeEvent;
+      // An IME is mid-composition (Chinese, Japanese, Korean input), or this key ends one, or a
+      // soft keyboard sent it: every such key belongs to the IME or arrives as input instead.
+      if (native.isComposing || native.keyCode === IME_KEY_CODE) {
+        softKey.current = event.key === "Unidentified";
+        return;
+      }
+      softKey.current = false;
 
       const plain = !event.altKey && !event.ctrlKey && !event.metaKey;
+      if (event.key !== "Escape" && !MODIFIER_KEYS.has(event.key)) escapeOnce.current = false;
 
       // The open popup takes the keys IntelliJ's lookup takes, and only those.
       if (completion.popup !== null && plain) {
@@ -219,9 +289,10 @@ export function useEditorKeys({
           return;
         }
         if (event.key === "Escape") {
-          // Closes the list and nothing else: the next Escape is the one that arms Tab to leave.
+          // Closes the list and nothing else: dismissing it is not a step toward leaving.
           event.preventDefault();
           completion.close();
+          escapeOnce.current = false;
           return;
         }
         if ((event.key === "Enter" || event.key === "Tab") && !event.shiftKey) {
@@ -233,16 +304,38 @@ export function useEditorKeys({
         }
       }
 
-      if (event.key === "Escape") {
-        completion.close();
-        setTabMovesFocus(true);
+      // A live template being filled in: Tab or Enter moves to its next field.
+      if ((event.key === "Tab" || event.key === "Enter") && plain && !event.shiftKey && nextTemplateField(element)) {
+        event.preventDefault();
+        if (tabMovesFocus) setTabMovesFocus(false);
         return;
       }
 
-      if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+      if (event.key === "Escape") {
+        pressEscape();
+        return;
+      }
+
+      if (event.key === "Enter" && (event.metaKey || event.ctrlKey) && !event.altKey) {
+        if (!event.shiftKey) {
+          event.preventDefault();
+          completion.close();
+          onSubmitShortcut?.();
+          return;
+        }
+        // Ctrl/Cmd + Shift + Enter is IntelliJ's Complete Current Statement, a reflex in the middle
+        // of a line, so it must never submit. The engine completes the statement; with no
+        // profile it does nothing at all.
+        if (profile === null) {
+          event.preventDefault();
+          return;
+        }
+      }
+
+      // IntelliJ's basic completion: open the list for the word at the caret, on demand.
+      if (event.key === " " && event.ctrlKey && !event.metaKey && !event.altKey) {
         event.preventDefault();
-        completion.close();
-        onSubmitShortcut?.();
+        completion.schedule();
         return;
       }
 
@@ -250,6 +343,7 @@ export function useEditorKeys({
         // Let the browser move focus, then re-arm indenting for next time.
         setTabMovesFocus(false);
         completion.close();
+        template.current = null;
         return;
       }
 
@@ -276,7 +370,9 @@ export function useEditorKeys({
       if (event.key === "Enter") {
         event.preventDefault();
         completion.close();
-        autoIndent(element);
+        // A modified Enter nobody answered (Ctrl+Shift+Enter on a Mac) does nothing, rather than
+        // a newline the student did not ask for.
+        if (plain) autoIndent(element);
         return;
       }
 
@@ -290,6 +386,9 @@ export function useEditorKeys({
         // Arrows, Home, End, Page keys and shortcuts move the caret or act on the text: either
         // way the word the popup was completing is no longer the one under the caret.
         completion.close();
+        if (event.key === "ArrowUp" || event.key === "ArrowDown" || event.key.startsWith("Page")) {
+          template.current = null;
+        }
       }
 
       if (tabMovesFocus) setTabMovesFocus(false);
@@ -301,11 +400,53 @@ export function useEditorKeys({
       completion,
       indentSelection,
       isMac,
+      nextTemplateField,
       onSubmitShortcut,
+      pressEscape,
       profile,
       tabMovesFocus,
     ],
   );
 
-  return { handleKeyDown, completion, profile, isMac, applyKeyEdit, tabMovesFocus };
+  /*
+    A soft keyboard (Gboard on Android) reports every key as "Unidentified" with keyCode 229, and
+    the character only arrives as input. The keydown handler cannot see which key it was, so the
+    engine answers the character here instead, before the browser inserts it: `(` still pairs and
+    the popup still opens on a phone.
+  */
+  const onSoftInput = useRef<(event: InputEvent) => void>(() => undefined);
+  useEffect(() => {
+    onSoftInput.current = (event: InputEvent) => {
+      const element = textareaRef.current;
+      if (!softKey.current || element === null || event.isComposing) return;
+      if (event.inputType === "insertCompositionText") {
+        completion.schedule();
+        return;
+      }
+      if (event.inputType !== "insertText" || event.data === null) return;
+      const typed = event.data;
+      const edit =
+        typed.length === 1 && profile !== null
+          ? handleKey(editStateOf(element), keyInputOf(typed, isMac), profile)
+          : null;
+      if (edit !== null) {
+        event.preventDefault();
+        // The edit inserts through insertText too; it must not be answered a second time.
+        softKey.current = false;
+        applyKeyEdit(element, edit);
+      }
+      if (typed.length > 0 && [...typed].every((ch) => isCompletionTrigger(ch))) completion.schedule();
+      else completion.close();
+    };
+  }, [applyKeyEdit, completion, isMac, profile, textareaRef]);
+
+  useEffect(() => {
+    const element = textareaRef.current;
+    if (element === null) return;
+    const listener = (event: InputEvent) => onSoftInput.current(event);
+    element.addEventListener("beforeinput", listener);
+    return () => element.removeEventListener("beforeinput", listener);
+  }, [textareaRef]);
+
+  return { handleKeyDown, completion, profile, isMac, applyKeyEdit, tabMovesFocus, endTemplate };
 }

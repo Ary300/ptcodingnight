@@ -31,6 +31,18 @@ export interface Edit {
   /** Selection AFTER the edit, as offsets into the NEW text. */
   readonly selectionStart: number;
   readonly selectionEnd: number;
+  /**
+   * The fields of a live template still to visit, in order, as ranges in the NEW text. Tab or
+   * Enter moves to the next one, as IntelliJ's template fields do; a non-empty range is a default
+   * value, selected so typing replaces it. Absent for every edit that is not a template.
+   */
+  readonly tabStops?: readonly TabStop[];
+}
+
+/** A place a live template's Tab moves to: `from === to` for an empty field or the $END$ line. */
+export interface TabStop {
+  readonly from: number;
+  readonly to: number;
 }
 
 /** The key as the surface saw it. `isMac` decides whether Cmd or Ctrl is the IntelliJ modifier. */
@@ -43,7 +55,15 @@ export interface KeyInput {
   readonly isMac: boolean;
 }
 
-/** An IntelliJ live template. `body` marks the caret with $END$ and may span lines. */
+/**
+ * An IntelliJ live template. `body` marks the caret with $END$ and may span lines; a leading tab
+ * on a continuation line is one indent level.
+ *
+ * Fields are written `${1}` or `${1:default}` and visited in number order before $END$: the caret
+ * starts in the first, and Tab or Enter moves on, so `fori` puts the caret at the loop bound and
+ * the next Tab lands on the indented line inside the braces. A postfix template (typed after a
+ * dot, as in `n.fori`) names the expression before the dot with $EXPR$.
+ */
 export interface LiveTemplate {
   readonly abbreviation: string;
   readonly description: string;
@@ -67,6 +87,12 @@ export interface CompletionItem {
   readonly kind: CompletionKind;
   /** Short right-aligned hint, e.g. "void" or "java.util". */
   readonly detail?: string;
+  /**
+   * Ranks this item above others that match equally well, for the names contest code reaches for
+   * most (push_back over push, first over find). Higher first; absent is 0. The editor does not
+   * infer types, so this is how `v.pb` means push_back, as CLion would know from the vector.
+   */
+  readonly priority?: number;
   /** Caret position inside insertText after accepting; defaults to its end. */
   readonly caretOffset?: number;
 }
@@ -85,7 +111,17 @@ export interface LanguageProfile {
   readonly opensBlock: (lineBeforeCaret: string) => boolean;
   /** Characters that, typed as the first non-space on a line, snap that line to its block's indent. */
   readonly dedentOnType: readonly string[];
+  /**
+   * Python's continuation clauses: typing the ":" of `else:` snaps the line to the indent of the
+   * nearest enclosing line that starts with one of the listed openers, as PyCharm does. Keyed by
+   * the clause's first word ("else", "elif", "except", "finally").
+   */
+  readonly alignOnColon?: Readonly<Record<string, readonly string[]>>;
+  /** Whether the line ends its block (`return`, `pass`, `break` ...), so Enter drops one level. */
+  readonly closesBlock?: (lineBeforeCaret: string) => boolean;
   readonly templates: readonly LiveTemplate[];
+  /** IntelliJ's postfix templates (`x.sout`, `n.fori`), whose bodies name the expression $EXPR$. */
+  readonly postfixTemplates?: readonly LiveTemplate[];
   readonly keywords: readonly string[];
   /** Top-level suggestions: classes, builtins, std:: names, common functions. */
   readonly globals: readonly CompletionItem[];
@@ -121,8 +157,15 @@ export interface CompletionContext {
                     Ranks prefix matches first, then camel-hump matches (IntelliJ's "sout" ->
                     "System.out"? no: hump means "pI" -> "parseInt"), identifiers declared in
                     the file, keywords, globals, templates as snippets. Case-insensitive prefix.
+                    A name typed in full ranks first, so accepting it is a no-op.
+    members.ts      fileMembers(text, braces, ...): the file's own fields and methods, offered
+                    after a dot ahead of the general "*" members.
+    template.ts     renderTemplate(body, indent, unit, expression?): the text, caret and tab
+                    stops of a live or postfix template.
+    template-session.ts  startTemplateSession / nextTemplateStop: Tab and Enter walking the
+                    fields of an expanded template, as IntelliJ's do.
     java.ts         export const JAVA: LanguageProfile
     python.ts       export const PYTHON: LanguageProfile
-    cpp.ts          export const CPP: LanguageProfile
+    cpp.ts          export const CPP, C: LanguageProfile
     index.ts        profileFor(languageId: LanguageId): LanguageProfile | null (integration)
 */

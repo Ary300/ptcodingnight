@@ -288,3 +288,24 @@ export function tokenize(source: string, language: Language): readonly Token[] {
   flush();
   return tokens;
 }
+
+/** The last text tokenized, so the overlay and the completion lookup share one pass per edit. */
+let lastTokenized: {
+  readonly source: string;
+  readonly language: Language;
+  readonly tokens: readonly Token[];
+} | null = null;
+
+/**
+ * `tokenize`, remembered for the most recent text. The overlay tokenizes on every keystroke and
+ * the completion lookup needs the same tokens a moment later; on a 3,000-line file a second pass
+ * per key is the difference between typing that keeps up and typing that lags on a Chromebook.
+ */
+export function tokenizeCached(source: string, language: Language): readonly Token[] {
+  if (lastTokenized !== null && lastTokenized.source === source && lastTokenized.language === language) {
+    return lastTokenized.tokens;
+  }
+  const tokens = tokenize(source, language);
+  lastTokenized = { source, language, tokens };
+  return tokens;
+}

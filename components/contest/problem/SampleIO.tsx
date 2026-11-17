@@ -23,7 +23,7 @@ type SampleCase = z.infer<typeof SampleCaseSchema>;
 function Block({ title, value, what }: { title: string; value: string; what: string }) {
   return (
     <div className="flex min-w-0 flex-1 flex-col">
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <h4 className="text-ink/70 uppercase" style={{ fontSize: "var(--text-xs)", letterSpacing: "0.06em" }}>
           {title}
         </h4>
@@ -99,18 +99,24 @@ export function SampleIO({ samples }: SampleIOProps) {
             </h3>
           }
         >
-          {/* Stacks on a phone, side by side from 640px — students are on phones. */}
-          <div className="flex flex-col gap-4 sm:flex-row">
-            <Block
-              title="Input"
-              value={sample.input}
-              what={`sample ${index + 1} input`}
-            />
-            <Block
-              title="Expected output"
-              value={sample.expectedOutput}
-              what={`sample ${index + 1} expected output`}
-            />
+          {/*
+            Stacks unless the BOX is 32rem wide, rather than the window. In the side-by-side view
+            the problem pane can be 300px on a wide screen, and a viewport query put the two
+            blocks side by side there, with each Copy button drawn over its heading.
+          */}
+          <div className="@container">
+            <div className="flex flex-col gap-4 @lg:flex-row">
+              <Block
+                title="Input"
+                value={sample.input}
+                what={`sample ${index + 1} input`}
+              />
+              <Block
+                title="Expected output"
+                value={sample.expectedOutput}
+                what={`sample ${index + 1} expected output`}
+              />
+            </div>
           </div>
         </Disclosure>
       ))}

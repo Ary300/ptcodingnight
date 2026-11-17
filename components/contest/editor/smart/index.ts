@@ -1,15 +1,15 @@
 /**
  * Which smart profile a judge language gets, and the one import the editor surface needs.
  *
- * Every Java variant is IntelliJ, Python is PyCharm, and C and C++ share CLion's profile: C has
- * no `std::` and no classes, but its braces, comments, `main` and `printf` behave the same, and a
- * suggestion it does not need costs nothing. JavaScript and Go have no profile yet, so the surface
+ * Every Java variant is IntelliJ, Python is PyCharm, and C and C++ are CLion: C shares C++'s
+ * braces, comments and Enter, with its own names (`printf`, `scanf`, no `std::`, no C++ keywords)
+ * so `pri` never offers `private`. JavaScript and Go have no profile yet, so the surface
  * keeps its plain behaviour for them (Tab indents, Enter keeps the indent).
  */
 
 import type { LanguageId } from "@/lib/judge/runtimes";
 
-import { CPP } from "./cpp";
+import { C, CPP } from "./cpp";
 import { JAVA } from "./java";
 import { PYTHON } from "./python";
 import type { LanguageProfile } from "./types";
@@ -26,7 +26,7 @@ const PROFILE: Readonly<Record<LanguageId, LanguageProfile | null>> = {
   JAVA_21: JAVA,
   CPP_11: CPP,
   CPP_17: CPP,
-  C_17: CPP,
+  C_17: C,
   JAVASCRIPT_NODE22: null,
   GO_123: null,
 };
