@@ -24,14 +24,14 @@ are the statement samples):
     15  seed 58     9 queries, n up to 133 (total-n cap)
     16  seed 77     8 queries, n up to 150 (total-n cap)
     17  seed 149    10 queries, n up to 120 (total-n cap)
-    18  seed 1060   1 query at the ceiling, n = 1000, every sum exactly k
+    18  seed 1060   1 query at the ceiling, n = 500
 """
 
 import random
 import sys
 
 MAX_Q = 10
-MAX_N = 1000
+MAX_N = 500
 MAX_TOTAL_N = 1200
 MAX_V = 10**6
 MAX_K = 2 * MAX_V

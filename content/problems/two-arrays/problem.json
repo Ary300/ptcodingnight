@@ -1,7 +1,7 @@
 {
   "slug": "two-arrays",
   "title": "Permuting Two Arrays",
-  "difficulty": "E",
+  "difficulty": "M",
   "timeLimitMs": 2000,
   "memoryLimitMb": 256,
   "allowedLanguages": [
@@ -35,16 +35,16 @@
       },
       {
         "name": "k",
-        "type": "long"
+        "type": "int"
       },
       {
         "name": "a",
-        "type": "long[]",
+        "type": "int[]",
         "length": "n"
       },
       {
         "name": "b",
-        "type": "long[]",
+        "type": "int[]",
         "length": "n"
       }
     ]
