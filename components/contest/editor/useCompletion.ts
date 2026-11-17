@@ -6,7 +6,7 @@ import type { Language } from "@/lib/schemas/judge";
 
 import { caretPosition } from "./caret-position";
 import { insideStringOrComment, isNoOpEdit, stepIndex } from "./completion-session";
-import { tokenize } from "./highlight";
+import { tokenizeCached } from "./highlight";
 import { applyCompletion, completionContext, completionsFor } from "./smart/completion";
 import type { CompletionContext, CompletionItem, Edit, LanguageProfile } from "./smart/types";
 
@@ -98,7 +98,8 @@ export function useCompletion(
       return;
     }
     const text = element.value;
-    if (insideStringOrComment(tokenize(text, language), ctx)) {
+    // The overlay has tokenized this exact text already, so this is a cache hit, not a second pass.
+    if (insideStringOrComment(tokenizeCached(text, language), ctx)) {
       setPopup(null);
       return;
     }
@@ -106,7 +107,10 @@ export function useCompletion(
     const state = { text, selectionStart: element.selectionStart, selectionEnd: element.selectionEnd };
     // IntelliJ hides its lookup when the one thing it would offer is already typed in full.
     const only = items.length === 1 ? items[0] : undefined;
-    if (items.length === 0 || (only !== undefined && isNoOpEdit(text, applyCompletion(state, ctx, only)))) {
+    if (
+      items.length === 0 ||
+      (only !== undefined && isNoOpEdit(text, applyCompletion(state, ctx, only, profile.indentUnit)))
+    ) {
       setPopup(null);
       return;
     }
@@ -123,9 +127,12 @@ export function useCompletion(
     }
     // Below the line when the list fits there, above it when it fits there instead, and
     // otherwise on the roomier side, shortened to the room so it never spills past the code.
+    // The room is measured against the WINDOW as well as the textarea: in the stacked layout the
+    // editor often runs below the fold, and a list opened downward there is drawn off-screen.
     const wanted = Math.min(items.length, VISIBLE_ROWS) * ROW_PX + LIST_PADDING_PX;
-    const roomBelow = element.clientHeight - rowBottom;
-    const roomAbove = rowTop;
+    const box = element.getBoundingClientRect();
+    const roomBelow = Math.min(element.clientHeight - rowBottom, window.innerHeight - (box.top + rowBottom));
+    const roomAbove = Math.min(rowTop, box.top + rowTop);
     const above = wanted > roomBelow && (wanted <= roomAbove || roomAbove > roomBelow);
     const room = above ? roomAbove : roomBelow;
     setPopup({
@@ -146,6 +153,28 @@ export function useCompletion(
 
   // A different language is a different list, and usually a different buffer too.
   useEffect(() => close, [close, language]);
+
+  // The popup is placed in pixels against the textarea as it was. A window resize or a dragged
+  // divider moves the caret out from under it, so either one closes it rather than leaving it
+  // hanging past the editor's edge.
+  const isOpen = popup !== null;
+  useEffect(() => {
+    const element = textareaRef.current;
+    if (!isOpen || element === null) return;
+    window.addEventListener("resize", close);
+    const initial = { width: element.offsetWidth, height: element.offsetHeight };
+    const observer =
+      typeof ResizeObserver === "undefined"
+        ? null
+        : new ResizeObserver(() => {
+            if (element.offsetWidth !== initial.width || element.offsetHeight !== initial.height) close();
+          });
+    observer?.observe(element);
+    return () => {
+      window.removeEventListener("resize", close);
+      observer?.disconnect();
+    };
+  }, [close, isOpen, textareaRef]);
 
   const move = useCallback((delta: number) => {
     setPopup((current) =>
@@ -174,7 +203,7 @@ export function useCompletion(
         selectionStart: element.selectionStart,
         selectionEnd: element.selectionEnd,
       };
-      const edit = applyCompletion(state, ctx, item);
+      const edit = applyCompletion(state, ctx, item, profile.indentUnit);
       return isNoOpEdit(state.text, edit) ? null : edit;
     },
     [popup, profile],
