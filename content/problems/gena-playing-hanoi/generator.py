@@ -3,19 +3,26 @@
 Usage: python3 generator.py <seed>
 
 Deterministic per seed. The seed picks both the disc count (growing toward the
-n = 10 ceiling as seeds grow) and the shape of the position, so the test set
+n = 8 ceiling as seeds grow) and the shape of the position, so the test set
 covers the degenerate and adversarial cases, not just uniform noise:
 already-solved towers, everything stacked on one wrong rod (the classic
 worst case), the goal with only the largest disc astray (the true farthest
 position from the goal), two-rod splits, and uniform random scatters. Any
 assignment of discs to rods is a legal position, because each rod's discs
 are implicitly stacked in size order.
+
+With n capped at 8 there are only 4^8 = 65,536 positions, so a plain
+breadth-first search over every position finishes well inside the limit.
+
+Generated tests: 11 = seed 4, 13 = seed 13, 14 = seed 20, 15 = seed 21,
+16 = seed 35, 17 = seed 38, 18 = seed 44, 19 = seed 41, 20 = seed 42. Tests
+01 to 10 and 12 are hand-written (01 and 02 are the statement's examples).
 """
 
 import random
 import sys
 
-MAX_N = 10
+MAX_N = 8
 RODS = 4
 
 
@@ -23,7 +30,7 @@ def choose_n(seed: int, rng: random.Random) -> int:
     """Small seeds stay small; from seed 30 on, bias hard toward the ceiling."""
     if seed < 30:
         return max(1, min(MAX_N, (seed % MAX_N) + 1))
-    return rng.randint(8, MAX_N)
+    return rng.randint(MAX_N - 2, MAX_N)
 
 
 def build_position(seed: int, n: int, rng: random.Random) -> list[int]:

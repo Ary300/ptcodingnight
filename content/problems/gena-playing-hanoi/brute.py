@@ -3,7 +3,8 @@
 Plain unidirectional breadth-first search over positions represented as a
 tuple of rod numbers, one per disc. Obviously correct, makes no attempt to
 be fast: state hashing on tuples, move generation by rescanning the tuple.
-Fine for small n, hopeless at n = 10 within a contest time limit.
+With n capped at 8 there are only 4^8 = 65,536 positions, so this plain
+search also finishes well inside the time limit.
 """
 
 import sys
