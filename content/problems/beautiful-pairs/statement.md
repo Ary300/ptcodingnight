@@ -22,6 +22,7 @@ possible size of a disjoint collection of beautiful pairs.
 The first line contains one integer $n$, the length of both arrays.
 The second line contains $n$ space-separated integers $a_1, a_2, \dots, a_n$.
 The third line contains $n$ space-separated integers $b_1, b_2, \dots, b_n$.
+Every value in both arrays is an integer between $1$ and $100$.
 
 ## Output
 
