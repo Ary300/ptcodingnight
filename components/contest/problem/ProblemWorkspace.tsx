@@ -716,13 +716,7 @@ export function ProblemWorkspace({ slug, window: contestWindow = null }: Problem
         className={sideBySide ? undefined : "mt-6"}
       >
         {activeTab === "submissions" && (
-          <>
-            <p className="mb-3 text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
-              Your judged submissions for this problem, newest first. Open one to see its tests.
-              Every problem&apos;s history is under My submissions in the top bar.
-            </p>
-            <SubmissionHistory contestProblemId={detail.contestProblemId} live={streamed} />
-          </>
+          <SubmissionHistory contestProblemId={detail.contestProblemId} live={streamed} />
         )}
       </div>
     </>
