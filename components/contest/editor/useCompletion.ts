@@ -7,7 +7,14 @@ import type { Language } from "@/lib/schemas/judge";
 import { caretPosition } from "./caret-position";
 import { insideStringOrComment, isNoOpEdit, stepIndex } from "./completion-session";
 import { tokenizeCached } from "./highlight";
-import { applyCompletion, completionContext, completionsFor } from "./smart/completion";
+import { applyNativeEdit } from "./native-edit";
+import {
+  applyCompletion,
+  autoPopupSuppressed,
+  completionContext,
+  completionsFor,
+  insertsSingleSuggestion,
+} from "./smart/completion";
 import type { CompletionContext, CompletionItem, Edit, LanguageProfile } from "./smart/types";
 
 /**
@@ -42,8 +49,11 @@ export interface CompletionPopupState {
 
 export interface Completion {
   readonly popup: CompletionPopupState | null;
-  /** Look again shortly, after the keystroke in flight has landed. */
-  readonly schedule: () => void;
+  /**
+   * Look again shortly, after the keystroke in flight has landed. `explicit` is Ctrl+Space: it
+   * shows the list even for a name typed in full, and inserts a lone suggestion straight away.
+   */
+  readonly schedule: (explicit?: boolean) => void;
   readonly close: () => void;
   readonly move: (delta: number) => void;
   readonly setActive: (index: number) => void;
@@ -83,7 +93,7 @@ export function useCompletion(
     setPopup(null);
   }, [cancel]);
 
-  const lookup = useCallback(() => {
+  const lookup = useCallback((explicit: boolean) => {
     timer.current = null;
     const element = textareaRef.current;
     if (element === null || profile === null || document.activeElement !== element) {
@@ -105,6 +115,20 @@ export function useCompletion(
     }
     const items = completionsFor(ctx, text, profile);
     const state = { text, selectionStart: element.selectionStart, selectionEnd: element.selectionEnd };
+    // While typing, a name already typed in full keeps Enter and Tab for the student
+    // (`return n` + Enter is a newline). Ctrl+Space with one suggestion inserts it, as IntelliJ does.
+    if (!explicit && autoPopupSuppressed(ctx, items)) {
+      setPopup(null);
+      return;
+    }
+    const lone = items[0];
+    if (explicit && lone !== undefined && insertsSingleSuggestion(items)) {
+      const state = { text, selectionStart: element.selectionStart, selectionEnd: element.selectionEnd };
+      const edit = applyCompletion(state, ctx, lone, profile);
+      if (!isNoOpEdit(text, edit)) applyNativeEdit(element, edit);
+      setPopup(null);
+      return;
+    }
     // IntelliJ hides its lookup when the one thing it would offer is already typed in full.
     const only = items.length === 1 ? items[0] : undefined;
     if (
@@ -145,10 +169,10 @@ export function useCompletion(
     });
   }, [language, profile, textareaRef]);
 
-  const schedule = useCallback(() => {
+  const schedule = useCallback((explicit = false) => {
     cancel();
     if (profile === null) return;
-    timer.current = window.setTimeout(lookup, DEBOUNCE_MS);
+    timer.current = window.setTimeout(() => lookup(explicit), DEBOUNCE_MS);
   }, [cancel, lookup, profile]);
 
   // A different language is a different list, and usually a different buffer too.
@@ -203,7 +227,8 @@ export function useCompletion(
         selectionStart: element.selectionStart,
         selectionEnd: element.selectionEnd,
       };
-      const edit = applyCompletion(state, ctx, item, profile.indentUnit);
+      // The profile, not just its indent: an accepted class brings its import in the same edit.
+      const edit = applyCompletion(state, ctx, item, profile);
       return isNoOpEdit(state.text, edit) ? null : edit;
     },
     [popup, profile],
