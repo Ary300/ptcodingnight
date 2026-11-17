@@ -112,6 +112,8 @@ test("anonymous: Practice and the join code, and nobody is recognised", async ({
 test("practice guest: Practice stays, returns to the same guest, and the code form still works", async ({
   page,
 }) => {
+  // Two doors, two lobbies and a code: five page loads, each a first compile on a dev server.
+  test.setTimeout(120_000);
   await page.goto("/");
   await page.getByRole("navigation", { name: "Site" }).getByRole("button", { name: "Practice" }).click();
   await page.waitForURL("**/contest", { timeout: 30_000 });
