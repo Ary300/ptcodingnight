@@ -56,7 +56,7 @@ export function ContinueAsCard({
   return (
     <section
       aria-label="Signed in"
-      className="w-full max-w-sm rounded-panel border border-rule-edge bg-paper p-4"
+      className="w-full rounded-panel border border-rule-edge bg-paper p-4"
     >
       <div className="flex items-center gap-3">
         {/* The mark's tile is paper, so a hairline keeps its edge on a paper card. */}

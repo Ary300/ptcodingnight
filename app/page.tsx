@@ -438,13 +438,15 @@ export default async function Home() {
             {/* Three actions, one obviously primary. Practice is a secondary chip: it needs no code. */}
             <div className="mt-8 flex flex-wrap items-center gap-3">
               {door.kind === "seat" ? (
-                <ContinueAsCard
-                  displayName={door.displayName}
-                  firstName={door.firstName}
-                  participantId={door.participantId}
-                  contestName={door.contestName}
-                  signedOutHref="/"
-                />
+                <div className="w-full max-w-sm">
+                  <ContinueAsCard
+                    displayName={door.displayName}
+                    firstName={door.firstName}
+                    participantId={door.participantId}
+                    contestName={door.contestName}
+                    signedOutHref="/"
+                  />
+                </div>
               ) : (
                 <Link
                   href={primary.href}
