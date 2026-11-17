@@ -15,7 +15,7 @@ import {
 import { Button } from "@/components/ui";
 
 import { CompletionPopup } from "./CompletionPopup";
-import { tokenize, type TokenKind } from "./highlight";
+import { tokenizeCached, type TokenKind } from "./highlight";
 import { LANGUAGE_LABEL, LANGUAGE_TEMPLATE, type CodeEditorProps } from "./types";
 import { useEditorKeys } from "./useEditorKeys";
 
@@ -58,9 +58,11 @@ import { useEditorKeys } from "./useEditorKeys";
  * leave it, which fails G9 and, more to the point, means they cannot reach the Submit
  * button.
  *
- * The resolution is the established one: **Tab indents while typing; Escape then Tab moves
- * focus.** The current mode is announced in a live region and stated visibly under the
- * editor, because an escape hatch nobody knows about is not an escape hatch.
+ * The resolution is the established one, with one change for IntelliJ users: **Tab indents while
+ * typing; Escape twice, then Tab, moves focus.** A single Escape is a reflex in IntelliJ (it
+ * dismisses things), and when one Escape armed the exit, the next Tab left the editor instead of
+ * indenting. The current mode is announced in a live region and stated visibly under the editor,
+ * because an escape hatch nobody knows about is not an escape hatch.
  *
  * ## IntelliJ's keys, and the completion popup
  *
@@ -170,7 +172,7 @@ export function CodeEditorSurface({
 
   // Memoised on the two things it depends on: a scan of every character runs on each keystroke
   // otherwise, and a 200 000-character source is a legal submission (SubmitRequestSchema).
-  const tokens = useMemo(() => tokenize(value, language), [value, language]);
+  const tokens = useMemo(() => tokenizeCached(value, language), [value, language]);
 
   /**
    * Where the caret is, as a 1-based line and column.
@@ -253,7 +255,7 @@ export function CodeEditorSurface({
     if (gutter !== null) gutter.scrollTop = element.scrollTop;
   }, [value, caret]);
 
-  const { handleKeyDown, completion, profile, isMac, applyKeyEdit, tabMovesFocus } = useEditorKeys({
+  const { handleKeyDown, completion, profile, isMac, applyKeyEdit, tabMovesFocus, endTemplate } = useEditorKeys({
     textareaRef,
     language,
     onSubmitShortcut,
@@ -604,8 +606,12 @@ export function CodeEditorSurface({
               // Typing past the edge scrolls the box; the open popup follows its word.
               if (completion.popup !== null) completion.schedule();
             }}
-            // A click puts the caret somewhere else, and leaving the editor ends the lookup.
-            onMouseDown={completion.close}
+            // A click puts the caret somewhere else, which ends the lookup and any template being
+            // filled in; leaving the editor ends the lookup.
+            onMouseDown={() => {
+              completion.close();
+              endTemplate();
+            }}
             onBlur={completion.close}
             disabled={disabled}
             spellCheck={false}
@@ -670,8 +676,19 @@ export function CodeEditorSurface({
       */}
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-t border-rule-edge px-3 py-2">
         <p id={hintId} className="text-ink/70" style={{ fontSize: "var(--text-xs)" }}>
-          Tab indents. Press <kbd className="font-mono">Esc</kbd> then{" "}
-          <kbd className="font-mono">Tab</kbd> to move on. <kbd className="font-mono">Ctrl</kbd>
+          {/* The armed state is shown, not only announced: a sighted keyboard user who pressed
+              Escape twice by accident sees why the next Tab will leave the editor. */}
+          {tabMovesFocus ? (
+            <strong className="font-semibold text-ink" data-testid="tab-leaves-editor">
+              <kbd className="font-mono">Tab</kbd> now moves to the next control.
+            </strong>
+          ) : (
+            <>
+              Tab indents. Press <kbd className="font-mono">Esc</kbd> twice, then{" "}
+              <kbd className="font-mono">Tab</kbd>, to move on.
+            </>
+          )}{" "}
+          <kbd className="font-mono">Ctrl</kbd>
           {" / "}
           <kbd className="font-mono">Cmd</kbd> + <kbd className="font-mono">Enter</kbd> submits.
           {profile !== null && (
