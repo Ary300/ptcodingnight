@@ -22,13 +22,15 @@ Print $q$ lines, one per pair, in the order the pairs were given.
 For each pair, print the smallest beep number $k \ge 0$ at which both rovers stand on the
 same mark. If no such beep exists, print `NEVER`.
 
+If the rovers ever meet, they meet within 1,000 beeps. A jump length of $0$ means that rover
+never moves.
+
 ## Constraints
 
-- $1 \le q \le 800$
-- $0 \le s_1, s_2 \le 10^9$
-- $0 \le j_1, j_2 \le 10^6$
-- Every test except the second sample keeps $s_1, s_2 \le 10^5$ and $j_1, j_2 \le 10^3$.
-- When a pair does meet, the shared mark is at most $10^9$, so every value fits in a 32-bit integer.
+- $1 \le q \le 1000$
+- $0 \le s_1, s_2 \le 1000$
+- $0 \le j_1, j_2 \le 100$
+- When a pair does meet, it meets within 1,000 beeps, so every mark involved fits in a 32-bit integer.
 - A jump length of $0$ means that rover never moves.
 
 ## Example
@@ -59,7 +61,7 @@ A second sample uses one pair near the ends of the strip:
 
 ```
 1
-0 1000000 1000000000 0
+0 1 1000 0
 ```
 
 Output:
@@ -68,4 +70,5 @@ Output:
 1000
 ```
 
-The stationary rover waits on mark $10^9$ while the other covers $10^6$ marks per beep.
+The stationary rover waits on mark $1000$ while the other covers $1$ mark per beep, so they
+meet on the last beep any pair can need.
