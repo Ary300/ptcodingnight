@@ -268,7 +268,7 @@ bfs-shortest-reach-in-a-graph,BFS: Shortest Reach in a Graph,graphs,M,advanced,p
 beautiful-pairs,Beautiful Pairs,greedy,E,general,authored,
 grid-challenge,Grid Challenge,greedy,E,general,authored,
 jim-and-the-orders,Jim and the Orders,greedy,E,general,authored,
-largest-permutation,Largest Permutation,greedy,E,general,authored,
+largest-permutation,Largest Permutation,greedy,M,general,authored,
 luck-balance,Luck Balance,greedy,E,general,authored,
 marcs-cakewalk,Marc's Cakewalk,greedy,E,general,authored,
 mark-and-toys,Mark and Toys,greedy,E,general,authored,
