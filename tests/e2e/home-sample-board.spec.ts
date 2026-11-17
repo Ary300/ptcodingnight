@@ -33,3 +33,16 @@ test("the sample board is labelled an example, not live, while a contest runs", 
   expect(rendered).not.toMatch(/\bLive\b/);
   expect(rendered).toContain("Sample standings.");
 });
+
+test("the homepage states the night as the organizers set it: five a team, a puzzle each, a freeze", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const rendered = await page.locator("body").innerText();
+  expect(rendered).toContain(
+    "the standings on the projector update live until the last fifteen minutes, when the board freezes.",
+  );
+  expect(rendered).toContain("Teams have up to five students");
+  expect(rendered).toContain("each team member also receives one puzzle");
+  expect(rendered).not.toContain("throughout the contest");
+});
