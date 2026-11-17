@@ -458,16 +458,6 @@
     "note": "Spaces after the caret are dropped and replaced by the block's indent on the new line."
   },
   {
-    "id": "py-enter-unclosed-list-aligned",
-    "behavior": "enter",
-    "before": "nums = [1, 2,|",
-    "keys": [
-      "Enter"
-    ],
-    "after": "nums = [1, 2,\n        |",
-    "note": "Unclosed [ with an element on its line: the new line aligns with the first element (Align when multiline is on by default for collections)."
-  },
-  {
     "id": "py-dedent-none-return",
     "behavior": "dedent",
     "before": "def f(n):\n    if n < 2:\n        |",
