@@ -219,19 +219,10 @@ test.describe("a language swap is marked, and costs the student nothing", () => 
       });
     });
 
-    // The real control, driven the way a student drives it.
-    await page.getByRole("combobox", { name: "Language" }).click();
-    const options = page.getByRole("option");
-    await expect(options.first()).toBeVisible();
-    const count = await options.count();
-    // Any option other than the one already chosen. Every problem in the bank allows ten.
-    for (let index = 0; index < count; index += 1) {
-      const option = options.nth(index);
-      if ((await option.getAttribute("aria-selected")) !== "true") {
-        await option.click();
-        break;
-      }
-    }
+    // The real control, driven the way a student drives it: any tab other than the selected one.
+    const tabs = page.getByRole("tablist", { name: "Language", exact: true }).getByRole("tab");
+    await expect(tabs.first()).toBeVisible();
+    await tabs.and(page.locator('[aria-selected="false"]')).first().click();
 
     await expect
       .poll(async () => await textarea.inputValue(), {
