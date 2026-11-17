@@ -53,17 +53,24 @@ const IME_KEY_CODE = 229;
 const MODIFIER_KEYS: ReadonlySet<string> = new Set(["Shift", "Control", "Alt", "Meta", "CapsLock", "AltGraph"]);
 
 function editStateOf(element: HTMLTextAreaElement): EditState {
-  return { text: element.value, selectionStart: element.selectionStart, selectionEnd: element.selectionEnd };
+  return {
+    text: element.value,
+    selectionStart: element.selectionStart,
+    selectionEnd: element.selectionEnd,
+    selectionDirection: element.selectionDirection,
+  };
 }
 
 /** The engine's view of a key. `modifiers` omitted means a bare press, as for an accepted Tab. */
 function keyInputOf(
   key: string,
   isMac: boolean,
-  modifiers?: Pick<KeyboardEvent<HTMLTextAreaElement>, "shiftKey" | "altKey" | "ctrlKey" | "metaKey">,
+  modifiers?: Pick<KeyboardEvent<HTMLTextAreaElement>, "shiftKey" | "altKey" | "ctrlKey" | "metaKey" | "code">,
 ): KeyInput {
   return {
     key,
+    // The physical key, so Option chords on a Mac match on "Slash" rather than on "\u00f7".
+    code: modifiers?.code,
     isMac,
     shiftKey: modifiers?.shiftKey ?? false,
     altKey: modifiers?.altKey ?? false,

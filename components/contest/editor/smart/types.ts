@@ -18,7 +18,16 @@ export interface EditState {
   readonly text: string;
   readonly selectionStart: number;
   readonly selectionEnd: number;
+  /**
+   * Which end of the selection moves, as the textarea's `selectionDirection` reports it. Shift+Home
+   * and Shift+End extend from the anchor, which is selectionEnd when this is "backward". Absent
+   * means "forward".
+   */
+  readonly selectionDirection?: SelectionDirection;
 }
+
+/** A textarea's selection direction: "backward" puts the moving end at selectionStart. */
+export type SelectionDirection = "forward" | "backward" | "none";
 
 /**
  * An edit as a single replacement, so the surface can apply it with one insertText call and the
@@ -37,6 +46,11 @@ export interface Edit {
    * value, selected so typing replaces it. Absent for every edit that is not a template.
    */
   readonly tabStops?: readonly TabStop[];
+  /**
+   * The direction to give the selection after the edit, for Shift+Home extending leftwards from
+   * its anchor. Absent means "forward"; the surface passes it to setSelectionRange.
+   */
+  readonly selectionDirection?: SelectionDirection;
 }
 
 /** A place a live template's Tab moves to: `from === to` for an empty field or the $END$ line. */
@@ -48,6 +62,12 @@ export interface TabStop {
 /** The key as the surface saw it. `isMac` decides whether Cmd or Ctrl is the IntelliJ modifier. */
 export interface KeyInput {
   readonly key: string;
+  /**
+   * The physical key (`event.code`, "Slash", "KeyJ"). On a Mac, Option turns `key` into a symbol
+   * (Option+/ is "\u00f7"), so Alt and Option chords match on this. Optional so older callers
+   * still type-check; the engine falls back to `key` without it.
+   */
+  readonly code?: string;
   readonly shiftKey: boolean;
   readonly altKey: boolean;
   readonly ctrlKey: boolean;
@@ -68,7 +88,16 @@ export interface LiveTemplate {
   readonly abbreviation: string;
   readonly description: string;
   readonly body: string;
+  /**
+   * Where Tab may expand the template, as IntelliJ's template contexts: "statement" as the first
+   * thing on its line, "toplevel" outside every block, "classbody" directly inside a class, and
+   * "declaration" also mid-line after a space, "(", "<" or ",". Absent: inferred from the body
+   * (see template-context.ts).
+   */
+  readonly context?: TemplateContext;
 }
+
+export type TemplateContext = "statement" | "toplevel" | "classbody" | "declaration";
 
 export type CompletionKind =
   | "keyword"

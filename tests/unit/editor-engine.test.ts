@@ -256,7 +256,8 @@ describe("Enter", () => {
   it("adds one indent unit after a line that opens a block", () => {
     expect(press("    if (x) {▮", "Enter")).toBe("    if (x) {\n        ▮\n    }");
     expect(press("    if x:▮", "Enter", PYTHON)).toBe("    if x:\n        ▮");
-    expect(press("call(▮", "Enter")).toBe("call(\n    ▮");
+    // Inside an open "(" IntelliJ uses the continuation indent, two levels (editor-engine-extras).
+    expect(press("call(▮", "Enter")).toBe("call(\n        ▮");
   });
 
   it("splits a brace pair onto three lines with the closer at the original indent", () => {
@@ -275,7 +276,7 @@ describe("Enter", () => {
   });
 
   it("does not split two characters that are not a matching pair", () => {
-    expect(press("f(▮]", "Enter")).toBe("f(\n    ▮]");
+    expect(press("f(▮]", "Enter")).toBe("f(\n        ▮]");
   });
 
   it("removes trailing whitespace from the line it leaves", () => {
@@ -311,7 +312,8 @@ describe("Enter", () => {
   });
 
   it("does not write a closing brace in Python", () => {
-    expect(press("d = {▮", "Enter", PYTHON)).toBe("d = {\n▮");
+    // PyCharm's hanging indent, and no "}" written.
+    expect(press("d = {▮", "Enter", PYTHON)).toBe("d = {\n    ▮");
   });
 
   it("starts a new line below with Shift+Enter, wherever the caret is", () => {
@@ -562,7 +564,8 @@ describe("Tab live templates", () => {
 
 describe("keys the engine does not own", () => {
   it("returns null for navigation, function keys and other shortcuts", () => {
-    for (const name of ["ArrowLeft", "Home", "End", "Escape", "Delete", "F5", "Shift"]) {
+    // Home is IntelliJ's smart Home now (editor-engine-extras.test.ts); End on a line with code stays native.
+    for (const name of ["ArrowLeft", "End", "Escape", "Delete", "F5", "Shift"]) {
       expect(press("a▮", name)).toBeNull();
     }
     expect(press("a▮", ctrl("s"))).toBeNull();

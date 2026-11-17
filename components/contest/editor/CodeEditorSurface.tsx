@@ -17,6 +17,7 @@ import { Button } from "@/components/ui";
 import { CompletionPopup } from "./CompletionPopup";
 import { EditorStatusBar } from "./EditorStatusBar";
 import { tokenizeCached, type TokenKind } from "./highlight";
+import { engineShortcuts } from "./smart/shortcuts";
 import { LANGUAGE_LABEL, LANGUAGE_TEMPLATE, type CodeEditorProps } from "./types";
 import { useEditorKeys } from "./useEditorKeys";
 
@@ -704,6 +705,7 @@ export function CodeEditorSurface({
                 : [
                     { keys: [`${modLabel} + /`], action: "Comment or uncomment the line" },
                     { keys: [`${modLabel} + D`], action: "Duplicate the line" },
+                    ...engineShortcuts(isMac, profile),
                   ]),
               ...(profile === null || templateExample === ""
                 ? []

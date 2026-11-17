@@ -243,8 +243,10 @@ describe("Python dedents the way PyCharm does", () => {
     for (const statement of ["return 1", "pass", "break", "continue", "raise ValueError()"]) {
       expect(typeKeys(`def f():\n    ${statement}▮`, ["Enter"], PYTHON)).toBe(`def f():\n    ${statement}\n▮`);
     }
-    // Still inside a bracket, the statement continues.
-    expect(typeKeys("def f():\n    return max(a,▮", ["Enter"], PYTHON)).toBe("def f():\n    return max(a,\n    ▮");
+    // Still inside a bracket, the statement continues, lined up under the first argument (PyCharm).
+    expect(typeKeys("def f():\n    return max(a,▮", ["Enter"], PYTHON)).toBe(
+      "def f():\n    return max(a,\n               ▮",
+    );
   });
 
   it("Backspace in the indentation removes a whole level", () => {

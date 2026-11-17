@@ -33,5 +33,6 @@ export function applyNativeEdit(element: HTMLTextAreaElement, edit: Edit): void 
       element.dispatchEvent(new Event("input", { bubbles: true }));
     }
   }
-  element.setSelectionRange(edit.selectionStart, edit.selectionEnd);
+  // Shift+Home leaves the moving end at selectionStart, so the next Shift+Home extends from the anchor.
+  element.setSelectionRange(edit.selectionStart, edit.selectionEnd, edit.selectionDirection);
 }

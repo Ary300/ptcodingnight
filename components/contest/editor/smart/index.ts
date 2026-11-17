@@ -37,6 +37,10 @@ export function profileFor(languageId: LanguageId): LanguageProfile | null {
 
 export { applyCompletion, completionContext, completionsFor } from "./completion";
 export { handleKey } from "./engine";
+export { cleanPastedText, reindentPaste } from "./paste";
+export { extendSelection, shrinkSelection } from "./selection";
+export { engineShortcuts, type EngineShortcut } from "./shortcuts";
+export { surroundKindsFor, surroundWith, type SurroundKind } from "./surround";
 export type {
   CompletionContext,
   CompletionItem,

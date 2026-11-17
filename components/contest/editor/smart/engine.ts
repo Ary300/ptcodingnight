@@ -27,26 +27,58 @@
  *   Mod+D      duplicates the line, or the selection.
  *   Cmd+Backspace (Mac), Ctrl+Y (elsewhere)  deletes the line.
  *   Alt+Shift+Up/Down  moves the line, or every selected line.
+ *   Mod+Shift+Up/Down  moves the statement or whole block (move-statement.ts).
+ *   Mod+Alt+Enter  starts a new line above. Mod+Shift+/ (Cmd+Option+/ on a Mac) block comment.
+ *   Alt+Up/Down (Mac), Alt+Shift+Right/Left (elsewhere)  extend and shrink the selection.
+ *   Ctrl+Shift+J joins lines, Mod+Shift+U toggles case, Ctrl+M (Mac) or Ctrl+Shift+M jumps to
+ *              the matching bracket, Home is smart Home, Alt (Mac) or Ctrl + Backspace/Delete
+ *              deletes to the word start or end.
+ *   "<"        pairs after a type name (angle.ts), never in a comparison.
  *   Tab        expands a live template whose abbreviation ends at the caret (a postfix template
- *              after a dot, as in `n.fori`), and otherwise returns null so the surface keeps its
- *              own block indent. A template with fields carries `tabStops`, which the surface
+ *              after a dot, as in `n.fori`) where its context allows (template-context.ts), steps
+ *              out of a closer that ends the line, and otherwise returns null so the surface
+ *              keeps its own block indent. A template with fields carries `tabStops`, which the surface
  *              walks with template-session.ts.
  *
  * Mod is Cmd on a Mac and Ctrl everywhere else. IME composition never reaches this function; the
  * surface filters it out first.
  */
 
+import { hasOpenAngle, opensAngle } from "./angle";
+import { toggleBlockComment } from "./block-comment";
+import {
+  deleteWordBackward,
+  deleteWordForward,
+  joinLines,
+  jumpOutOfCloser,
+  moveToBrace,
+  smartHome,
+  startNewLineBefore,
+  toggleCase,
+} from "./line-edits";
+import { moveStatement } from "./move-statement";
+import { regionAt, scanCode, skipString } from "./scan";
+import { extendSelection, shrinkSelection } from "./selection";
 import { renderTemplate, shiftStops } from "./template";
+import { templateFits } from "./template-context";
+import {
+  BRACE_LANGUAGES,
+  caretOnly,
+  isWordChar,
+  leadingSpace,
+  lineEndAt,
+  lineStartAt,
+  normalise,
+  removeOneIndent,
+  selectedLines,
+  selectOnly,
+  type LineSpan,
+  type Range,
+} from "./text";
 import type { Edit, EditState, KeyInput, LanguageProfile } from "./types";
 
-/** Java identifiers allow `$`, so it counts as a word character for pairing and templates. */
-const WORD_CHAR = /[A-Za-z0-9_$]/;
 const TRAILING_WORD = /[A-Za-z0-9_$]+$/;
-const LEADING_INLINE_SPACE = /^[ \t]*/;
 const TRAILING_INLINE_SPACE = /[ \t]+$/;
-
-/** Languages with C-style braces and block comments. Python has neither. */
-const BRACE_LANGUAGES: ReadonlySet<LanguageProfile["id"]> = new Set(["java", "cpp"]);
 
 /**
  * Word-shaped string prefixes after which a quote still pairs: Python's f"", r"", b"" and their
@@ -59,19 +91,6 @@ const STRING_PREFIXES: Readonly<Record<LanguageProfile["id"], ReadonlySet<string
   java: new Set<string>(),
 };
 
-/** A selection normalised so start <= end, clamped to the text. */
-interface Range {
-  readonly text: string;
-  readonly start: number;
-  readonly end: number;
-}
-
-/** The whole lines a selection touches, as [start, end) with `end` at a line end. */
-interface LineSpan {
-  readonly start: number;
-  readonly end: number;
-}
-
 /* ------------------------------------------------------------------------------------------ */
 /* Entry point                                                                                  */
 /* ------------------------------------------------------------------------------------------ */
@@ -83,34 +102,130 @@ export function handleKey(state: EditState, input: KeyInput, profile: LanguagePr
   const altGr = !input.isMac && input.ctrlKey && input.altKey && !input.metaKey;
 
   if (altGr && input.key.length === 1) return handleTyped(range, input.key, profile);
-  if (mod) return input.altKey ? null : handleModKey(range, input, profile);
+  if (mod) return input.altKey ? handleModAltKey(range, input, profile) : handleModKey(state, range, input, profile);
+  if (input.isMac && input.ctrlKey && !input.metaKey) return handleMacCtrlKey(range, input, profile);
   if (input.ctrlKey || input.metaKey) return null;
+  if (input.altKey) return handleAltKey(state, range, input, profile);
 
   switch (input.key) {
     case "Enter":
-      return input.altKey ? null : handleEnter(range, profile, input.shiftKey);
+      return handleEnter(range, profile, input.shiftKey);
     case "Backspace":
-      return input.altKey ? null : deleteEmptyPair(range, profile);
+      return deleteEmptyPair(range, profile);
     case "Tab":
-      return input.shiftKey || input.altKey ? null : expandTemplate(range, profile);
-    case "ArrowUp":
-    case "ArrowDown":
-      return input.altKey && input.shiftKey ? moveLines(range, input.key === "ArrowUp") : null;
+      return input.shiftKey ? null : (expandTemplate(range, profile) ?? jumpOutOfCloser(range, profile));
+    case "Home":
+      return smartHome(state, range, input.shiftKey);
+    case "End":
+      return input.shiftKey ? null : smartEnd(range, profile);
     default:
       return input.key.length === 1 ? handleTyped(range, input.key, profile) : null;
   }
 }
 
-function handleModKey(range: Range, input: KeyInput, profile: LanguageProfile): Edit | null {
+/**
+ * Whether the physical key is "/". On a Mac, Option turns `key` into a symbol ("÷"), so the
+ * chord is matched on `code` when the surface passes it, and on the symbols otherwise.
+ */
+function isSlashKey(input: KeyInput): boolean {
+  if (input.code !== undefined) return input.code === "Slash";
+  return input.key === "/" || input.key === "?" || input.key === "÷";
+}
+
+/** Alt (Option) with no Ctrl or Cmd. Matched by name, never by the symbol Option types. */
+function handleAltKey(state: EditState, range: Range, input: KeyInput, profile: LanguageProfile): Edit | null {
+  switch (input.key) {
+    case "ArrowUp":
+    case "ArrowDown": {
+      const up = input.key === "ArrowUp";
+      if (input.shiftKey) return moveLines(range, up);
+      // Extend and Shrink Selection are Option+Up and Option+Down in IntelliJ's macOS keymap.
+      return input.isMac ? resizeSelection(state, profile, up) : null;
+    }
+    case "ArrowRight":
+    case "ArrowLeft":
+      // Ctrl+W cannot be taken from a browser, so elsewhere Alt+Shift+Right / Left (as VS Code).
+      return !input.isMac && input.shiftKey ? resizeSelection(state, profile, input.key === "ArrowRight") : null;
+    case "Backspace":
+      return input.isMac ? deleteWordBackward(range) : null;
+    case "Delete":
+      return input.isMac ? deleteWordForward(range) : null;
+    default:
+      // Mac layouts type some brackets with Option (Option+5 is "[" on a German Mac).
+      return input.key.length === 1 ? handleTyped(range, input.key, profile) : null;
+  }
+}
+
+function resizeSelection(state: EditState, profile: LanguageProfile, grow: boolean): Edit {
+  const range = normalise(state);
+  const next = grow ? extendSelection(state, profile) : shrinkSelection(state, profile);
+  // At the whole file (or a caret) the key is still ours: nothing changes, nothing scrolls.
+  return next === null ? selectOnly(range.start, range.end) : selectOnly(next.start, next.end);
+}
+
+function handleModKey(state: EditState, range: Range, input: KeyInput, profile: LanguageProfile): Edit | null {
   // "/" is Shift+7 on several European layouts, so Shift is not held against it.
   if (input.key === "/") return toggleLineComment(range, profile);
-  if ((input.key === "d" || input.key === "D") && !input.shiftKey) return duplicate(range);
+  // Ctrl+Shift+/ is the block comment (the key reads "?" on a US layout).
+  if (input.shiftKey && isSlashKey(input)) return toggleBlockComment(range, profile);
   // Mod+Shift+Enter is Complete Current Statement. Plain Mod+Enter is the surface's submit key.
   if (input.key === "Enter") return input.shiftKey ? completeStatement(range, profile) : null;
-  // IntelliJ's Delete Line: Cmd+Backspace on a Mac, Ctrl+Y everywhere else.
+  const letter = input.key.toLowerCase();
+
+  if (input.shiftKey) {
+    if (input.key === "ArrowUp" || input.key === "ArrowDown") return moveStatement(state, profile, input.key === "ArrowUp");
+    if (letter === "u") return toggleCase(range);
+    if (letter === "j") return joinLines(range);
+    if (letter === "m" && !input.isMac) return moveToBrace(range, profile);
+  }
+  // Cmd+Left and Cmd+Right are a Mac's Home and End.
+  if (input.isMac && input.key === "ArrowLeft") return smartHome(state, range, input.shiftKey);
+  if (input.isMac && input.key === "ArrowRight") return input.shiftKey ? null : smartEnd(range, profile);
   if (input.shiftKey) return null;
-  if (input.isMac ? input.key === "Backspace" : input.key === "y" || input.key === "Y") return deleteLines(range);
+
+  if (letter === "d") return duplicate(range);
+  // IntelliJ's Delete Line: Cmd+Backspace on a Mac, Ctrl+Y everywhere else.
+  if (input.isMac ? input.key === "Backspace" : letter === "y") return deleteLines(range);
+  // Delete to Word Start / End is Ctrl+Backspace / Ctrl+Delete off a Mac.
+  if (!input.isMac && input.key === "Backspace") return deleteWordBackward(range);
+  if (!input.isMac && input.key === "Delete") return deleteWordForward(range);
   return null;
+}
+
+/** Mod+Alt (Cmd+Option on a Mac, Ctrl+Alt elsewhere) chords, matched on `code` for the symbol keys. */
+function handleModAltKey(range: Range, input: KeyInput, profile: LanguageProfile): Edit | null {
+  if (input.key === "Enter" && !input.shiftKey) return startNewLineBefore(range, profile);
+  // Cmd+Option+/ is the Mac's block comment.
+  if (input.isMac && isSlashKey(input)) return toggleBlockComment(range, profile);
+  return null;
+}
+
+/** Ctrl on a Mac, where Cmd is the IntelliJ modifier: Join Lines and Move Caret to Matching Brace. */
+function handleMacCtrlKey(range: Range, input: KeyInput, profile: LanguageProfile): Edit | null {
+  if (input.altKey) return null;
+  const letter = input.code === undefined ? input.key.toLowerCase() : input.code.replace(/^Key/, "").toLowerCase();
+  if (input.shiftKey && letter === "j") return joinLines(range);
+  if (!input.shiftKey && letter === "m") return moveToBrace(range, profile);
+  return null;
+}
+
+/**
+ * End on a blank line goes to the indent the line should have (the indent Enter would give it
+ * from the line above), as IntelliJ's virtual space does. On a line with code End is the browser's.
+ */
+function smartEnd(range: Range, profile: LanguageProfile): Edit | null {
+  const { text, start, end } = range;
+  if (start !== end) return null;
+  const lineStart = lineStartAt(text, start);
+  const lineEnd = lineEndAt(text, start);
+  const line = text.slice(lineStart, lineEnd);
+  if (line.trim() !== "" || lineStart === 0) return null;
+  const fromAbove = handleEnter({ text, start: lineStart - 1, end: lineStart - 1 }, profile, false);
+  const placed = fromAbove.insert.slice(0, fromAbove.selectionStart - fromAbove.from);
+  const proper = placed.slice(placed.lastIndexOf("\n") + 1);
+  if (proper.length <= line.length) return null;
+  const caret = lineStart + proper.length;
+  return { from: lineStart, to: lineEnd, insert: proper, selectionStart: caret, selectionEnd: caret };
 }
 
 /* ------------------------------------------------------------------------------------------ */
@@ -158,7 +273,8 @@ function completeStatement(range: Range, profile: LanguageProfile): Edit {
   const opensBody =
     trimmed.endsWith("{") ||
     BRACE_BARE_CONTROL.has(trimmed) ||
-    (BRACE_CONTROL.test(trimmed) && trimmed.endsWith(")"));
+    (BRACE_CONTROL.test(trimmed) && trimmed.endsWith(")")) ||
+    isMethodSignature(trimmed, braceDepthBefore(text, lineStart, profile), profile);
   if (opensBody) {
     const head = trimmed.endsWith("{") ? code : `${code} {`;
     const middle = `${head}\n${indent}${unit}`;
@@ -172,6 +288,28 @@ function completeStatement(range: Range, profile: LanguageProfile): Edit {
   const completed = needsSemicolon ? `${code};` : code;
   if (completed === line) return replace(`${line}\n${indent}`, line.length + 1 + indent.length);
   return replace(completed, completed.length);
+}
+
+/**
+ * `void f(int a)` or `static int gcd(int a, int b) throws X`: a declaration whose body Complete
+ * Current Statement opens instead of ending it with ";". Only where a method can be declared:
+ * directly in a Java class, or outside every block in C++.
+ */
+const SIGNATURE = /^(?:[\w$]+(?:<[^;=]*>)?(?:\[\])*[\s*&]+)+[\w$:~]+\s*\([^;=]*\)(?:\s*const)?(?:\s*throws\s+[\w$.,\s]+)?$/;
+const NOT_A_TYPE = /^(?:return|new|throw|else|case|do|delete|goto)\b/;
+
+function isMethodSignature(code: string, depth: number, profile: LanguageProfile): boolean {
+  const allowed = profile.id === "java" ? depth === 1 : depth === 0;
+  return allowed && !NOT_A_TYPE.test(code) && SIGNATURE.test(code);
+}
+
+function braceDepthBefore(text: string, end: number, profile: LanguageProfile): number {
+  let depth = 0;
+  scanCode(text, end, profile, (ch) => {
+    if (ch === "{") depth += 1;
+    else if (ch === "}") depth -= 1;
+  });
+  return depth;
 }
 
 /** The closers a line still owes, innermost first: `f(a[i` owes "])". Quotes are skipped. */
@@ -225,6 +363,7 @@ function handleTyped(range: Range, ch: string, profile: LanguageProfile): Edit |
   const next = text[caret];
 
   if (profile.quotes.includes(ch)) return typeQuote(range, ch, profile);
+  if (ch === "<" || ch === ">") return typeAngle(range, ch, profile);
 
   const closes = profile.pairs.some(([, close]) => close === ch);
   if (closes && next === ch) return caretOnly(caret, caret + 1);
@@ -238,6 +377,19 @@ function handleTyped(range: Range, ch: string, profile: LanguageProfile): Edit |
   if (profile.dedentOnType.includes(ch)) return dedentOnType(range, ch, profile);
   if (ch === ":" && profile.alignOnColon !== undefined) return alignClause(range, profile.alignOnColon);
   return null;
+}
+
+/**
+ * "<" after a type name (`List<`, `vector<`, `#include `) types "<>", and ">" in front of that
+ * ">" steps over it. Anywhere else, `a < b` or `i<n`, the browser types the character.
+ */
+function typeAngle(range: Range, ch: string, profile: LanguageProfile): Edit | null {
+  const { text, start: caret } = range;
+  const lineBefore = text.slice(lineStartAt(text, caret), caret);
+  if (regionAt(text, caret, profile) !== "code") return null;
+  if (ch === ">") return text[caret] === ">" && hasOpenAngle(lineBefore, profile) ? caretOnly(caret, caret + 1) : null;
+  if (isWordChar(text[caret]) || !opensAngle(lineBefore, profile)) return null;
+  return { from: caret, to: caret, insert: "<>", selectionStart: caret + 1, selectionEnd: caret + 1 };
 }
 
 /**
@@ -374,12 +526,6 @@ function dedentTarget(
   return leadingSpace(text.slice(lineStartAt(text, openerAt), lineEndAt(text, openerAt)));
 }
 
-function removeOneIndent(indent: string, unit: string): string {
-  if (indent.endsWith(unit)) return indent.slice(0, indent.length - unit.length);
-  if (indent.endsWith("\t")) return indent.slice(0, -1);
-  return indent.slice(0, Math.max(0, indent.length - unit.length));
-}
-
 /* ------------------------------------------------------------------------------------------ */
 /* Backspace                                                                                    */
 /* ------------------------------------------------------------------------------------------ */
@@ -392,7 +538,8 @@ function deleteEmptyPair(range: Range, profile: LanguageProfile): Edit | null {
   const next = text[caret];
   const isPair =
     profile.pairs.some(([open, close]) => open === prev && close === next) ||
-    (prev !== undefined && prev === next && profile.quotes.includes(prev));
+    (prev !== undefined && prev === next && profile.quotes.includes(prev)) ||
+    (prev === "<" && next === ">" && opensAngle(text.slice(lineStartAt(text, caret), caret - 1), profile));
   if (!isPair) return unindent(range, profile);
 
   return { from: caret - 1, to: caret + 1, insert: "", selectionStart: caret - 1, selectionEnd: caret - 1 };
@@ -430,6 +577,8 @@ function handleEnter(range: Range, profile: LanguageProfile, startNewLine: boole
   const lineStart = lineStartAt(text, start);
   const lineBefore = text.slice(lineStart, start);
   const indent = leadingSpace(lineBefore);
+  const split = splitStringLiteral(range, lineBefore, profile);
+  if (split !== null) return split;
   const kept = lineBefore.replace(TRAILING_INLINE_SPACE, "");
   const afterLine = text.slice(end, lineEndAt(text, end));
   const spaceAfter = leadingSpace(afterLine).length;
@@ -440,6 +589,22 @@ function handleEnter(range: Range, profile: LanguageProfile, startNewLine: boole
   const shape = enterShape(text, start, end, { lineStart, lineBefore, indent, kept, rest }, profile);
   const caret = from + shape.caret;
   return { from, to: to + (shape.consume ?? 0), insert: shape.insert, selectionStart: caret, selectionEnd: caret };
+}
+
+/**
+ * IntelliJ's Enter inside a Java string: `"abc|def"` becomes `"abc" +` and, on a continuation line,
+ * `"def"`, so the literal never breaks across a line. Not after a backslash (that would cut an
+ * escape in half) and not in a text block, where a newline is legal.
+ */
+function splitStringLiteral(range: Range, lineBefore: string, profile: LanguageProfile): Edit | null {
+  const { text, start, end } = range;
+  if (profile.id !== "java" || start !== end || text[start - 1] === "\\") return null;
+  if (lineBefore.includes('"""') || !insideStringOnLine(text, start, '"')) return null;
+  const indent = leadingSpace(lineBefore);
+  const unit = indent.includes("\t") ? "\t" : profile.indentUnit;
+  const insert = `" +\n${indent}${unit}${unit}"`;
+  const caret = start + insert.length;
+  return { from: start, to: start, insert, selectionStart: caret, selectionEnd: caret };
 }
 
 interface EnterContext {
@@ -547,8 +712,13 @@ function enterShape(
   return { insert, caret: insert.length };
 }
 
-/** The indent of a plain new line: one more after a block opener, one less after a block ends. */
+/**
+ * The indent of a plain new line: the continuation indent inside an open "(", one more after a
+ * block opener, one less after a block ends.
+ */
 function nextLineIndent(text: string, ctx: EnterContext, profile: LanguageProfile, unit: string): string {
+  const continuation = continuationIndent(ctx, profile, unit);
+  if (continuation !== null) return continuation;
   if (profile.opensBlock(ctx.lineBefore)) return ctx.indent + unit;
   if (profile.closesBlock?.(ctx.lineBefore) === true) return removeOneIndent(ctx.indent, unit);
   if (!BRACE_LANGUAGES.has(profile.id)) return ctx.indent;
@@ -562,6 +732,43 @@ function nextLineIndent(text: string, ctx: EnterContext, profile: LanguageProfil
     if (ctx.indent.length > headerIndent.length) return headerIndent;
   }
   return ctx.indent;
+}
+
+/**
+ * Enter with a "(" still open on the line. IntelliJ and CLion give the continuation indent, two
+ * levels (8 spaces); PyCharm gives a hanging indent of one level after a bare opener, and lines
+ * the next argument up under the first one when the opener already has something after it.
+ */
+function continuationIndent(ctx: EnterContext, profile: LanguageProfile, unit: string): string | null {
+  const open = lastUnclosedOpener(ctx.kept, BRACE_LANGUAGES.has(profile.id) ? "([" : "([{");
+  if (open === null) return null;
+  if (BRACE_LANGUAGES.has(profile.id)) return ctx.indent + unit + unit;
+  const after = ctx.kept.slice(open + 1);
+  if (after.trim() === "") return ctx.indent + unit;
+  return " ".repeat(open + 1 + leadingSpace(after).length);
+}
+
+/** Index of the innermost opener among `openers` still open at the end of `line`, or null. */
+function lastUnclosedOpener(line: string, openers: string): number | null {
+  const closerOf: Readonly<Record<string, string>> = { "(": ")", "[": "]", "{": "}" };
+  let stack: readonly { readonly ch: string; readonly at: number }[] = [];
+  let quote: string | null = null;
+  for (let i = 0; i < line.length; i += 1) {
+    const ch = line[i] ?? "";
+    if (quote !== null) {
+      if (ch === "\\") i += 1;
+      else if (ch === quote) quote = null;
+    } else if (ch === '"' || ch === "'") {
+      quote = ch;
+    } else if (closerOf[ch] !== undefined) {
+      stack = [...stack, { ch, at: i }];
+    } else if (ch === ")" || ch === "]" || ch === "}") {
+      const match = stack.map((entry) => closerOf[entry.ch]).lastIndexOf(ch);
+      if (match !== -1) stack = stack.slice(0, match);
+    }
+  }
+  const top = stack[stack.length - 1];
+  return top !== undefined && openers.includes(top.ch) ? top.at : null;
 }
 
 /**
@@ -802,7 +1009,7 @@ function expandTemplate(range: Range, profile: LanguageProfile): Edit | null {
   if (separator !== null) return null;
 
   const template = profile.templates.find((candidate) => candidate.abbreviation === word);
-  if (template === undefined) return null;
+  if (template === undefined || !templateFits(text, wordStart, start, template, profile)) return null;
   return templateEdit(wordStart, start, template.body, leadingSpace(lineBefore), profile);
 }
 
@@ -814,6 +1021,7 @@ function expandPostfix(range: Range, word: string, wordStart: number, profile: L
   const template = (profile.postfixTemplates ?? []).find((candidate) => candidate.abbreviation === word);
   if (template === undefined) return null;
   const { text, start } = range;
+  if (isWordChar(text[start]) || regionAt(text, wordStart, profile) !== "code") return null;
   const lineStart = lineStartAt(text, start);
   const dot = wordStart - 1;
   const exprStart = expressionStart(text, lineStart, dot);
@@ -891,90 +1099,6 @@ function groupStart(text: string, lineStart: number, close: number): number | nu
 /* ------------------------------------------------------------------------------------------ */
 /* Text helpers                                                                                 */
 /* ------------------------------------------------------------------------------------------ */
-
-function normalise(state: EditState): Range {
-  const clamp = (pos: number) => Math.min(Math.max(pos, 0), state.text.length);
-  const a = clamp(state.selectionStart);
-  const b = clamp(state.selectionEnd);
-  return { text: state.text, start: Math.min(a, b), end: Math.max(a, b) };
-}
-
-function caretOnly(at: number, caret: number): Edit {
-  return { from: at, to: at, insert: "", selectionStart: caret, selectionEnd: caret };
-}
-
-function isWordChar(ch: string | undefined): boolean {
-  return ch !== undefined && WORD_CHAR.test(ch);
-}
-
-function leadingSpace(line: string): string {
-  return LEADING_INLINE_SPACE.exec(line)?.[0] ?? "";
-}
-
-function lineStartAt(text: string, pos: number): number {
-  return pos <= 0 ? 0 : text.lastIndexOf("\n", pos - 1) + 1;
-}
-
-function lineEndAt(text: string, pos: number): number {
-  const newline = text.indexOf("\n", pos);
-  return newline === -1 ? text.length : newline;
-}
-
-/**
- * The lines a selection covers. A selection that ends at column 0 of a line does not include that
- * line, as in IntelliJ: selecting two whole lines by dragging to the start of the third must not
- * comment or move the third.
- */
-function selectedLines(range: Range): LineSpan {
-  const { text, start, end } = range;
-  const last = end > start && lineStartAt(text, end) === end ? end - 1 : end;
-  return { start: lineStartAt(text, start), end: lineEndAt(text, last) };
-}
-
-/**
- * Walks the code in [0, end) and reports every character outside strings and comments. Strings
- * stop at an unescaped matching quote or, if unterminated, at the end of their line; a tripled
- * quote is a multi-line string (a Python docstring or a Java text block).
- */
-function scanCode(
-  text: string,
-  end: number,
-  profile: LanguageProfile,
-  visit: (ch: string, pos: number) => void,
-): void {
-  const blockComments = BRACE_LANGUAGES.has(profile.id);
-  let i = 0;
-  while (i < end) {
-    if (text.startsWith(profile.lineComment, i)) {
-      i = lineEndAt(text, i);
-    } else if (blockComments && text.startsWith("/*", i)) {
-      const close = text.indexOf("*/", i + 2);
-      i = close === -1 ? end : close + 2;
-    } else if (profile.quotes.includes(text[i] ?? "")) {
-      i = skipString(text, i, text[i] ?? "");
-    } else {
-      visit(text[i] ?? "", i);
-      i += 1;
-    }
-  }
-}
-
-function skipString(text: string, at: number, quote: string): number {
-  const triple = quote.repeat(3);
-  if (text.startsWith(triple, at)) {
-    const close = text.indexOf(triple, at + 3);
-    return close === -1 ? text.length : close + 3;
-  }
-  let i = at + 1;
-  while (i < text.length) {
-    const ch = text[i];
-    if (ch === "\\") i += 2;
-    else if (ch === quote) return i + 1;
-    else if (ch === "\n") return i;
-    else i += 1;
-  }
-  return text.length;
-}
 
 /** The position of the innermost "open" still unclosed at `end`, or null when there is none. */
 function findUnmatchedOpener(
