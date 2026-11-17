@@ -14,7 +14,9 @@ export function languageTabs(page: Page): Locator {
  */
 export async function chooseLanguage(page: Page, label: string): Promise<void> {
   const tabs = languageTabs(page);
-  await expect(tabs).toBeVisible();
+  // 30s, as the other specs allow for "Loading problem..." on a shared dev server: two pages
+  // opened back to back measured past the default 5s with the tabs simply not rendered yet.
+  await expect(tabs).toBeVisible({ timeout: 30_000 });
   const tab = tabs.getByRole("tab", { name: label, exact: true });
   await tab.click();
   await expect(tab).toHaveAttribute("aria-selected", "true");
