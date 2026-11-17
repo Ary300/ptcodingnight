@@ -20,18 +20,42 @@ import type { Edit } from "./smart/types";
 export function applyNativeEdit(element: HTMLTextAreaElement, edit: Edit): void {
   // A replacement with identical text (Shift+Tab on lines with no indent) would still push an
   // empty step onto the undo stack, and the student's next Ctrl + Z would appear to do nothing.
-  const changes = element.value.slice(edit.from, edit.to) !== edit.insert;
+  const before = element.value;
+  const changes = before.slice(edit.from, edit.to) !== edit.insert;
   if (changes) {
     element.setSelectionRange(edit.from, edit.to);
     // An empty insertText is not a delete in every engine; "delete" over a range always is.
-    const applied =
+    const reported =
       edit.insert === ""
         ? document.execCommand("delete", false)
         : document.execCommand("insertText", false, edit.insert);
-    if (!applied) {
-      element.setRangeText(edit.insert, edit.from, edit.to, "end");
-      element.dispatchEvent(new Event("input", { bubbles: true }));
+    if (!reported || !landed(element.value, before, edit)) {
+      fallBack(element, before, edit);
     }
   }
   element.setSelectionRange(edit.selectionStart, edit.selectionEnd);
+}
+
+/** The text the edit should have produced from `before`. */
+export function expectedText(before: string, edit: Edit): string {
+  return before.slice(0, edit.from) + edit.insert + before.slice(edit.to);
+}
+
+/**
+ * Whether `execCommand` really made the edit. Some engines (Firefox before 89, a few embedded
+ * webviews, a textarea not focused) return true and change nothing, which would silently drop
+ * the student's keystroke.
+ */
+export function landed(after: string, before: string, edit: Edit): boolean {
+  return after === expectedText(before, edit);
+}
+
+/**
+ * The edit without native undo: `setRangeText` plus a synthetic `input` event for React. Only when
+ * the text is still untouched, so a half-applied command is never applied twice.
+ */
+function fallBack(element: HTMLTextAreaElement, before: string, edit: Edit): void {
+  if (element.value !== before) return;
+  element.setRangeText(edit.insert, edit.from, edit.to, "end");
+  element.dispatchEvent(new Event("input", { bubbles: true }));
 }

@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, 
 
 import type { Language } from "@/lib/schemas/judge";
 
+import { commandFor, isGuardedChord, type Chord } from "./commands/keymap";
+import type { EditorCommandHooks } from "./commands/useEditorCommands";
 import { isCompletionTrigger } from "./completion-session";
 import { applyNativeEdit } from "./native-edit";
 import { handleKey, profileFor, type Edit, type EditState, type KeyInput, type LanguageProfile } from "./smart";
@@ -18,10 +20,15 @@ import { useCompletion, type Completion } from "./useCompletion";
  *   1. An IME composition owns every key until it ends, including the key that ends it.
  *   2. The completion popup, when open, takes the arrows, Escape, Enter and Tab.
  *   3. A live template being filled in takes Tab and Enter, to move to its next field.
+ *   3a. Commands (commands/keymap.ts): Find, Replace, Go to Line, Surround With, Parameter
+ *      Info, Quick Documentation, Context Actions, Save, Run, font size, occurrences. An open
+ *      bar or info panel is closed by Escape here, before Escape counts toward leaving.
  *   4. Escape twice arms "Tab leaves the editor" (one Escape is an IntelliJ reflex and must not
  *      change what Tab does); plain Ctrl/Cmd + Enter submits, and with Shift it never does;
  *      Ctrl + Space opens completion; an armed Tab leaves.
  *   5. The smart engine (smart/engine.ts) answers IntelliJ's keys for Java, Python and C++.
+ *   5a. Browser chords IntelliJ habits press (print, reload, bookmark, Back) that nothing above
+ *      answered are prevented, so the page never prints or navigates away from the editor.
  *   6. What is left keeps the editor's original behaviour: Tab and Shift+Tab indent and dedent the
  *      selected lines, Enter keeps the indent. JavaScript and Go, which have no profile, live here.
  *
@@ -60,7 +67,7 @@ function editStateOf(element: HTMLTextAreaElement): EditState {
 function keyInputOf(
   key: string,
   isMac: boolean,
-  modifiers?: Pick<KeyboardEvent<HTMLTextAreaElement>, "shiftKey" | "altKey" | "ctrlKey" | "metaKey">,
+  modifiers?: Pick<KeyboardEvent<HTMLTextAreaElement>, "shiftKey" | "altKey" | "ctrlKey" | "metaKey" | "code">,
 ): KeyInput {
   return {
     key,
@@ -69,6 +76,19 @@ function keyInputOf(
     altKey: modifiers?.altKey ?? false,
     ctrlKey: modifiers?.ctrlKey ?? false,
     metaKey: modifiers?.metaKey ?? false,
+    ...(modifiers?.code === undefined || modifiers.code === "" ? {} : { code: modifiers.code }),
+  };
+}
+
+function chordOf(event: KeyboardEvent<HTMLTextAreaElement>, isMac: boolean): Chord {
+  return {
+    key: event.key,
+    code: event.code,
+    shiftKey: event.shiftKey,
+    altKey: event.altKey,
+    ctrlKey: event.ctrlKey,
+    metaKey: event.metaKey,
+    isMac,
   };
 }
 
@@ -78,6 +98,8 @@ export interface EditorKeysOptions {
   readonly onSubmitShortcut?: () => void;
   /** Moves Line/Col; a programmatic selection fires no `select` event of its own. */
   readonly syncCaret: (element: HTMLTextAreaElement | null) => void;
+  /** The editor's commands (find, go to line, surround ...). Absent, only the guards apply. */
+  readonly commands?: EditorCommandHooks;
 }
 
 export interface EditorKeys {
@@ -98,6 +120,7 @@ export function useEditorKeys({
   language,
   onSubmitShortcut,
   syncCaret,
+  commands,
 }: EditorKeysOptions): EditorKeys {
   const [tabMovesFocus, setTabMovesFocus] = useState(false);
   // One Escape seen with nothing to dismiss; a second in a row arms Tab to leave.
@@ -278,6 +301,9 @@ export function useEditorKeys({
       }
       softKey.current = false;
 
+      // An occurrence session (several copies of a name picked) owns the keys that edit them.
+      if (commands?.interceptKey(event) === true) return;
+
       const plain = !event.altKey && !event.ctrlKey && !event.metaKey;
       if (event.key !== "Escape" && !MODIFIER_KEYS.has(event.key)) escapeOnce.current = false;
 
@@ -312,8 +338,31 @@ export function useEditorKeys({
       }
 
       if (event.key === "Escape") {
+        // An open bar or info panel closes first, and closing it is not a step toward leaving.
+        if (template.current === null && commands?.escape() === true) {
+          event.preventDefault();
+          escapeOnce.current = false;
+          completion.close();
+          return;
+        }
         pressEscape();
         return;
+      }
+
+      const command = commandFor(chordOf(event, isMac));
+      if (command === "completion") {
+        // IntelliJ's basic completion: open the list for the word at the caret, on demand.
+        event.preventDefault();
+        completion.schedule();
+        return;
+      }
+      if (command !== null && commands !== undefined) {
+        const active = completion.popup?.items[completion.popup.activeIndex];
+        if (commands.run(command, element, active)) {
+          event.preventDefault();
+          if (command !== "quickDoc") completion.close();
+          return;
+        }
       }
 
       if (event.key === "Enter" && (event.metaKey || event.ctrlKey) && !event.altKey) {
@@ -330,13 +379,6 @@ export function useEditorKeys({
           event.preventDefault();
           return;
         }
-      }
-
-      // IntelliJ's basic completion: open the list for the word at the caret, on demand.
-      if (event.key === " " && event.ctrlKey && !event.metaKey && !event.altKey) {
-        event.preventDefault();
-        completion.schedule();
-        return;
       }
 
       if (event.key === "Tab" && tabMovesFocus) {
@@ -357,6 +399,13 @@ export function useEditorKeys({
         if (plain && isCompletionTrigger(event.key)) completion.schedule();
         else completion.close();
         if (tabMovesFocus && event.key !== "Tab" && event.key !== "Enter") setTabMovesFocus(false);
+        return;
+      }
+
+      // A browser chord nobody above answered: print, reload, bookmark, Back. Nothing happens.
+      if (isGuardedChord(chordOf(event, isMac))) {
+        event.preventDefault();
+        completion.close();
         return;
       }
 
@@ -397,6 +446,7 @@ export function useEditorKeys({
       acceptCompletion,
       applyKeyEdit,
       autoIndent,
+      commands,
       completion,
       indentSelection,
       isMac,

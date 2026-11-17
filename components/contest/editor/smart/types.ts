@@ -53,6 +53,11 @@ export interface KeyInput {
   readonly ctrlKey: boolean;
   readonly metaKey: boolean;
   readonly isMac: boolean;
+  /**
+   * `KeyboardEvent.code`, the physical key, for Option chords on a Mac (Option+/ types "÷", so
+   * `key` never names the slash). Absent for a synthesized press (an accepted Tab).
+   */
+  readonly code?: string;
 }
 
 /**

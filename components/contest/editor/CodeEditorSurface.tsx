@@ -14,11 +14,26 @@ import {
 
 import { Button } from "@/components/ui";
 
+import { MatchLayer } from "./commands/MatchLayer";
+import { editorShortcutGroups } from "./commands/shortcuts";
+import { useEditorCommands } from "./commands/useEditorCommands";
 import { CompletionPopup } from "./CompletionPopup";
 import { EditorStatusBar } from "./EditorStatusBar";
 import { tokenizeCached, type TokenKind } from "./highlight";
+import { profileFor } from "./smart";
 import { LANGUAGE_LABEL, LANGUAGE_TEMPLATE, type CodeEditorProps } from "./types";
 import { useEditorKeys } from "./useEditorKeys";
+
+/**
+ * Keeps Grammarly, similar writing assistants and page translation out of the code. They attach
+ * to any textarea and rewrite what they think is prose; translation rewrites the overlay.
+ */
+const NO_WRITING_ASSISTANTS = {
+  "data-gramm": "false",
+  "data-gramm_editor": "false",
+  "data-enable-grammarly": "false",
+  translate: "no",
+} as const;
 
 /**
  * The editing surface, loaded as its own chunk (see `CodeEditor.tsx`).
@@ -161,6 +176,8 @@ export function CodeEditorSurface({
   template: templateProp,
   disabled = false,
   onSubmitShortcut,
+  onSaveShortcut,
+  onRunShortcut,
   label,
   toolbarStart,
   fill = false,
@@ -168,6 +185,7 @@ export function CodeEditorSurface({
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const gutterRef = useRef<HTMLDivElement | null>(null);
   const overlayRef = useRef<HTMLPreElement | null>(null);
+  const matchLayerRef = useRef<HTMLPreElement | null>(null);
   const hintId = useId();
 
   const lineCount = useMemo(() => value.split("\n").length, [value]);
@@ -255,13 +273,44 @@ export function CodeEditorSurface({
       overlay.scrollLeft = element.scrollLeft;
     }
     if (gutter !== null) gutter.scrollTop = element.scrollTop;
-  }, [value, caret]);
+    const marks = matchLayerRef.current;
+    if (marks !== null) {
+      marks.scrollTop = element.scrollTop;
+      marks.scrollLeft = element.scrollLeft;
+    }
+  });
+
+  /* ---- commands: find, go to line, surround, info popups, save, run, font size ---- */
+
+  const commandProfile = useMemo(() => profileFor(language), [language]);
+  const [commandIsMac] = useState(
+    () => typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent),
+  );
+  const commands = useEditorCommands({
+    textareaRef,
+    value,
+    language,
+    profile: commandProfile,
+    isMac: commandIsMac,
+    caretLine: caret.line,
+    caretColumn: caret.column,
+    lineCount,
+    syncCaret,
+    onSaveShortcut,
+    onRunShortcut,
+  });
+  // Every layer that draws glyphs takes the same size, or the overlay slides off the caret.
+  const textStyle = useMemo(
+    () => (commands.fontPx === null ? SHARED_TEXT : { ...SHARED_TEXT, fontSize: `${commands.fontPx}px` }),
+    [commands.fontPx],
+  );
 
   const { handleKeyDown, completion, profile, isMac, applyKeyEdit, tabMovesFocus, endTemplate } = useEditorKeys({
     textareaRef,
     language,
     onSubmitShortcut,
     syncCaret,
+    commands: commands.hooks,
   });
   const listboxId = useId();
   const optionId = useCallback((index: number) => `${listboxId}-option-${index}`, [listboxId]);
@@ -417,6 +466,11 @@ export function CodeEditorSurface({
       overlay.scrollTop = source.scrollTop;
       overlay.scrollLeft = source.scrollLeft;
     }
+    const marks = matchLayerRef.current;
+    if (marks !== null) {
+      marks.scrollTop = source.scrollTop;
+      marks.scrollLeft = source.scrollLeft;
+    }
   }, []);
 
   return (
@@ -539,6 +593,9 @@ export function CodeEditorSurface({
         )}
       </div>
 
+      {/* Find and Replace, and Go to Line: strips between the toolbar and the code. */}
+      {commands.bars}
+
       {/*
         The code area itself: gutter, coloured layer, and the textarea over both. No border and
         no radius — it is one band inside the panel the workspace draws around it, which is how
@@ -566,7 +623,7 @@ export function CodeEditorSurface({
           // `height` pins the gutter to the textarea's measured height so its per-line divs can
           // never stretch the band past the box the student actually types in. Null only before
           // the first layout-effect measurement, which runs before paint.
-          style={{ ...SHARED_TEXT, height: gutterHeight ?? undefined }}
+          style={{ ...textStyle, height: gutterHeight ?? undefined }}
         >
           {Array.from({ length: lineCount }, (_unused, index) => (
             <div
@@ -582,11 +639,22 @@ export function CodeEditorSurface({
         </div>
 
         <div className="relative min-w-0 flex-1">
+          {(commands.highlights.matches.length > 0 || commands.highlights.carets.length > 0) && (
+            <MatchLayer
+              ref={matchLayerRef}
+              text={value}
+              matches={commands.highlights.matches}
+              current={commands.highlights.current}
+              carets={commands.highlights.carets}
+              style={textStyle}
+            />
+          )}
           <pre
             ref={overlayRef}
             aria-hidden="true"
-            className="pointer-events-none absolute inset-0 overflow-hidden p-3 font-mono whitespace-pre"
-            style={{ ...SHARED_TEXT }}
+            translate="no"
+            className="notranslate pointer-events-none absolute inset-0 overflow-hidden p-3 font-mono whitespace-pre"
+            style={textStyle}
           >
             {tokens.map((token, index) => (
               <span key={index} className={TOKEN_CLASS[token.kind]}>
@@ -605,6 +673,7 @@ export function CodeEditorSurface({
             onKeyDown={handleKeyDown}
             onScroll={(event) => {
               syncScroll(event);
+              commands.rememberCaret();
               // Typing past the edge scrolls the box; the open popup follows its word.
               if (completion.popup !== null) completion.schedule();
             }}
@@ -613,7 +682,9 @@ export function CodeEditorSurface({
             onMouseDown={() => {
               completion.close();
               endTemplate();
+              commands.onPointerDown();
             }}
+            onPaste={commands.onPaste}
             onBlur={completion.close}
             disabled={disabled}
             spellCheck={false}
@@ -621,17 +692,27 @@ export function CodeEditorSurface({
             autoCorrect="off"
             autoComplete="off"
             wrap="off"
+            {...NO_WRITING_ASSISTANTS}
             aria-label={`${label}, ${LANGUAGE_LABEL[language]}`}
-            aria-describedby={hintId}
+            aria-describedby={commands.describedBy === undefined ? hintId : `${hintId} ${commands.describedBy}`}
             // The list is announced through the textarea, which never gives up focus to it.
             aria-autocomplete="list"
             aria-controls={completion.popup === null ? undefined : listboxId}
             aria-activedescendant={
               completion.popup === null ? undefined : optionId(completion.popup.activeIndex)
             }
-            onSelect={(event) => syncCaret(event.currentTarget)}
-            onKeyUp={(event) => syncCaret(event.currentTarget)}
-            onClick={(event) => syncCaret(event.currentTarget)}
+            onSelect={(event) => {
+              syncCaret(event.currentTarget);
+              commands.rememberCaret();
+            }}
+            onKeyUp={(event) => {
+              syncCaret(event.currentTarget);
+              commands.rememberCaret();
+            }}
+            onClick={(event) => {
+              syncCaret(event.currentTarget);
+              commands.rememberCaret();
+            }}
             // `text-transparent` hands the glyphs to the layer underneath and keeps the caret and
             // the selection, which are the two things only a real textarea can draw. The
             // selection therefore needs its own colour: without it, selected text is an invisible
@@ -642,8 +723,10 @@ export function CodeEditorSurface({
             className={`relative block w-full overflow-auto bg-transparent p-3 font-mono text-transparent caret-gold outline-none focus-visible:outline-1! focus-visible:outline-gold/45! focus-visible:outline-offset-[-1px]! selection:bg-paper/25 disabled:cursor-not-allowed ${
               fillsBox ? "h-full resize-none" : "max-h-[70vh] min-h-[16rem] resize-y sm:min-h-[22rem]"
             }`}
-            style={{ ...SHARED_TEXT }}
+            style={textStyle}
           />
+
+          {commands.popups}
 
           {completion.popup !== null && (
             <CompletionPopup
@@ -695,20 +778,8 @@ export function CodeEditorSurface({
           <EditorStatusBar
             line={caret.line}
             column={caret.column}
-            shortcuts={[
-              { keys: ["Esc", "Esc", "Tab"], action: "Move focus out of the editor" },
-              { keys: ["Tab"], action: "Indent" },
-              { keys: ["Ctrl / Cmd + Enter"], action: "Submit for judging" },
-              ...(profile === null
-                ? []
-                : [
-                    { keys: [`${modLabel} + /`], action: "Comment or uncomment the line" },
-                    { keys: [`${modLabel} + D`], action: "Duplicate the line" },
-                  ]),
-              ...(profile === null || templateExample === ""
-                ? []
-                : [{ keys: [templateExample, "Tab"], action: "Expand a template" }]),
-            ]}
+            notice={commands.notice}
+            groups={editorShortcutGroups({ isMac, smart: profile !== null, templateExample })}
           />
         </>
       ) : (
@@ -746,6 +817,9 @@ export function CodeEditorSurface({
           style={{ fontSize: "var(--text-xs)" }}
         >
           Line: {caret.line} Col: {caret.column}
+        </p>
+        <p role="status" data-testid="editor-notice" className="text-ink/70" style={{ fontSize: "var(--text-xs)" }}>
+          {commands.notice ?? ""}
         </p>
       </div>
       )}
