@@ -8,7 +8,7 @@ import type { AdminContestList, AdminContestSummary } from "@/lib/schemas/api";
 import { AdminContestListSchema } from "@/lib/schemas/api";
 import { EVENT_TIME_ZONE } from "@/lib/contest/event-time";
 
-import { ContestStatePill } from "./StatusPill";
+import { ContestStatePill, isWindowClosed } from "./StatusPill";
 
 /**
  * The list of contests.
@@ -263,7 +263,10 @@ export function ContestPicker({ tab = "", purpose, variant = "picker" }: Contest
                         {contest.name}
                       </span>
                       <span className="justify-self-start">
-                        <ContestStatePill state={contest.state} />
+                        <ContestStatePill
+                          state={contest.state}
+                          windowClosed={isWindowClosed(contest.endsAt)}
+                        />
                       </span>
                     </span>
 

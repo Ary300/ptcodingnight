@@ -1,6 +1,6 @@
 import { Crumbs } from "@/components/ui";
 import { AlertPlate } from "@/components/admin/Panel";
-import { ContestStatePill } from "@/components/admin/StatusPill";
+import { ContestStatePill, isWindowClosed } from "@/components/admin/StatusPill";
 
 import { contestSetup } from "./contest-setup";
 import { ContestTabs } from "./tabs";
@@ -62,7 +62,9 @@ export default async function ContestLayout({
         <h1 className="font-display font-bold text-[length:var(--text-lg)] sm:text-[length:var(--text-xl)]">
           {setup?.name ?? "Unknown contest"}
         </h1>
-        {setup !== null && <ContestStatePill state={setup.state} />}
+        {setup !== null && (
+          <ContestStatePill state={setup.state} windowClosed={isWindowClosed(setup.endsAt)} />
+        )}
       </div>
 
       {setup === null ? (

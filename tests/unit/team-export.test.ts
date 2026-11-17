@@ -2,6 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import {
   TEAM_EXPORT_HEADERS,
+  cellXml,
+  fixed2,
+  gridToCsv,
+  gridToXlsx,
+  sheetXml,
   teamSafeFilename,
   teamStandingsToGrid,
 } from "@/components/admin/export";
@@ -145,5 +150,59 @@ describe("teamSafeFilename", () => {
     expect(teamSafeFilename("Coding Night 2026!", "csv", "2026-11-19T00:41:09.000Z")).toBe(
       "coding-night-2026-team-results-2026-11-18_19-41-09.csv",
     );
+  });
+});
+
+/**
+ * The awards XLSX carried the Score as the TEXT "160.00", so the sheet could not be sorted or
+ * summed. A score is now a number cell with the built-in 0.00 format.
+ */
+describe("the XLSX writes numbers as numbers", () => {
+  it("puts the team score in the grid as a real number with a two-decimal format", () => {
+    const grid = teamStandingsToGrid(board([team("five-alarm", "int", 1, 16000)]));
+    expect(grid[1]?.[column("Score")]).toEqual({ fixed2: 160 });
+  });
+
+  it("writes the score cell as a number styled 0.00, never as the text 160.00", () => {
+    const xml = cellXml("E2", fixed2(160));
+    expect(xml).toBe('<c r="E2" s="1"><v>160</v></c>');
+    expect(xml).not.toContain("inlineStr");
+    expect(xml).not.toContain("160.00");
+  });
+
+  it("keeps a fractional mean exact in the cell and lets the format round for display", () => {
+    expect(cellXml("E3", fixed2(543.75))).toBe('<c r="E3" s="1"><v>543.75</v></c>');
+  });
+
+  it("writes rank, penalty and points as numbers and names as text", () => {
+    const grid = teamStandingsToGrid(board([team("five-alarm", "int", 1, 16000)]));
+    const row = grid[1] ?? [];
+    const numeric = [
+      "Rank",
+      "Player pool",
+      "Team size",
+      "Group points",
+      "Side activities",
+      "Penalty minutes",
+    ] as const;
+    for (const name of numeric) {
+      expect(typeof row[column(name)], name).toBe("number");
+    }
+    const sheet = sheetXml(grid);
+    expect(sheet).toContain('<c r="B2"><v>1</v></c>');
+    expect(sheet).toContain('<c r="E2" s="1"><v>160</v></c>');
+    expect(sheet).toContain('<c r="D2" t="inlineStr">');
+  });
+
+  it("declares the 0.00 style the score cells point at", () => {
+    const bytes = gridToXlsx(teamStandingsToGrid(board([team("a", "int", 1, 100)])));
+    expect(new TextDecoder().decode(bytes)).toContain(
+      '<cellXfs count="2"><xf xfId="0"/><xf numFmtId="2" xfId="0" applyNumberFormat="1"/></cellXfs>',
+    );
+  });
+
+  it("leaves the CSV printing two decimals, as it always has", () => {
+    const csv = gridToCsv(teamStandingsToGrid(board([team("a", "int", 1, 16000)])));
+    expect(csv.split("\r\n")[1]).toContain('"160.00"');
   });
 });

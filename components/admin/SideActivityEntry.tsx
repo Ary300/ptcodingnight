@@ -97,6 +97,12 @@ export function SideActivityEntry({ contestId }: SideActivityEntryProps) {
   const [formError, setFormError] = useState<string | null>(null);
   const [duplicateRefusal, setDuplicateRefusal] = useState<string | null>(null);
   const [confirmation, setConfirmation] = useState<string | null>(null);
+  /*
+    "Recorded: +60 points to Int Four for Kahoot" belongs to the award just entered. It used to stay
+    on screen while the organizer picked the next preset and team, so it read as a description of
+    the NEW form. Any edit to the form clears it.
+  */
+  const clearConfirmation = (): void => setConfirmation(null);
   const [teamError, setTeamError] = useState<string | null>(null);
   const [labelError, setLabelError] = useState<string | null>(null);
   const [pointsError, setPointsError] = useState<string | null>(null);
@@ -362,6 +368,7 @@ export function SideActivityEntry({ contestId }: SideActivityEntryProps) {
                   if (preset === "Kahoot") setForWhom(WHOLE_TEAM);
                   setLabelError(null);
                   setDuplicateRefusal(null);
+                  clearConfirmation();
                 }}
               >
                 {preset}
@@ -383,6 +390,7 @@ export function SideActivityEntry({ contestId }: SideActivityEntryProps) {
               setActivity(event.target.value);
               setLabelError(null);
               setDuplicateRefusal(null);
+              clearConfirmation();
             }}
           />
 
@@ -396,6 +404,7 @@ export function SideActivityEntry({ contestId }: SideActivityEntryProps) {
               setForWhom(WHOLE_TEAM);
               setTeamError(null);
               setDuplicateRefusal(null);
+              clearConfirmation();
             }}
           >
             <option value="">Choose a team…</option>
@@ -418,6 +427,7 @@ export function SideActivityEntry({ contestId }: SideActivityEntryProps) {
               onChange={(event) => {
                 setForWhom(event.target.value);
                 setDuplicateRefusal(null);
+                clearConfirmation();
               }}
             >
               <option value={WHOLE_TEAM}>(the whole team)</option>
@@ -455,6 +465,7 @@ export function SideActivityEntry({ contestId }: SideActivityEntryProps) {
             onChange={(event) => {
               setPoints(event.target.value);
               setPointsError(null);
+              clearConfirmation();
             }}
           />
 
