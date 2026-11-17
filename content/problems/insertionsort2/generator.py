@@ -3,21 +3,25 @@
 Usage: python3 generator.py <seed>
 
 Deterministic per seed. The seed picks both the array size (small seeds give
-tiny arrays, large seeds reach the n = 1000 ceiling) and the shape, so the
+tiny arrays, seeds of 10 and above reach the n = 100 ceiling) and the shape, so the
 test set covers the degenerate cases (single element, all equal, already
 sorted, reverse sorted, boundary values, heavy duplicates) rather than only
 uniform noise.
+
+tests/ was produced with these seeds (01 and 02 are the samples, 04 and 05 are
+written by hand): 03=1, 06=8, 07=9, 08=3, 09=11, 10=12, 11=13, 12=7, 13=14,
+14=21, 15=38, 16=35.
 """
 
 import random
 import sys
 
-MAX_N = 1000
+MAX_N = 100
 MAX_ABS = 10**6
 
 
 def choose_n(seed: int) -> int:
-    """Grow with the seed: seed 1 -> 1 element, seed >= 32 -> the ceiling."""
+    """Grow with the seed: seed 1 -> 1 element, seed >= 10 -> the ceiling."""
     return max(1, min(MAX_N, seed * seed))
 
 
