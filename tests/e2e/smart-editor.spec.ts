@@ -285,7 +285,8 @@ test.describe("Java, the IntelliJ reflexes that used to misfire", () => {
 
   test("Ctrl + Space opens completion on demand", async ({ page }) => {
     await openEmptyEditor(page, "Java 21");
-    await page.keyboard.type("Sys");
+    // Several suggestions (String, StringBuilder): an explicit call with exactly one inserts it.
+    await page.keyboard.type("Str");
     await expect(popup(page)).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(popup(page)).toHaveCount(0);
@@ -394,7 +395,8 @@ test.describe("Python, as PyCharm does it", () => {
     await page.keyboard.type("for i in range(n):", { delay: 90 });
     await page.keyboard.press("Enter");
     await page.keyboard.type("total += i", { delay: 90 });
-    await expect(popup(page)).toBeVisible();
+    // "i" is a complete name, so the list may stay shut; either way it must not take the Enter.
+    await page.waitForTimeout(300);
     await page.keyboard.press("Enter");
     await expect(textarea).toHaveValue("def f(n):\n    total = 0\n    for i in range(n):\n        total += i\n        ");
 

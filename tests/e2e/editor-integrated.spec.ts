@@ -149,3 +149,14 @@ test("Surround With leaves the condition as a live field that Tab leaves", async
   // Tab took the template's next stop, the end of the wrapped body, and inserted no indent.
   expect(await caretOf(textarea)).toBe("if (ok) {\n    a();".length);
 });
+
+test("Ctrl+Space with a single suggestion inserts it without a list", async ({ page }) => {
+  const textarea = await openEditor(page, "", 0);
+  await page.keyboard.type("Syst", { delay: 40 });
+  await expect(suggestions(page)).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(suggestions(page)).toHaveCount(0);
+  await page.keyboard.press("Control+Space");
+  await expect(textarea).toHaveValue("System");
+  await expect(suggestions(page)).toHaveCount(0);
+});
