@@ -251,6 +251,21 @@ test.describe("Java, the IntelliJ reflexes that used to misfire", () => {
     await expect(textarea).not.toBeFocused();
   });
 
+  test("Shift+Tab outdents a line indented with a tab", async ({ page }) => {
+    const textarea = await openEmptyEditor(page, "Java 21");
+    await textarea.fill("\tx");
+    await textarea.evaluate((element) => (element as HTMLTextAreaElement).setSelectionRange(2, 2));
+    await page.keyboard.press("Shift+Tab");
+    await expect(textarea).toHaveValue("x");
+  });
+
+  test("the hint under the editor reads as plain sentences", async ({ page }) => {
+    await openEmptyEditor(page, "Java 21");
+    const hint = page.locator("p", { hasText: "Tab indents." });
+    const text = await hint.evaluate((element) => (element as HTMLElement).innerText);
+    expect(text).toContain("Tab indents. Press Esc twice, then Tab, to move on. Ctrl / Cmd + Enter submits.");
+  });
+
   test("Ctrl + Space opens completion on demand", async ({ page }) => {
     await openEmptyEditor(page, "Java 21");
     await page.keyboard.type("Sys");
