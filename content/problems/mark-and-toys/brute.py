@@ -3,8 +3,8 @@
 Simulates the shopping trip directly: while money remains, take the cheapest
 toy still on the shelf and buy it if it is affordable. Selection goes through
 a min-heap rather than a full sort, so this is a different mechanism from the
-reference, though the same O(n log n) complexity: the E tier requires this
-program to pass the largest test, which rules out a quadratic variant.
+reference. With n <= 1000 a quadratic beginner solution (bubble sort, then buy
+from the cheap end) also passes every test well inside the time limit.
 """
 
 import heapq

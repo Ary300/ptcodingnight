@@ -27,7 +27,7 @@
       },
       {
         "name": "k",
-        "type": "long"
+        "type": "int"
       },
       {
         "name": "p",
