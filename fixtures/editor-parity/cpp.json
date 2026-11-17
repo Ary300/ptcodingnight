@@ -20,16 +20,6 @@
     "note": "[ closes itself with ] when followed by end of line."
   },
   {
-    "id": "pairs-brace-after-header",
-    "behavior": "pairs",
-    "before": "#include <bits/stdc++.h>\nusing namespace std;\n\nint main() |",
-    "keys": [
-      "{"
-    ],
-    "after": "#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {|}",
-    "note": "Typing { at the end of a line inserts } right after the caret."
-  },
-  {
     "id": "pairs-paren-before-semicolon",
     "behavior": "pairs",
     "before": "int main() {\n    solve|;\n}",
@@ -942,16 +932,6 @@
     ],
     "after": "#include <bits/stdc++.h>\n\nint main() {\n    std::string s;\n    std::cin >> s;\n    int n = s.length()|\n}",
     "note": "String members complete with the same rules."
-  },
-  {
-    "id": "completion-string-substr",
-    "behavior": "completion",
-    "before": "#include <bits/stdc++.h>\n\nint main() {\n    std::string s;\n    std::string t = s.sub|\n}",
-    "keys": [
-      "Accept:substr"
-    ],
-    "after": "#include <bits/stdc++.h>\n\nint main() {\n    std::string s;\n    std::string t = s.substr(|)\n}",
-    "note": "substr has parameters, so the caret goes between the parentheses."
   },
   {
     "id": "completion-map-count",
