@@ -81,6 +81,13 @@ export interface KeyInput {
   readonly ctrlKey: boolean;
   readonly metaKey: boolean;
   readonly isMac: boolean;
+  /**
+   * Where Tab may step out of an auto-inserted closer (pair-exit.ts): the closer's offset while
+   * the caret has stayed inside that pair, or null when there is none. The editor always passes
+   * it. Absent, Tab steps over any closer that ends the line, which is what a caller with no
+   * memory of what it typed can know.
+   */
+  readonly exitCloserAt?: number | null;
 }
 
 /**

@@ -386,7 +386,8 @@ export function CodeEditorSurface({
     textareaRef.current?.focus();
   }, [disabled]);
 
-  const { handleKeyDown, completion, profile, isMac, applyKeyEdit, tabMovesFocus, endTemplate } = useEditorKeys({
+  const { handleKeyDown, completion, profile, isMac, applyKeyEdit, tabMovesFocus, endTemplate, notePairCaret } =
+    useEditorKeys({
     textareaRef,
     language,
     onSubmitShortcut: submitFromKeys,
@@ -824,10 +825,12 @@ export function CodeEditorSurface({
             }
             onSelect={(event) => {
               syncCaret(event.currentTarget);
+              notePairCaret(event.currentTarget);
               commands.rememberCaret();
             }}
             onKeyUp={(event) => {
               syncCaret(event.currentTarget);
+              notePairCaret(event.currentTarget);
               commands.rememberCaret();
             }}
             onClick={(event) => {
