@@ -1,0 +1,1015 @@
+[
+  {
+    "id": "pairs-paren-end-of-line",
+    "behavior": "pairs",
+    "before": "#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n    int n;\n    scanf|\n}",
+    "keys": [
+      "("
+    ],
+    "after": "#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n    int n;\n    scanf(|)\n}",
+    "note": "Typing ( at the end of a line inserts the matching ) and leaves the caret between them."
+  },
+  {
+    "id": "pairs-bracket",
+    "behavior": "pairs",
+    "before": "int main() {\n    int a|\n}",
+    "keys": [
+      "["
+    ],
+    "after": "int main() {\n    int a[|]\n}",
+    "note": "[ closes itself with ] when followed by end of line."
+  },
+  {
+    "id": "pairs-brace-after-header",
+    "behavior": "pairs",
+    "before": "#include <bits/stdc++.h>\nusing namespace std;\n\nint main() |",
+    "keys": [
+      "{"
+    ],
+    "after": "#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {|}",
+    "note": "Typing { at the end of a line inserts } right after the caret."
+  },
+  {
+    "id": "pairs-paren-before-semicolon",
+    "behavior": "pairs",
+    "before": "int main() {\n    solve|;\n}",
+    "keys": [
+      "("
+    ],
+    "after": "int main() {\n    solve(|);\n}",
+    "note": "A ; after the caret still allows the pair, so ( gets its )."
+  },
+  {
+    "id": "pairs-paren-before-identifier",
+    "behavior": "pairs",
+    "before": "int main() {\n    int x = |a + b;\n}",
+    "keys": [
+      "("
+    ],
+    "after": "int main() {\n    int x = (|a + b;\n}",
+    "note": "No ) is inserted when the next character is an identifier, so the student can wrap an existing expression by typing the closer later."
+  },
+  {
+    "id": "pairs-double-quote",
+    "behavior": "pairs",
+    "before": "#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n    cout << |\n}",
+    "keys": [
+      "\""
+    ],
+    "after": "#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n    cout << \"|\"\n}",
+    "note": "A double quote in code inserts its closing quote."
+  },
+  {
+    "id": "pairs-char-literal",
+    "behavior": "pairs",
+    "before": "int main() {\n    char c = |\n}",
+    "keys": [
+      "'"
+    ],
+    "after": "int main() {\n    char c = '|'\n}",
+    "note": "A single quote opens a char literal and closes itself as well."
+  },
+  {
+    "id": "pairs-type-through-string",
+    "behavior": "pairs",
+    "before": "int main() {\n    cout << |\n}",
+    "keys": [
+      "\"",
+      "Y",
+      "E",
+      "S",
+      "\""
+    ],
+    "after": "int main() {\n    cout << \"YES\"|\n}",
+    "note": "Typing the closing quote of an auto-closed string steps over the existing quote instead of adding a second one."
+  },
+  {
+    "id": "pairs-type-through-char",
+    "behavior": "pairs",
+    "before": "int main() {\n    char c = |;\n}",
+    "keys": [
+      "'",
+      "a",
+      "'"
+    ],
+    "after": "int main() {\n    char c = 'a'|;\n}",
+    "note": "The closing ' of a char literal is overtyped."
+  },
+  {
+    "id": "pairs-overtype-paren",
+    "behavior": "pairs",
+    "before": "int main() {\n    int n;\n    cin >> n;\n    printf(\"%d\\n\", n|);\n}",
+    "keys": [
+      ")"
+    ],
+    "after": "int main() {\n    int n;\n    cin >> n;\n    printf(\"%d\\n\", n)|;\n}",
+    "note": "Typing ) right before an existing ) moves over it."
+  },
+  {
+    "id": "pairs-overtype-nested-paren",
+    "behavior": "pairs",
+    "before": "int main() {\n    int r = max(a, min(b, c|));\n}",
+    "keys": [
+      ")"
+    ],
+    "after": "int main() {\n    int r = max(a, min(b, c)|);\n}",
+    "note": "Only one ) is consumed when two closers follow the caret."
+  },
+  {
+    "id": "pairs-overtype-bracket",
+    "behavior": "pairs",
+    "before": "int main() {\n    int x = a[i|];\n}",
+    "keys": [
+      "]"
+    ],
+    "after": "int main() {\n    int x = a[i]|;\n}",
+    "note": "] steps over a following ]."
+  },
+  {
+    "id": "pairs-closer-next-char-differs",
+    "behavior": "pairs",
+    "before": "int main() {\n    int x = (a + b|;\n}",
+    "keys": [
+      ")"
+    ],
+    "after": "int main() {\n    int x = (a + b)|;\n}",
+    "note": "When the next character is not ), typing ) inserts one."
+  },
+  {
+    "id": "pairs-bracket-closer-differs",
+    "behavior": "pairs",
+    "before": "int main() {\n    int x = a[i|;\n}",
+    "keys": [
+      "]"
+    ],
+    "after": "int main() {\n    int x = a[i]|;\n}",
+    "note": "] is inserted normally when the next character is ;."
+  },
+  {
+    "id": "pairs-quote-inside-string",
+    "behavior": "pairs",
+    "before": "int main() {\n    cout << \"don|\";\n}",
+    "keys": [
+      "'"
+    ],
+    "after": "int main() {\n    cout << \"don'|\";\n}",
+    "note": "Inside a string literal a single quote is plain text and gets no partner."
+  },
+  {
+    "id": "pairs-paren-inside-string",
+    "behavior": "pairs",
+    "before": "int main() {\n    cout << \"Case |\";\n}",
+    "keys": [
+      "("
+    ],
+    "after": "int main() {\n    cout << \"Case (|\";\n}",
+    "note": "Brackets typed inside a string literal are not paired."
+  },
+  {
+    "id": "pairs-quote-in-comment",
+    "behavior": "pairs",
+    "before": "int main() {\n    // print |\n}",
+    "keys": [
+      "\""
+    ],
+    "after": "int main() {\n    // print \"|\n}",
+    "note": "Quotes typed in a // comment are not paired."
+  },
+  {
+    "id": "pairs-escaped-quote",
+    "behavior": "pairs",
+    "before": "int main() {\n    cout << \"say \\|\";\n}",
+    "keys": [
+      "\""
+    ],
+    "after": "int main() {\n    cout << \"say \\\"|\";\n}",
+    "note": "After a backslash the quote is an escape: it is inserted and the closing quote stays where it was."
+  },
+  {
+    "id": "pairs-escaped-char",
+    "behavior": "pairs",
+    "before": "int main() {\n    char q = '\\|';\n}",
+    "keys": [
+      "'"
+    ],
+    "after": "int main() {\n    char q = '\\'|';\n}",
+    "note": "An escaped single quote inside a char literal is inserted, not overtyped."
+  },
+  {
+    "id": "pairs-surround-selection-paren",
+    "behavior": "pairs",
+    "before": "int main() {\n    long long x = [a + b] * c;\n}",
+    "keys": [
+      "("
+    ],
+    "after": "int main() {\n    long long x = ([a + b]) * c;\n}",
+    "note": "With a selection, ( wraps it in parentheses and the original text stays selected."
+  },
+  {
+    "id": "pairs-surround-selection-quote",
+    "behavior": "pairs",
+    "before": "int main() {\n    cout << [Impossible];\n}",
+    "keys": [
+      "\""
+    ],
+    "after": "int main() {\n    cout << \"[Impossible]\";\n}",
+    "note": "With a selection, \" wraps it in quotes and keeps it selected."
+  },
+  {
+    "id": "pairs-start-of-file",
+    "behavior": "pairs",
+    "before": "|",
+    "keys": [
+      "\""
+    ],
+    "after": "\"|\"",
+    "note": "At the very start of an empty file the quote still pairs."
+  },
+  {
+    "id": "pairs-paren-end-of-file",
+    "behavior": "pairs",
+    "before": "int main() {\n    return 0;\n}\n\nvoid f|",
+    "keys": [
+      "("
+    ],
+    "after": "int main() {\n    return 0;\n}\n\nvoid f(|)",
+    "note": "Pairing works on the last line of the file with no trailing newline."
+  },
+  {
+    "id": "backspace-empty-parens",
+    "behavior": "backspace",
+    "before": "int main() {\n    solve(|);\n}",
+    "keys": [
+      "Backspace"
+    ],
+    "after": "int main() {\n    solve|;\n}",
+    "note": "Backspace between an empty () removes both."
+  },
+  {
+    "id": "backspace-empty-brackets",
+    "behavior": "backspace",
+    "before": "int main() {\n    int a[|];\n}",
+    "keys": [
+      "Backspace"
+    ],
+    "after": "int main() {\n    int a|;\n}",
+    "note": "Backspace between an empty [] removes both."
+  },
+  {
+    "id": "backspace-empty-string",
+    "behavior": "backspace",
+    "before": "int main() {\n    cout << \"|\";\n}",
+    "keys": [
+      "Backspace"
+    ],
+    "after": "int main() {\n    cout << |;\n}",
+    "note": "Backspace between an empty \"\" removes both quotes."
+  },
+  {
+    "id": "backspace-empty-char",
+    "behavior": "backspace",
+    "before": "int main() {\n    char c = '|';\n}",
+    "keys": [
+      "Backspace"
+    ],
+    "after": "int main() {\n    char c = |;\n}",
+    "note": "Backspace between an empty '' removes both quotes."
+  },
+  {
+    "id": "backspace-nonempty-paren",
+    "behavior": "backspace",
+    "before": "int main() {\n    solve(|n);\n}",
+    "keys": [
+      "Backspace"
+    ],
+    "after": "int main() {\n    solve|n);\n}",
+    "note": "When the parentheses are not empty only the ( is deleted."
+  },
+  {
+    "id": "backspace-inside-nonempty-string",
+    "behavior": "backspace",
+    "before": "int main() {\n    cout << \"NO|\";\n}",
+    "keys": [
+      "Backspace"
+    ],
+    "after": "int main() {\n    cout << \"N|\";\n}",
+    "note": "An ordinary character is deleted and the quotes stay."
+  },
+  {
+    "id": "backspace-nested-parens",
+    "behavior": "backspace",
+    "before": "int main() {\n    f((|));\n}",
+    "keys": [
+      "Backspace"
+    ],
+    "after": "int main() {\n    f(|);\n}",
+    "note": "Only the innermost empty pair is removed."
+  },
+  {
+    "id": "backspace-start-of-file",
+    "behavior": "backspace",
+    "before": "|#include <iostream>",
+    "keys": [
+      "Backspace"
+    ],
+    "after": "|#include <iostream>",
+    "note": "Backspace at offset 0 changes nothing."
+  },
+  {
+    "id": "backspace-pair-typed-then-deleted",
+    "behavior": "backspace",
+    "before": "int main() {\n    cout << |;\n}",
+    "keys": [
+      "\"",
+      "Backspace"
+    ],
+    "after": "int main() {\n    cout << |;\n}",
+    "note": "Typing \" then Backspace leaves the line as it was."
+  },
+  {
+    "id": "enter-between-braces-main",
+    "behavior": "enter",
+    "before": "#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {|}",
+    "keys": [
+      "Enter"
+    ],
+    "after": "#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n    |\n}",
+    "note": "Enter between {} puts the } on its own line and the caret on an indented blank line between."
+  },
+  {
+    "id": "enter-between-braces-nested",
+    "behavior": "enter",
+    "before": "int main() {\n    int n;\n    cin >> n;\n    for (int i = 0; i < n; i++) {|}\n}",
+    "keys": [
+      "Enter"
+    ],
+    "after": "int main() {\n    int n;\n    cin >> n;\n    for (int i = 0; i < n; i++) {\n        |\n    }\n}",
+    "note": "Inside main the new body is indented two levels and the } lines up with the for."
+  },
+  {
+    "id": "enter-between-braces-double-nested",
+    "behavior": "enter",
+    "before": "int main() {\n    for (int i = 0; i < n; i++) {\n        for (int j = 0; j < m; j++) {|}\n    }\n}",
+    "keys": [
+      "Enter"
+    ],
+    "after": "int main() {\n    for (int i = 0; i < n; i++) {\n        for (int j = 0; j < m; j++) {\n            |\n        }\n    }\n}",
+    "note": "A third-level block indents to 12 spaces."
+  },
+  {
+    "id": "enter-between-braces-struct",
+    "behavior": "enter",
+    "before": "struct Edge {|};",
+    "keys": [
+      "Enter"
+    ],
+    "after": "struct Edge {\n    |\n};",
+    "note": "The ; after a struct's } stays attached to the }."
+  },
+  {
+    "id": "enter-after-brace-closer-below",
+    "behavior": "enter",
+    "before": "int main() {|\n}",
+    "keys": [
+      "Enter"
+    ],
+    "after": "int main() {\n    |\n}",
+    "note": "Enter after an opening brace whose } is already on the next line indents one level."
+  },
+  {
+    "id": "enter-after-statement",
+    "behavior": "enter",
+    "before": "int main() {\n    int n;|\n}",
+    "keys": [
+      "Enter"
+    ],
+    "after": "int main() {\n    int n;\n    |\n}",
+    "note": "A new line after a statement keeps the block's indent."
+  },
+  {
+    "id": "enter-after-if-without-braces",
+    "behavior": "enter",
+    "before": "int main() {\n    if (n % 2 == 0)|\n}",
+    "keys": [
+      "Enter"
+    ],
+    "after": "int main() {\n    if (n % 2 == 0)\n        |\n}",
+    "note": "After an if header with no brace the next line is indented for its single statement."
+  },
+  {
+    "id": "enter-after-for-without-braces",
+    "behavior": "enter",
+    "before": "int main() {\n    for (int i = 0; i < n; i++)|\n}",
+    "keys": [
+      "Enter"
+    ],
+    "after": "int main() {\n    for (int i = 0; i < n; i++)\n        |\n}",
+    "note": "A brace-less for header indents the next line one level."
+  },
+  {
+    "id": "enter-after-closing-brace",
+    "behavior": "enter",
+    "before": "int main() {\n    for (int i = 0; i < n; i++) {\n        sum += a[i];\n    }|\n}",
+    "keys": [
+      "Enter"
+    ],
+    "after": "int main() {\n    for (int i = 0; i < n; i++) {\n        sum += a[i];\n    }\n    |\n}",
+    "note": "After a block's } the caret returns to the enclosing block's indent."
+  },
+  {
+    "id": "enter-end-of-file",
+    "behavior": "enter",
+    "before": "int main() {\n    return 0;\n}|",
+    "keys": [
+      "Enter"
+    ],
+    "after": "int main() {\n    return 0;\n}\n|",
+    "note": "Enter after the final } at top level gives an unindented line."
+  },
+  {
+    "id": "enter-empty-file",
+    "behavior": "enter",
+    "before": "|",
+    "keys": [
+      "Enter"
+    ],
+    "after": "\n|",
+    "note": "Enter in an empty file adds one empty line."
+  },
+  {
+    "id": "enter-start-of-line",
+    "behavior": "enter",
+    "before": "|#include <iostream>",
+    "keys": [
+      "Enter"
+    ],
+    "after": "\n|#include <iostream>",
+    "note": "Enter at column 0 pushes the line down and keeps the caret before its text."
+  },
+  {
+    "id": "enter-trailing-spaces-after-caret",
+    "behavior": "enter",
+    "before": "int main() {\n    int n;|   \n}",
+    "keys": [
+      "Enter"
+    ],
+    "after": "int main() {\n    int n;\n    |\n}",
+    "note": "Spaces after the caret are dropped; the new line gets the block indent, not the stray spaces."
+  },
+  {
+    "id": "enter-after-include",
+    "behavior": "enter",
+    "before": "#include <iostream>|",
+    "keys": [
+      "Enter"
+    ],
+    "after": "#include <iostream>\n|",
+    "note": "A preprocessor line at top level gives an unindented new line."
+  },
+  {
+    "id": "enter-after-using",
+    "behavior": "enter",
+    "before": "#include <bits/stdc++.h>\nusing namespace std;|",
+    "keys": [
+      "Enter"
+    ],
+    "after": "#include <bits/stdc++.h>\nusing namespace std;\n|",
+    "note": "Top-level statements keep column 0."
+  },
+  {
+    "id": "enter-between-braces-function",
+    "behavior": "enter",
+    "before": "#include <bits/stdc++.h>\nusing namespace std;\n\nlong long gcd(long long a, long long b) {|}\n\nint main() {\n    return 0;\n}",
+    "keys": [
+      "Enter"
+    ],
+    "after": "#include <bits/stdc++.h>\nusing namespace std;\n\nlong long gcd(long long a, long long b) {\n    |\n}\n\nint main() {\n    return 0;\n}",
+    "note": "A helper function above main splits the same way."
+  },
+  {
+    "id": "enter-brace-typed-then-enter",
+    "behavior": "enter",
+    "before": "int main() {\n    while (t--) |\n}",
+    "keys": [
+      "{",
+      "Enter"
+    ],
+    "after": "int main() {\n    while (t--) {\n        |\n    }\n}",
+    "note": "Typing { then Enter at the end of a header produces the full three-line block."
+  },
+  {
+    "id": "dedent-close-for-block",
+    "behavior": "dedent",
+    "before": "int main() {\n    for (int i = 0; i < n; i++) {\n        sum += a[i];\n        |\n}",
+    "keys": [
+      "}"
+    ],
+    "after": "int main() {\n    for (int i = 0; i < n; i++) {\n        sum += a[i];\n    }|\n}",
+    "note": "A } typed on an indented blank line snaps back to the indent of the block it closes."
+  },
+  {
+    "id": "dedent-close-main",
+    "behavior": "dedent",
+    "before": "int main() {\n    cout << ans << '\\n';\n    return 0;\n    |",
+    "keys": [
+      "}"
+    ],
+    "after": "int main() {\n    cout << ans << '\\n';\n    return 0;\n}|",
+    "note": "Closing main at the end of the file moves the } to column 0."
+  },
+  {
+    "id": "dedent-from-column-zero",
+    "behavior": "dedent",
+    "before": "int main() {\n    if (n == 1) {\n        cout << 1;\n|\n    return 0;\n}",
+    "keys": [
+      "}"
+    ],
+    "after": "int main() {\n    if (n == 1) {\n        cout << 1;\n    }|\n    return 0;\n}",
+    "note": "A } typed at column 0 is indented forward to its block's level as well."
+  },
+  {
+    "id": "dedent-nested-two-levels",
+    "behavior": "dedent",
+    "before": "int main() {\n    for (int i = 0; i < n; i++) {\n        for (int j = 0; j < n; j++) {\n            g[i][j] = 0;\n            |\n    }\n}",
+    "keys": [
+      "}"
+    ],
+    "after": "int main() {\n    for (int i = 0; i < n; i++) {\n        for (int j = 0; j < n; j++) {\n            g[i][j] = 0;\n        }|\n    }\n}",
+    "note": "The } lines up with the innermost unclosed for."
+  },
+  {
+    "id": "dedent-struct-close",
+    "behavior": "dedent",
+    "before": "struct Point {\n    int x, y;\n    |",
+    "keys": [
+      "}"
+    ],
+    "after": "struct Point {\n    int x, y;\n}|",
+    "note": "Closing a struct body snaps the } to column 0."
+  },
+  {
+    "id": "comment-single-line-moves-down",
+    "behavior": "comment",
+    "before": "int main() {\n    int n;|\n}",
+    "keys": [
+      "Mod+/"
+    ],
+    "after": "int main() {\n//    int n;\n}|",
+    "note": "The // goes in column 0 and the caret moves to the next line (here clamped to the end of the short } line)."
+  },
+  {
+    "id": "uncomment-single-line",
+    "behavior": "comment",
+    "before": "int main() {\n//    int n;|\n}",
+    "keys": [
+      "Mod+/"
+    ],
+    "after": "int main() {\n    int n;\n}|",
+    "note": "Mod+/ on a commented line removes the // and moves the caret down."
+  },
+  {
+    "id": "uncomment-indented-comment",
+    "behavior": "comment",
+    "before": "int main() {\n    //cout << n;|\n}",
+    "keys": [
+      "Mod+/"
+    ],
+    "after": "int main() {\n    cout << n;\n}|",
+    "note": "A // after the indent is removed and the indent is kept."
+  },
+  {
+    "id": "comment-last-line",
+    "behavior": "comment",
+    "before": "#include <bits/stdc++.h>|",
+    "keys": [
+      "Mod+/"
+    ],
+    "after": "//#include <bits/stdc++.h>|",
+    "note": "On the last line there is nowhere to move, so the caret stays at the end of the line."
+  },
+  {
+    "id": "comment-line-with-trailing-comment",
+    "behavior": "comment",
+    "before": "int main() {\n    cerr << n << endl; // debug|\n}",
+    "keys": [
+      "Mod+/"
+    ],
+    "after": "int main() {\n//    cerr << n << endl; // debug\n}|",
+    "note": "A line that only ends in a comment is still uncommented code, so it gets commented."
+  },
+  {
+    "id": "comment-selection-two-lines",
+    "behavior": "comment",
+    "before": "int main() {\n    [cin >> n;\n    cin >> m;]\n}",
+    "keys": [
+      "Mod+/"
+    ],
+    "after": "int main() {\n//    [cin >> n;\n//    cin >> m;]\n}",
+    "note": "Every line the selection touches is commented and the selection stays on the same text."
+  },
+  {
+    "id": "uncomment-selection-two-lines",
+    "behavior": "comment",
+    "before": "int main() {\n//    [cin >> n;\n//    cin >> m;]\n}",
+    "keys": [
+      "Mod+/"
+    ],
+    "after": "int main() {\n    [cin >> n;\n    cin >> m;]\n}",
+    "note": "When every selected line is commented, Mod+/ uncomments them all."
+  },
+  {
+    "id": "comment-mixed-lines-comments-all",
+    "behavior": "comment",
+    "before": "int main() {\n    [int a = 0;\n//    int b = 0;\n    int c = 0;]\n}",
+    "keys": [
+      "Mod+/"
+    ],
+    "after": "int main() {\n//    [int a = 0;\n////    int b = 0;\n//    int c = 0;]\n}",
+    "note": "If any selected line is uncommented, all lines get a // prefix, including the one that already had one."
+  },
+  {
+    "id": "comment-selection-ends-at-column-zero",
+    "behavior": "comment",
+    "before": "int main() {\n    [int a;\n    int b;\n]    int c;\n}",
+    "keys": [
+      "Mod+/"
+    ],
+    "after": "int main() {\n//    [int a;\n//    int b;\n]    int c;\n}",
+    "note": "A selection ending at column 0 does not include that line."
+  },
+  {
+    "id": "comment-selection-inside-one-line",
+    "behavior": "comment",
+    "before": "int main() {\n    int [ans] = 0;\n}",
+    "keys": [
+      "Mod+/"
+    ],
+    "after": "int main() {\n//    int [ans] = 0;\n}",
+    "note": "A selection within one line comments the whole line and keeps the selection; the caret does not move down."
+  },
+  {
+    "id": "comment-in-nested-block",
+    "behavior": "comment",
+    "before": "int main() {\n    for (int i = 0; i < n; i++) {\n        cerr << i;|\n    }\n}",
+    "keys": [
+      "Mod+/"
+    ],
+    "after": "int main() {\n    for (int i = 0; i < n; i++) {\n//        cerr << i;\n    }|\n}",
+    "note": "Nested lines are still commented at column 0, with their indent kept after the //."
+  },
+  {
+    "id": "duplicate-line-caret-moves-to-copy",
+    "behavior": "duplicate",
+    "before": "int main() {\n    cin >> a|;\n}",
+    "keys": [
+      "Mod+D"
+    ],
+    "after": "int main() {\n    cin >> a;\n    cin >> a|;\n}",
+    "note": "Without a selection Mod+D copies the line below and the caret moves to the copy at the same column."
+  },
+  {
+    "id": "duplicate-first-line",
+    "behavior": "duplicate",
+    "before": "|#include <iostream>\nusing namespace std;",
+    "keys": [
+      "Mod+D"
+    ],
+    "after": "#include <iostream>\n|#include <iostream>\nusing namespace std;",
+    "note": "The first line of the file duplicates like any other."
+  },
+  {
+    "id": "duplicate-last-line-no-newline",
+    "behavior": "duplicate",
+    "before": "#include <iostream>\n#include <vector>|",
+    "keys": [
+      "Mod+D"
+    ],
+    "after": "#include <iostream>\n#include <vector>\n#include <vector>|",
+    "note": "On a last line with no trailing newline the copy goes on a new line."
+  },
+  {
+    "id": "duplicate-empty-line",
+    "behavior": "duplicate",
+    "before": "int a;\n|\nint b;",
+    "keys": [
+      "Mod+D"
+    ],
+    "after": "int a;\n\n|\nint b;",
+    "note": "An empty line duplicates into two empty lines."
+  },
+  {
+    "id": "duplicate-selection-in-line",
+    "behavior": "duplicate",
+    "before": "int main() {\n    cout << [a] << endl;\n}",
+    "keys": [
+      "Mod+D"
+    ],
+    "after": "int main() {\n    cout << a[a] << endl;\n}",
+    "note": "With a selection only the selected text is copied, right after itself, and the copy becomes the selection."
+  },
+  {
+    "id": "duplicate-selection-whole-lines",
+    "behavior": "duplicate",
+    "before": "int main() {\n[    int x;\n    cin >> x;\n]}",
+    "keys": [
+      "Mod+D"
+    ],
+    "after": "int main() {\n    int x;\n    cin >> x;\n[    int x;\n    cin >> x;\n]}",
+    "note": "A selection of whole lines is copied below itself and the copy is selected."
+  },
+  {
+    "id": "duplicate-nested-line",
+    "behavior": "duplicate",
+    "before": "int main() {\n    for (int i = 0; i < n; i++) {\n        cin >> a[i]|;\n    }\n}",
+    "keys": [
+      "Mod+D"
+    ],
+    "after": "int main() {\n    for (int i = 0; i < n; i++) {\n        cin >> a[i];\n        cin >> a[i]|;\n    }\n}",
+    "note": "The copy keeps the original line's indentation."
+  },
+  {
+    "id": "move-line-up",
+    "behavior": "move",
+    "before": "int main() {\n    cin >> n;\n    int n|;\n}",
+    "keys": [
+      "Alt+Shift+ArrowUp"
+    ],
+    "after": "int main() {\n    int n|;\n    cin >> n;\n}",
+    "note": "Alt+Shift+Up swaps the line with the one above and the caret travels with it."
+  },
+  {
+    "id": "move-line-down",
+    "behavior": "move",
+    "before": "int main() {\n    long long sum = 0;|\n    int n;\n    cin >> n;\n}",
+    "keys": [
+      "Alt+Shift+ArrowDown"
+    ],
+    "after": "int main() {\n    int n;\n    long long sum = 0;|\n    cin >> n;\n}",
+    "note": "Alt+Shift+Down swaps the line with the one below."
+  },
+  {
+    "id": "move-first-line-up-noop",
+    "behavior": "move",
+    "before": "#include <io|stream>\nusing namespace std;",
+    "keys": [
+      "Alt+Shift+ArrowUp"
+    ],
+    "after": "#include <io|stream>\nusing namespace std;",
+    "note": "The first line cannot move up, so nothing changes."
+  },
+  {
+    "id": "move-last-line-down-noop",
+    "behavior": "move",
+    "before": "int main() {\n    return 0;\n}|",
+    "keys": [
+      "Alt+Shift+ArrowDown"
+    ],
+    "after": "int main() {\n    return 0;\n}|",
+    "note": "The last line cannot move down, so nothing changes."
+  },
+  {
+    "id": "move-last-line-up-no-trailing-newline",
+    "behavior": "move",
+    "before": "#include <iostream>\n#include <vector>|",
+    "keys": [
+      "Alt+Shift+ArrowUp"
+    ],
+    "after": "#include <vector>|\n#include <iostream>",
+    "note": "The last line moves up correctly even without a trailing newline."
+  },
+  {
+    "id": "move-line-down-onto-last-line",
+    "behavior": "move",
+    "before": "#include <vector>|\n#include <iostream>",
+    "keys": [
+      "Alt+Shift+ArrowDown"
+    ],
+    "after": "#include <iostream>\n#include <vector>|",
+    "note": "Moving down onto a last line without a trailing newline swaps the two lines cleanly."
+  },
+  {
+    "id": "move-selection-two-lines-up",
+    "behavior": "move",
+    "before": "int main() {\n    int n, m;\n    [cin >> n;\n    cin >> m;]\n}",
+    "keys": [
+      "Alt+Shift+ArrowUp"
+    ],
+    "after": "int main() {\n    [cin >> n;\n    cin >> m;]\n    int n, m;\n}",
+    "note": "A selection spanning lines moves all of those lines together and stays selected."
+  },
+  {
+    "id": "move-line-twice",
+    "behavior": "move",
+    "before": "int a;\nint b;\nint c;|",
+    "keys": [
+      "Alt+Shift+ArrowUp",
+      "Alt+Shift+ArrowUp"
+    ],
+    "after": "int c;|\nint a;\nint b;",
+    "note": "Repeated presses keep moving the same line."
+  },
+  {
+    "id": "move-line-down-then-up-restores",
+    "behavior": "move",
+    "before": "int main() {\n    int a|;\n    int b;\n}",
+    "keys": [
+      "Alt+Shift+ArrowDown",
+      "Alt+Shift+ArrowUp"
+    ],
+    "after": "int main() {\n    int a|;\n    int b;\n}",
+    "note": "Down then up returns the text and caret to where they started."
+  },
+  {
+    "id": "completion-std-cout",
+    "behavior": "completion",
+    "before": "#include <bits/stdc++.h>\n\nint main() {\n    std::co|\n}",
+    "keys": [
+      "Accept:cout"
+    ],
+    "after": "#include <bits/stdc++.h>\n\nint main() {\n    std::cout|\n}",
+    "note": "Accepting a variable after std:: replaces the typed prefix and adds nothing else."
+  },
+  {
+    "id": "completion-std-cin-typed-prefix",
+    "behavior": "completion",
+    "before": "#include <bits/stdc++.h>\n\nint main() {\n    int n;\n    std::|\n}",
+    "keys": [
+      "c",
+      "i",
+      "Accept:cin"
+    ],
+    "after": "#include <bits/stdc++.h>\n\nint main() {\n    int n;\n    std::cin|\n}",
+    "note": "Typing after std:: narrows the list; accepting cin inserts the name only."
+  },
+  {
+    "id": "completion-std-string-type",
+    "behavior": "completion",
+    "before": "#include <bits/stdc++.h>\n\nint main() {\n    std::str|\n}",
+    "keys": [
+      "Accept:string"
+    ],
+    "after": "#include <bits/stdc++.h>\n\nint main() {\n    std::string|\n}",
+    "note": "A type name is inserted without parentheses."
+  },
+  {
+    "id": "completion-std-sort",
+    "behavior": "completion",
+    "before": "#include <bits/stdc++.h>\n\nint main() {\n    std::vector<int> a(5);\n    std::so|\n}",
+    "keys": [
+      "Accept:sort"
+    ],
+    "after": "#include <bits/stdc++.h>\n\nint main() {\n    std::vector<int> a(5);\n    std::sort(|)\n}",
+    "note": "A function that takes arguments is inserted with () and the caret between them."
+  },
+  {
+    "id": "completion-std-swap",
+    "behavior": "completion",
+    "before": "#include <bits/stdc++.h>\n\nint main() {\n    int x = 1, y = 2;\n    std::sw|\n}",
+    "keys": [
+      "Accept:swap"
+    ],
+    "after": "#include <bits/stdc++.h>\n\nint main() {\n    int x = 1, y = 2;\n    std::swap(|)\n}",
+    "note": "swap takes arguments, so the caret lands inside the parentheses."
+  },
+  {
+    "id": "completion-std-getline",
+    "behavior": "completion",
+    "before": "#include <bits/stdc++.h>\n\nint main() {\n    std::string line;\n    std::getl|\n}",
+    "keys": [
+      "Accept:getline"
+    ],
+    "after": "#include <bits/stdc++.h>\n\nint main() {\n    std::string line;\n    std::getline(|)\n}",
+    "note": "getline is inserted as a call with the caret inside."
+  },
+  {
+    "id": "completion-vector-push-back",
+    "behavior": "completion",
+    "before": "#include <bits/stdc++.h>\n\nint main() {\n    std::vector<int> v;\n    v.pu|\n}",
+    "keys": [
+      "Accept:push_back"
+    ],
+    "after": "#include <bits/stdc++.h>\n\nint main() {\n    std::vector<int> v;\n    v.push_back(|)\n}",
+    "note": "A member function with a parameter gets () with the caret inside."
+  },
+  {
+    "id": "completion-vector-size",
+    "behavior": "completion",
+    "before": "#include <bits/stdc++.h>\n\nint main() {\n    std::vector<int> v;\n    int n = v.si|\n}",
+    "keys": [
+      "Accept:size"
+    ],
+    "after": "#include <bits/stdc++.h>\n\nint main() {\n    std::vector<int> v;\n    int n = v.size()|\n}",
+    "note": "A member function with no parameters gets () with the caret after them."
+  },
+  {
+    "id": "completion-vector-empty",
+    "behavior": "completion",
+    "before": "#include <bits/stdc++.h>\n\nint main() {\n    std::vector<int> v;\n    if (v.em|)\n}",
+    "keys": [
+      "Accept:empty"
+    ],
+    "after": "#include <bits/stdc++.h>\n\nint main() {\n    std::vector<int> v;\n    if (v.empty()|)\n}",
+    "note": "empty() takes nothing, so the caret ends after its parentheses."
+  },
+  {
+    "id": "completion-vector-back",
+    "behavior": "completion",
+    "before": "#include <bits/stdc++.h>\n\nint main() {\n    std::vector<int> v;\n    int last = v.ba|\n}",
+    "keys": [
+      "Accept:back"
+    ],
+    "after": "#include <bits/stdc++.h>\n\nint main() {\n    std::vector<int> v;\n    int last = v.back()|\n}",
+    "note": "back() is a no-argument member call."
+  },
+  {
+    "id": "completion-vector-pop-back",
+    "behavior": "completion",
+    "before": "#include <bits/stdc++.h>\n\nint main() {\n    std::vector<int> v;\n    v.|\n}",
+    "keys": [
+      "p",
+      "o",
+      "Accept:pop_back"
+    ],
+    "after": "#include <bits/stdc++.h>\n\nint main() {\n    std::vector<int> v;\n    v.pop_back()|\n}",
+    "note": "Typing after the dot narrows the member list."
+  },
+  {
+    "id": "completion-string-length",
+    "behavior": "completion",
+    "before": "#include <bits/stdc++.h>\n\nint main() {\n    std::string s;\n    std::cin >> s;\n    int n = s.len|\n}",
+    "keys": [
+      "Accept:length"
+    ],
+    "after": "#include <bits/stdc++.h>\n\nint main() {\n    std::string s;\n    std::cin >> s;\n    int n = s.length()|\n}",
+    "note": "String members complete with the same rules."
+  },
+  {
+    "id": "completion-string-substr",
+    "behavior": "completion",
+    "before": "#include <bits/stdc++.h>\n\nint main() {\n    std::string s;\n    std::string t = s.sub|\n}",
+    "keys": [
+      "Accept:substr"
+    ],
+    "after": "#include <bits/stdc++.h>\n\nint main() {\n    std::string s;\n    std::string t = s.substr(|)\n}",
+    "note": "substr has parameters, so the caret goes between the parentheses."
+  },
+  {
+    "id": "completion-map-count",
+    "behavior": "completion",
+    "before": "#include <bits/stdc++.h>\n\nint main() {\n    std::map<int, int> cnt;\n    if (cnt.cou|)\n}",
+    "keys": [
+      "Accept:count"
+    ],
+    "after": "#include <bits/stdc++.h>\n\nint main() {\n    std::map<int, int> cnt;\n    if (cnt.count(|))\n}",
+    "note": "map::count takes a key, so the caret goes inside."
+  },
+  {
+    "id": "completion-queue-front",
+    "behavior": "completion",
+    "before": "#include <bits/stdc++.h>\n\nint main() {\n    std::queue<int> q;\n    int u = q.fr|\n}",
+    "keys": [
+      "Accept:front"
+    ],
+    "after": "#include <bits/stdc++.h>\n\nint main() {\n    std::queue<int> q;\n    int u = q.front()|\n}",
+    "note": "queue::front completes as a no-argument call."
+  },
+  {
+    "id": "completion-priority-queue-top",
+    "behavior": "completion",
+    "before": "#include <bits/stdc++.h>\n\nint main() {\n    std::priority_queue<int> pq;\n    int best = pq.to|\n}",
+    "keys": [
+      "Accept:top"
+    ],
+    "after": "#include <bits/stdc++.h>\n\nint main() {\n    std::priority_queue<int> pq;\n    int best = pq.top()|\n}",
+    "note": "priority_queue::top completes as a no-argument call."
+  },
+  {
+    "id": "completion-none-in-string",
+    "behavior": "completion",
+    "before": "#include <bits/stdc++.h>\n\nint main() {\n    std::cout << \"|\";\n}",
+    "keys": [
+      "s",
+      "t",
+      "d",
+      ":",
+      ":",
+      "c",
+      "o"
+    ],
+    "after": "#include <bits/stdc++.h>\n\nint main() {\n    std::cout << \"std::co|\";\n}",
+    "note": "Inside a string literal no completion popup appears; the text is typed as is."
+  },
+  {
+    "id": "completion-none-in-comment",
+    "behavior": "completion",
+    "before": "#include <bits/stdc++.h>\n\nint main() {\n    // use |\n}",
+    "keys": [
+      "v",
+      ".",
+      "p",
+      "u"
+    ],
+    "after": "#include <bits/stdc++.h>\n\nint main() {\n    // use v.pu|\n}",
+    "note": "Inside a // comment no member completion is offered."
+  }
+]
