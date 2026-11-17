@@ -17,7 +17,7 @@
   "signature": {
     "name": "divisibleSumPairs",
     "returns": {
-      "type": "long"
+      "type": "int"
     },
     "params": [
       {

@@ -6,12 +6,12 @@ Deterministic per seed. The seed picks a shape and a size band so that the test
 set covers the degenerate corners (minimum n, single topic, nobody knows
 anything, everybody knows everything, identical checklists, complementary
 pairs, one student who already knows every topic) as well as random matrices
-at several densities, up to the full 120x120 ceiling.
+at several densities, up to the full 100x100 ceiling.
 
-The ceiling is 120 so the largest input stays under 15 KB and the plain
-pair-by-character loop, about 860 thousand character checks, finishes well
-inside a second in Python. Every answer is at most 120 topics and
-120 * 119 / 2 = 7140 pairs, far inside a 32-bit int.
+The ceiling is 100 so the largest input stays near 10 KB and the plain
+pair-by-character loop, 4950 pairs times 100 topics or about 500 thousand
+character checks, finishes well inside a second in Python. Every answer is at
+most 100 topics and 100 * 99 / 2 = 4950 pairs, far inside a 32-bit int.
 
 Which seed made which test: 05 = 21, 06 = 29, 07 = 9, 08 = 17, 09 = 18, 10 = 20,
 11 = 6, 12 = 33, 13 = 2, 14 = 11, 15 = 3, 16 = 15, 17 = 19, 18 = 27. 01-04 are
@@ -21,8 +21,8 @@ written by hand.
 import random
 import sys
 
-MAX_N = 120
-MAX_M = 120
+MAX_N = 100
+MAX_M = 100
 
 
 def choose_size(seed: int, rng: random.Random) -> tuple[int, int]:

@@ -30,7 +30,7 @@ rod $1$.
 
 ## Constraints
 
-- $1 \le n \le 10$
+- $1 \le n \le 8$
 - $1 \le a_i \le 4$
 
 ## Example

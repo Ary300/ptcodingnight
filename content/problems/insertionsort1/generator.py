@@ -7,17 +7,34 @@ to the constraint ceiling. The seed also selects the shape of the array so
 the test set covers the degenerate walks (no copies at all, a copy for every
 prefix element, a stop caused by an equal value) and not just uniform noise.
 The sorted-prefix invariant is asserted before anything is printed.
+
+The ceiling is 100, so a full walk prints at most 100 lines of 100 values
+and a student who rebuilds every line from scratch, or prints with a loop of
+single print calls, still finishes each test in well under a second.
+
+Which seed made which test (01 and 02 are the statement samples; 03-11 are
+written by hand: n = 1, both orders of n = 2, all equal, a full walk with
+negatives, a stop on an equal value, both value bounds, already in place, and
+a long run of duplicates):
+
+    12  seed 5    n = 25    shape 5, values pinned to the bounds
+    13  seed 9    n = 81    shape 3, every element equal
+    14  seed 16   n = 100   shape 4, duplicate-heavy prefix
+    15  seed 22   n = 100   shape 4, duplicate-heavy prefix
+    16  seed 27   n = 100   shape 3, every element equal
+    17  seed 38   n = 100   shape 2, no copies at the ceiling
+    18  seed 31   n = 100   shape 1, a full walk at the ceiling
 """
 
 import random
 import sys
 
-MAX_N = 1000
+MAX_N = 100
 MAX_ABS = 10000
 
 
 def choose_n(seed: int) -> int:
-    """Grow with the seed: seed 1 -> 1 element, seed >= 32 -> the ceiling."""
+    """Grow with the seed: seed 1 -> 1 element, seed >= 10 -> the ceiling."""
     return max(1, min(MAX_N, seed * seed))
 
 

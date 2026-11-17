@@ -3,10 +3,12 @@
 Usage: python3 generator.py <seed> > case.in
 
 Deterministic per seed. Small seeds produce tiny inputs; large seeds produce
-the largest generated tests. Those stay moderate on purpose (this is a casual
-contest): at most MAX_Q pairs, starts up to 10^5 and jumps up to 10^3, so every
-meeting mark is at most about 10^8 and a student who simply simulates the hops
-one beep at a time finishes well inside the time limit with 32-bit integers.
+the largest generated tests. Those stay small on purpose (this is a casual
+contest): at most MAX_Q pairs, starts up to 1,000 and jumps up to 100. A pair
+whose rovers close in at all closes at least one mark per beep, and the gap is
+at most 1,000 marks, so any meeting happens within 1,000 beeps on a mark no
+larger than about 10^5. A student who simulates the hops one beep at a time for
+1,000 beeps finishes well inside the time limit with 32-bit integers.
 
 Which test came from where:
   01, 02        the two statement samples, written by hand (never regenerate)
@@ -23,9 +25,9 @@ Which test came from where:
 import random
 import sys
 
-MAX_Q = 800
-MAX_START = 10 ** 5
-MAX_JUMP = 10 ** 3
+MAX_Q = 1000
+MAX_START = 1000
+MAX_JUMP = 100
 
 
 def size_for_seed(seed: int) -> tuple[int, int, int]:
@@ -33,9 +35,9 @@ def size_for_seed(seed: int) -> tuple[int, int, int]:
     if seed <= 10:
         return (1 + seed % 5, 20, 5)
     if seed <= 100:
-        return (10 + seed % 51, 1000, 50)
+        return (10 + seed % 51, 200, 20)
     if seed <= 1000:
-        return (200 + seed % 301, 10 ** 4, 100)
+        return (200 + seed % 301, 500, 50)
     return (MAX_Q, MAX_START, MAX_JUMP)
 
 

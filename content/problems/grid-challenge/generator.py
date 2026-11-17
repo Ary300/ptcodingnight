@@ -18,19 +18,20 @@ Tests 01-10 are the two statement samples and hand-written edge cases (n = 1, a
 two-row NO, all-equal, identical rows, an already-sorted grid, one bad column,
 twenty small mixed grids). No seed of this generator produces them. The larger tests are:
 
-    11  python3 generator.py 157          16 grids, mixed shapes, n up to 95
-    12  python3 generator.py 182          10 grids, mixed shapes, n up to 92
-    13  python3 generator.py 683          9 grids, mixed shapes, n up to 97
-    14  python3 generator.py 238 1        9 grids, every one guaranteed YES
-    15  python3 generator.py 141 2        5 grids, every one guaranteed NO, one at n = 100
-    16  python3 generator.py 3 -1 100     two full-size 100 x 100 grids, one YES, one NO
+    11  python3 generator.py 157          17 grids, mixed shapes, n up to 48
+    12  python3 generator.py 182          16 grids, mixed shapes, n up to 46
+    13  python3 generator.py 683          14 grids, mixed shapes, n up to 50
+    14  python3 generator.py 238 1        13 grids, every one guaranteed YES
+    15  python3 generator.py 141 2        18 grids built to be NO, one at n = 50 (its
+                                          two n = 1 grids are YES, as every 1 x 1 grid is)
+    16  python3 generator.py 3 -1 50      eight full-size 50 x 50 grids, both answers present
 """
 
 import random
 import sys
 
 MAX_T = 20
-MAX_N = 100
+MAX_N = 50
 MAX_CELLS = 20_000
 ALPHA = "abcdefghijklmnopqrstuvwxyz"
 

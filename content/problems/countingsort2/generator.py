@@ -3,7 +3,7 @@
 Usage: python3 generator.py <seed>
 
 Deterministic per seed. Small seeds produce tiny lists; larger seeds push n to
-the constraint ceiling (seed >= 32 hits n = 1000). The seed also selects the
+the constraint ceiling (seed >= 100 hits n = 10,000). The seed also selects the
 shape of the list (seed % 7) so the test set covers degenerate cases (single
 value, all equal, already sorted, reverse sorted, only the two extreme values,
 a narrow band of values) and not just uniform noise.
@@ -12,29 +12,32 @@ Which seed made which test (01-02 are the statement samples; 03, 04 and 09 are
 written by hand: n = 1 with value 0, n = 1 with value 99, and a shuffled
 permutation of 0..99):
 
-    05  seed 8     n = 64     a few dominant values in noise
-    06  seed 16    n = 256    already sorted
-    07  seed 17    n = 289    reverse sorted
-    08  seed 25    n = 625    only 0 and 99
-    10  seed 7     n = 49     uniform noise
-    11  seed 40    n = 1000   narrow band of ten values
-    12  seed 90    n = 1000   a few dominant values in noise
-    13  seed 175   n = 1000   uniform noise
-    14  seed 316   n = 1000   all equal
-    15  seed 500   n = 1000   reverse sorted
-    16  seed 702   n = 1000   already sorted
-    17  seed 1005  n = 1000   only 0 and 99
+    05  seed 8     n = 64      a few dominant values in noise
+    06  seed 16    n = 256     already sorted
+    07  seed 17    n = 289     reverse sorted
+    08  seed 25    n = 625     only 0 and 99
+    10  seed 7     n = 49      uniform noise
+    11  seed 40    n = 1600    narrow band of ten values
+    12  seed 90    n = 8100    a few dominant values in noise
+    13  seed 175   n = 10000   uniform noise
+    14  seed 316   n = 10000   all equal
+    15  seed 500   n = 10000   reverse sorted
+    16  seed 702   n = 10000   already sorted
+    17  seed 1005  n = 10000   only 0 and 99
+
+Every value is at most 99 and n is at most 10,000, so nothing comes near the
+32-bit range.
 """
 
 import random
 import sys
 
-MAX_N = 1000
+MAX_N = 10000
 MAX_VALUE = 99
 
 
 def choose_n(seed: int) -> int:
-    """Grow with the seed: seed 1 -> 1 value, seed >= 32 -> the ceiling."""
+    """Grow with the seed: seed 1 -> 1 value, seed >= 100 -> the ceiling."""
     return max(1, min(MAX_N, seed * seed))
 
 

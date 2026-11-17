@@ -33,7 +33,7 @@ the input array.
 
 ## Constraints
 
-- $1 \le n \le 1000$
+- $1 \le n \le 100$
 - $-10^4 \le a_i \le 10^4$
 
 ## Example

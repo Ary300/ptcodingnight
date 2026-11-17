@@ -2,7 +2,7 @@
 
 For each session, count the students whose arrival offset is <= 0 (early or exactly
 on time). The session is HELD when that count reaches the quorum K, otherwise it is
-CANCELLED.
+CANCELED.
 """
 
 import sys
@@ -28,7 +28,7 @@ def main() -> None:
             if arrival <= 0:
                 on_time += 1
 
-        results.append("HELD" if on_time >= k else "CANCELLED")
+        results.append("HELD" if on_time >= k else "CANCELED")
 
     sys.stdout.write("\n".join(results) + "\n")
 

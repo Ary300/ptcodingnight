@@ -2,8 +2,10 @@
 
 Plays the game move by move exactly as the statement describes: find the
 maximum tile, truncate the row there, hand the turn over. The player facing an
-empty row loses. O(moves * n) per game, which is O(n^2) on an increasing row;
-correct by construction, hopeless at the constraint ceiling.
+empty row loses. O(moves * n) per game, which is O(n^2) on an increasing row.
+Correct by construction, and with at most 1,000 tiles in a game it finishes
+the largest test in well under the time limit, which is intended: this
+simulation is the beginner's solution and it should pass.
 """
 
 import sys

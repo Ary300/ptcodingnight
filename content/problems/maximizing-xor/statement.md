@@ -12,6 +12,8 @@ Given two integers $l$ and $r$, consider every pair of integers $a$ and $b$ with
 $l \le a \le b \le r$. Compute the maximum possible value of $a \oplus b$, where
 $\oplus$ denotes bitwise XOR.
 
+In Java, C++, and Python, `a ^ b` computes the bitwise XOR of `a` and `b`.
+
 ## Input
 
 A single line containing two space-separated integers $l$ and $r$.

@@ -38,7 +38,7 @@ def build_arrays(seed: int, n: int, rng: random.Random) -> tuple[list[int], list
         return a, b
 
     if shape == 1:
-        # b is a shuffled copy of a: perfect multiset match, answer n - 1.
+        # b is a shuffled copy of a: perfect multiset match, answer n.
         a = [rng.randint(1, MAX_VALUE) for _ in range(n)]
         b = list(a)
         rng.shuffle(b)

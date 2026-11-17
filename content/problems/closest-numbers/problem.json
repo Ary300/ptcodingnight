@@ -1,7 +1,7 @@
 {
   "slug": "closest-numbers",
   "title": "Closest Numbers",
-  "difficulty": "E",
+  "difficulty": "M",
   "timeLimitMs": 2000,
   "memoryLimitMb": 256,
   "allowedLanguages": [

@@ -24,7 +24,7 @@ A student counts toward the quorum if and only if $a_i \le 0$.
 ## Output
 
 Print one line per session, in input order: `HELD` if at least $K$ students counted toward
-the quorum, or `CANCELLED` if fewer than $K$ did.
+the quorum, or `CANCELED` if fewer than $K$ did.
 
 ## Constraints
 
@@ -48,7 +48,7 @@ the quorum, or `CANCELLED` if fewer than $K$ did.
 **Output**
 
 ```
-CANCELLED
+CANCELED
 HELD
 ```
 

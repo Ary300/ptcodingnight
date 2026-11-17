@@ -2,7 +2,7 @@
 
 Four-rod Tower of Hanoi from an arbitrary legal position. A position is a
 base-4 number with two bits per disc (disc i's rod lives at bits 2i..2i+1),
-so the whole state space for n <= 10 fits in 4^10 = 1,048,576 integers.
+so the whole state space for n <= 8 fits in 4^8 = 65,536 integers.
 The answer is the graph distance from the start state to state 0 (everything
 on rod 1), found with a bidirectional breadth-first search: expand whichever
 frontier is currently smaller, one full layer at a time, and stop at the

@@ -1,7 +1,7 @@
 {
   "slug": "grid-challenge",
   "title": "Grid Challenge",
-  "difficulty": "E",
+  "difficulty": "M",
   "timeLimitMs": 2000,
   "memoryLimitMb": 256,
   "allowedLanguages": [
