@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import type { ReactNode } from "react";
 
 /**
  * The folder-tab strip HackerRank puts under a page title.
@@ -65,15 +66,27 @@ export interface TabStripProps {
   readonly pathname: string;
   /** Names the strip for assistive technology, e.g. "Problem sections". */
   readonly label: string;
+  /**
+   * A control at the strip's right end, centred in the tray, such as the problem page's layout
+   * toggle. Page furniture rather than a tab, so it sits outside the list.
+   */
+  readonly trailing?: ReactNode;
 }
 
 function isActive(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-export function TabStrip({ items, pathname, label }: TabStripProps) {
+export function TabStrip({ items, pathname, label, trailing }: TabStripProps) {
+  const hasTrailing = trailing !== undefined && trailing !== null;
   return (
     <nav aria-label={label} className="mt-4 border border-rule-edge bg-ink/[0.04]">
+      {/*
+        `contents` without a trailing control, so every other strip keeps exactly the box it had.
+        With one, the row is a flex line and the list keeps its `-mb-px`: the line is as tall as
+        the list less that pixel, so the active tab still covers the strip's bottom border.
+      */}
+      <div className={hasTrailing ? "flex items-stretch" : "contents"}>
       {/*
         `overflow-x-auto` on the strip and nowhere else. Seven tabs at 360px do not fit, and the
         alternatives are worse: wrapping turns the strip into two rows that no longer read as
@@ -87,7 +100,7 @@ export function TabStrip({ items, pathname, label }: TabStripProps) {
         tallest thing in the row. A parent's border paints before its descendants' backgrounds, so
         the tab covers the border rather than the other way round.
       */}
-      <ul className="-mb-px flex overflow-x-auto px-2.5 pt-2.5">
+      <ul className={`-mb-px flex overflow-x-auto px-2.5 pt-2.5${hasTrailing ? " min-w-0 flex-1" : ""}`}>
         {items.map((item) => {
           const active = isActive(pathname, item.href);
           return (
@@ -117,6 +130,8 @@ export function TabStrip({ items, pathname, label }: TabStripProps) {
           );
         })}
       </ul>
+      {hasTrailing && <div className="flex shrink-0 items-center px-2.5 pt-2.5">{trailing}</div>}
+      </div>
     </nav>
   );
 }

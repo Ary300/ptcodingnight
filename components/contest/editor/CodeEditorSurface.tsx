@@ -138,6 +138,12 @@ function lineEndAfter(value: string, index: number): number {
 export interface CodeEditorSurfaceProps extends CodeEditorProps {
   /** Rendered on the toolbar's left, where HackerRank keeps its language dropdown. */
   readonly toolbarStart?: ReactNode;
+  /**
+   * Fill the parent's height instead of sizing to the textarea, the way full screen does. The
+   * problem page's side-by-side layout sets it so the editor takes its pane; omitted, the editor
+   * keeps its own floor, cap and resize handle.
+   */
+  readonly fill?: boolean;
 }
 
 export function CodeEditorSurface({
@@ -149,6 +155,7 @@ export function CodeEditorSurface({
   onSubmitShortcut,
   label,
   toolbarStart,
+  fill = false,
 }: CodeEditorSurfaceProps) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const gutterRef = useRef<HTMLDivElement | null>(null);
@@ -389,6 +396,8 @@ export function CodeEditorSurface({
 
   const rootRef = useRef<HTMLDivElement | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  // Full screen and `fill` size the band the same way: the box decides the height, not the code.
+  const fillsBox = isFullscreen || fill;
   // A lazy initializer, not an effect: whether the API exists is a fact about the environment
   // that cannot change while mounted, and the `typeof` guard keeps the read legal if this
   // surface is ever rendered outside its `ssr: false` wrapper. Where it is unavailable
@@ -496,7 +505,7 @@ export function CodeEditorSurface({
   return (
     // `bg-paper` matters only in full screen: a fullscreened element with no background is
     // painted over the UA's black backdrop, and the status strip's ink text vanishes into it.
-    <div ref={rootRef} className={isFullscreen ? "flex h-full flex-col bg-paper" : "flex flex-col"}>
+    <div ref={rootRef} className={fillsBox ? "flex h-full flex-col bg-paper" : "flex flex-col"}>
       {/*
         The thin toolbar HackerRank draws directly above its editor (hr-challenge-live.png): a
         tinted strip, the language dropdown on the left, small icon actions on the right. Same
@@ -627,7 +636,7 @@ export function CodeEditorSurface({
         // `animationend` bubbles, so the guard keeps the toolbar's confirm strip — or anything
         // else that grows an entrance inside this band later — from clearing the flag early.
         className={`${swappingLanguage ? "motion-swap-in " : ""}${
-          isFullscreen ? "flex min-h-0 flex-1 bg-ink" : "flex bg-ink"
+          fillsBox ? "flex min-h-0 flex-1 bg-ink" : "flex bg-ink"
         }`}
         onAnimationEnd={(event) => {
           if (event.target === event.currentTarget) setSwappingLanguage(false);
@@ -697,7 +706,7 @@ export function CodeEditorSurface({
             // scrolling to reach Submit, and the box is resizable anyway. In full screen the
             // band's height is the layout's decision, so the resize handle and the caps go.
             className={`relative block w-full overflow-auto bg-transparent p-3 font-mono text-transparent caret-gold outline-none selection:bg-paper/25 disabled:cursor-not-allowed ${
-              isFullscreen ? "h-full" : "max-h-[70vh] min-h-[16rem] resize-y sm:min-h-[22rem]"
+              fillsBox ? "h-full resize-none" : "max-h-[70vh] min-h-[16rem] resize-y sm:min-h-[22rem]"
             }`}
             style={{ ...SHARED_TEXT }}
           />

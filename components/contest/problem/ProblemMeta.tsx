@@ -137,10 +137,11 @@ export function ProblemBreadcrumb({ slotLabel, title }: { slotLabel: string; tit
  * navigated the student off the problem. "My submissions" is the exact wording the top bar uses
  * for that same destination, so the label now names where the click lands.
  */
-export function ProblemTabs({ slug }: { slug: string }) {
+export function ProblemTabs({ slug, trailing }: { slug: string; trailing?: React.ReactNode }) {
   return (
     <TabStrip
       label="Problem views"
+      trailing={trailing}
       pathname={`/contest/${slug}`}
       items={[
         { href: `/contest/${slug}`, label: "Problem" },
