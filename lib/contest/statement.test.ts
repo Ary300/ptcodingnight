@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { statementWithoutConstraints, statementWithoutRepeatedTitle } from "./statement";
+import {
+  mergeStatementExamples,
+  sameSampleText,
+  statementExamples,
+  statementWithoutConstraints,
+  statementWithoutRepeatedTitle,
+} from "./statement";
 
 /**
  * The rule is "drop the heading only when it is the SAME heading" — a blanket strip of the first
@@ -119,5 +125,183 @@ describe("statementWithoutConstraints", () => {
     expect(out).toContain("## Output");
     expect(out).toContain("## Example");
     expect(out).toContain("25000000000");
+  });
+});
+
+/**
+ * The organizers asked for one Examples section instead of a statement "Example" and a separate
+ * "Samples" list. The statement's examples fold into the samples only when every one of them is
+ * a sample, matched by its data and never by position, so nothing the author wrote is ever lost.
+ */
+const TWO_EXAMPLES = [
+  "Add two numbers.",
+  "",
+  "## Example",
+  "",
+  "**Example 1**",
+  "",
+  "Input:",
+  "```",
+  "35 48",
+  "```",
+  "Output:",
+  "```",
+  "83",
+  "```",
+  "",
+  "The tables earned $35 + 48 = 83$.",
+  "",
+  "**Example 2**",
+  "",
+  "Input:",
+  "```",
+  "120 -15",
+  "```",
+  "Output:",
+  "```",
+  "105",
+  "```",
+  "",
+  "A loss counts too.",
+  "",
+  "## Notes",
+  "",
+  "Read carefully.",
+  "",
+].join("\n");
+
+const TWO_SAMPLES = [
+  { ordinal: 1, input: "35 48\n", expectedOutput: "83\n" },
+  { ordinal: 2, input: "120 -15\n", expectedOutput: "105\n" },
+];
+
+describe("statementExamples", () => {
+  it("reads each Example N as input, output and the prose after it", () => {
+    expect(statementExamples(TWO_EXAMPLES)).toEqual([
+      { input: "35 48", output: "83", explanation: "The tables earned $35 + 48 = 83$." },
+      { input: "120 -15", output: "105", explanation: "A loss counts too." },
+    ]);
+  });
+
+  it("reads examples labelled 'Sample N input:' with no Example markers between them", () => {
+    const md = [
+      "## Example",
+      "Sample 1 input:",
+      "```",
+      "1",
+      "```",
+      "Sample 1 output:",
+      "```",
+      "2",
+      "```",
+      "Why one.",
+      "Sample 2 input:",
+      "```",
+      "3",
+      "```",
+      "**Output**",
+      "```",
+      "4",
+      "```",
+    ].join("\n");
+    expect(statementExamples(md)).toEqual([
+      { input: "1", output: "2", explanation: "Why one." },
+      { input: "3", output: "4", explanation: "" },
+    ]);
+  });
+
+  it("does not read a section with prose before its first input", () => {
+    const md = "## Example\n\nHere is a case.\n\n```\n1\n```\n```\n2\n```\n";
+    expect(statementExamples(md)).toBeNull();
+  });
+
+  it("does not read an input that has no output block, the A Very Big Sum shape", () => {
+    const md = "## Example\n\n```\n1\n```\n```\n2\n```\n\nA second one:\n\n```\n3\n```\n\noutputs `4`.\n";
+    expect(statementExamples(md)).toBeNull();
+  });
+
+  it("ignores a heading-like line inside a code block", () => {
+    const md = "## Example\n\n```\n## Notes\n```\n```\n1\n```\n";
+    expect(statementExamples(md)).toEqual([{ input: "## Notes", output: "1", explanation: "" }]);
+  });
+
+  it("reports no examples for a statement without an Example section", () => {
+    expect(statementExamples("Just prose.\n\n## Output\n\nA number.")).toEqual([]);
+  });
+});
+
+describe("sameSampleText", () => {
+  it("ignores trailing newlines, trailing spaces and CRLF, which a code block cannot carry", () => {
+    expect(sameSampleText("1 2\r\n3 \n\n", "1 2\n3")).toBe(true);
+  });
+
+  it("does not ignore anything else", () => {
+    expect(sameSampleText("1  2", "1 2")).toBe(false);
+    expect(sameSampleText(" 1", "1")).toBe(false);
+  });
+});
+
+describe("mergeStatementExamples", () => {
+  it("removes the statement's Example section and keeps every explanation by sample", () => {
+    const merged = mergeStatementExamples(TWO_EXAMPLES, TWO_SAMPLES);
+    expect(merged.merged).toBe(true);
+    expect(merged.statementMd).not.toContain("## Example");
+    expect(merged.statementMd).not.toContain("35 48");
+    expect(merged.statementMd).toContain("Add two numbers.");
+    expect(merged.statementMd).toContain("## Notes");
+    expect(merged.explanations).toEqual({
+      1: "The tables earned $35 + 48 = 83$.",
+      2: "A loss counts too.",
+    });
+  });
+
+  it("matches by data, not position, when the samples are in another order", () => {
+    const reversed = [
+      { ordinal: 1, input: "120 -15\n", expectedOutput: "105\n" },
+      { ordinal: 2, input: "35 48\n", expectedOutput: "83\n" },
+    ];
+    expect(mergeStatementExamples(TWO_EXAMPLES, reversed).explanations).toEqual({
+      1: "A loss counts too.",
+      2: "The tables earned $35 + 48 = 83$.",
+    });
+  });
+
+  it("merges when the samples outnumber the examples, and the extra sample has no explanation", () => {
+    const three = [...TWO_SAMPLES, { ordinal: 3, input: "1 1\n", expectedOutput: "2\n" }];
+    const merged = mergeStatementExamples(TWO_EXAMPLES, three);
+    expect(merged.merged).toBe(true);
+    expect(merged.explanations[3]).toBeUndefined();
+  });
+
+  it("keeps the statement untouched when one example is not a sample", () => {
+    const merged = mergeStatementExamples(TWO_EXAMPLES, [TWO_SAMPLES[0]!]);
+    expect(merged).toEqual({ statementMd: TWO_EXAMPLES, explanations: {}, merged: false });
+  });
+
+  it("keeps the statement untouched when an output differs, even with the same input", () => {
+    const wrong = [TWO_SAMPLES[0]!, { ordinal: 2, input: "120 -15\n", expectedOutput: "106\n" }];
+    expect(mergeStatementExamples(TWO_EXAMPLES, wrong).merged).toBe(false);
+  });
+
+  it("uses each sample once, so two identical examples need two identical samples", () => {
+    const md = "## Example\n\n```\n1\n```\n```\n2\n```\n\n```\n1\n```\n```\n2\n```\n";
+    const one = [{ ordinal: 1, input: "1", expectedOutput: "2" }];
+    expect(mergeStatementExamples(md, one).merged).toBe(false);
+  });
+
+  it("keeps the statement untouched when its examples cannot be read", () => {
+    const md = "## Example\n\nSee below.\n\n```\n1\n```\n```\n2\n```\n";
+    const merged = mergeStatementExamples(md, [{ ordinal: 1, input: "1", expectedOutput: "2" }]);
+    expect(merged.statementMd).toBe(md);
+    expect(merged.merged).toBe(false);
+  });
+
+  it("changes nothing for a statement with no Example section", () => {
+    const md = "Prose only.\n";
+    expect(mergeStatementExamples(md, TWO_SAMPLES)).toEqual({
+      statementMd: md,
+      explanations: {},
+      merged: false,
+    });
   });
 });
