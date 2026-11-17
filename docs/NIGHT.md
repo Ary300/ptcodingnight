@@ -39,6 +39,13 @@ divisions.
 | 8:38 | Read the top three teams in each division. Hand out awards at the front. | Sameer, teacher | `/admin/contests/{id}/awards` on the laptop |
 | 8:45 | Dismiss. | Teacher | Export CSV from the Awards tab before closing the laptop |
 
+The projector always shows the public board, frozen from 8:00, even when it runs on the organizer
+laptop that is signed in to the console. The wall asks the server for the public view on every
+poll and sends no session with it, so nothing an organizer does in another tab can unfreeze it.
+The Awards tab and the live console on the same laptop still see the live scores behind the freeze.
+A private browser window for the wall also works, since it carries no session at all, and is a
+fine habit to keep.
+
 Two warnings about the lifecycle buttons. **Open now** moves the whole window to the instant you
 press it, so pressing it at 6:58 closes submissions at 8:13. **End contest** turns the public board
 into the final board the moment you press it, which is the reveal with nobody watching. Leave the
@@ -253,7 +260,9 @@ Decide these before the night, in writing, so nobody decides anything in front o
 - How many places get an award, overall or per division.
 - What happens on a tie. The board will show two teams on one step of the podium and will not
   pick between them. Either both get the award, or Sameer announces a tiebreak before 7:00.
-- Whether there is an individual award for the top scorer on `/admin/awards`, or team awards only.
+- Whether there is an individual award for the top scorer, or team awards only. There is no
+  separate individual board. Expand the teams on the Awards board (`/admin/contests/{id}/awards`,
+  or Expand all) to see every member's points, and read the top scorer in each division from there.
 - Whether a puzzle-only or Kahoot-only award exists for a team that did not place.
 - Who speaks, and where the awards sit at 8:30.
 
@@ -275,7 +284,7 @@ not fixed in 10 minutes triggers the decision rule in §3.
 | Java verdicts look wrong: correct Java gets RE, TLE or CE that the same code does not get in practice | A fault in one of the three Java speedups | On the box, set the matching line in `/srv/ptcn/app/.env` to `off` and recreate only the worker: `JUDGE_JVM_HARNESS` (tests in one JVM), `JUDGE_JAVAC_SERVICE` (warm compiler) or `JUDGE_TLE_AT_THRESHOLD` (stop at the limit). Then `docker compose -f docker-compose.prod.yml up -d --no-deps --force-recreate worker` and Rejudge the affected submissions from the live console. Java gets slower; verdicts return to the plain path every gate covers | Aryav, only if verdicts are wrong |
 | The room needs more time, or End contest was pressed by mistake | An outage that cost the room minutes, or the wrong button | Setup tab, Window panel. **Change the end time** for more minutes, or **Reopen the contest** with a new end time, then press the 15 minute freeze preset again | Aryav, after Sameer decides |
 | The board froze too early, or was frozen by hand and unfrozen | A wrong freeze preset, or the live console's freeze button | Setup tab, freeze presets: press 15 again. Unfreezing by hand before 8:00 clears the scheduled freeze, so it has to be set again or the final board shows at 8:15 | Aryav |
-| Projector shows the wrong thing | Bare `/projector` picked a different contest, or the page was never refreshed | Open `/projector?contest={id}` from the Setup tab's link. Frozen plate missing after 8:00 means the Window panel on Setup has no freeze; press Freeze the public board on the live console instead. | Aryav |
+| Projector shows the wrong thing | Bare `/projector` picked a different contest, or the page was never refreshed | Open `/projector?contest={id}` from the Setup tab's link. The wall shows the public board even on the organizer laptop, so a frozen plate missing after 8:00 means the Window panel on Setup has no freeze; press Freeze the public board on the live console instead. If it still shows live scores, reload it, or open it in a private window. | Aryav |
 
 Logs, if a row needs them: on the box, `docker compose -f docker-compose.prod.yml logs --tail=100
 worker` and the same for `web`. Almost every failure announces itself there.

@@ -21,7 +21,7 @@ and a couple are reachable but wrong on this hardware.
 | T4 | ~~A submission can fill the judge host's disk~~ **fixed** | resolved |
 | T5 | ~~Re-joining re-rolls the problem set, leaking other sets~~ **fixed**; one residual stated | low |
 | T6 | Monaco is specified but not installed | medium |
-| T7 | Team management and awards UI are missing | medium |
+| T7 | ~~Team management and awards UI are missing~~ **done**; the entry below is kept for its history | closed |
 | T8 | `/admin` has no server-side gate — future risk, not present | low |
 | T9 | ~~Mount permissions untested on Linux~~ **fixed** — it would have made every submission IE | resolved |
 | T10 | `isGroupProblem` still shadows `round` | low |
@@ -394,9 +394,15 @@ important screen in the application. If jsDelivr is slow, a student cannot type.
 
 ---
 
-## T7 — Awards UI is stale — **team management is done**
+## T7 — Team management and awards UI — **done**
 
-**Severity: low, down from medium.**
+**Closed 2026-11-16.** The row below that read "stale" no longer is. `/admin/contests/{id}/awards`
+renders the TEAM board (`AwardsLoader` reads the team standings and `TeamAwardsBoard` draws one
+podium per division, re-ranked within the division), behind the organizer gate. There is no separate
+individual board on the night; the top scorer is read by expanding teams on that board. Its CSV and
+XLSX export carry Division, a per-division Rank and an Indiana-time stamp.
+
+**Severity: closed. Was medium, then low.**
 
 | Screen | State |
 |---|---|
@@ -405,7 +411,7 @@ important screen in the application. If jsDelivr is slow, a student cannot type.
 | My team (`/team`) | done |
 | Admin side-activity entry | done |
 | **Team management** — create teams, assign participants, see sizes | **done** |
-| **Awards screen** — still renders the per-division individual board | **stale** |
+| **Awards screen** — team board, one podium per division | **done** (was stale) |
 
 Team management shipped as `RosterManager` on `/admin/teams`, and then failed for a second reason
 worth recording: the screen existed and was *unreachable*. It reads its contest from `?contest=`,
@@ -415,7 +421,7 @@ navigate to is not a shipped screen**, and a roster is a scoring input: team siz
 
 `/admin/side-activities` had the same wall, and was additionally in no nav at all.
 
-Awards remains stale.
+Awards was the last stale row, and it is done; see the note at the top of this entry.
 
 ---
 
