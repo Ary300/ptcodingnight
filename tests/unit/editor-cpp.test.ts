@@ -68,7 +68,7 @@ describe("CPP profile", () => {
   describe("live templates", () => {
     it("has the CLion contest abbreviations", () => {
       expect(CPP.templates.map((t) => t.abbreviation).sort()).toEqual(
-        ["main", "fastio", "fori", "forr", "cout", "cin", "vi", "ll", "inc"].sort(),
+        ["main", "fastio", "for", "fori", "forr", "foreach", "iter", "cout", "cin", "vi", "ll", "inc"].sort(),
       );
     });
 
@@ -101,7 +101,11 @@ describe("CPP profile", () => {
         CPP.templates.find((t) => t.abbreviation === a)?.body;
       expect(body("fastio")).toBe("ios::sync_with_stdio(false);\ncin.tie(nullptr);$END$");
       expect(body("fori")).toBe("for (int i = 0; i < ${1}; i++) {\n\t$END$\n}");
-      expect(body("forr")).toBe("for (auto &${2:x} : ${1}) {\n\t$END$\n}");
+      // CLion's names: `for` counts up, `forr` counts down, `foreach` and `iter` walk a range.
+      expect(body("for")).toBe("for (int i = 0; i < ${1:n}; ++i) {\n\t$END$\n}");
+      expect(body("forr")).toBe("for (int i = ${1:n} - 1; i >= 0; --i) {\n\t$END$\n}");
+      expect(body("foreach")).toBe("for (auto &${2:x} : ${1}) {\n\t$END$\n}");
+      expect(body("iter")).toBe("for (auto &${2:x} : ${1}) {\n\t$END$\n}");
       expect(body("cin")).toBe("cin >> $END$;");
       expect(body("vi")).toBe("vector<int> $END$;");
       expect(body("ll")).toBe("long long $END$;");

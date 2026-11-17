@@ -7,6 +7,7 @@
  * The qualifier is computed by completion.ts; this file only supplies the tables.
  */
 
+import { C_HEADERS, CPP_HEADERS, CPP_KEYWORD_TAILS, CPP_TYPE_MEMBERS, withInclude } from "./cpp-extras";
 import type { CompletionItem, LanguageProfile, LiveTemplate } from "./types";
 
 const OPENERS = new Set(["{", "(", "["]);
@@ -82,6 +83,13 @@ const TEMPLATES: readonly LiveTemplate[] = [
     description: "Fast input and output",
     body: "ios::sync_with_stdio(false);\ncin.tie(nullptr);$END$",
   },
+  // CLion's names: `for` counts up, `forr` counts down, `foreach` (and the older `iter`) is the
+  // range-based loop. `fori` stays as IntelliJ's name for the same loop as `for`, for habit's sake.
+  {
+    abbreviation: "for",
+    description: "Iterate over a range of integers",
+    body: "for (int i = 0; i < ${1:n}; ++i) {\n\t$END$\n}",
+  },
   {
     abbreviation: "fori",
     description: "Indexed for loop",
@@ -89,6 +97,16 @@ const TEMPLATES: readonly LiveTemplate[] = [
   },
   {
     abbreviation: "forr",
+    description: "Iterate over a range of integers in reverse",
+    body: "for (int i = ${1:n} - 1; i >= 0; --i) {\n\t$END$\n}",
+  },
+  {
+    abbreviation: "foreach",
+    description: "Range-based for loop",
+    body: "for (auto &${2:x} : ${1}) {\n\t$END$\n}",
+  },
+  {
+    abbreviation: "iter",
     description: "Range-based for loop",
     body: "for (auto &${2:x} : ${1}) {\n\t$END$\n}",
   },
@@ -347,11 +365,14 @@ export const CPP: LanguageProfile = {
   templates: TEMPLATES,
   postfixTemplates: POSTFIX,
   keywords: KEYWORDS,
-  globals: GLOBALS,
+  globals: GLOBALS.map(withInclude),
   members: {
     std: STD_NAMES,
     "*": ANY_MEMBER,
   },
+  keywordTails: CPP_KEYWORD_TAILS,
+  typeMembers: CPP_TYPE_MEMBERS,
+  importTargets: { "#include": CPP_HEADERS },
 };
 
 /** C17's keywords. None of C++'s: `private`, `class` and `nullptr` do not compile as C. */
@@ -390,4 +411,6 @@ export const C: LanguageProfile = {
   keywords: C_KEYWORDS,
   globals: C_GLOBALS,
   members: {},
+  typeMembers: {},
+  importTargets: { "#include": C_HEADERS },
 };
