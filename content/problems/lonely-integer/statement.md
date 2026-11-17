@@ -22,7 +22,7 @@ Print a single integer: the value that appears exactly once in the list.
 
 ## Constraints
 
-- $1 \le n \le 999$, and $n$ is odd
+- $1 \le n \le 1001$, and $n$ is odd
 - $0 \le a_i \le 10^6$
 - Every value in the list appears exactly twice, except exactly one value, which appears
   exactly once.
