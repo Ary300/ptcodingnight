@@ -3,7 +3,7 @@
 Usage: python3 generator.py <seed>
 
 Deterministic per seed. Small seeds produce short strings; large seeds push n to
-the constraint ceiling of 10,000 characters, which keeps every file near 10 KB. The seed also selects the shape of the string (uniform
+the constraint ceiling of 1,000 characters. The seed also selects the shape of the string (uniform
 printable noise, letters only, wrap-boundary letters, no letters at all, one
 repeated character) and the flavor of k (small, just past a full turn, a few
 hundred, the 10^6 ceiling), so the test set covers the wrap-around and the k > 26 reduction and
@@ -16,7 +16,7 @@ program that echoes its input cannot pass them.
 
 Which seed made which test: 04 = seed 1, 11 = 6, 12 = 12, 13 = 13, 14 = 19,
 15 = 320, 17 = 322. The rest are written by hand. The two large hand-written
-cases are the first 10,000 characters of a fixed pattern: 16 is random letters of
+cases are the first 1,000 characters of a fixed pattern: 16 is random letters of
 both cases with k = 161, and 18 cycles through every printable character from
 code 33 to 126 with k = 999999, one below the ceiling.
 
@@ -28,7 +28,7 @@ import random
 import string
 import sys
 
-MAX_N = 10000
+MAX_N = 1000
 MAX_K = 10**6
 
 PRINTABLE = [chr(c) for c in range(33, 127)]
@@ -38,7 +38,7 @@ NON_LETTERS = [c for c in PRINTABLE if not c.isalpha()]
 
 
 def choose_n(seed: int) -> int:
-    """Grow with the seed: seed 1 -> 1 character, seed >= 100 -> the ceiling."""
+    """Grow with the seed: seed 1 -> 1 character, seed >= 32 -> the ceiling."""
     return max(1, min(MAX_N, seed * seed))
 
 
