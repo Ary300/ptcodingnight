@@ -1,7 +1,7 @@
 {
   "slug": "two-characters",
   "title": "Two Characters",
-  "difficulty": "E",
+  "difficulty": "M",
   "timeLimitMs": 2000,
   "memoryLimitMb": 256,
   "allowedLanguages": [

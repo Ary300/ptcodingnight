@@ -19,7 +19,7 @@ first integer.
 
 ## Input
 
-A single line containing the digit string $s$.
+A single line containing the digit string $s$. The string $s$ does not start with `0`.
 
 ## Output
 
@@ -28,8 +28,9 @@ If a valid split exists, print `YES`, a single space, and the first integer of t
 
 ## Constraints
 
-- $1 \le |s| \le 16$
+- $1 \le |s| \le 9$
 - $s$ consists only of the characters `0` through `9`
+- $s$ does not start with `0`
 
 ## Example
 

@@ -27,7 +27,7 @@ digits. If no Panther number of that length exists, print $-1$ instead.
 ## Constraints
 
 - $1 \le t \le 20$
-- $1 \le n \le 10^5$
+- $1 \le n \le 1000$
 
 ## Example
 

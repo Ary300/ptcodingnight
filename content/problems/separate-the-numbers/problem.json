@@ -1,7 +1,7 @@
 {
   "slug": "separate-the-numbers",
   "title": "Separate the Numbers",
-  "difficulty": "E",
+  "difficulty": "M",
   "timeLimitMs": 2000,
   "memoryLimitMb": 256,
   "allowedLanguages": [

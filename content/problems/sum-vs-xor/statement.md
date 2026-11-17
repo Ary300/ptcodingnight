@@ -10,6 +10,8 @@ easy way to keep two students busy until set C, assigns exactly that.
 Given a non-negative integer $n$, count the integers $x$ satisfying $0 \le x \le n$ and
 $n + x = n \oplus x$, where $\oplus$ denotes bitwise exclusive or (XOR).
 
+In Java, C++, and Python, `a ^ b` computes XOR; write the check as `(n + x) == (n ^ x)`.
+
 ## Input
 
 A single line containing one integer $n$.
