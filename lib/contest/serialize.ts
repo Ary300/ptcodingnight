@@ -105,6 +105,29 @@ export interface SubmissionRow {
   readonly verdict: Verdict | null;
   readonly score: number;
   readonly runtimeMs: number | null;
+  /** When the judge ran. Absent when the caller did not read it; then nothing is claimed. */
+  readonly judgedAt?: Date | null;
+  /** When the current verdict became true. An override moves this and not `judgedAt`. */
+  readonly effectiveAt?: Date | null;
+}
+
+/**
+ * Did an organizer's override set this submission's current verdict?
+ *
+ * Read off the two clocks the override already keeps apart, so no second record can drift from
+ * the first: the judge writes `effectiveAt = judgedAt`, an override moves only `effectiveAt`
+ * (`overrideVerdict` in admin.ts), and a rejudge clears both until the judge writes them again.
+ * So a verdict whose `effectiveAt` is later than its `judgedAt`, or that has no `judgedAt` at
+ * all, came from an override.
+ */
+export function isOverridden(row: {
+  readonly verdict: Verdict | null;
+  readonly judgedAt: Date | null;
+  readonly effectiveAt: Date | null;
+}): boolean {
+  if (row.verdict === null || row.effectiveAt === null) return false;
+  if (row.judgedAt === null) return true;
+  return row.effectiveAt.getTime() > row.judgedAt.getTime();
 }
 
 /**
@@ -138,5 +161,14 @@ export function toSubmissionView(
     // A settled submission never carries a position: "Accepted" beside "3 ahead of yours"
     // would be two claims in conflict, and the stale one would win a reader's eye.
     ...(submission.verdict === null && queuePosition !== undefined ? { queuePosition } : {}),
+    ...(submission.judgedAt !== undefined && submission.effectiveAt !== undefined
+      ? {
+          overridden: isOverridden({
+            verdict: submission.verdict,
+            judgedAt: submission.judgedAt,
+            effectiveAt: submission.effectiveAt,
+          }),
+        }
+      : {}),
   });
 }

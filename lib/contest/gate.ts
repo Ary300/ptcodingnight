@@ -208,6 +208,53 @@ export function clockShouldEnd(contest: ContestGateInput, now: Date): boolean {
   return !isPublicBoardFrozen(contest, now);
 }
 
+/** What End contest writes to a contest row. */
+export interface EndNowPlan {
+  readonly state: ContestState;
+  readonly endsAt: Date;
+  readonly freezeAt: Date | null;
+  /** True when the board stays frozen and only submissions closed. */
+  readonly boardStaysFrozen: boolean;
+}
+
+/**
+ * What End contest does to a contest row, by any path: the Setup tab's button, the API, or the
+ * clock.
+ *
+ * Ending closes submissions by pulling `endsAt` back to now. On an UNFROZEN board it also sets
+ * ENDED, which is what makes the final standings public. On a FROZEN board it must not: an ENDED
+ * contest's board is never frozen (`isPublicBoardFrozen`), so ending a frozen contest used to put
+ * the final standings, post-freeze points included, on the projector and every student screen the
+ * moment the organizer pressed End, with the Kahoot points still unentered. The night runs end,
+ * enter the side points, then reveal. So a frozen contest keeps its state and its cutoff, only the
+ * window closes, and "Unfreeze and reveal" (`setFrozen`) is what ends it. This is the rule
+ * `clockShouldEnd` already applies to the clock.
+ */
+export function planEndNow(contest: ContestGateInput, now: Date): EndNowPlan {
+  const endsAt = contest.endsAt.getTime() > now.getTime() ? now : contest.endsAt;
+  const live = contest.state === "RUNNING" || contest.state === "FROZEN";
+  if (live && isPublicBoardFrozen(contest, now)) {
+    return { state: contest.state, endsAt, freezeAt: contest.freezeAt, boardStaysFrozen: true };
+  }
+  // A freeze that never happened before the early end is erased rather than left dangling after
+  // the contest's own end.
+  const freezeAt =
+    contest.freezeAt !== null && contest.freezeAt.getTime() > now.getTime()
+      ? null
+      : contest.freezeAt;
+  return { state: "ENDED", endsAt, freezeAt, boardStaysFrozen: false };
+}
+
+/**
+ * Why a roster or team change is refused while the public board is frozen.
+ *
+ * It used to say "Unfreeze it before changing teams", which on the night tells the organizer to
+ * spoil the reveal to fix a seat. The change is locked, and it can wait until after the reveal.
+ * Exported so the Teams page can say the same thing BEFORE the organizer opens the move form.
+ */
+export const FROZEN_ROSTER_MESSAGE =
+  "Team moves and roster changes are locked while the public board is frozen, because they would change the frozen standings. Make them after the reveal.";
+
 /**
  * Refuse a mutation whose result is part of the public standings payload while its cutoff is
  * frozen or after its final reveal. Score events may continue during a freeze and are replayed
@@ -224,7 +271,7 @@ export function assertCanMutateStandingsInputs(contest: ContestGateInput, now: D
   if (isPublicBoardFrozen(contest, now)) {
     throw new DomainError(
       "CONFLICT",
-      "The public board is frozen. Unfreeze it before changing teams or roster membership.",
+      FROZEN_ROSTER_MESSAGE,
     );
   }
 }

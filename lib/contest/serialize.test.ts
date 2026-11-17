@@ -2,12 +2,49 @@ import { describe, expect, it } from "vitest";
 
 import { DIFF_SNIPPET_MAX_CHARS } from "@/lib/schemas/judge";
 import {
+  isOverridden,
   toPublicTestResult,
   toPublicTestResults,
   toSubmissionView,
   type SubmissionRow,
   type TestResultRow,
 } from "@/lib/contest/serialize";
+
+describe("isOverridden", () => {
+  const judgedAt = new Date("2026-11-17T20:00:00.000Z");
+  const later = new Date("2026-11-17T20:05:00.000Z");
+
+  it("is false for a verdict the judge wrote, which sets effectiveAt to judgedAt", () => {
+    expect(isOverridden({ verdict: "WA", judgedAt, effectiveAt: judgedAt })).toBe(false);
+  });
+
+  it("is true once an override moved effectiveAt past judgedAt", () => {
+    expect(isOverridden({ verdict: "AC", judgedAt, effectiveAt: later })).toBe(true);
+  });
+
+  it("is true for a verdict set before the judge ever answered", () => {
+    expect(isOverridden({ verdict: "AC", judgedAt: null, effectiveAt: later })).toBe(true);
+  });
+
+  it("is false while unjudged, and for rows from before effectiveAt existed", () => {
+    expect(isOverridden({ verdict: null, judgedAt: null, effectiveAt: later })).toBe(false);
+    expect(isOverridden({ verdict: "AC", judgedAt, effectiveAt: null })).toBe(false);
+  });
+
+  it("reaches the student's view only when the row was read with both clocks", () => {
+    const row: SubmissionRow = {
+      id: "s1",
+      contestProblemId: "cp1",
+      language: "PYTHON_312",
+      submittedAt: judgedAt,
+      verdict: "AC",
+      score: 100,
+      runtimeMs: 10,
+    };
+    expect(toSubmissionView(row, [], null).overridden).toBeUndefined();
+    expect(toSubmissionView({ ...row, judgedAt, effectiveAt: later }, [], null).overridden).toBe(true);
+  });
+});
 
 /**
  * The leak tests.

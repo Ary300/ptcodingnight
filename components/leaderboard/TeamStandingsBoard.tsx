@@ -157,6 +157,12 @@ export interface TeamStandingsBoardProps {
    */
   onSetOpenTeams?: (teamIds: ReadonlySet<string>) => void;
   /**
+   * Projector only: every team on EVERY division tab. The projector hands this board one tab's
+   * teams, so without this Expand all could open only the division on the wall, and the next
+   * division to rotate in arrived collapsed. Absent means the teams this board was given.
+   */
+  allTeamIds?: readonly string[];
+  /**
    * Projector only: rows each open roster strip may occupy, decided by the same screen that owns
    * `openTeamIds` — the strips share one measured height, so each one's share depends on how many
    * are open (`memberBlockBudget` in `projector-rows.ts`). Undefined means the full block.
@@ -426,6 +432,7 @@ export function TeamStandingsBoard({
   openTeamIds = new Set(),
   onToggleTeam,
   onSetOpenTeams,
+  allTeamIds,
   memberBlockRows,
   sideActivityBreakdown,
 }: TeamStandingsBoardProps) {
@@ -485,12 +492,15 @@ export function TeamStandingsBoard({
   };
 
   /*
-    Expand all opens every team on THIS view; Collapse all closes every team and every player
-    inside them. Both replace the whole set, so afterwards each caret goes on toggling only its
-    own team.
+    Expand all opens every team on EVERY division tab, not only the one showing; Collapse all
+    closes every team and every player inside them. The open set lives above the tabs (here for
+    the interactive board, in TeamProjectorScreen for the wall), so switching tabs after Expand
+    all shows that division expanded too. On the Awards board it used to open only the current
+    tab, and the next tab arrived collapsed. Both replace the whole set, so afterwards each caret
+    goes on toggling only its own team.
   */
   const expandAll = (): void => {
-    const ids = new Set(visibleTeams.map((team) => team.teamId));
+    const ids = new Set(allTeamIds ?? teams.map((team) => team.teamId));
     if (projector) {
       onSetOpenTeams?.(ids);
       return;

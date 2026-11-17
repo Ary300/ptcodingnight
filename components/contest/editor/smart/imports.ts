@@ -170,6 +170,67 @@ export function withImport(text: string, edit: Edit, importLine: string | undefi
   return change === null ? edit : combineEdit(text, edit, change);
 }
 
+/** The characters that end a name typed in full and bring its import with them. */
+const IMPORT_TRIGGERS: Readonly<Record<LanguageProfile["id"], string>> = {
+  // `Arrays.sort(a)`: the "." after a class name is where IntelliJ has resolved it.
+  java: ".",
+  // `std::sort(` and `std::vector<`: CLion adds the header the name lives in.
+  cpp: "(<",
+  // PyCharm never imports on typing; a module name typed in full stays a question for Alt+Enter.
+  python: "",
+};
+
+const NAME_BEFORE_CARET = /[A-Za-z_$][A-Za-z0-9_$]*$/;
+
+/** Whether the file declares `name` itself, which makes the library's name the wrong guess. */
+function declaresName(text: string, name: string, profile: LanguageProfile): boolean {
+  const word = escape(name);
+  if (profile.id === "java") {
+    return new RegExp(`\\b(?:class|interface|enum|record)\\s+${word}\\b`).test(text);
+  }
+  return new RegExp(
+    `\\b(?:struct|class|union|enum|using|typedef)\\s+(?:[\\w:<>,\\s]*\\s)?${word}\\b|\\b${word}\\s*\\([^)]*\\)\\s*(?:const\\s*)?\\{`,
+  ).test(text);
+}
+
+/**
+ * The import a name typed in full needs when `ch` is typed right after it, as IntelliJ's
+ * "Add unambiguous imports on the fly" does: `Arrays.` adds `import java.util.Arrays;`. Null when
+ * `ch` is not a trigger here, the word before the caret is a member (`a.Arrays`) or not a name the
+ * completion table imports, more than one import would fit it (ambiguous, so IntelliJ asks), the
+ * file declares the name itself, or the file already has it or a wildcard that covers it. The table
+ * is the one completion's auto-import uses (`globals` and `importables`), so the two cannot drift.
+ */
+export function importForTypedName(
+  text: string,
+  caret: number,
+  ch: string,
+  profile: LanguageProfile,
+): TextChange | null {
+  if (!IMPORT_TRIGGERS[profile.id].includes(ch)) return null;
+  const name = NAME_BEFORE_CARET.exec(text.slice(Math.max(0, caret - 64), caret))?.[0];
+  if (name === undefined) return null;
+  const start = caret - name.length;
+  const lead = text.slice(Math.max(0, start - 6), start);
+  if (profile.id === "java") {
+    if (/[.\w$]$/.test(lead)) return null;
+  } else if (!/(?:^|[^\w:])std::$/.test(lead)) {
+    // Only a `std::`-qualified name: a bare `sort` may be the student's own function, and
+    // `obj.sort`, `p->sort` and `my::sort` are not the library's.
+    return null;
+  }
+  const candidates = [...profile.globals, ...(profile.importables ?? [])].filter(
+    (item) => /^[A-Za-z0-9_$]+/.exec(item.label)?.[0] === name,
+  );
+  // A name that also resolves with no import (java.lang's Math, Character) needs none.
+  if (candidates.some((item) => item.importLine === undefined)) return null;
+  const lines = new Set(candidates.flatMap((item) => (item.importLine === undefined ? [] : [item.importLine])));
+  if (lines.size !== 1) return null;
+  const [line] = [...lines];
+  if (line === undefined || declaresName(text, name, profile)) return null;
+  return importChange(text, line, profile);
+}
+
 /** One fix that Show Context Actions (Alt+Enter) offers at the caret. */
 export interface ContextAction {
   readonly label: string;

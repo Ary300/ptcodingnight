@@ -7,6 +7,7 @@ import { FreezeSchedule } from "@/components/admin/FreezeSchedule";
 import { GroupUnlock } from "@/components/admin/GroupUnlock";
 import { AlertPlate, Panel } from "@/components/admin/Panel";
 import { groupUnlockAtFromMinutes, minutesBeforeEndOf } from "@/lib/contest/admin";
+import { isPublicBoardFrozen } from "@/lib/contest/gate";
 
 import { AssignSetsButton } from "../assign-sets-button";
 import { contestSetup, type ContestSetup } from "../contest-setup";
@@ -48,7 +49,11 @@ export default async function ContestSetupPage({
     return null;
   }
 
-  const steps = stepsFor(setup);
+  const now = new Date();
+  // The public board's own predicate, so this screen and the projector cannot disagree.
+  const boardFrozen = isPublicBoardFrozen(setup, now);
+  const submissionsClosed = setup.endsAt.getTime() <= now.getTime();
+  const steps = stepsFor(setup, boardFrozen && submissionsClosed);
   const remaining = steps.filter((step) => step.state !== "done").length;
   const preparing = setup.state === "DRAFT" || setup.state === "SCHEDULED";
   const live = setup.state === "RUNNING" || setup.state === "FROZEN";
@@ -157,7 +162,15 @@ export default async function ContestSetupPage({
           </Link>
         </div>
 
-        <ContestStateActions contestId={setup.contestId} state={setup.state} />
+        <ContestStateActions
+          contestId={setup.contestId}
+          state={setup.state}
+          boardFrozen={boardFrozen}
+          submissionsClosed={submissionsClosed}
+          durationMinutes={Math.round(
+            (setup.endsAt.getTime() - setup.startsAt.getTime()) / 60_000,
+          )}
+        />
       </Panel>
 
       {setup.state === "DRAFT" && setup.problemCount === 0 && (
@@ -201,7 +214,9 @@ export default async function ContestSetupPage({
         */}
         <div className="mt-5 border-t border-rule-edge pt-5">
           <h3 className="font-display font-bold" style={{ fontSize: "var(--text-sm)" }}>
-            {setup.state === "ENDED" ? "Reopen the contest" : "Change the end time"}
+            {setup.state === "ENDED" || (boardFrozen && submissionsClosed)
+              ? "Reopen the contest"
+              : "Change the end time"}
           </h3>
           <div className="mt-2">
             {/*
@@ -210,10 +225,11 @@ export default async function ContestSetupPage({
               8:20 PM" under "Reopen the contest". Its own saves update it in place.
             */}
             <EndTimeControl
-              key={setup.state}
+              key={`${setup.state}:${String(submissionsClosed)}`}
               contestId={setup.contestId}
               endsAt={setup.endsAt.toISOString()}
               state={setup.state}
+              closedAndFrozen={boardFrozen && submissionsClosed && setup.state !== "ENDED"}
             />
           </div>
         </div>
@@ -332,7 +348,7 @@ interface Step {
  * Set assignment comes after the roster because it assigns the people on it, and publishing comes
  * last because it is the only step a student can see the result of.
  */
-function stepsFor(setup: ContestSetup): readonly Step[] {
+function stepsFor(setup: ContestSetup, closedAndFrozen: boolean): readonly Step[] {
   const base = `/admin/contests/${setup.contestId}`;
 
   return [
@@ -397,7 +413,9 @@ function stepsFor(setup: ContestSetup): readonly Step[] {
             ? "Published. Students can see it and will be let in when the window opens."
             : setup.state === "ENDED" || setup.state === "ARCHIVED"
               ? "This contest is over. The Awards tab has the final board and the exports."
-              : "Live. Students are submitting now.",
+              : closedAndFrozen
+                ? "Submissions are closed and the board is frozen until the reveal."
+                : "Live. Students are submitting now.",
       // "Not yet" while the line-up is empty, because the API will refuse the press.
       state:
         setup.state !== "DRAFT" ? "done" : setup.problemCount === 0 ? "waiting" : "todo",

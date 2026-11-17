@@ -30,11 +30,17 @@ export function EndTimeControl({
   contestId,
   endsAt,
   state,
+  closedAndFrozen = false,
 }: {
   readonly contestId: string;
   /** ISO. */
   readonly endsAt: string;
   readonly state: string;
+  /**
+   * End was pressed on a frozen board: submissions are closed but the contest is not ENDED, because
+   * ENDED would reveal the board. Reopening works the same way and the board stays frozen.
+   */
+  readonly closedAndFrozen?: boolean;
 }) {
   const router = useRouter();
   const [current, setCurrent] = useState(endsAt);
@@ -43,7 +49,7 @@ export function EndTimeControl({
   const [message, setMessage] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
 
-  const ended = state === "ENDED";
+  const ended = state === "ENDED" || closedAndFrozen;
   if (state === "ARCHIVED") return null;
 
   const save = async (next: Date | null, reason: string): Promise<void> => {
@@ -103,7 +109,12 @@ export function EndTimeControl({
   return (
     <div className="flex flex-col gap-3">
       <p className="text-ink/70" style={{ fontSize: "var(--text-sm)" }}>
-        {ended ? (
+        {closedAndFrozen ? (
+          <>
+            Submissions are closed. To reopen them, choose a new end time and confirm. Students can
+            submit again until then, and the board stays frozen.
+          </>
+        ) : ended ? (
           <>
             This contest has ended. To reopen it, choose a new end time and confirm. Students can
             submit again until then.
