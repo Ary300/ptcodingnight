@@ -27,7 +27,7 @@ letters as described, or $0$ if none exists.
 
 ## Constraints
 
-- $1 \le n \le 10^4$
+- $1 \le n \le 1000$
 - $s$ consists of lowercase English letters (`a` to `z`) only
 
 ## Example
