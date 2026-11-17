@@ -545,7 +545,7 @@ export function ProblemWorkspace({ slug, window: contestWindow = null }: Problem
       language={activeLanguage}
       disabled={submitBusy || sampleBusy}
       onLoaded={setSource}
-      compact={sideBySide}
+      compact
     />
   );
 
@@ -628,7 +628,7 @@ export function ProblemWorkspace({ slug, window: contestWindow = null }: Problem
           busy={sampleBusy}
           language={activeLanguage}
           source={source}
-          quiet={sideBySide}
+          quiet
           onGoToLine={goToLine}
         />
       )}
@@ -782,7 +782,7 @@ export function ProblemWorkspace({ slug, window: contestWindow = null }: Problem
           </ResultsDrawer>
         ) : (
           <>
-            <p id={freeNoteId} className="mt-2 text-right text-ink/60" style={{ fontSize: "var(--text-xs)" }}>
+            <p id={freeNoteId} className="sr-only">
               {freeNote}
             </p>
             <div className="mt-4 space-y-4">{verdicts}</div>

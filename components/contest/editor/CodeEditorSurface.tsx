@@ -439,8 +439,7 @@ export function CodeEditorSurface({
 
   const listboxId = useId();
   const optionId = useCallback((index: number) => `${listboxId}-option-${index}`, [listboxId]);
-  // The help line names the modifier this keyboard actually has, and a template this language has.
-  const modLabel = isMac ? "Cmd" : "Ctrl";
+  // The shortcuts popover names a template this language actually has.
   const templateExample = profile?.templates[0]?.abbreviation ?? "";
 
   /* ---- toolbar: reset to the starter template ---- */
@@ -891,67 +890,27 @@ export function CodeEditorSurface({
         back into the editor reads the mode it is actually in; the live region below announces
         the change as it happens.
       */}
-      {fill ? (
-        <>
-          <p id={hintId} className="sr-only">
-            {tabMovesFocus
-              ? "Tab now moves to the next control."
-              : "Tab indents. Press Escape twice, then Tab, to move focus out of the editor."}{" "}
-            Control or Command plus Enter submits.
-          </p>
-          <EditorStatusBar
-            line={caret.line}
-            column={caret.column}
-            notice={commands.notice}
-            groups={editorShortcutGroups({
-              isMac,
-              smart: profile !== null,
-              templateExample,
-              engine: profile === null ? [] : engineShortcuts(isMac, profile),
-            })}
-          />
-        </>
-      ) : (
-      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-t border-rule-edge px-3 py-2">
-        <p id={hintId} className="text-ink/70" style={{ fontSize: "var(--text-xs)" }}>
-          {/* The armed state is shown, not only announced: a sighted keyboard user who pressed
-              Escape twice by accident sees why the next Tab will leave the editor. */}
-          {tabMovesFocus ? (
-            <strong className="font-semibold text-ink" data-testid="tab-leaves-editor">
-              <kbd className="font-mono">Tab</kbd> now moves to the next control.
-            </strong>
-          ) : (
-            <>
-              Tab indents. Press <kbd className="font-mono">Esc</kbd> twice, then{" "}
-              <kbd className="font-mono">Tab</kbd>, to move on.
-            </>
-          )}{" "}
-          <kbd className="font-mono">Ctrl</kbd>
-          {" / "}
-          <kbd className="font-mono">Cmd</kbd> + <kbd className="font-mono">Enter</kbd> submits.
-          {profile !== null && (
-            <>
-              {" "}
-              <kbd className="font-mono">{modLabel}</kbd> + <kbd className="font-mono">/</kbd>{" "}
-              comments a line, <kbd className="font-mono">{modLabel}</kbd> +{" "}
-              <kbd className="font-mono">D</kbd> duplicates it, and{" "}
-              <kbd className="font-mono">{templateExample}</kbd> then{" "}
-              <kbd className="font-mono">Tab</kbd> expands a template.
-            </>
-          )}
+      {/* One slim bar in both layouts (organizers' request): `Ln N, Col M` and the shortcuts
+          popover. The keyboard contract stays as the textarea's description. */}
+      <>
+        <p id={hintId} className="sr-only">
+          {tabMovesFocus
+            ? "Tab now moves to the next control."
+            : "Tab indents. Press Escape twice, then Tab, to move focus out of the editor."}{" "}
+          Control or Command plus Enter submits.
         </p>
-        <p
-          aria-hidden="true"
-          className="numeric shrink-0 text-ink/60"
-          style={{ fontSize: "var(--text-xs)" }}
-        >
-          Line: {caret.line} Col: {caret.column}
-        </p>
-        <p role="status" data-testid="editor-notice" className="text-ink/70" style={{ fontSize: "var(--text-xs)" }}>
-          {commands.notice ?? ""}
-        </p>
-      </div>
-      )}
+        <EditorStatusBar
+          line={caret.line}
+          column={caret.column}
+          notice={commands.notice}
+          groups={editorShortcutGroups({
+            isMac,
+            smart: profile !== null,
+            templateExample,
+            engine: profile === null ? [] : engineShortcuts(isMac, profile),
+          })}
+        />
+      </>
 
       <p aria-live="polite" className="sr-only">
         {tabMovesFocus ? "Tab will now move focus out of the editor." : "Tab will insert an indent."}

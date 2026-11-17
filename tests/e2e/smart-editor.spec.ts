@@ -294,14 +294,27 @@ test.describe("Java, the IntelliJ reflexes that used to misfire", () => {
     await expect(textarea).toHaveValue("x");
   });
 
-  test("the hint under the editor reads as plain sentences", async ({ page }) => {
-    // The visible sentence is the STACKED page's; side by side, the shortcuts popover replaced
-    // it. Stacked is the default on every width, so nothing is chosen here.
-    await openEmptyEditor(page, "Java 21");
+  test("stacked, the editor ends in the same slim bar as side by side, with no sentence of help", async ({ page }) => {
+    // Stacked is the default on every width, so nothing is chosen here. The organizers asked for
+    // no helper copy under the editor (2026-11-17); the keyboard contract stays as the
+    // textarea's description, and the shortcuts live behind the keyboard button.
+    const textarea = await openEmptyEditor(page, "Java 21");
     await expect(page.getByRole("separator", { name: "Resize the problem and the editor" })).toHaveCount(0);
-    const hint = page.locator("p", { hasText: "Tab indents." });
-    const text = await hint.evaluate((element) => (element as HTMLElement).innerText);
-    expect(text).toContain("Tab indents. Press Esc twice, then Tab, to move on. Ctrl / Cmd + Enter submits.");
+    const solution = page.getByRole("region", { name: "Your solution" });
+    await expect(solution.getByText(/^Ln \d+, Col \d+$/)).toBeVisible();
+    await expect(page.getByRole("button", { name: "Keyboard shortcuts" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Upload code", exact: true })).toBeVisible();
+    await expect(textarea).toHaveAccessibleDescription(/Press Escape twice, then Tab/);
+    // Screen-reader text is a 1px clip, so measure what is actually painted.
+    for (const text of [/Tab indents/, /^Running samples is free\. Submitting counts\.$/]) {
+      const copy = solution.getByText(text);
+      await expect(copy).toHaveCount(1);
+      const size = await copy.evaluate((element) => {
+        const rect = element.getBoundingClientRect();
+        return rect.width * rect.height;
+      });
+      expect(size, `${String(text)} is on screen`).toBeLessThanOrEqual(1);
+    }
   });
 
   test("postfix templates are listed after `x.`, marked, and accepting one expands over x", async ({ page }) => {
