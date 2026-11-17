@@ -19,6 +19,7 @@ import {
   type SetColumn,
   type SetFact,
 } from "./team-tabs";
+import { ExpandAllControls } from "./ExpandAllControls";
 import { TeamDivisionTabs } from "./TeamDivisionTabs";
 import { TeamRosterStrip } from "./TeamRosterStrip";
 import styles from "./leaderboard.module.css";
@@ -150,6 +151,11 @@ export interface TeamStandingsBoardProps {
   openTeamIds?: ReadonlySet<string>;
   /** Projector only. Absent means the board is not expandable at all. */
   onToggleTeam?: (teamId: string) => void;
+  /**
+   * Projector only: replaces the whole open set at once, for Expand all and Collapse all. The
+   * interactive board owns its own state and needs nothing passed.
+   */
+  onSetOpenTeams?: (teamIds: ReadonlySet<string>) => void;
   /**
    * Projector only: rows each open roster strip may occupy, decided by the same screen that owns
    * `openTeamIds` — the strips share one measured height, so each one's share depends on how many
@@ -338,31 +344,54 @@ function anyPenalty(teams: readonly TeamStandingRow[]): boolean {
  * the commit records the new positions and animates nothing: a team that is rank 4 on the full
  * board and rank 1 in its division has not overtaken anybody, and sliding it three rows would
  * announce an overtake that never happened.
+ *
+ * `order` is the ranked team ids, and NOTHING slides unless it changed. This hook used to run on
+ * every commit, so opening a team's breakdown counted as every team below it moving: each one was
+ * snapped back up by the height of the new panel and slid down over 400ms, drawn on top of the
+ * breakdown that had just opened. The breakdown itself was worse. A closed `<tbody>` is
+ * `display: none` and measures top 0, so the panel flew in from the top of the page across every
+ * team above it. That is the dropdown covering other teams that the organizers reported. Opening
+ * and closing is not an overtake; only a change of order is.
+ *
+ * A group that measures zero height (a closed breakdown) is never recorded or moved, and a slide
+ * still in flight is cancelled before measuring, so a poll landing mid-slide reads layout rather
+ * than a half-travelled transform.
  */
 function useRankSlide(
   tableRef: React.RefObject<HTMLTableElement | null>,
   epoch: string,
+  order: string,
 ) {
   const previousTops = useRef<Map<string, number>>(new Map());
   const previousEpoch = useRef<string>(epoch);
+  const previousOrder = useRef<string>(order);
 
   useLayoutEffect(() => {
     const table = tableRef.current;
     if (table === null) return;
 
     const sameView = previousEpoch.current === epoch;
+    const reordered = previousOrder.current !== order;
     previousEpoch.current = epoch;
+    previousOrder.current = order;
 
     const groups = table.querySelectorAll<HTMLTableSectionElement>("[data-flip-team]");
     const nextTops = new Map<string, number>();
 
     for (const group of groups) {
+      group.style.transition = "";
+      group.style.transform = "";
+    }
+
+    for (const group of groups) {
       const teamId = group.dataset.flipTeam ?? "";
       const key = `${teamId}:${group.dataset.flipPart ?? ""}`;
-      const top = group.getBoundingClientRect().top;
+      const rect = group.getBoundingClientRect();
+      if (rect.height < 1) continue;
+      const top = rect.top;
       nextTops.set(key, top);
 
-      if (!sameView) continue;
+      if (!sameView || !reordered) continue;
       const previous = previousTops.current.get(key);
       if (previous === undefined) continue;
       const delta = previous - top;
@@ -396,6 +425,7 @@ export function TeamStandingsBoard({
   highlightTeamId = null,
   openTeamIds = new Set(),
   onToggleTeam,
+  onSetOpenTeams,
   memberBlockRows,
   sideActivityBreakdown,
 }: TeamStandingsBoardProps) {
@@ -435,7 +465,11 @@ export function TeamStandingsBoard({
     never changes the board's shape.
   */
   const showGroup = teams.some((team) => team.groupPoints > 0);
-  useRankSlide(rankSlideTable, activeTabId ?? "all-teams");
+  useRankSlide(
+    rankSlideTable,
+    activeTabId ?? "all-teams",
+    visibleTeams.map((team) => team.teamId).join("\n"),
+  );
   /** A projector board is expandable only when somebody upstream is budgeting for it. */
   const toggleWall = projector ? onToggleTeam : undefined;
 
@@ -449,6 +483,42 @@ export function TeamStandingsBoard({
       return next;
     });
   };
+
+  /*
+    Expand all opens every team on THIS view; Collapse all closes every team and every player
+    inside them. Both replace the whole set, so afterwards each caret goes on toggling only its
+    own team.
+  */
+  const expandAll = (): void => {
+    const ids = new Set(visibleTeams.map((team) => team.teamId));
+    if (projector) {
+      onSetOpenTeams?.(ids);
+      return;
+    }
+    setExpanded((current) => new Set([...current, ...ids]));
+  };
+
+  const collapseAll = (): void => {
+    if (projector) {
+      onSetOpenTeams?.(new Set());
+      return;
+    }
+    setExpanded(new Set());
+    setExpandedPlayers(new Set());
+  };
+
+  const bulkControls =
+    (projector ? toggleWall !== undefined && onSetOpenTeams !== undefined : true) &&
+    visibleTeams.length > 0 ? (
+      <div className="mb-2 flex justify-end">
+        <ExpandAllControls
+          teamCount={visibleTeams.length}
+          onExpandAll={expandAll}
+          onCollapseAll={collapseAll}
+          controls={panelId}
+        />
+      </div>
+    ) : null;
 
   const togglePlayer = (playerKey: string): void => {
     setExpandedPlayers((current) => {
@@ -594,6 +664,7 @@ export function TeamStandingsBoard({
       }}
     >
       {divisionStrip}
+      {bulkControls}
 
       {/* `rounded-panel` on the interactive board only: DataTable already frames the app's other
           table that way, and two table treatments in one product is one too many. The projector
@@ -616,7 +687,12 @@ export function TeamStandingsBoard({
           still slides and nothing rises.
         */
         key={activeTabId ?? "all-teams"}
-        className={`motion-swap-in w-full overflow-x-auto border ${grid} ${projector ? "" : "rounded-panel bg-paper"}`}
+        /*
+          The projector's board region is the scroller (it scrolls the whole field vertically),
+          so this box must not become a scroll container of its own there, or the sticky header
+          row would stick to a box that never scrolls. Phones keep the sideways scroller.
+        */
+        className={`motion-swap-in w-full border ${grid} ${projector ? "" : "overflow-x-auto rounded-panel bg-paper"}`}
       >
         <table
           ref={rankSlideTable}
@@ -624,7 +700,7 @@ export function TeamStandingsBoard({
           className="w-full border-collapse"
           style={{ fontSize: projector ? size.cell : "var(--text-sm)" }}
         >
-          <thead>
+          <thead className={styles.stickyHead}>
             <tr className={headBg}>
               <th
                 scope="col"

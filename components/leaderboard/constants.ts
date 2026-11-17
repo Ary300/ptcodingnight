@@ -34,67 +34,12 @@ export const POLL_INTERVAL_MS = 5_000;
  */
 export const VISIBLE_ROWS = 8;
 
-/**
- * Rows drawn on the TEAM board, which is the default projector.
- *
- * **Measured, not chosen.** A team row is two lines — the name at `--text-proj-md` over the
- * arithmetic at `--text-proj-sm`, which is the floor — so it stands about 93px tall at
- * `--proj-scale: 1`, and the stage has roughly 750px under its header once the title, the plate
- * band and the footnote have taken theirs. Seven fit. Eight do not, and the eighth does not
- * announce itself: the board simply clips it against a footnote still claiming to show eight.
- *
- * One number serves both projector resolutions because the degrade is a uniform scale — 1280×720
- * is exactly two-thirds of 1920×1080 in both axes, so a row that fits on one fits on the other.
- *
- * It caps what is DRAWN, never what is ranked. The footnote always states the true total, so a
- * team below the cut is never silently absent.
+/*
+ * The team board used to ration a measured row budget here (TEAM_VISIBLE_ROWS, and two or three
+ * rows given up per open breakdown). It is gone: the organizers asked for every team on the wall,
+ * reachable by scrolling, with a breakdown pushing rows down rather than costing teams.
+ * `TeamProjectorScreen` explains the board as it is now.
  */
-export const TEAM_VISIBLE_ROWS = 7;
-
-/**
- * Team rows given up for each open roster strip on the projector.
- *
- * **Measured, like the cap above, and for the same reason.** Opening a breakdown on a screen that
- * normally does not scroll has to be PAID FOR in rows: there is no spare height to expand into.
- * The controller applies this cost once per independently open team. Measured on
- * this commit with nine teams and four sets, board box against table box:
- *
- * | canvas    | 7 rows, closed | slack |
- * |-----------|----------------|-------|
- * | 1920×1080 | 964px          | 48px  |
- * | 1280×720  | 668px          | 6px   |
- *
- * Six pixels. So the breakdown cannot come out of the slack on the canvas that matters most, and a
- * board that let it would clip its last row silently against a footnote still claiming to show
- * seven. Two rows buys 186px at 1920 and 130px at 1280.
- *
- * **What that budget holds, re-measured after the breakdown became child cards.** It was a
- * wrapped strip of chips, then one hairline table row per member; it is now one CARD row per
- * member - every value in its own bordered box, the shape the organizer specified - and the
- * boxes cost real height per player:
- *
- * | canvas    | member row | 4-row block | budget |
- * |-----------|------------|-------------|--------|
- * | 1920×1080 | 41.1px     | 164.7px     | 186px  |
- * | 1280×720  | 27.6px     | 110.7px     | 130px  |
- *
- * **A large team does not fit inside two rows and cannot be made to.** Thirteen card rows plus
- * the pool row is about 576px at 1080 against 186px available, so `MEMBER_BLOCK_ROWS` caps the
- * block and the remainder collapses into one "N more players" row that still carries their exact
- * points per set, so every column reconciles. Raising the cost to 4 rows would roughly double the
- * block, at the cost of drawing three teams on the wall instead of five. That is a trade about
- * what the room should see, so it belongs to the organizer rather than to this file.
- *
- * **This cost balances for at most two open breakdowns on a seven-row wall.** Beyond that the
- * two-row price and the six-row block cannot both hold — three open teams at full size measure
- * 894px of table on a 794px canvas — so `memberBlockBudget` (`projector-rows.ts`) shrinks every
- * open block to an equal share of the leftover height instead of letting the wall scroll.
- *
- * The footnote states the real drawn count and the real total, so the cost is never silent.
- */
-// Three since 2026-11-15, when the full block grew to five rows so a team of four shows every
-// player: five card rows measure ~206px at 1080, and three team rows buy ~279px.
-export const TEAM_EXPANDED_ROW_COST = 3;
 
 /** Auto-advance through divisions while the board is live and unattended. */
 export const DIVISION_ROTATE_MS = 20_000;

@@ -746,7 +746,8 @@ export function SetPlanner({
           (data.groupCount > 0
             ? `, plus ${String(data.groupCount)} team ${data.groupCount === 1 ? "question" : "questions"}`
             : "") +
-          `. Seed ${data.seed ?? "unknown"}.`,
+          // "Deal code", the name the preview gives the same value two panels up.
+          `. Deal code ${data.seed ?? "unknown"}.`,
       );
       setAttempt((n) => n + 1);
     } catch {
@@ -1072,7 +1073,22 @@ export function SetPlanner({
               className="motion-swap-in max-w-[70ch] font-semibold"
               style={{ fontSize: "var(--text-sm)" }}
             >
-              {applied}
+              {applied}{" "}
+              {/*
+                The sets exist now, but no student holds one yet. That is a separate step on
+                another tab, and walking the flow found nothing here saying so: the slips print
+                a set letter, and an organizer who printed straight after Build got blanks.
+              */}
+              <span className="font-normal">
+                Next, give every student a set letter with Assign problem sets on the{" "}
+                <Link
+                  href={`/admin/contests/${contestId}/setup`}
+                  className="font-semibold underline underline-offset-2"
+                >
+                  Setup tab
+                </Link>
+                . If students already hold letters they keep them, and only the questions inside each set changed.
+              </span>
             </p>
           )}
 
