@@ -6,10 +6,11 @@ Deterministic per seed. The seed picks both the matrix size and its shape so
 the test set covers degenerate cases (1x1, all entries equal, symmetric
 matrices where the diagonals cancel, entries pinned to both constraint
 bounds, one huge off-diagonal outlier) as well as uniform noise, up to the
-n = 50 ceiling. The ceiling is kept small on purpose: this is a casual contest,
-students do not see the constraints, and a 50 x 50 grid of full-range values is
-about 16 KB, so every test stays readable and every sum fits easily in a 32-bit
-int (at most 50 * 2 * 10^4 = 10^6 in absolute value).
+n = 100 ceiling. The ceiling is kept small on purpose: this is a casual contest,
+students do not see the constraints, and a 100 x 100 grid of full-range values is
+about 55 KB, so every test stays readable, a double loop over every cell is
+instant in any language, and every sum fits easily in a 32-bit int (the gap is
+at most 100 * 2 * 10^4 = 2 * 10^6 in absolute value).
 
 Every generated grid with n > 1 has a nonzero answer (see break_balance), so a
 program that prints 0 cannot pass them. Which seed made which test: 04 = seed 4,
@@ -21,7 +22,7 @@ ceiling). The rest (01, 02, 03, 06, 09, 11) are written by hand.
 import random
 import sys
 
-MAX_N = 50
+MAX_N = 100
 MAX_ABS = 10000
 
 
