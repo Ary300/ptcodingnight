@@ -253,19 +253,6 @@ test("Replace: Tab goes from Find to Replace, and Replace all is one undo", asyn
   await expect(textarea).toHaveValue(code);
 });
 
-test("only Mod+Enter submits: a Mac's Ctrl+Enter sends nothing", async ({ page }) => {
-  test.skip((await modifier(page)) !== "Meta", "Ctrl is the submit modifier off a Mac");
-  let posts = 0;
-  page.on("request", (request) => {
-    if (request.method() === "POST" && request.url().includes("/api/submissions")) posts += 1;
-  });
-  const textarea = await open(page, "Java 21", "        int a = 1;");
-  await page.keyboard.press("Control+Enter");
-  await page.waitForTimeout(500);
-  expect(posts).toBe(0);
-  await expect(textarea).toHaveValue("        int a = 1;");
-});
-
 test("the editor keeps the focus after Mod+Enter submits", async ({ page }) => {
   test.setTimeout(120_000);
   const mod = await modifier(page);

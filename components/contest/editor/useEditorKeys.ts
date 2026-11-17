@@ -24,8 +24,7 @@ import { useCompletion, type Completion } from "./useCompletion";
  *      Info, Quick Documentation, Context Actions, Save, Run, font size, occurrences. An open
  *      bar or info panel is closed by Escape here, before Escape counts toward leaving.
  *   4. Escape twice arms "Tab leaves the editor" (one Escape is an IntelliJ reflex and must not
- *      change what Tab does); plain Mod + Enter submits (Cmd on a Mac, Ctrl elsewhere), and with
- *      Shift it never does;
+ *      change what Tab does); plain Ctrl/Cmd + Enter submits, and with Shift it never does;
  *      Ctrl + Space opens completion; an armed Tab leaves.
  *   5. The smart engine (smart/engine.ts) answers IntelliJ's keys for Java, Python and C++.
  *   5a. Browser chords IntelliJ habits press (print, reload, bookmark, Back) that nothing above
@@ -411,10 +410,9 @@ export function useEditorKeys({
         }
       }
 
-      // Mod + Enter submits: Cmd on a Mac, Ctrl elsewhere. A Mac's Ctrl+Enter is IntelliJ's Generate,
-      // an IDE reflex, and must never send a judged submission.
-      const modHeld = isMac ? event.metaKey : event.ctrlKey;
-      if (event.key === "Enter" && modHeld && !event.altKey) {
+      // Ctrl or Cmd + Enter submits on every platform, as the hint under the editor promises. This is
+      // the organizers' settled submit key, so a Mac's Ctrl+Enter submits too.
+      if (event.key === "Enter" && (event.metaKey || event.ctrlKey) && !event.altKey) {
         if (!event.shiftKey) {
           event.preventDefault();
           completion.close();

@@ -867,7 +867,7 @@ export function CodeEditorSurface({
             {tabMovesFocus
               ? "Tab now moves to the next control."
               : "Tab indents. Press Escape twice, then Tab, to move focus out of the editor."}{" "}
-            {isMac ? "Command plus Enter submits." : "Control plus Enter submits."}
+            Control or Command plus Enter submits.
           </p>
           <EditorStatusBar
             line={caret.line}
