@@ -98,6 +98,10 @@ function navigation({ isMac }: ShortcutOptions): ShortcutGroup {
       { keys: [isMac ? "Ctrl + G" : "Alt + J"], action: "Select the next copy of the word" },
       { keys: [isMac ? "Cmd + Ctrl + G" : "Ctrl + Alt + Shift + J"], action: "Select every copy, then type to rename" },
       { keys: [isMac ? "Ctrl + Shift + G" : "Alt + Shift + J"], action: "Unselect the last copy" },
+      { keys: [`${alt} + click`], action: "Add a caret; type at every caret at once" },
+      { keys: [`${alt} + Shift + drag`], or: ["Middle-button drag"], action: "Select a column" },
+      { keys: [`Ctrl + Shift + ${alt} + Up`], or: [`Ctrl + Shift + ${alt} + Down`], action: "Add a caret above or below" },
+      { keys: ["Esc"], action: "Back to one caret" },
     ],
   };
 }

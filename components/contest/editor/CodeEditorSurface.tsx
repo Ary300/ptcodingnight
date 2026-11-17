@@ -799,10 +799,10 @@ export function CodeEditorSurface({
             }}
             // A click puts the caret somewhere else, which ends the lookup and any template being
             // filled in; leaving the editor ends the lookup.
-            onMouseDown={() => {
+            onMouseDown={(event) => {
               completion.close();
               endTemplate();
-              commands.onPointerDown();
+              commands.onPointerDown(event);
             }}
             onPaste={commands.onPaste}
             onCopy={commands.onCopy}

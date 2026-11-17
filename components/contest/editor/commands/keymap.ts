@@ -42,7 +42,9 @@ export type CommandId =
   | "expandWord"
   | "expandWordBackward"
   | "nextError"
-  | "previousError";
+  | "previousError"
+  | "cloneCaretAbove"
+  | "cloneCaretBelow";
 
 /** The parts of a KeyboardEvent the keymap reads. */
 export interface Chord {
@@ -121,6 +123,18 @@ function errorArrowCommand(chord: Chord): CommandId | null {
   return null;
 }
 
+/**
+ * Clone Caret Above / Below: Ctrl+Shift+Alt+Up/Down (Ctrl+Shift+Option on a Mac). IntelliJ binds
+ * them to a double Ctrl held with an arrow, which a browser cannot see as one chord, and its
+ * Alt+Shift+Up/Down is Move Line, which the engine already answers.
+ */
+function cloneCaretCommand(chord: Chord): CommandId | null {
+  if (!chord.ctrlKey || !chord.altKey || !chord.shiftKey || chord.metaKey) return null;
+  if (chord.key === "ArrowUp") return "cloneCaretAbove";
+  if (chord.key === "ArrowDown") return "cloneCaretBelow";
+  return null;
+}
+
 /** Mac Ctrl+G / Cmd+Ctrl+G / Ctrl+Shift+G; elsewhere Alt+J / Ctrl+Alt+Shift+J / Alt+Shift+J. */
 function occurrenceCommand(chord: Chord, letter: string): CommandId | null {
   if (chord.isMac) {
@@ -175,6 +189,9 @@ export function commandFor(chord: Chord): CommandId | null {
 
   const expand = expandWordCommand(chord);
   if (expand !== null) return expand;
+
+  const clone = cloneCaretCommand(chord);
+  if (clone !== null) return clone;
 
   const errorArrow = errorArrowCommand(chord);
   if (errorArrow !== null) return errorArrow;
