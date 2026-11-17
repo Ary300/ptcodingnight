@@ -36,6 +36,8 @@ test.beforeAll(async ({ playwright }) => {
 });
 
 test.afterAll(async () => {
+  // This file ends the shared fixture contest; put it back for specs that join it unseeded.
+  await seedE2EContest();
   await closeTestDb();
 });
 

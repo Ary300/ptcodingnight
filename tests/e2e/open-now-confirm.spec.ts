@@ -57,6 +57,8 @@ test.beforeAll(async () => {
 });
 
 test.afterAll(async () => {
+  // This file reschedules the shared fixture contest; put it back for specs that join it unseeded.
+  await seedE2EContest();
   await closeTestDb();
 });
 

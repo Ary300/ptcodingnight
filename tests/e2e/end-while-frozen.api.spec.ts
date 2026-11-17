@@ -54,6 +54,9 @@ test.beforeAll(async ({ playwright }) => {
 });
 
 test.afterAll(async () => {
+  // This file ends the shared fixture contest. Specs that join it without seeding it (the
+  // competitor journey) must find it running, so it is put back.
+  await seedE2EContest();
   await closeTestDb();
 });
 
