@@ -65,9 +65,36 @@ const CONTEST_STATE_HINT: Record<ContestState, string> = {
   ARCHIVED: "Retired.",
 };
 
-export function ContestStatePill({ state }: { state: ContestState }) {
+/**
+ * FROZEN after the window has closed. The contest stays FROZEN after End on a frozen board, until
+ * the organizer reveals it, and the walkthrough read "Live, and the public board has stopped
+ * updating" on a contest that was taking no submissions at all.
+ */
+export const FROZEN_AND_CLOSED_HINT =
+  "Submissions closed. The public board is frozen until you press Unfreeze and reveal.";
+
+/** The hint for a state, given whether the contest's window has closed. Exported for its test. */
+export function contestStateHint(state: ContestState, windowClosed: boolean): string {
+  if (state === "FROZEN" && windowClosed) return FROZEN_AND_CLOSED_HINT;
+  return CONTEST_STATE_HINT[state];
+}
+
+/** Whether a contest's window has closed. A function so a server layout can call it at render. */
+export function isWindowClosed(endsAt: Date | string, now: Date = new Date()): boolean {
+  const endsMs = typeof endsAt === "string" ? Date.parse(endsAt) : endsAt.getTime();
+  return !Number.isNaN(endsMs) && now.getTime() >= endsMs;
+}
+
+export function ContestStatePill({
+  state,
+  windowClosed = false,
+}: {
+  state: ContestState;
+  /** True once `endsAt` has passed. Changes FROZEN's hint; no other state's. */
+  windowClosed?: boolean;
+}) {
   const emphatic = state === "RUNNING" || state === "FROZEN";
-  const hint = CONTEST_STATE_HINT[state];
+  const hint = contestStateHint(state, windowClosed);
 
   return (
     <span

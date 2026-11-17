@@ -77,6 +77,8 @@ interface FieldShellProps {
    */
   wide?: boolean;
   children: (ids: {
+    /** The visible label's id, for a control that is not a native labelable element. */
+    labelId: string;
     controlId: string;
     describedBy: string | undefined;
     invalid: boolean;
@@ -103,6 +105,7 @@ interface FieldShellProps {
 export function Field({ label, hint, error, required = false, wide = false, children }: FieldShellProps) {
   const base = useId();
   const controlId = `${base}-control`;
+  const labelId = `${base}-label`;
   const hintId = `${base}-hint`;
   const errorId = `${base}-error`;
   const invalid = typeof error === "string" && error.length > 0;
@@ -116,6 +119,7 @@ export function Field({ label, hint, error, required = false, wide = false, chil
     <div className="@container">
       <div className="grid grid-cols-1 gap-tight @xl:grid-cols-[12rem_minmax(0,1fr)] @xl:gap-x-group">
         <label
+          id={labelId}
           htmlFor={controlId}
           className="font-semibold @xl:pt-2.5"
           style={{ fontSize: "var(--text-sm)" }}
@@ -129,7 +133,7 @@ export function Field({ label, hint, error, required = false, wide = false, chil
           {required && <span className="sr-only"> (required)</span>}
         </label>
         <div className={`flex min-w-0 flex-col gap-tight ${wide ? "" : "@xl:max-w-md"}`}>
-          {children({ controlId, describedBy, invalid })}
+          {children({ controlId, labelId, describedBy, invalid })}
           {/* Hint BELOW the control: the reference puts helper text under the box
               ("Characters left: 100" beneath the Tagline textarea in 12.23.42), and the
               error already lives there, so a field's answers all arrive in one place. */}
@@ -231,7 +235,7 @@ type SelectProps = Omit<
 export function Select({ label, hint, error, required, children, ...rest }: SelectProps) {
   return (
     <Field label={label} hint={hint} error={error} required={required}>
-      {({ controlId, describedBy, invalid }) => (
+      {({ controlId, labelId, describedBy, invalid }) => (
         // The trigger is `components/ui/Select`; what this adds is the label, hint and error
         // wiring that every control on this surface shares. `size` is fixed at `md` because an
         // admin form row is the only place these appear, and a form that mixed two trigger
@@ -241,6 +245,14 @@ export function Select({ label, hint, error, required, children, ...rest }: Sele
           id={controlId}
           required={required}
           invalid={invalid}
+          /*
+            Named by the visible label explicitly. On a fine pointer the trigger is a
+            `<button role="combobox">`, and a `<label for>` pointing at a button is not used by
+            every browser and screen reader: the Teams page's "Team" pickers were reported with
+            no accessible name. `aria-labelledby` works on any element. A caller's own
+            `aria-label` still wins.
+          */
+          aria-labelledby={rest["aria-label"] === undefined ? (rest["aria-labelledby"] ?? labelId) : undefined}
           aria-describedby={describedBy}
         >
           {children}

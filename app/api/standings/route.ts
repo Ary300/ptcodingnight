@@ -5,6 +5,7 @@ import { handle, jsonOkRevalidated } from "@/lib/contest/http";
 import { getStandings } from "@/lib/contest/standings";
 import { boardViewerFromRequest } from "@/lib/contest/viewer";
 import { NOTHING_RUNNING_MESSAGE, currentWallContestId } from "@/lib/contest/wall-contest";
+import { standingsForViewer } from "@/lib/contest/standings-visibility";
 
 /**
  * `GET /api/standings?contestId=<id>` — the spectator board.
@@ -35,6 +36,10 @@ export async function GET(request: Request): Promise<NextResponse> {
     if (contestId === null) throw new DomainError("NOT_FOUND", NOTHING_RUNNING_MESSAGE);
     const viewer = await boardViewerFromRequest(request, now);
 
-    return jsonOkRevalidated(request, await getStandings(contestId, viewer, now));
+    // Rows withheld from a signed-in student; see `standingsForViewer`.
+    return jsonOkRevalidated(
+      request,
+      standingsForViewer(await getStandings(contestId, viewer, now), viewer),
+    );
   });
 }

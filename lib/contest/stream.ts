@@ -10,6 +10,7 @@ import {
   type WatchedSubmission,
 } from "@/lib/contest/verdict-watch";
 import { isAdmin, type Viewer } from "@/lib/contest/viewer";
+import { standingsForViewer } from "@/lib/contest/standings-visibility";
 
 /**
  * Server-sent events for verdicts and the leaderboard.
@@ -194,7 +195,8 @@ export function openContestStream(
             send(sseFrame(SSE_EVENTS.contestState, state));
           }
 
-          const standings = await getStandings(contestId, viewer, now);
+          // A competitor's stream carries the board without individual rows (`standingsForViewer`).
+          const standings = standingsForViewer(await getStandings(contestId, viewer, now), viewer);
           const standingsJson = serializedBoard(standings);
           if (standingsJson !== lastStandings) {
             lastStandings = standingsJson;

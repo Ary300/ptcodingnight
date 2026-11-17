@@ -3,7 +3,9 @@
 import Link from "next/link";
 
 import { TeamStandingsBoard, useTeamStandings } from "@/components/leaderboard";
+import { serverNow } from "@/components/leaderboard/server-clock";
 import { Crumbs } from "@/components/ui";
+import { submissionsClosedAt } from "@/lib/contest/board-freeze-copy";
 import { formatEventTime } from "@/lib/contest/event-time";
 
 import { useParticipant } from "../data/participant";
@@ -106,7 +108,12 @@ function ContestBoard({
   return (
     <>
       <div className="flex flex-col gap-tight">
-        {state === "frozen" && <BoardFrozenNotice />}
+        {state === "frozen" && (
+          <BoardFrozenNotice
+            frozenAt={standings.asOf}
+            submissionsClosed={submissionsClosedAt(standings, serverNow())}
+          />
+        )}
         <p
           data-testid="standings-state"
           className="text-ink/60"

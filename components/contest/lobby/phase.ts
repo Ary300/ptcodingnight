@@ -59,6 +59,15 @@ export interface ContestPhase {
   readonly teamSize: number | null;
   /** The assigned problem set's label. Sets are assigned, never chosen (PRD §6.2). */
   readonly setLabel: string | null;
+  /**
+   * Whether the PUBLIC board is frozen at render time, straight from `isPublicBoardFrozen`. The
+   * ended panel must not call the standings final while the board is still frozen. Optional so a
+   * caller with nothing to say (a test) reads as "not frozen". The lobby's live board poll
+   * overrides it once it answers, so a reveal shows without a reload.
+   */
+  readonly boardFrozen?: boolean;
+  /** The freeze instant, ISO, when one is set. */
+  readonly freezeAt?: string | null;
 }
 
 /**

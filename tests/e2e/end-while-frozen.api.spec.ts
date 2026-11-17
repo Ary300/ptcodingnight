@@ -69,8 +69,14 @@ function scoreOf(board: { divisions: { rows: { participantId: string; score: num
 }
 
 async function expectBoardsFrozenWithout(): Promise<void> {
-  const publicBoard = await student.standings();
-  expect(publicBoard.frozen, "the student's board revealed").toBe(true);
+  // The public board, as the room reads it. A student's own read of the individual board carries
+  // no rows at all now (individual scores are shown only inside the student's own team), so the
+  // frozen state is checked there and the scores on the public read.
+  const studentBoard = await student.standings();
+  expect(studentBoard.frozen, "the student's board revealed").toBe(true);
+  expect(studentBoard.divisions.flatMap((division) => division.rows)).toEqual([]);
+  const publicBoard = await student.projectorStandings(true);
+  expect(publicBoard.frozen, "the public board revealed").toBe(true);
   expect(scoreOf(publicBoard)).toBe(0);
 
   for (const scoped of [true, false]) {
@@ -172,7 +178,7 @@ test("Unfreeze and reveal ends the contest and shows the post-freeze points", as
   const revealed = await admin.freeze(false);
   expect(revealed.state).toBe("ENDED");
 
-  const publicBoard = await student.standings();
+  const publicBoard = await student.projectorStandings(true);
   expect(publicBoard.frozen).toBe(false);
   expect(scoreOf(publicBoard)).toBe(liveProblem(seeded).basePoints);
 

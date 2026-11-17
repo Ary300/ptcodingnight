@@ -3,7 +3,7 @@
 import Link from "next/link";
 
 import { Rail } from "@/components/ui";
-import { EVENT_TIME_ZONE } from "@/lib/contest/event-time";
+import { EVENT_TIME_ZONE, formatEventTime } from "@/lib/contest/event-time";
 
 import type { ContestPhase } from "./phase";
 
@@ -32,9 +32,32 @@ import type { ContestPhase } from "./phase";
 
 export interface ContestEndedPanelProps {
   readonly phase: ContestPhase;
+  /**
+   * The live answer to "is the public board still frozen", from the lobby's board poll. Null until
+   * the poll answers, when the server's render-time answer on `phase` stands in.
+   */
+  readonly boardFrozen?: boolean | null;
+  /** The freeze instant, from the same poll. Falls back to `phase.freezeAt`. */
+  readonly frozenAt?: string | null;
 }
 
-export function ContestEndedPanel({ phase }: ContestEndedPanelProps) {
+/**
+ * The sentence after "submissions are closed".
+ *
+ * "Final" only once the organizers have revealed the board. After End on a frozen board the
+ * walkthrough found this panel saying "the standings beside this are final" next to a card that
+ * said BOARD FROZEN, and the two cannot both be true. Exported for its unit test.
+ */
+export function endedBoardLine(frozen: boolean, frozenAt: string | null): string {
+  if (!frozen) return "These are the final standings.";
+  const time = frozenAt === null ? "" : formatEventTime(frozenAt);
+  const froze = time === "" ? "The board is frozen" : `The board froze at ${time}`;
+  return `${froze} and stays frozen until the organizers reveal the final standings.`;
+}
+
+export function ContestEndedPanel({ phase, boardFrozen = null, frozenAt = null }: ContestEndedPanelProps) {
+  const frozen = boardFrozen ?? phase.boardFrozen === true;
+  const freezeInstant = frozenAt ?? phase.freezeAt ?? null;
   const endedAt = new Date(phase.endsAt);
   const endedLabel = Number.isNaN(endedAt.getTime())
     ? null
@@ -61,7 +84,7 @@ export function ContestEndedPanel({ phase }: ContestEndedPanelProps) {
           {endedLabel === null
             ? "The contest is over, and submissions are closed."
             : `The contest ended at ${endedLabel}, and submissions are closed.`}{" "}
-          The standings beside this are final.
+          <span data-testid="ended-board-line">{endedBoardLine(frozen, freezeInstant)}</span>
         </p>
 
         <ul className="mt-2 grid gap-1.5 text-ink/75" style={{ fontSize: "var(--text-sm)" }}>

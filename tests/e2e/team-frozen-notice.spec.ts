@@ -55,6 +55,6 @@ test("the team page shows the frozen notice only while the board is frozen", asy
   await expect(notice).toBeVisible({ timeout: 30_000 });
   await expect(notice).toContainText("Board frozen");
   await expect(notice).toContainText(
-    "Points scored after the freeze still count, and they appear at the reveal.",
+    "Points scored after this are still counted and appear when the organizers reveal the final standings.",
   );
 });

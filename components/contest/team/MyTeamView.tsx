@@ -3,11 +3,14 @@
 import { useEffect, useState } from "react";
 
 import { TeamStandingsBoard, useTeamStandings } from "@/components/leaderboard";
+import { serverNow } from "@/components/leaderboard/server-clock";
 import { Crumbs } from "@/components/ui";
+import { submissionsClosedAt } from "@/lib/contest/board-freeze-copy";
 
 import { useParticipant } from "../data/participant";
-import { BoardFrozenNotice } from "../lobby/BoardFrozenNotice";
+import { BoardFrozenNotice, FinalStandingsNotice } from "../lobby/BoardFrozenNotice";
 import { SignInRequired } from "../lobby/SignInRequired";
+import { standingsState } from "../standings/standings-state";
 
 /**
  * "My team" — PRD §9.1.
@@ -228,7 +231,13 @@ export function MyTeamView() {
           */
           <div className="relative flex min-w-0 flex-col gap-tight overflow-x-clip">
             {/* The board below is as of the freeze, so a post-freeze AC is not in it yet. */}
-            {standings.frozen && <BoardFrozenNotice />}
+            {standings.frozen && (
+              <BoardFrozenNotice
+                frozenAt={standings.asOf}
+                submissionsClosed={submissionsClosedAt(standings, serverNow())}
+              />
+            )}
+            {standingsState(standings) === "final" && <FinalStandingsNotice />}
             <TeamStandingsBoard
               teams={standings.teams}
               divisions={standings.divisions}

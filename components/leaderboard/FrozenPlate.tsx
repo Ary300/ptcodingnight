@@ -1,3 +1,5 @@
+import { BOARD_FROZEN_EXPLANATION, SUBMISSIONS_CLOSED_LINE } from "@/lib/contest/board-freeze-copy";
+
 import styles from "./leaderboard.module.css";
 
 export interface FrozenPlateProps {
@@ -5,8 +7,10 @@ export interface FrozenPlateProps {
   lifting: boolean;
   /** Duration of the lift, from the active timing profile. */
   liftMs: number;
-  /** The instant the board is showing, already formatted. */
+  /** The instant the board is showing, already formatted. A frozen board's `asOf` is the freeze. */
   asOfLabel: string;
+  /** True once the window has closed while the board stays frozen. */
+  submissionsClosed?: boolean;
 }
 
 /**
@@ -19,18 +23,21 @@ export interface FrozenPlateProps {
  * Step 1 of the Unfreeze is this plate lifting away. `role="status"` so a screen reader
  * hears the state change rather than only seeing it.
  */
-export function FrozenPlate({ lifting, liftMs, asOfLabel }: FrozenPlateProps) {
+export function FrozenPlate({ lifting, liftMs, asOfLabel, submissionsClosed = false }: FrozenPlateProps) {
   return (
     <div
       role="status"
       className={`${styles.plate} ${lifting ? styles.plateLifting : ""}`}
       style={{ "--plate-ms": `${liftMs}ms` } as React.CSSProperties}
     >
-      <span className={styles.plateTitle}>BOARD FROZEN</span>
+      {/* The same words as the students' own screens (lib/contest/board-freeze-copy.ts), so the
+          wall and a laptop in another room cannot disagree. No em dash, no middle dot. */}
+      <span className={styles.plateTitle} data-testid="frozen-plate-title">
+        BOARD FROZEN AT <span className="numeric">{asOfLabel}</span>
+      </span>
       <span className={styles.plateNote}>
-        {/* A comma, not an em dash: no em dash appears in anything a person using this site can
-            read, and this plate is the largest sentence on the largest screen in the building. */}
-        standings as of <span className="numeric">{asOfLabel}</span>, judging continues
+        {submissionsClosed ? `${SUBMISSIONS_CLOSED_LINE} ` : ""}
+        {BOARD_FROZEN_EXPLANATION}
       </span>
     </div>
   );

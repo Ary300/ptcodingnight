@@ -65,10 +65,37 @@ function csvCell(value: string | number | boolean): string {
  * and ZIP framing — one of those getting a fix the other did not is how two exports of the same
  * contest disagree, which is precisely the failure the spreadsheet used to produce.
  */
-export type Grid = readonly (readonly (string | number)[])[];
+export type Grid = readonly (readonly GridCell[])[];
+
+/**
+ * A number shown with exactly two decimals: the team score, which is a mean (`543.75`).
+ *
+ * The XLSX used to carry it as the TEXT "160.00", so the awards sheet could not be sorted or
+ * summed and Excel flagged every Score cell as a number stored as text. It is now a real number
+ * cell with the built-in `0.00` format; the CSV prints the same two decimals it always did.
+ */
+export interface Fixed2Cell {
+  readonly fixed2: number;
+}
+
+export type GridCell = string | number | Fixed2Cell;
+
+export function fixed2(value: number): Fixed2Cell {
+  return { fixed2: value };
+}
+
+function isFixed2(cell: GridCell): cell is Fixed2Cell {
+  return typeof cell === "object";
+}
 
 export function gridToCsv(grid: Grid): string {
-  return grid.map((row) => row.map((cell) => csvCell(cell)).join(",")).join("\r\n") + "\r\n";
+  return (
+    grid
+      .map((row) =>
+        row.map((cell) => csvCell(isFixed2(cell) ? cell.fixed2.toFixed(2) : cell)).join(","),
+      )
+      .join("\r\n") + "\r\n"
+  );
 }
 
 export function gridToXlsx(grid: Grid): Uint8Array<ArrayBuffer> {
@@ -130,7 +157,7 @@ function lastScoredAt(team: TeamStandingRow): string {
   return latest === null ? "" : formatEventStampSeconds(new Date(latest));
 }
 
-function teamExportRow(division: string, team: TeamStandingRow): (string | number)[] {
+function teamExportRow(division: string, team: TeamStandingRow): GridCell[] {
   return [
     division,
     team.rank,
@@ -138,7 +165,7 @@ function teamExportRow(division: string, team: TeamStandingRow): (string | numbe
     team.name,
     // Two decimals, because a mean is routinely fractional and `543.75` and `543.8` are
     // different claims (docs/SCORING.md §3).
-    team.score.toFixed(2),
+    fixed2(team.score),
     team.playerPoolPoints,
     team.teamSize,
     team.groupPoints,
@@ -211,17 +238,26 @@ function columnName(index: number): string {
   return name;
 }
 
-function sheetXml(rows: readonly (readonly (string | number)[])[]): string {
+/** Index into `cellXfs` in STYLES: 0 is General, 1 is the built-in `0.00` (numFmtId 2). */
+const FIXED2_STYLE = 1;
+
+/** One cell's XML. Exported for its unit test, which reads the cell rather than unzipping. */
+export function cellXml(ref: string, cell: GridCell): string {
+  if (isFixed2(cell)) {
+    // A real number, never `toFixed`'s string: the format does the rounding for display.
+    return `<c r="${ref}" s="${String(FIXED2_STYLE)}"><v>${String(cell.fixed2)}</v></c>`;
+  }
+  if (typeof cell === "number") return `<c r="${ref}"><v>${String(cell)}</v></c>`;
+  return `<c r="${ref}" t="inlineStr"><is><t xml:space="preserve">${escapeXml(
+    neutralizeFormula(cell),
+  )}</t></is></c>`;
+}
+
+export function sheetXml(rows: readonly (readonly GridCell[])[]): string {
   const body = rows
     .map((cells, rowIndex) => {
       const inner = cells
-        .map((cell, cellIndex) => {
-          const ref = `${columnName(cellIndex)}${rowIndex + 1}`;
-          if (typeof cell === "number") return `<c r="${ref}"><v>${cell}</v></c>`;
-          return `<c r="${ref}" t="inlineStr"><is><t xml:space="preserve">${escapeXml(
-            neutralizeFormula(cell),
-          )}</t></is></c>`;
-        })
+        .map((cell, cellIndex) => cellXml(`${columnName(cellIndex)}${String(rowIndex + 1)}`, cell))
         .join("");
       return `<row r="${rowIndex + 1}">${inner}</row>`;
     })
@@ -238,7 +274,7 @@ const WORKBOOK = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbo
 
 const WORKBOOK_RELS = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`;
 
-const STYLES = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="1"><font><sz val="11"/><name val="Calibri"/></font></fonts><fills count="1"><fill><patternFill patternType="none"/></fill></fills><borders count="1"><border/></borders><cellStyleXfs count="1"><xf/></cellStyleXfs><cellXfs count="1"><xf xfId="0"/></cellXfs></styleSheet>`;
+const STYLES = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="1"><font><sz val="11"/><name val="Calibri"/></font></fonts><fills count="1"><fill><patternFill patternType="none"/></fill></fills><borders count="1"><border/></borders><cellStyleXfs count="1"><xf/></cellStyleXfs><cellXfs count="2"><xf xfId="0"/><xf numFmtId="2" xfId="0" applyNumberFormat="1"/></cellXfs></styleSheet>`;
 
 // --- a minimal STORED (uncompressed) zip writer ------------------------------
 //
@@ -342,7 +378,7 @@ function zipStore(entries: readonly ZipEntry[]): Uint8Array<ArrayBuffer> {
 
 export function toXlsx(rows: readonly ExportRow[]): Uint8Array<ArrayBuffer> {
   const encoder = new TextEncoder();
-  const grid: (string | number)[][] = [
+  const grid: GridCell[][] = [
     [...EXPORT_HEADERS],
     ...rows.map((row) => [
       row.division,

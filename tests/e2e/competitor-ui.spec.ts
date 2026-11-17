@@ -660,28 +660,27 @@ test.describe("the organizer can get in", () => {
   });
 });
 
-test("the lobby's standings card never makes the page scroll past its content", async ({ page }) => {
+test("the lobby's team card never makes the page scroll past its content", async ({ page }) => {
   /*
-    The card is a height-capped scroller holding a table, and its rows carry screen-reader-only
-    text. `.sr-only` is position: absolute, so without a positioned scroller its containing block
-    was the page itself: a long board laid those spans out far below the card, and the page grew a
-    screen or more of blank space under the footer. Found on the live practice arena, 2026-11-16;
-    moved here from practice-guest-door.spec.ts once the arena stopped showing standings, because
-    the contest lobby is where the card still renders.
-
-    A test database has too few rows to overflow the card, so the rows are added here, in the
-    browser, the way a full board fills it. What is under test is the CSS containment.
+    The lobby's right-hand card used to be a height-capped scroller holding every individual in the
+    contest, and its rows' screen-reader-only spans (position: absolute) laid themselves out below
+    the card and grew blank space under the footer (found on the live practice arena, 2026-11-16).
+    That card is gone: the lobby now shows the student's own team (organizers, 2026-11-17). The
+    containment property still matters, so it is held against the team card: rows carrying
+    `.sr-only` text are added in the browser, the way a long roster would, and the page must end
+    where its content ends.
   */
   await join(page);
-  const table = page.locator("table").filter({ has: page.locator("caption") }).first();
-  await expect(table).toBeVisible();
+  const card = page.getByTestId("lobby-team-card");
+  await expect(card).toBeVisible();
 
-  const { scrollHeight, contentBottom } = await table.evaluate((element) => {
-    const body = element.querySelector("tbody") ?? element;
+  const { scrollHeight, contentBottom } = await card.evaluate((element) => {
+    const list = document.createElement("ul");
+    element.appendChild(list);
     for (let index = 0; index < 80; index += 1) {
-      const row = document.createElement("tr");
-      row.innerHTML = `<td style="padding:12px">Student ${String(index)}<span class="sr-only">, </span></td>`;
-      body.appendChild(row);
+      const row = document.createElement("li");
+      row.innerHTML = `<span style="padding:12px">Student ${String(index)}</span><span class="sr-only">, you</span>`;
+      list.appendChild(row);
     }
     const bottoms = [...document.body.children].map(
       (child) => child.getBoundingClientRect().bottom + window.scrollY,

@@ -102,7 +102,7 @@ test("a student's Standings holds the freeze and shows the final board only afte
   // --- the organizer freezes; an AC lands after it ----------------------------------------------
   await organizerApi.freeze(true);
   await expect(page.getByTestId("board-frozen-notice")).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByText("Board frozen", { exact: true })).toBeVisible();
+  await expect(page.getByText(/^Board frozen at \d{1,2}:\d{2} [AP]M$/)).toBeVisible();
   await expect(page.getByTestId("standings-state")).toHaveText(/^Frozen standings, as of /);
 
   const created = await student.submit({
