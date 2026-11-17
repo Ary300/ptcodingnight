@@ -70,3 +70,19 @@ forces `CCA`: after it, `C` from $a$ still blocks the `A`. Taking the `C` from $
 first exposes the `A` immediately and gives `CAC`. Since `CAC` is smaller than `CCA`,
 the answer is `CAC`. When the front letters tie, comparing only those letters is not
 enough: the whole remainders decide.
+
+**Example 3**
+
+Input:
+```
+BA
+B
+```
+Output:
+```
+BAB
+```
+
+A plain string comparison calls the remainder `B` smaller than `BA` because it is a
+prefix of `BA`, so it takes the `B` from $b$ first and prints `BBA`; taking the `B` from
+$a$ first exposes the `A` and gives the smaller answer `BAB`.
