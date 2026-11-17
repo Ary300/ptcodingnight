@@ -8,6 +8,7 @@ import type { Language, Verdict } from "@/lib/schemas/judge";
 import { sanitizeTestResults } from "../data/leak-guard";
 import type { StreamTransport } from "../data/useVerdictStream";
 import { compileHint } from "./compile-hint";
+import { ErrorText } from "./ErrorText";
 import type { VerdictTone } from "./verdict-display";
 import {
   judgingProgressLabel,
@@ -66,6 +67,11 @@ export interface VerdictPanelProps {
    * and are not scored." for screen readers and takes it off the screen.
    */
   quiet?: boolean;
+  /**
+   * Moves the editor's caret to a line the compiler or a traceback named. Given, every such
+   * reference in the error text is a button; absent, the text is plain as before.
+   */
+  onGoToLine?: (line: number, column: number | null) => void;
 }
 
 function Chip({ verdict }: { verdict: Verdict }) {
@@ -130,7 +136,13 @@ function CaseMark({ tone }: { tone: VerdictTone }) {
   );
 }
 
-function TestRow({ result }: { result: PublicTestResult }) {
+interface TestRowProps {
+  readonly result: PublicTestResult;
+  readonly language: Language | null;
+  readonly onGoToLine: ((line: number, column: number | null) => void) | undefined;
+}
+
+function TestRow({ result, language, onGoToLine }: TestRowProps) {
   const presentation = VERDICT_DISPLAY[result.verdict];
   const passed = result.verdict === "AC";
   // `ordinal` is 1-based (lib/schemas/api.ts). Adding one here labelled the first sample of
@@ -185,7 +197,11 @@ function TestRow({ result }: { result: PublicTestResult }) {
             className="mt-2 overflow-x-auto rounded-flat bg-paper/5 p-2 font-mono text-paper/80"
             style={{ fontSize: "var(--text-xs)" }}
           >
-            {result.diffSnippet}
+            {result.verdict === "CE" || result.verdict === "RE" ? (
+              <ErrorText text={result.diffSnippet} language={language} onGoToLine={onGoToLine} />
+            ) : (
+              result.diffSnippet
+            )}
           </pre>
         </details>
       )}
@@ -208,6 +224,7 @@ export function VerdictPanel({
   language = null,
   source = null,
   quiet = false,
+  onGoToLine,
 }: VerdictPanelProps) {
   // A sample run's compile error arrives as its one CE row rather than in `compileError`.
   const hint = compileHint(
@@ -375,7 +392,7 @@ export function VerdictPanel({
           className="mt-3 max-h-64 overflow-auto rounded-flat bg-paper/5 p-3 font-mono text-paper/85"
           style={{ fontSize: "var(--text-xs)" }}
         >
-          {compileError}
+          <ErrorText text={compileError} language={language} onGoToLine={onGoToLine} />
         </pre>
       )}
 
@@ -402,7 +419,12 @@ export function VerdictPanel({
         */
         <ul className={mode === "samples" && busy ? "motion-stagger mt-3 opacity-50" : "motion-stagger mt-3"}>
           {safeResults.map((result) => (
-            <TestRow key={`${result.isSample ? "s" : "h"}-${result.ordinal}`} result={result} />
+            <TestRow
+              key={`${result.isSample ? "s" : "h"}-${result.ordinal}`}
+              result={result}
+              language={language}
+              onGoToLine={onGoToLine}
+            />
           ))}
         </ul>
       )}
