@@ -29,7 +29,7 @@ non-decreasing order after all rows are sorted, and `NO` otherwise.
 ## Constraints
 
 - $1 \le t \le 20$
-- $1 \le n \le 100$
+- $1 \le n \le 50$
 - The grids in one input hold at most $20\,000$ letters in total.
 - Every grid line consists of exactly $n$ lowercase English letters (`a` to `z`).
 
