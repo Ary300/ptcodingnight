@@ -56,6 +56,7 @@ function editing({ isMac, smart, templateExample, engine = [] }: ShortcutOptions
       { keys: [`${alt} + Shift + Up`], action: "Move the line up or down" },
       { keys: [`${mod} + ${alt} + T`], action: "Surround with if, for, try" },
       ...(templateExample === "" ? [] : [{ keys: [templateExample, "Tab"], action: "Expand a template" }]),
+      { keys: [`${mod} + J`], action: "Insert a live template from the list" },
       ...engine.filter((row) => !LISTED_ELSEWHERE.has(row.action)),
     ],
   };
@@ -76,7 +77,9 @@ function completion({ isMac, smart }: ShortcutOptions): ShortcutGroup | null {
       { keys: ["Enter"], action: "Insert the suggestion" },
       { keys: ["Tab"], action: "Replace the word with the suggestion" },
       { keys: [`${mod} + P`], action: "Parameter info" },
-      { keys: [isMac ? "F1" : "Ctrl + Q"], or: [`${mod} + J`], action: "Quick documentation" },
+      isMac
+        ? { keys: ["F1"], action: "Quick documentation" }
+        : { keys: ["Ctrl + Q"], or: ["F1"], action: "Quick documentation" },
       { keys: [`${alt} + Enter`], action: "Add the missing import" },
       { keys: [`${alt} + /`], or: [`${alt} + Shift + /`], action: "Complete the word from the file" },
     ],

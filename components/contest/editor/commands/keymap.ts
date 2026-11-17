@@ -30,6 +30,7 @@ export type CommandId =
   | "surround"
   | "parameterInfo"
   | "quickDoc"
+  | "insertTemplate"
   | "contextActions"
   | "completion"
   | "run"
@@ -144,7 +145,9 @@ function modLetterCommand(chord: Chord, letter: string): CommandId | null {
     case "p":
       return "parameterInfo";
     case "j":
-      return "quickDoc";
+      // IntelliJ's Insert Live Template on both keymaps. Quick Documentation is F1, and Ctrl+Q
+      // off a Mac.
+      return "insertTemplate";
     case "g":
       // Mac Cmd+G is Find Next; Windows Ctrl+G is IntelliJ's Go to Line.
       return chord.isMac ? "findNext" : "goToLine";

@@ -189,6 +189,41 @@ test("Surround With wraps the line in an if and puts the caret in the condition"
   await expect(textarea).toHaveValue("if (x > 0) {\n    a();\n}");
 });
 
+test("Insert Live Template lists this language's templates on Mod+J, and Enter inserts one with its fields", async ({ page }) => {
+  const code = "class Main {\n    void f() {\n        so\n    }\n}";
+  const textarea = await openEditor(page, "Java 21", code, code.indexOf("so") + 2);
+  await page.keyboard.press(`${await mod(page)}+j`);
+  const menu = page.getByRole("menu", { name: "Insert live template" });
+  await expect(menu).toBeVisible();
+  // Narrowed to what was typed, each row with IntelliJ's description.
+  await expect(menu.getByRole("menuitem").first()).toContainText("sout");
+  await expect(menu.getByRole("menuitem").first()).toContainText("Prints a string to System.out");
+  for (const name of await menu.getByRole("menuitem").allInnerTexts()) expect(name).toMatch(/so/);
+  // Quick Documentation is no longer on this chord: nothing but the menu opened.
+  await expect(page.getByRole("status").filter({ hasText: "No documentation" })).toHaveCount(0);
+
+  await page.keyboard.press("Enter");
+  await expect(menu).toHaveCount(0);
+  await expect(textarea).toBeFocused();
+  await expect(textarea).toHaveValue("class Main {\n    void f() {\n        System.out.println();\n    }\n}");
+  await page.keyboard.type("1");
+  await expect(textarea).toHaveValue("class Main {\n    void f() {\n        System.out.println(1);\n    }\n}");
+
+  // A template with fields keeps them: fori selects its variable, Tab moves to the bound.
+  await textarea.fill("class Main {\n    void f() {\n        \n    }\n}");
+  await textarea.evaluate((element) => {
+    const area = element as HTMLTextAreaElement;
+    const at = area.value.indexOf("        \n") + 8;
+    area.setSelectionRange(at, at);
+  });
+  await page.keyboard.press(`${await mod(page)}+j`);
+  await menu.getByRole("menuitem", { name: /fori/ }).first().click();
+  await expect(textarea).toHaveValue(/for \(int i = 0; i < ; i\+\+\) \{/);
+  await page.keyboard.press("Tab");
+  await page.keyboard.type("n");
+  await expect(textarea).toHaveValue(/for \(int i = 0; i < n; i\+\+\) \{/);
+});
+
 test("Context actions add the missing import, and Parameter Info and Quick Documentation show", async ({ page }) => {
   const textarea = await openEditor(page, "Java 21", "ArrayList<Integer> a;", 3);
   await page.keyboard.press("Alt+Enter");

@@ -10,6 +10,8 @@ import { useEffect, useRef, useState } from "react";
 
 export interface CommandMenuItem {
   readonly label: string;
+  /** A second, quieter column: what a live template inserts. */
+  readonly detail?: string;
 }
 
 export interface CommandMenuProps {
@@ -33,7 +35,7 @@ export function CommandMenu({ title, items, top, left, onChoose, onClose }: Comm
     <div
       role="menu"
       aria-label={title}
-      className="absolute z-30 min-w-[12rem] rounded-chip border border-rule-edge bg-paper py-1 text-ink shadow-lg"
+      className="absolute z-30 max-h-72 min-w-[12rem] overflow-y-auto rounded-chip border border-rule-edge bg-paper py-1 text-ink shadow-lg"
       style={{ top, left, fontSize: "var(--text-xs)" }}
       onKeyDown={(event) => {
         if (event.key === "ArrowDown" || event.key === "ArrowUp") {
@@ -68,8 +70,9 @@ export function CommandMenu({ title, items, top, left, onChoose, onClose }: Comm
             index === active ? "bg-ink text-paper" : "hover:bg-ink/10"
           }`}
         >
-          <span className="numeric w-4 opacity-80">{index + 1}</span>
+          <span className="numeric w-4 opacity-80">{index < 9 ? index + 1 : ""}</span>
           <span className="font-mono">{item.label}</span>
+          {item.detail !== undefined && <span className="ml-auto pl-4 opacity-80">{item.detail}</span>}
         </button>
       ))}
     </div>

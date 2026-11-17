@@ -18,6 +18,7 @@ import { offsetOfLineColumn } from "../decorations/goto";
 import { quickDocAt, signatureAt } from "../smart/docs";
 import { expandWord, expandWordAnchor, type ExpandWordAnchor } from "../smart/expand-word";
 import { importFixFor, type ContextAction } from "../smart/imports";
+import { insertTemplateEdit, templateChoices, type TemplateChoices } from "../smart/insert-template";
 import { reindentPaste } from "../smart/paste";
 import { surroundKindsFor, surroundWith, type SurroundKind } from "../smart/surround";
 import type { CompletionItem, Edit, EditState, LanguageProfile } from "../smart/types";
@@ -127,12 +128,30 @@ const REMEMBER_MS = 300;
 
 type MenuState =
   | { readonly kind: "surround"; readonly choices: readonly SurroundKind[]; readonly top: number; readonly left: number }
-  | { readonly kind: "actions"; readonly actions: readonly ContextAction[]; readonly top: number; readonly left: number };
+  | { readonly kind: "actions"; readonly actions: readonly ContextAction[]; readonly top: number; readonly left: number }
+  | { readonly kind: "templates"; readonly choices: TemplateChoices; readonly top: number; readonly left: number };
 
 interface InfoState {
   readonly content: InfoContent;
   readonly top: number;
   readonly left: number;
+}
+
+const MENU_TITLE: Readonly<Record<MenuState["kind"], string>> = {
+  surround: "Surround with",
+  actions: "Context actions",
+  templates: "Insert live template",
+};
+
+function menuItems(menu: MenuState): readonly { readonly label: string; readonly detail?: string }[] {
+  switch (menu.kind) {
+    case "surround":
+      return menu.choices;
+    case "actions":
+      return menu.actions;
+    case "templates":
+      return menu.choices.templates.map((template) => ({ label: template.abbreviation, detail: template.description }));
+  }
 }
 
 function stateOf(element: HTMLTextAreaElement): EditState {
@@ -391,6 +410,16 @@ export function useEditorCommands(options: EditorCommandsOptions): EditorCommand
           setMenu({ kind: "surround", choices: surroundKindsFor(profile), ...belowCaret(element) });
           return true;
         }
+        case "insertTemplate": {
+          if (profile === null || profile.templates.length === 0) {
+            showInfo(element, { kind: "none", message: "No live templates for this language" });
+            return true;
+          }
+          const choices = templateChoices(stateOf(element), profile);
+          if (choices.templates.length === 0) showInfo(element, { kind: "none", message: "No templates fit here" });
+          else setMenu({ kind: "templates", choices, ...belowCaret(element) });
+          return true;
+        }
         case "contextActions": {
           const actions = profile === null ? [] : importFixFor(element.value, element.selectionStart, profile);
           if (actions.length === 0) showInfo(element, { kind: "none", message: "No suggestions" });
@@ -594,6 +623,12 @@ export function useEditorCommands(options: EditorCommandsOptions): EditorCommand
         const choice = current.choices[index];
         const edit = choice === undefined || profile === null ? null : surroundWith(stateOf(element), choice.id, profile);
         if (edit !== null) (applyEdit ?? applyInEditor)(element, edit);
+      } else if (current.kind === "templates") {
+        const template = current.choices.templates[index];
+        // Through `applyEdit`, so a template with fields starts the same Tab session as `fori` + Tab.
+        if (template !== undefined && profile !== null) {
+          (applyEdit ?? applyInEditor)(element, insertTemplateEdit(element.value, current.choices, template, profile));
+        }
       } else {
         const action = current.actions[index];
         if (action !== undefined) (applyEdit ?? applyInEditor)(element, action.edit);
@@ -655,8 +690,8 @@ export function useEditorCommands(options: EditorCommandsOptions): EditorCommand
     <>
       {menu !== null && (
         <CommandMenu
-          title={menu.kind === "surround" ? "Surround with" : "Context actions"}
-          items={menu.kind === "surround" ? menu.choices : menu.actions}
+          title={MENU_TITLE[menu.kind]}
+          items={menuItems(menu)}
           top={menu.top}
           left={menu.left}
           onChoose={chooseMenu}
