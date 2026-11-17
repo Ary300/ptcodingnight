@@ -2,7 +2,7 @@ import type { NextResponse } from "next/server";
 
 import { ContestIdParamsSchema, handle, jsonOkRevalidated, readParams } from "@/lib/contest/http";
 import { getTeamStandings, reconcileClockFromBoard } from "@/lib/contest/standings";
-import { viewerFromRequest } from "@/lib/contest/viewer";
+import { boardViewerFromRequest } from "@/lib/contest/viewer";
 
 /**
  * `GET /api/contests/{id}/team-standings` — the board Coding Night ranks by.
@@ -26,7 +26,7 @@ export async function GET(
   return handle(async () => {
     const now = new Date();
     const { id } = await readParams(context.params, ContestIdParamsSchema);
-    const viewer = await viewerFromRequest(request, now);
+    const viewer = await boardViewerFromRequest(request, now);
 
     // The projector polls this every five seconds, which makes it a clock the room is watching:
     // when the window says the contest should have started or ended, this poll makes it true.

@@ -290,3 +290,69 @@ test("a seat puzzle is listed for its own seat only, and another seat cannot ans
   expect(rightBody.data.correct).toBe(true);
   expect(rightBody.data.awarded).toBe(25);
 });
+
+test("a solve writes an audit row naming the team, the puzzle and the points", async ({
+  playwright,
+}) => {
+  const team = await freshTeam("Audit");
+  const { context, participantId } = await codeStudent(playwright, team.id);
+
+  const right = await context.post(`/api/contests/${contestId}/puzzles/${PUZZLE_SLUG}`, {
+    data: { answer: ANSWER },
+  });
+  expect(right.status()).toBe(200);
+
+  const rows = await testDb().auditLog.findMany({
+    where: { action: "team.side_activity", entity: `team:${team.id}` },
+    select: { actor: true, after: true },
+  });
+  expect(rows, "a puzzle award is a score change with no audit row").toHaveLength(1);
+  expect(rows[0]?.actor).toBe(`participant:${participantId}`);
+  expect(rows[0]?.after).toMatchObject({ points: 15, puzzle: PUZZLE_SLUG, source: "puzzle" });
+});
+
+test("a solve outside the contest window is refused like a submission, and pays nothing", async ({
+  playwright,
+}) => {
+  const team = await freshTeam("Window");
+  const { context } = await codeStudent(playwright, team.id);
+  const url = `/api/contests/${contestId}/puzzles/${PUZZLE_SLUG}`;
+  const window = await testDb().contest.findUniqueOrThrow({
+    where: { id: contestId },
+    select: { state: true, startsAt: true, endsAt: true },
+  });
+
+  try {
+    // Past the end, still RUNNING: the window alone must refuse it.
+    await testDb().contest.update({
+      where: { id: contestId },
+      data: { endsAt: new Date(Date.now() - 60_000) },
+    });
+    const late = await readEnvelope(await context.post(url, { data: { answer: ANSWER } }));
+    expect(late.status, "a puzzle solve after the end must be refused").toBe(409);
+    expect(late.code).toBe("CONTEST_NOT_RUNNING");
+
+    // Ended by an organizer.
+    await testDb().contest.update({
+      where: { id: contestId },
+      data: { endsAt: window.endsAt, state: "ENDED" },
+    });
+    const ended = await readEnvelope(await context.post(url, { data: { answer: ANSWER } }));
+    expect(ended.status).toBe(409);
+
+    // Not started yet.
+    await testDb().contest.update({
+      where: { id: contestId },
+      data: { state: "SCHEDULED", startsAt: new Date(Date.now() + 60 * 60_000) },
+    });
+    const early = await readEnvelope(await context.post(url, { data: { answer: ANSWER } }));
+    expect(early.status).toBe(409);
+  } finally {
+    await testDb().contest.update({ where: { id: contestId }, data: window });
+  }
+
+  expect(
+    await testDb().teamSideActivity.count({ where: { teamId: team.id } }),
+    "a refused solve must not pay the team",
+  ).toBe(0);
+});

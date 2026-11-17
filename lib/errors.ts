@@ -13,6 +13,8 @@ export type DomainErrorCode =
   | "CONTEST_NOT_RUNNING"
   | "PROBLEM_IS_DRAFT"
   | "RATE_LIMITED"
+  /** A door that existed and was closed on purpose, such as student sign-up. */
+  | "GONE"
   | "INTERNAL";
 
 export class DomainError extends Error {
@@ -69,6 +71,7 @@ const STATUS_BY_CODE: Readonly<Record<DomainErrorCode, number>> = {
   CONTEST_NOT_RUNNING: 409,
   PROBLEM_IS_DRAFT: 409,
   RATE_LIMITED: 429,
+  GONE: 410,
   INTERNAL: 500,
 };
 

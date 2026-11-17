@@ -1,4 +1,6 @@
-import type { StandingsResponse, TeamStandingsResponse } from "@/lib/schemas/api";
+import { teamTabsFor, teamsForTab } from "@/components/leaderboard/team-tabs";
+import { eventFileStamp, formatEventStampSeconds } from "@/lib/contest/event-time";
+import type { StandingsResponse, TeamStandingRow, TeamStandingsResponse } from "@/lib/schemas/api";
 
 /**
  * Results export (PRD §9.2).
@@ -97,6 +99,7 @@ export function gridToXlsx(grid: Grid): Uint8Array<ArrayBuffer> {
  * replaced a spreadsheet whose arithmetic nobody could check.
  */
 export const TEAM_EXPORT_HEADERS = [
+  "Division",
   "Rank",
   "Tied",
   "Team",
@@ -106,32 +109,70 @@ export const TEAM_EXPORT_HEADERS = [
   "Group points",
   "Side activities",
   "Penalty minutes",
+  "Last scored at",
   "Members",
 ] as const;
 
-export function teamStandingsToGrid(standings: TeamStandingsResponse): Grid {
+/**
+ * The latest instant any member's score went up, in Indiana time, or "" when nobody has scored.
+ *
+ * Read from each player's `lastScoreIncreaseAt`, which the board already carries for every viewer.
+ * It is the last ACCEPTED-or-partial judgement that raised a score, so the column is named for what
+ * it is. Side activities do not move it: an award is entered by an organizer, not judged.
+ */
+function lastScoredAt(team: TeamStandingRow): string {
+  const latest = team.players.reduce<number | null>((best, player) => {
+    if (player.lastScoreIncreaseAt === null) return best;
+    const at = Date.parse(player.lastScoreIncreaseAt);
+    if (Number.isNaN(at)) return best;
+    return best === null || at > best ? at : best;
+  }, null);
+  return latest === null ? "" : formatEventStampSeconds(new Date(latest));
+}
+
+function teamExportRow(division: string, team: TeamStandingRow): (string | number)[] {
   return [
-    [...TEAM_EXPORT_HEADERS],
-    ...standings.teams.map((team) => [
-      team.rank,
-      team.isTied ? "yes" : "no",
-      team.name,
-      // Two decimals, because a mean is routinely fractional and `543.75` and `543.8` are
-      // different claims (docs/SCORING.md §3).
-      team.score.toFixed(2),
-      team.playerPoolPoints,
-      team.teamSize,
-      team.groupPoints,
-      team.sideActivityPoints,
-      team.penaltyMinutes,
-      team.players.map((p) => `${p.displayName} (${String(p.score)})`).join("; "),
-    ]),
+    division,
+    team.rank,
+    team.isTied ? "yes" : "no",
+    team.name,
+    // Two decimals, because a mean is routinely fractional and `543.75` and `543.8` are
+    // different claims (docs/SCORING.md §3).
+    team.score.toFixed(2),
+    team.playerPoolPoints,
+    team.teamSize,
+    team.groupPoints,
+    team.sideActivityPoints,
+    team.penaltyMinutes,
+    lastScoredAt(team),
+    team.players.map((p) => `${p.displayName} (${String(p.score)})`).join("; "),
   ];
 }
 
-export function teamSafeFilename(contestName: string, extension: string): string {
+/**
+ * One block per division, each ranked from 1 within its division.
+ *
+ * The payload's rank runs across the whole contest, and each division has its own winner (PRD
+ * §6.1), so the file used to rank an Advanced team 4th behind three Intermediate teams. The rank
+ * here is `teamsForTab`'s, the same re-rank the podium and the division tab use, so the file and
+ * the awards screen cannot disagree, and ties stay ties within a division. A contest with no
+ * divisions keeps the contest-wide rank and an empty Division cell.
+ */
+export function teamStandingsToGrid(standings: TeamStandingsResponse): Grid {
+  const tabs = teamTabsFor(standings.divisions, standings.teams);
+  const rows =
+    tabs.length === 0
+      ? standings.teams.map((team) => teamExportRow("", team))
+      : tabs.flatMap((tab) =>
+          teamsForTab(standings.teams, tab.id).map((team) => teamExportRow(tab.label, team)),
+        );
+  return [[...TEAM_EXPORT_HEADERS], ...rows];
+}
+
+/** `coding-night-team-results-2026-11-18_19-41-09.csv`, stamped in Indiana time. */
+export function teamSafeFilename(contestName: string, extension: string, at: string | Date): string {
   const stem = contestName.trim().replace(/[^A-Za-z0-9]+/g, "-").replace(/^-+|-+$/g, "").toLowerCase();
-  return `${stem === "" ? "team" : stem}-team-results.${extension}`;
+  return `${stem === "" ? "team" : stem}-team-results-${eventFileStamp(at)}.${extension}`;
 }
 
 export function toCsv(rows: readonly ExportRow[]): string {

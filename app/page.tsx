@@ -27,7 +27,7 @@ const HOW = [
   {
     n: "4",
     title: "Follow the standings",
-    body: "Submissions are graded within seconds, and the standings are shown on the projector throughout the contest.",
+    body: "Submissions are graded within seconds, and the standings on the projector update live until the last fifteen minutes, when the board freezes.",
   },
 ] as const;
 
@@ -43,11 +43,11 @@ const HOW = [
 const NIGHT = [
   {
     title: "Teams",
-    body: "Teams have up to four students, and each teammate receives different problems. A team’s score is the average of its members’ scores.",
+    body: "Teams have up to five students, and each teammate receives different problems. A team’s score is the average of its members’ scores.",
   },
   {
     title: "Puzzles",
-    body: "During the contest, teams also work on a puzzle that does not require programming, such as a sudoku. Solving it adds points to the team’s score.",
+    body: "During the contest, each team member also receives one puzzle that does not require programming, such as a sudoku. Solving it adds points to the team’s score.",
   },
   {
     title: "Kahoot",

@@ -9,8 +9,8 @@ import { redirect } from "next/navigation";
  * one should land on the door that works, with the slip in their hand, rather than on "This page
  * could not be found".
  *
- * `POST /api/auth/signup` is untouched. It is exercised by the API specs and is how the practice
- * arena was reached; see `docs/TODO.md` T17 for what that means now that no screen calls it.
+ * `POST /api/auth/signup` is closed too: it answers 410 with a sentence pointing to /join, because
+ * it enrolled any new account into the real contest once it was SCHEDULED.
  */
 export default function SignUpPage(): never {
   redirect("/join");

@@ -1,3 +1,4 @@
+import { eventFileStamp } from "@/lib/contest/event-time";
 import type { StandingsResponse } from "@/lib/schemas/api";
 
 /**
@@ -65,12 +66,16 @@ export function standingsToCsv(standings: StandingsResponse): string {
   return `${lines.join("\r\n")}\r\n`;
 }
 
-/** `park-tudor-standings-2026-07-29T18-30-00Z.csv` — sortable, and safe in a Windows filename. */
+/**
+ * `park-tudor-standings-2026-07-29_16-00-00.csv`: sortable, safe in a Windows filename, and stamped
+ * in Indiana time. It stamped the UTC instant, so a file saved during the evening read as the
+ * next day.
+ */
 export function exportFilename(contestName: string, asOf: string): string {
   const slug = contestName
     .toLowerCase()
     .replaceAll(/[^a-z0-9]+/g, "-")
     .replaceAll(/^-|-$/g, "");
-  const stamp = asOf.replaceAll(":", "-");
+  const stamp = eventFileStamp(asOf);
   return `${slug === "" ? "contest" : slug}-standings-${stamp}.csv`;
 }

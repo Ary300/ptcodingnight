@@ -1,5 +1,8 @@
 import { expect, test } from "@playwright/test";
 
+import { linkedUserFor } from "@/lib/contest/accounts";
+import { ensureEnrolled } from "@/lib/contest/enrolment";
+
 import { ContestApi, readEnvelope } from "./helpers/api";
 import { requiredEnv } from "./helpers/env";
 import { closeTestDb, seedE2EContest, testDb, type SeededContest } from "./helpers/seed";
@@ -11,8 +14,8 @@ import { closeTestDb, seedE2EContest, testDb, type SeededContest } from "./helpe
  * people in and give them sample questions to try. The mechanism is one permanent contest with
  * `isPractice: true`, and these specs pin its three contracts from the outside:
  *
- *  - with nothing real open, a fresh sign-up lands in the arena instead of an error;
- *  - with a real contest open, the real contest wins the sign-in, however live the arena looks;
+ *  - a fresh account lands in the arena, never in a real contest (student accounts are closed);
+ *  - an account the organizer put on a real roster lands there, however live the arena looks;
  *  - a practice question can never enter a scored line-up (API refusal, like DRAFT).
  */
 
@@ -52,114 +55,50 @@ test.afterAll(async () => {
   await closeTestDb();
 });
 
-async function signUp(
-  request: { newContext: () => Promise<import("@playwright/test").APIRequestContext> },
-  email: string,
-) {
-  const context = await request.newContext();
-  const response = await context.post("/api/auth/signup", {
-    data: {
-      fullName: `Arena Visitor ${Date.now()}`,
-      email,
-      password: "a-long-practice-password",
-    },
+let accountSeq = 0;
+
+/** A fresh account signing in with a provider, the way the OAuth callback does it. */
+async function freshAccountSignsIn(): Promise<{ userId: string; contestId: string | null }> {
+  accountSeq += 1;
+  const stamp = `${String(Date.now())}-${String(accountSeq)}`;
+  const user = await linkedUserFor({
+    provider: "google",
+    subject: `arena-sub-${stamp}`,
+    email: `arena-${stamp}@e2e.test`,
+    emailVerified: true,
+    displayName: `Arena Visitor ${stamp}`,
   });
-  return { context, response };
+  const enrolment = await ensureEnrolled(user.userId, user.displayName);
+  return { userId: user.userId, contestId: enrolment?.contestId ?? null };
 }
 
-test("with nothing real open, a fresh sign-up lands in the arena instead of an error", async ({
-  playwright,
-}) => {
-  /*
-    "Nothing real open" has to be MADE true, not assumed: a dev database carries leftover
-    RUNNING contests from earlier work, and any one of them legitimately outranks the arena
-    (that ranking is this feature working). Close every real sign-in candidate, remember each
-    row's actual state, and restore them all afterwards.
-  */
-  const openContests = await testDb().contest.findMany({
-    where: {
-      isPractice: false,
-      state: { in: ["SCHEDULED", "RUNNING", "FROZEN"] },
-    },
-    select: { id: true, state: true },
+test("a fresh account lands in a practice arena, never in the real contest", async () => {
+  // Student accounts are closed: join codes and the organizer roster are the only ways into a
+  // real contest. An account that signs in anyway still gets somewhere to practise.
+  const landed = await freshAccountSignsIn();
+  expect(landed.contestId, "an account enrolled itself into the real contest").not.toBe(
+    seeded.contestId,
+  );
+  expect(landed.contestId, "the arena should take a fresh account").not.toBeNull();
+  const contest = await testDb().contest.findUniqueOrThrow({
+    where: { id: landed.contestId ?? "" },
+    select: { isPractice: true },
   });
-  await testDb().contest.updateMany({
-    where: { id: { in: openContests.map((contest) => contest.id) } },
-    data: { state: "ENDED" },
-  });
-
-  try {
-    const arena = await testDb().contest.findUniqueOrThrow({
-      where: { joinCode: ARENA_JOIN_CODE },
-      select: { id: true },
-    });
-
-    /*
-      Other spec files run in parallel workers and legitimately create open contests mid-test
-      (the clock specs mint RUNNING rows; other files re-seed). A real contest born inside this
-      window SHOULD outrank the arena - that is the feature - so landing there is a race, not a
-      regression, and the honest response is to close it and try again. Landing in a contest
-      that already existed when we swept is the actual failure this spec exists to catch.
-    */
-    const sweptIds = new Set(openContests.map((contest) => contest.id));
-    let landed: string | null = null;
-    for (let attempt = 0; attempt < 4; attempt += 1) {
-      const { context, response } = await signUp(
-        playwright.request,
-        `arena-${String(Date.now())}-${String(attempt)}@e2e.test`,
-      );
-      expect(response.status(), "sign-up must succeed with only the arena open").toBe(200);
-
-      const session = await context.get("/api/auth/session");
-      const body = (await session.json()) as { data: { contestId: string | null } };
-      landed = body.data.contestId;
-      if (landed === arena.id) break;
-
-      expect(
-        landed !== null && !sweptIds.has(landed),
-        "sign-up landed in a contest that was already closed when the sweep ran",
-      ).toBe(true);
-
-      // A parallel worker opened that contest mid-test. Close it too and go again.
-      if (landed !== null) {
-        sweptIds.add(landed);
-        const interloper = await testDb().contest.findUnique({
-          where: { id: landed },
-          select: { state: true },
-        });
-        if (interloper !== null) {
-          openContests.push({ id: landed, state: interloper.state });
-          await testDb().contest.update({
-            where: { id: landed },
-            data: { state: "ENDED" },
-          });
-        }
-      }
-    }
-    expect(landed, "the session should point at the arena").toBe(arena.id);
-  } finally {
-    for (const contest of openContests) {
-      await testDb().contest.update({
-        where: { id: contest.id },
-        data: { state: contest.state },
-      });
-    }
-  }
+  expect(contest.isPractice).toBe(true);
 });
 
-test("with a real contest open, the real contest wins the sign-in over the arena", async ({
-  playwright,
-}) => {
-  const { context, response } = await signUp(
-    playwright.request,
-    `real-${String(Date.now())}@e2e.test`,
-  );
-  expect(response.status()).toBe(200);
+test("an account the organizer put on the real roster lands in the real contest over the arena", async () => {
+  const first = await freshAccountSignsIn();
+  // The organizer's roster action, over HTTP.
+  expect((await admin.addParticipantRaw(first.userId)).status()).toBe(200);
 
-  const session = await context.get("/api/auth/session");
-  const body = (await session.json()) as { data: { contestId: string | null } };
+  const user = await testDb().user.findUniqueOrThrow({
+    where: { id: first.userId },
+    select: { displayName: true },
+  });
+  const enrolment = await ensureEnrolled(first.userId, user.displayName);
   expect(
-    body.data.contestId,
+    enrolment?.contestId,
     "the arena's permanent window must not outrank the night's contest",
   ).toBe(seeded.contestId);
 });

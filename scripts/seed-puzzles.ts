@@ -4,7 +4,7 @@ import "dotenv/config";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
 
-import { normalizePuzzleAnswer } from "@/lib/contest/puzzles";
+import { normalizePuzzleAnswer, seededPuzzleActiveOnCreate } from "@/lib/contest/puzzles";
 import { parseServerEnv } from "@/lib/schemas/env";
 
 /**
@@ -18,10 +18,10 @@ import { parseServerEnv } from "@/lib/schemas/env";
  * leaves every solve and every award already made exactly where they are.
  *
  * ONE PUZZLE PER TEAM MEMBER. Teams are up to four, and under `RANDOM_ASSIGNED` every teammate
- * holds a different set letter, so the four lettered puzzles below are the night's default: a
- * student on set A gets the binary, B the cipher, C the hex, D the seating puzzle. All four are
- * worth the same, so no letter is luckier than another. The two open-to-everyone puzzles are
- * created HIDDEN and are bonuses an organizer can show from /admin/puzzles.
+ * holds a different set letter, so the four lettered puzzles below map one per seat: a student on
+ * set A gets the binary, B the cipher, C the hex, D the seating puzzle. All four are worth the
+ * same, so no letter is luckier than another. EVERY puzzle is created HIDDEN, the seat ones too,
+ * because the night's puzzles are on paper; an organizer shows any of these from /admin/puzzles.
  *
  * TEXT answers are stored NORMALISED, through the same function the checker uses on the way in.
  * Storing "Meridian Hills" and comparing it against a normalised attempt would fail forever, and
@@ -216,10 +216,13 @@ async function main(): Promise<void> {
         where: { slug: puzzle.slug },
         // `active` only on create: an organizer who hid a puzzle mid-contest must not have it
         // reappear because somebody re-ran the seed, and one shown as a bonus must not vanish.
-        // A fresh database shows only the seat puzzles, which is "one puzzle per member" by
-        // default; the open-to-everyone ones start hidden and an organizer can show them from
-        // /admin/puzzles as bonuses.
-        create: { slug: puzzle.slug, active: puzzle.forSetLabel !== null, ...shared },
+        // A fresh database shows NONE of them, seat puzzles included, because the night runs on
+        // paper puzzles; an organizer shows any of these from /admin/puzzles.
+        create: {
+          slug: puzzle.slug,
+          active: seededPuzzleActiveOnCreate(),
+          ...shared,
+        },
         update: shared,
       });
       const seat = puzzle.forSetLabel === null ? "everyone" : `set ${puzzle.forSetLabel}`;

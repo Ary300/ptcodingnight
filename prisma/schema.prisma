@@ -304,7 +304,7 @@ model Contest {
   /// member's contribution. Enforced when joining; an organizer can still place someone over the
   /// limit deliberately, because a roster correction on the night must not be blocked by a
   /// setting.
-  maxTeamSize Int @default(4)
+  maxTeamSize Int @default(5)
 
   /// Whether students may still create and join teams.
   ///

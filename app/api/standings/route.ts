@@ -1,10 +1,10 @@
 import type { NextResponse } from "next/server";
 
-import { prisma } from "@/lib/db";
-import { NotFoundError } from "@/lib/errors";
+import { DomainError } from "@/lib/errors";
 import { handle, jsonOkRevalidated } from "@/lib/contest/http";
 import { getStandings } from "@/lib/contest/standings";
-import { viewerFromRequest } from "@/lib/contest/viewer";
+import { boardViewerFromRequest } from "@/lib/contest/viewer";
+import { NOTHING_RUNNING_MESSAGE, currentWallContestId } from "@/lib/contest/wall-contest";
 
 /**
  * `GET /api/standings?contestId=<id>` — the spectator board.
@@ -26,59 +26,14 @@ import { viewerFromRequest } from "@/lib/contest/viewer";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/**
- * The contest on the wall: the one whose window contains NOW, then RUNNING before FROZEN.
- *
- * `orderBy: startsAt desc` alone picked the most recently STARTING contest, with no guard that it
- * had started at all. Observed on the projector, opened the way it is opened on the night with no
- * query string: it showed "LIVE", a countdown of 472:45:08 — nineteen days — and "No teams yet",
- * because it had resolved to a contest scheduled for a fortnight away while the real one ran
- * beside it. An organizer then froze the live contest and the wall neither froze nor changed.
- *
- * Two contests can legitimately be RUNNING at once: a rehearsal left open, last year's board never
- * ended, a seeded demo beside the real thing. "Is it on right now" is a fact about the clock, and
- * it is the only question a screen on a wall can be asking.
- */
-async function currentContestId(now: Date): Promise<string> {
-  const live = await prisma.contest.findFirst({
-    where: {
-      state: { in: ["RUNNING", "FROZEN"] },
-      startsAt: { lte: now },
-      endsAt: { gt: now },
-      // The practice arena is always inside its window - that is what makes it permanent - and
-      // a wall that defaulted to it would show the practice board on contest night. Pinning the
-      // arena explicitly with ?contestId= still works.
-      isPractice: false,
-    },
-    // RUNNING before FROZEN on a tie, then the one that started most recently.
-    orderBy: [{ state: "asc" }, { startsAt: "desc" }],
-    select: { id: true },
-  });
-  if (live !== null) return live.id;
-
-  /*
-    Nothing is inside its window. Fall back to the most recent RUNNING/FROZEN contest anyway,
-    rather than refusing — a contest whose end time has passed but which nobody has ENDED is the
-    normal state of the board during the awards, and blanking the wall at exactly that moment
-    would be worse than showing a contest that is over.
-  */
-  const recent = await prisma.contest.findFirst({
-    where: { state: { in: ["RUNNING", "FROZEN"] }, isPractice: false },
-    orderBy: [{ state: "asc" }, { startsAt: "desc" }],
-    select: { id: true },
-  });
-  if (recent === null) {
-    throw new NotFoundError("No contest is running. Open the projector with ?contestId=<id>");
-  }
-  return recent.id;
-}
-
 export async function GET(request: Request): Promise<NextResponse> {
   return handle(async () => {
     const now = new Date();
     const requested = new URL(request.url).searchParams.get("contestId");
-    const contestId = requested !== null && requested.length > 0 ? requested : await currentContestId(now);
-    const viewer = await viewerFromRequest(request, now);
+    const contestId =
+      requested !== null && requested.length > 0 ? requested : await currentWallContestId(now);
+    if (contestId === null) throw new DomainError("NOT_FOUND", NOTHING_RUNNING_MESSAGE);
+    const viewer = await boardViewerFromRequest(request, now);
 
     return jsonOkRevalidated(request, await getStandings(contestId, viewer, now));
   });

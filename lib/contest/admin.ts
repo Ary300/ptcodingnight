@@ -742,6 +742,10 @@ export async function rejudgeSubmission(
         effectiveAt: null,
       },
     });
+    // The previous run's per-test rows go with its verdict. Left in place, the new run's rows were
+    // dropped by `skipDuplicates` on (submissionId, testCaseId), so a WA rejudged to AC still showed
+    // its old failing tests to the student and the organizer.
+    await tx.testResult.deleteMany({ where: { submissionId } });
     // A null revision is a temporal tombstone. Live standings stop using the old answer, while a
     // frozen cutoff before `effectiveAt` still selects the preceding non-null revision.
     await tx.submissionScoreRevision.create({

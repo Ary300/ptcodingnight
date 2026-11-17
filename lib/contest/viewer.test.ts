@@ -9,9 +9,26 @@ import {
   requireAdmin,
   requireCompetitor,
   requireCompetitorOf,
+  boardViewerFromRequest,
   viewerFromSession,
+  wantsPublicView,
   type Viewer,
 } from "@/lib/contest/viewer";
+
+describe("boardViewerFromRequest", () => {
+  it("scores ?view=public as anonymous without reading the cookie, so an organizer laptop gets the public board", async () => {
+    const request = new Request("http://localhost/api/team-standings?view=public", {
+      headers: { cookie: "ptcn_session=would-be-an-organizer" },
+    });
+    expect(wantsPublicView(request)).toBe(true);
+    expect(await boardViewerFromRequest(request)).toEqual({ kind: "anonymous" });
+  });
+
+  it("does not treat any other view value as public", () => {
+    expect(wantsPublicView(new Request("http://localhost/api/standings?view=admin"))).toBe(false);
+    expect(wantsPublicView(new Request("http://localhost/api/standings"))).toBe(false);
+  });
+});
 
 const competitorSession: LoadedSession = {
   id: "s-1",

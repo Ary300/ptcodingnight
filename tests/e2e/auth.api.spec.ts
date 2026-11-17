@@ -506,7 +506,7 @@ test.describe("signing up with a provider", () => {
     await testDb().user.deleteMany({ where: { githubSub: { contains: stamp } } });
   });
 
-  test("a brand-new identity creates a COMPETITOR and a Participant, and never an ADMIN", async () => {
+  test("a brand-new identity creates a COMPETITOR, never an ADMIN, and no real-contest Participant", async () => {
     const user = await linkedUserFor(identity());
 
     expect(user.role).toBe("COMPETITOR");
@@ -521,17 +521,13 @@ test.describe("signing up with a provider", () => {
     expect(row?.passwordHash).toBeNull();
     expect(row?.googleSub).toBe(`signup-sub-${stamp}`);
 
+    // Join codes and the organizer's roster are the only ways into a real contest. An account may
+    // land in the practice arena, never in the RUNNING fixture contest by itself.
     const enrolment = await ensureEnrolled(user.userId, user.displayName);
-    expect(enrolment, "no enrollable contest — the fixture should have seeded one").not.toBeNull();
-
-    const participant = await testDb().participant.findFirst({
-      where: { userId: user.userId },
-      select: { id: true, contestId: true, teamId: true },
-    });
-    expect(participant?.id).toBe(enrolment?.participantId);
-    expect(participant?.contestId).toBe(enrolment?.contestId);
-    // No team. The organizer assigns it from the roster, and that is the only place it happens.
-    expect(participant?.teamId).toBeNull();
+    expect(enrolment?.contestId).not.toBe(seeded.contestId);
+    expect(
+      await testDb().participant.count({ where: { userId: user.userId, contestId: seeded.contestId } }),
+    ).toBe(0);
   });
 
   test("a second sign-in re-uses the account rather than creating a duplicate", async () => {
@@ -547,7 +543,7 @@ test.describe("signing up with a provider", () => {
     // name — a rename must not mint a second participant competing against the first.
     await ensureEnrolled(first.userId, first.displayName);
     await ensureEnrolled(second.userId, "Renamed In Google");
-    expect(await testDb().participant.count({ where: { userId: first.userId } })).toBe(1);
+    expect(await testDb().participant.count({ where: { userId: first.userId } })).toBeLessThanOrEqual(1);
   });
 
   test("an UNVERIFIED provider email never links to an existing account", async () => {
@@ -623,9 +619,14 @@ test.describe("signing up with a provider", () => {
       const user = await linkedUserFor(
         identity({ subject: `ordering-sub-${stamp}`, email: `ordering-${stamp}@parktudor.org` }),
       );
+      // The organizer's roster put this account in tonight's contest: the only way an account
+      // reaches a real contest now that student self-enrolment is closed.
+      await testDb().participant.create({
+        data: { contestId: seeded.contestId, userId: user.userId, displayName: `Ordering ${stamp}` },
+      });
       const enrolment = await ensureEnrolled(user.userId, `Ordering ${stamp}`);
 
-      expect(enrolment).not.toBeNull();
+      expect(enrolment?.contestId).toBe(seeded.contestId);
       expect(
         enrolment?.contestId,
         "a student signing in tonight was enrolled in next month's contest",
@@ -664,17 +665,12 @@ test.describe("signing up with a provider", () => {
 });
 
 /**
- * The password path enrols a COMPETITOR, which it did not.
+ * A COMPETITOR credential on the password route answers 410.
  *
- * Measured against this server before the fix: `POST /api/auth/password` answered
- * `200 {"role":"COMPETITOR"}` and set a session cookie, and `GET /api/auth/session` with that very
- * cookie answered `{"signedIn":false}`. `viewerFromSession` returns ANONYMOUS for a COMPETITOR
- * session whose participantId or contestId is null, so the sign-in succeeded and authorized as
- * nobody — the student is sent to /contest by a working sign-in and every screen there treats them
- * as a stranger.
- *
- * The OAuth callback had already learned this and this route was left behind, which is why the
- * assertion is on the SESSION and not on the sign-in response: the sign-in response was always 200.
+ * Student accounts are closed: the organizers decided on join codes only. This route used to enrol
+ * a competitor who held an organizer-issued password, which was a second way into the real contest
+ * beside the join code. It now refuses with a sentence pointing to /join, mints no session and
+ * creates no participant. The organizer path through the same route is unchanged.
  */
 test.describe("a competitor with a password", () => {
   const STUDENT = {
@@ -699,37 +695,31 @@ test.describe("a competitor with a password", () => {
     await testDb().user.deleteMany({ where: { email: STUDENT.email } });
   });
 
-  test("signs in AND can compete — the session carries participantId and contestId", async ({
+  test("is refused with 410 pointing to /join, and gets no session and no participant", async ({
     playwright,
   }) => {
     const api = new ContestApi(await playwright.request.newContext(), seeded.contestId);
 
-    const login = await readOk(await api.passwordLoginRaw(STUDENT.email, STUDENT.password));
-    expect(login.status).toBe(200);
-    expect((login.data as { role: string }).role).toBe("COMPETITOR");
+    const refused = await api.passwordLoginRaw(STUDENT.email, STUDENT.password);
+    const envelope = await readEnvelope(refused);
+    expect(envelope.status).toBe(410);
+    expect(envelope.code).toBe("GONE");
+    expect(envelope.message).toContain("/join");
+    expect(refused.headers()["set-cookie"] ?? "").not.toContain("ptcn_session");
 
     const session = await readOk(await api.sessionRaw());
-    const body = session.data as {
-      signedIn: boolean;
-      role: string;
-      participantId: string | null;
-      contestId: string | null;
-    };
-
-    expect(body.signedIn, "signed in and immediately anonymous — the bug this pins").toBe(true);
-    expect(body.role).toBe("COMPETITOR");
-    expect(body.participantId).not.toBeNull();
-    expect(body.contestId).not.toBeNull();
+    expect((session.data as { signedIn: boolean }).signedIn).toBe(false);
+    expect(await testDb().participant.count({ where: { user: { email: STUDENT.email } } })).toBe(0);
   });
 
-  test("appears on the organizer's roster, which is the point of enrolling", async () => {
-    // A student the roster cannot see is a student nobody can put on a team.
-    const participant = await testDb().participant.findFirst({
-      where: { user: { email: STUDENT.email } },
-      select: { teamId: true, contestId: true },
-    });
-    expect(participant).not.toBeNull();
-    expect(participant?.teamId).toBeNull();
+  test("a wrong password for a competitor is still a wrong password, not a 410", async ({
+    playwright,
+  }) => {
+    const api = new ContestApi(await playwright.request.newContext(), seeded.contestId);
+    const refused = await readEnvelope(await api.passwordLoginRaw(STUDENT.email, "not-the-password-at-all"));
+    expect(refused.status).not.toBe(410);
+    expect(refused.status).toBeGreaterThanOrEqual(400);
+    expect(refused.status).toBeLessThan(500);
   });
 
   test("an ADMIN is still NOT enrolled, because an organizer is not a contestant", async ({

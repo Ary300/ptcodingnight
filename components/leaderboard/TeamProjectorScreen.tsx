@@ -91,7 +91,8 @@ export function TeamProjectorScreen({
   contestId,
   initialDivisionId = null,
 }: TeamProjectorScreenProps) {
-  const { standings, source, error } = useTeamStandings(contestId);
+  // Always the public board, even on the organizer laptop that usually drives the wall.
+  const { standings, source, error } = useTeamStandings(contestId, { publicView: true });
 
   /**
    * The tab the organizer ASKED for, which is not always the tab shown: the request is held

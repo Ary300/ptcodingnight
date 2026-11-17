@@ -98,6 +98,36 @@ export async function viewerFromRequest(
 }
 
 /**
+ * The query value that asks a board route for the PUBLIC board, whoever is signed in.
+ *
+ * The projector is a page an organizer opens on their own laptop, so its same-origin fetches carry
+ * the organizer's session cookie. A board route that keyed the freeze off the cookie alone handed
+ * that laptop the LIVE board, and the wall showed post-freeze scores to the whole room. The wall
+ * asks for `?view=public`, and a board route reading it treats the caller as anonymous. The flag
+ * can only ever REDUCE what a caller sees, so honouring it from anyone is safe.
+ */
+export const PUBLIC_VIEW_PARAM = "view";
+export const PUBLIC_VIEW_VALUE = "public";
+
+/** True when the request asks for the public board with `?view=public`. */
+export function wantsPublicView(request: Request): boolean {
+  return new URL(request.url).searchParams.get(PUBLIC_VIEW_PARAM) === PUBLIC_VIEW_VALUE;
+}
+
+/**
+ * The viewer a BOARD route scores for: anonymous when `?view=public` asks for it, otherwise the
+ * session's own viewer. Only the standings routes use this; no other route may let a query
+ * parameter choose a role.
+ */
+export async function boardViewerFromRequest(
+  request: Request,
+  now: Date = new Date(),
+): Promise<Viewer> {
+  if (wantsPublicView(request)) return ANONYMOUS;
+  return viewerFromRequest(request, now);
+}
+
+/**
  * Resolve the caller inside a SERVER COMPONENT, where there is no `Request` to read.
  *
  * Same session lookup, different door. `viewerFromRequest` takes the header off a route handler's

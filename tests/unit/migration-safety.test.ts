@@ -44,4 +44,13 @@ describe("data-preserving upgrade migrations", () => {
     expect(reparentSurvivor).toBeGreaterThan(deleteCollisions);
     expect(cleanup).toBeGreaterThan(reparentSurvivor);
   });
+
+  it("moves the team-size default to five and lifts only live contests still on the old default", async () => {
+    const sql = await migration("20261116120000_team_size_five");
+
+    expect(sql).toContain('ALTER COLUMN "maxTeamSize" SET DEFAULT 5');
+    expect(sql).toContain('WHERE "maxTeamSize" = 4');
+    expect(sql).toContain("'DRAFT', 'SCHEDULED', 'RUNNING', 'FROZEN'");
+    expect(sql).not.toContain("'ENDED'");
+  });
 });

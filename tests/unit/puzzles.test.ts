@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { checkSudoku, normalizePuzzleAnswer, puzzleVisibleTo } from "@/lib/contest/puzzles";
+import {
+  checkSudoku,
+  normalizePuzzleAnswer,
+  puzzleVisibleTo,
+  seededPuzzleActiveOnCreate,
+} from "@/lib/contest/puzzles";
 
 /**
  * The pure parts of the puzzle board: marking, and who may see which puzzle.
@@ -145,5 +150,11 @@ describe("checkSudoku", () => {
       }).join(""),
     ).join("");
     expect(checkSudoku(emptyish, shifted)).toEqual({ ok: true });
+  });
+});
+
+describe("seededPuzzleActiveOnCreate", () => {
+  it("creates every seeded puzzle hidden, the seat puzzles A to D included, because the night runs on paper", () => {
+    expect(seededPuzzleActiveOnCreate()).toBe(false);
   });
 });

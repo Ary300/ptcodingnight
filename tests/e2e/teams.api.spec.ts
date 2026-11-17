@@ -107,6 +107,30 @@ test.afterAll(async () => {
 */
 
 
+test("a new contest's roster reports teams of up to five, the size the roster accepts", async () => {
+  // The roster accepted a fifth member while reporting maxTeamSize 4, so every screen said
+  // "up to 4" beside a team of five. A contest created by the organizer route takes the default.
+  const created = await readOk(
+    await admin.createContestRaw({
+      name: `E2E Team Size ${String(Date.now())}`,
+      startsAt: new Date(Date.now() + 60 * 60_000).toISOString(),
+      endsAt: new Date(Date.now() + 2 * 60 * 60_000).toISOString(),
+      freezeAt: null,
+      scoringPresetId: "classic",
+      divisions: ["Open"],
+    }),
+  );
+  const contestId = (created.data as { contestId: string }).contestId;
+  try {
+    const roster = await okRoster(
+      await adminContext.get(`/api/admin/contests/${contestId}/roster`),
+    );
+    expect(roster.maxTeamSize).toBe(5);
+  } finally {
+    await testDb().contest.delete({ where: { id: contestId } });
+  }
+});
+
 test.describe("an organizer moves a participant, and the mean follows", () => {
   test("moving one participant changes BOTH team scores, correctly", async () => {
     await openFormation(seeded.contestId);
