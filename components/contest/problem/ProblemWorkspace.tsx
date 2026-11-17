@@ -33,6 +33,11 @@ import { problemLabel } from "./problem-label";
 import { ResultsDrawer } from "./ResultsDrawer";
 import { resultsSummary } from "./results-summary";
 import { SideBySideWorkspace } from "./SideBySideWorkspace";
+import {
+  SUBMISSIONS_CLOSED_REASON,
+  useWindowClosed,
+  type ProblemWindow,
+} from "./window-closed";
 import { resolveLayout } from "./split-layout";
 import {
   layoutStore,
@@ -68,6 +73,8 @@ import {
 
 export interface ProblemWorkspaceProps {
   slug: string;
+  /** The contest window, read on the server. Null for a viewer with no contest of their own. */
+  window?: ProblemWindow | null;
 }
 
 /** A titled slice of the statement, rendered only when the author wrote one. */
@@ -85,7 +92,9 @@ function StatementSection({ title, source }: { title: string; source: string }) 
   );
 }
 
-export function ProblemWorkspace({ slug }: ProblemWorkspaceProps) {
+export function ProblemWorkspace({ slug, window: contestWindow = null }: ProblemWorkspaceProps) {
+  const windowClosed = useWindowClosed(contestWindow);
+  const closedNoteId = useId();
   const participant = useParticipant();
   const scopeKey = participant.status === "joined" ? participant.scopeKey : participant.status;
   const load = useCallback(() => contestApi.getProblem(slug), [slug]);
@@ -242,7 +251,8 @@ export function ProblemWorkspace({ slug }: ProblemWorkspaceProps) {
   const shownAction = lastAction ?? (restored !== null ? "judged" : null);
 
   const runSamples = useCallback(async () => {
-    if (detail === null) return;
+    // Ctrl+' calls this directly, past the disabled button.
+    if (detail === null || windowClosed) return;
     setSampleBusy(true);
     setActionError(null);
     setLastAction("samples");
@@ -261,7 +271,7 @@ export function ProblemWorkspace({ slug }: ProblemWorkspaceProps) {
     } finally {
       setSampleBusy(false);
     }
-  }, [activeLanguage, detail, source]);
+  }, [activeLanguage, detail, source, windowClosed]);
 
   /*
     One submission per press, however the press arrives. The button is disabled while a submission
@@ -297,7 +307,8 @@ export function ProblemWorkspace({ slug }: ProblemWorkspaceProps) {
   }, [unsaved]);
 
   const submit = useCallback(async () => {
-    if (detail === null || submitInFlight.current || verdictPending) return;
+    // Ctrl+Enter calls this directly, past the disabled button.
+    if (detail === null || submitInFlight.current || verdictPending || windowClosed) return;
     submitInFlight.current = true;
     setSubmitBusy(true);
     setActionError(null);
@@ -321,7 +332,7 @@ export function ProblemWorkspace({ slug }: ProblemWorkspaceProps) {
       submitInFlight.current = false;
       setSubmitBusy(false);
     }
-  }, [activeLanguage, detail, source, verdictPending]);
+  }, [activeLanguage, detail, source, verdictPending, windowClosed]);
 
   // The error lines of the run on screen, for the editor's gutter and underlines.
   const submission = stream.submission;
@@ -532,10 +543,12 @@ export function ProblemWorkspace({ slug }: ProblemWorkspaceProps) {
         variant="secondary"
         className="relative whitespace-nowrap"
         onClick={() => void runSamples()}
-        disabled={sampleBusy || submitBusy}
+        disabled={sampleBusy || submitBusy || windowClosed}
         // "Free, not scored" is part of what this button is (PRD §9.1). Stacked shows the
-        // sentence under the buttons; side by side keeps it for screen readers only.
-        aria-describedby={freeNoteId}
+        // sentence under the buttons; side by side keeps it for screen readers only. Once the
+        // window has closed the reason it is disabled is the description instead.
+        aria-describedby={windowClosed ? closedNoteId : freeNoteId}
+        title={windowClosed ? SUBMISSIONS_CLOSED_REASON : undefined}
       >
         <span aria-hidden="true" className="invisible">Run samples</span>
         <span className="absolute inset-0 flex items-center justify-center">
@@ -546,13 +559,21 @@ export function ProblemWorkspace({ slug }: ProblemWorkspaceProps) {
         type="button"
         className="relative whitespace-nowrap"
         onClick={() => void submit()}
-        disabled={submitBusy || sampleBusy || judging}
+        disabled={submitBusy || sampleBusy || judging || windowClosed}
+        aria-describedby={windowClosed ? closedNoteId : undefined}
+        title={windowClosed ? SUBMISSIONS_CLOSED_REASON : undefined}
       >
         <span aria-hidden="true" className="invisible">Submit for judging</span>
         <span className="absolute inset-0 flex items-center justify-center">
           {submitBusy ? "Submitting…" : "Submit for judging"}
         </span>
       </Button>
+      {/* Screen-reader only, so the HackerRank layout around the buttons does not move. */}
+      {windowClosed && (
+        <span id={closedNoteId} className="sr-only">
+          {SUBMISSIONS_CLOSED_REASON}
+        </span>
+      )}
     </div>
   );
 
@@ -683,6 +704,7 @@ export function ProblemWorkspace({ slug }: ProblemWorkspaceProps) {
               submitBusy,
               judging,
               verdict: stream.submission?.verdict ?? null,
+              windowClosed,
             })}
           >
             {shownAction === null && actionError === null ? (

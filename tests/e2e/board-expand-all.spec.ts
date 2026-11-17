@@ -217,6 +217,30 @@ test.describe("the projector", () => {
   });
 });
 
+test.describe("the rotating projector", () => {
+  /*
+    The wall with no `?division=` rotates through the division tabs. Expand all opened only the
+    division on the wall, so a hand-picked or rotated-in division arrived collapsed.
+  */
+  test("Expand all and Collapse all apply to every division tab", async ({ page }) => {
+    await page.setViewportSize({ width: 1920, height: 1080 });
+    await page.goto(`/projector?contest=${contestId}`);
+    await expect(page.getByRole("table")).toBeVisible({ timeout: 30_000 });
+
+    await page.getByRole("button", { name: "Expand all" }).click();
+    expect(new Set(await disclosureStates(page))).toEqual(new Set(["true"]));
+
+    await page.getByRole("tab", { name: "Advanced" }).click();
+    await expect(page.locator("tbody[data-flip-part='row']")).toHaveCount(ADVANCED_TEAMS);
+    expect(new Set(await disclosureStates(page))).toEqual(new Set(["true"]));
+
+    await page.getByRole("button", { name: "Collapse all" }).click();
+    await page.getByRole("tab", { name: "Intermediate" }).click();
+    await expect(page.locator("tbody[data-flip-part='row']")).toHaveCount(INTERMEDIATE_TEAMS);
+    expect(new Set(await disclosureStates(page))).toEqual(new Set(["false"]));
+  });
+});
+
 async function fivefoldId(): Promise<string> {
   const team = await testDb().team.findFirst({ where: { contestId, name: "Fivefold" } });
   return team?.id ?? "";
@@ -254,6 +278,28 @@ test.describe("the organizer awards board", () => {
 
     await page.getByRole("tab", { name: "Advanced" }).click();
     await expect(table.locator("tbody[data-flip-part='row']")).toHaveCount(ADVANCED_TEAMS);
+  });
+
+  test("Expand all and Collapse all apply to every division tab, not only the one showing", async ({
+    page,
+  }) => {
+    await signInAsOrganizer(page);
+    await page.goto(`/admin/contests/${contestId}/awards`);
+    const table = page.getByRole("table", { name: "Team standings" });
+    await expect(table).toBeVisible({ timeout: 30_000 });
+
+    await page.getByRole("tab", { name: "Intermediate" }).click();
+    await page.getByRole("button", { name: "Expand all" }).click();
+    expect(new Set(await disclosureStates(page))).toEqual(new Set(["true"]));
+
+    await page.getByRole("tab", { name: "Advanced" }).click();
+    await expect(table.locator("tbody[data-flip-part='row']")).toHaveCount(ADVANCED_TEAMS);
+    expect(new Set(await disclosureStates(page))).toEqual(new Set(["true"]));
+
+    await page.getByRole("button", { name: "Collapse all" }).click();
+    await page.getByRole("tab", { name: "Intermediate" }).click();
+    await expect(table.locator("tbody[data-flip-part='row']")).toHaveCount(INTERMEDIATE_TEAMS);
+    expect(new Set(await disclosureStates(page))).toEqual(new Set(["false"]));
   });
 
   test("Expand all and Collapse all work from the keyboard", async ({ page }) => {

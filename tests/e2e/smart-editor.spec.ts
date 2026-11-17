@@ -98,6 +98,24 @@ test.describe("Java, as IntelliJ does it", () => {
     await expect(textarea).toHaveValue("void f() {\n}");
   });
 
+  test("a class typed in full and then '.' adds its import, and one undo takes both back", async ({
+    page,
+  }) => {
+    // `Arrays.sort(a);` typed straight through used to add no import and fail to compile.
+    const textarea = await openEmptyEditor(page, "Java 21");
+
+    await page.keyboard.type("Arrays.");
+    await expect(textarea).toHaveValue("import java.util.Arrays;\n\nArrays.");
+    await page.keyboard.press("Escape");
+    await page.keyboard.press("ControlOrMeta+z");
+    await expect(textarea).toHaveValue("Arrays");
+
+    // A wildcard already covers it, so nothing is added. `fill` leaves the caret at the end.
+    await textarea.fill("import java.util.*;\n\n");
+    await page.keyboard.type("Arrays.");
+    await expect(textarea).toHaveValue("import java.util.*;\n\nArrays.");
+  });
+
   test("sout and psvm expand on Tab, and Ctrl/Cmd + Z takes an expansion back", async ({ page }) => {
     const textarea = await openEmptyEditor(page, "Java 21");
 

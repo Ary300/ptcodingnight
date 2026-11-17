@@ -10,6 +10,7 @@ import { JudgeTimingsSchema, type Language, type Verdict } from "@/lib/schemas/j
 import { countLiveWorkers } from "@/lib/judge/heartbeat";
 import { isPublicBoardFrozen } from "./gate";
 import { judgeQueue } from "./queue";
+import { isOverridden } from "./serialize";
 import { reconcile } from "./submissions";
 
 /**
@@ -100,6 +101,8 @@ export async function adminConsole(contestId: string): Promise<AdminConsoleView>
         score: true,
         runtimeMs: true,
         judgeTimings: true,
+        judgedAt: true,
+        effectiveAt: true,
         participant: {
           select: { id: true, displayName: true, division: { select: { name: true } } },
         },
@@ -117,6 +120,7 @@ export async function adminConsole(contestId: string): Promise<AdminConsoleView>
       contestId,
       contestName: "",
       frozen: false,
+      ended: false,
       total: 0,
       submissions: [],
       health,
@@ -130,6 +134,7 @@ export async function adminConsole(contestId: string): Promise<AdminConsoleView>
     // lifecycle state remains RUNNING; reporting that as LIVE made the console disagree with the
     // projector and offered a second freeze that advanced the cutoff.
     frozen: isPublicBoardFrozen(contest, now),
+    ended: contest.state === "ENDED" || contest.state === "ARCHIVED",
     total,
     submissions: rows.map(toRow),
     health,
@@ -180,6 +185,8 @@ function toRow(row: {
   score: number;
   runtimeMs: number | null;
   judgeTimings: unknown;
+  judgedAt: Date | null;
+  effectiveAt: Date | null;
   participant: { id: string; displayName: string; division: { name: string } | null };
   contestProblem: { slotLabel: string; problem: { title: string } };
 }): AdminSubmissionRow {
@@ -198,6 +205,7 @@ function toRow(row: {
     score: row.score,
     runtimeMs: row.runtimeMs,
     timings: deriveTimingsRow(row.judgeTimings),
+    overridden: isOverridden(row),
   };
 }
 

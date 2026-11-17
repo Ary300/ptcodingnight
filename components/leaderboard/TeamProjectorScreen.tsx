@@ -395,6 +395,7 @@ export function TeamProjectorScreen({
                 });
               }}
               onSetOpenTeams={setOpenTeamIds}
+              allTeamIds={standings?.teams.map((team) => team.teamId) ?? []}
             />
           )}
         </div>

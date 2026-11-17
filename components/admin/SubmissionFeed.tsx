@@ -6,6 +6,7 @@ import { formatEventTimeSeconds } from "@/lib/contest/event-time";
 import { Button, Stacked, TBody, TD, TH, THead, TR, Table } from "@/components/ui";
 import { OverrideForm } from "@/components/admin/OverrideForm";
 import { VerdictPill } from "@/components/admin/StatusPill";
+import { OverriddenMarker } from "@/components/contest/submissions/OverriddenMarker";
 import type { AdminSubmissionRow } from "@/components/admin/contract";
 import { VARIANTS } from "@/lib/judge/runtimes";
 import type { Verdict } from "@/lib/schemas/judge";
@@ -304,8 +305,9 @@ export function SubmissionFeed({
                         />
                       </TD>
                       <TD className="align-top">
-                        <span className="motion-swap-in block">
+                        <span className="motion-swap-in flex flex-wrap items-center gap-1.5">
                           <VerdictPill verdict={submission.verdict} />
+                          {submission.overridden && <OverriddenMarker />}
                         </span>
                       </TD>
                       <TD className="align-top">
