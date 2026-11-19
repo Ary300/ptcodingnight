@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Final standings for Park Tudor Coding Night, November 18, 2026.">
+<title>Coding Night 2026 Final Standings</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Libre+Baskerville:wght@400;700&family=Open+Sans:wght@400;600;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: the projector board, made permanent. One column, a division switch, team board then individual board. */
+:root {
+  --paper: #fbf9f8; --ink: #1a0606; --muted: #6b5552; --panther: #c63527; --gold: #fed141;
+  --gold-ink: #6b5200; --row: #f4efed; --rule: rgba(26,6,6,.12); --rule-firm: rgba(26,6,6,.3); --card: #ffffff;
+  --display: "Libre Baskerville", Georgia, "Times New Roman", serif;
+  --body: "Open Sans", system-ui, -apple-system, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --paper: #170707; --ink: #f6eeec; --muted: #bba7a3; --panther: #ec5a4a; --gold: #fed141; --gold-ink: #fed141;
+  --row: #221010; --rule: rgba(246,238,236,.12); --rule-firm: rgba(246,238,236,.3); --card: #1e0c0c; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --paper: #170707; --ink: #f6eeec; --muted: #bba7a3; --panther: #ec5a4a; --gold: #fed141; --gold-ink: #fed141;
+  --row: #221010; --rule: rgba(246,238,236,.12); --rule-firm: rgba(246,238,236,.3); --card: #1e0c0c; color-scheme: dark }
+* { box-sizing: border-box }
+body { background: var(--paper); color: var(--ink); font-family: var(--body); font-size: 16px; line-height: 1.5;
+  padding-block: 32px 64px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)) }
+main { max-width: 980px; margin: 0 auto; display: grid; gap: 40px }
+header { display: grid; gap: 6px; text-align: center; border-bottom: 3px solid var(--panther); padding-bottom: 24px }
+.eyebrow { font-size: .78rem; letter-spacing: .14em; text-transform: uppercase; color: var(--panther); font-weight: 700 }
+h1 { font-family: var(--display); font-size: clamp(2rem, 6vw, 3.4rem); line-height: 1.1; margin: 0; text-wrap: balance }
+.when { color: var(--muted); margin: 0 }
+.switch { display: flex; justify-content: center; gap: 8px; flex-wrap: wrap }
+.switch button { font: 700 .95rem var(--body); letter-spacing: .12em; text-transform: uppercase; padding: 10px 18px;
+  border: 1px solid var(--rule-firm); background: transparent; color: var(--ink); border-radius: 3px; cursor: pointer }
+.switch button[aria-pressed="true"] { background: var(--panther); border-color: var(--panther); color: #fff }
+.switch button:focus-visible, summary:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px }
+section { display: grid; gap: 14px }
+h2 { font-family: var(--display); font-size: 1.6rem; margin: 0; text-wrap: balance }
+.note { color: var(--muted); margin: 0; font-size: .92rem; max-width: 65ch }
+.team { border: 1px solid var(--rule); border-radius: 8px; background: var(--card); overflow: hidden }
+.team + .team { margin-top: 10px }
+.team summary { list-style: none; cursor: pointer; display: grid; grid-template-columns: 3rem minmax(0, 1fr) auto; gap: 4px 14px; align-items: center; padding: 16px 18px }
+.team summary::-webkit-details-marker { display: none }
+.rank { font: 600 1.6rem var(--mono); color: var(--panther); font-variant-numeric: tabular-nums }
+.tname { font-family: var(--display); font-size: 1.35rem; font-weight: 700; min-width: 0; overflow-wrap: anywhere }
+.score { font: 600 1.9rem var(--mono); color: var(--panther); font-variant-numeric: tabular-nums; text-align: right }
+.math { grid-column: 2 / 4; font: .85rem var(--mono); color: var(--muted); overflow-wrap: anywhere }
+.team.first { border-color: var(--gold); box-shadow: inset 6px 0 0 var(--gold) }
+.badge { display: inline-block; margin-left: 10px; vertical-align: middle; font: 700 .7rem var(--body); letter-spacing: .12em; text-transform: uppercase;
+  background: var(--gold); color: #3d2f00; padding: 3px 8px; border-radius: 3px }
+.chev { display: inline-block; transition: transform .2s; color: var(--muted); margin-right: 6px; font-size: .9rem }
+details[open] .chev { transform: rotate(90deg) }
+.members { border-top: 1px solid var(--rule); overflow-x: auto }
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums }
+th, td { padding: 9px 18px; text-align: left; border-bottom: 1px solid var(--rule); white-space: nowrap }
+th { font-size: .74rem; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); font-weight: 700 }
+td.num, th.num { text-align: right; font-family: var(--mono) }
+tbody tr:last-child td { border-bottom: 0 }
+.set { font: 700 .8rem var(--mono); color: var(--panther); border: 1px solid var(--panther); border-radius: 3px; padding: 1px 6px }
+.board { border: 1px solid var(--rule); border-radius: 8px; background: var(--card); overflow-x: auto }
+.board tbody tr:nth-child(odd) { background: var(--row) }
+.board td:first-child { font-family: var(--mono); color: var(--panther); font-weight: 600; width: 3.5rem }
+.pen { color: var(--muted) }
+footer { color: var(--muted); font-size: .85rem; text-align: center; border-top: 1px solid var(--rule); padding-top: 20px }
+@media (prefers-reduced-motion: reduce) { .chev { transition: none } }
+@media (max-width: 520px) { .score { font-size: 1.5rem } .tname { font-size: 1.15rem } th, td { padding: 8px 12px } .team summary { padding: 14px 12px; grid-template-columns: 2.2rem minmax(0,1fr) auto } }
+</style>
+</head>
+<body>
+
+<main>
+  <header>
+    <div class="eyebrow">Park Tudor Computer Science Club</div>
+    <h1>Coding Night 2026</h1>
+    <p class="when">Final standings · Wednesday, November 18, 2026</p>
+  </header>
+
+  <div class="switch" role="group" aria-label="Division" id="switch"></div>
+
+  <section aria-labelledby="teams-h">
+    <h2 id="teams-h">Team standings</h2>
+    <p class="note">A team's score is the average of its members' points, plus puzzle and Kahoot points. Ties break on fewer penalty minutes. Open a team to see each member.</p>
+    <div id="teams"></div>
+  </section>
+
+  <section aria-labelledby="people-h">
+    <h2 id="people-h">Individual standings</h2>
+    <p class="note">Each student's best score on each of their problems. Penalty minutes count wrong attempts before a solve.</p>
+    <div class="board"><table><thead><tr><th>Rank</th><th>Student</th><th class="num">Points</th><th class="num">Penalty</th></tr></thead><tbody id="people"></tbody></table></div>
+  </section>
+
+  <footer>The contest site has closed. These are the final results.</footer>
+</main>
+
+<script>
+const DATA = [{"name":"Intermediate","teams":[{"n":"3 Asians and a White girl","s":384.75,"pool":1039,"g":0,"side":125,"size":4,"pen":150,"p":[{"n":"Addison Liu","s":300,"set":"A","pen":15,"solved":3},{"n":"Sophia Xu","s":278,"set":"B","pen":85,"solved":3},{"n":"Emily Huang","s":200,"set":"C","pen":50,"solved":2},{"n":"Ava Button","s":261,"set":"D","pen":0,"solved":3}]},{"n":"Paddy Oliver","s":312.75,"pool":851,"g":0,"side":100,"size":4,"pen":5,"p":[{"n":"Oliver Hulka","s":200,"set":"A","pen":0,"solved":2},{"n":"Paddy Flanagan","s":222,"set":"B","pen":0,"solved":3},{"n":"Anya Patel","s":300,"set":"C","pen":5,"solved":3},{"n":"Dean Plankis","s":129,"set":"D","pen":0,"solved":2}]},{"n":"So. Meat","s":253.25,"pool":1013,"g":0,"side":0,"size":4,"pen":100,"p":[{"n":"Yazan Afaneh","s":200,"set":"A","pen":0,"solved":2},{"n":"Jacob Jalali","s":300,"set":"B","pen":45,"solved":3},{"n":"Lucas Li","s":213,"set":"C","pen":0,"solved":3},{"n":"Kasen Murphy","s":300,"set":"D","pen":55,"solved":3}]},{"n":"REST IP","s":73.5,"pool":294,"g":0,"side":0,"size":4,"pen":15,"p":[{"n":"Emma Eckerle","s":0,"set":"A","pen":0,"solved":0},{"n":"Sydney Ritz","s":0,"set":"B","pen":0,"solved":0},{"n":"Riley Dusko","s":94,"set":"C","pen":0,"solved":1},{"n":"Tempe Warren","s":200,"set":"D","pen":15,"solved":2}]},{"n":"yuki jalali","s":0,"pool":0,"g":0,"side":0,"size":1,"pen":0,"p":[{"n":"Yuki Jalali","s":0,"set":"A","pen":0,"solved":0}]}],"people":[{"r":1,"tie":false,"n":"Anya Patel","s":300,"pen":5},{"r":2,"tie":false,"n":"Addison Liu","s":300,"pen":15},{"r":3,"tie":false,"n":"Jacob Jalali","s":300,"pen":45},{"r":4,"tie":false,"n":"Kasen Murphy","s":300,"pen":55},{"r":5,"tie":false,"n":"Sophia Xu","s":278,"pen":85},{"r":6,"tie":false,"n":"Ava Button","s":261,"pen":0},{"r":7,"tie":false,"n":"Paddy Flanagan","s":222,"pen":0},{"r":8,"tie":false,"n":"Lucas Li","s":213,"pen":0},{"r":9,"tie":false,"n":"Oliver Hulka","s":200,"pen":0},{"r":10,"tie":false,"n":"Yazan Afaneh","s":200,"pen":0},{"r":11,"tie":false,"n":"Tempe Warren","s":200,"pen":15},{"r":12,"tie":false,"n":"Emily Huang","s":200,"pen":50},{"r":13,"tie":false,"n":"Dean Plankis","s":129,"pen":0},{"r":14,"tie":false,"n":"Riley Dusko","s":94,"pen":0},{"r":15,"tie":true,"n":"Emma Eckerle","s":0,"pen":0},{"r":15,"tie":true,"n":"Sydney Ritz","s":0,"pen":0},{"r":15,"tie":true,"n":"Yuki Jalali","s":0,"pen":0}]},{"name":"Advanced","teams":[{"n":"CRAK","s":475,"pool":1100,"g":0,"side":200,"size":4,"pen":0,"p":[{"n":"Krishna Una","s":300,"set":"A","pen":0,"solved":3},{"n":"Chloe Sigua","s":300,"set":"B","pen":0,"solved":3},{"n":"Ruth Faris","s":300,"set":"C","pen":0,"solved":3},{"n":"Asha Gussick","s":200,"set":"D","pen":0,"solved":2}]},{"n":"Derek and Friends","s":300,"pool":800,"g":0,"side":100,"size":4,"pen":45,"p":[{"n":"Derek Ai","s":300,"set":"A","pen":35,"solved":3},{"n":"Dominic Gasper","s":300,"set":"B","pen":0,"solved":3},{"n":"Benjamin Murray","s":100,"set":"C","pen":5,"solved":1},{"n":"Keshav Krishnan","s":100,"set":"D","pen":5,"solved":1}]},{"n":"CSP dropouts","s":275,"pool":1000,"g":0,"side":25,"size":4,"pen":0,"p":[{"n":"Justin Warren","s":300,"set":"A","pen":0,"solved":3},{"n":"Gavin Sigua","s":200,"set":"B","pen":0,"solved":2},{"n":"Mason Bohm","s":200,"set":"C","pen":0,"solved":2},{"n":"Collin Huntington","s":300,"set":"D","pen":0,"solved":3}]}],"people":[{"r":1,"tie":false,"n":"Justin Warren","s":300,"pen":0},{"r":2,"tie":false,"n":"Krishna Una","s":300,"pen":0},{"r":3,"tie":false,"n":"Collin Huntington","s":300,"pen":0},{"r":4,"tie":false,"n":"Ruth Faris","s":300,"pen":0},{"r":5,"tie":false,"n":"Chloe Sigua","s":300,"pen":0},{"r":6,"tie":false,"n":"Dominic Gasper","s":300,"pen":0},{"r":7,"tie":false,"n":"Derek Ai","s":300,"pen":35},{"r":8,"tie":false,"n":"Asha Gussick","s":200,"pen":0},{"r":9,"tie":false,"n":"Gavin Sigua","s":200,"pen":0},{"r":10,"tie":false,"n":"Mason Bohm","s":200,"pen":0},{"r":11,"tie":false,"n":"Keshav Krishnan","s":100,"pen":5},{"r":12,"tie":false,"n":"Benjamin Murray","s":100,"pen":5}]}];
+const fmt = (n) => Number.isInteger(n) ? String(n) : n.toFixed(2);
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+let current = 0;
+try { const saved = localStorage.getItem("division"); if (saved !== null && DATA[Number(saved)]) current = Number(saved); } catch (e) {}
+
+function render() {
+  const div = DATA[current];
+  document.getElementById("switch").innerHTML = DATA.map((d, i) =>
+    '<button type="button" id="div-' + i + '" aria-pressed="' + (i === current) + '" data-i="' + i + '">' + esc(d.name) + "</button>").join("");
+  document.getElementById("teams-h").textContent = div.name + " team standings";
+  document.getElementById("people-h").textContent = div.name + " individual standings";
+  document.getElementById("teams").innerHTML = div.teams.map((t, i) => {
+    const mean = (t.pool + t.g) / t.size;
+    let math = t.pool + " pts ÷ " + t.size + (t.size === 1 ? " player" : " players") + " = " + fmt(mean);
+    if (t.side) math += " + " + fmt(t.side) + " puzzle and Kahoot";
+    if (t.pen) math += " · " + t.pen + " penalty min";
+    const rows = t.p.map((p) => "<tr><td>" + esc(p.n) + '</td><td><span class="set">' + esc(p.set) + '</span></td><td class="num">' + p.solved +
+      '</td><td class="num">' + fmt(p.s) + '</td><td class="num pen">' + p.pen + "m</td></tr>").join("");
+    return '<details class="team' + (i === 0 ? " first" : "") + '"><summary><span class="rank">' + (i + 1) + '</span><span class="tname"><span class="chev" aria-hidden="true">▸</span>' +
+      esc(t.n) + (i === 0 ? '<span class="badge">Champions</span>' : "") + '</span><span class="score">' + fmt(t.s) + '</span><span class="math">' + esc(math) + "</span></summary>" +
+      '<div class="members"><table><thead><tr><th>Member</th><th>Set</th><th class="num">Solved</th><th class="num">Points</th><th class="num">Penalty</th></tr></thead><tbody>' + rows + "</tbody></table></div></details>";
+  }).join("");
+  document.getElementById("people").innerHTML = div.people.map((p) =>
+    "<tr><td>" + (p.tie ? "T" : "") + p.r + "</td><td>" + esc(p.n) + '</td><td class="num">' + fmt(p.s) + '</td><td class="num pen">' + p.pen + "m</td></tr>").join("");
+}
+document.getElementById("switch").addEventListener("click", (e) => {
+  const b = e.target.closest("button"); if (!b) return;
+  current = Number(b.dataset.i);
+  try { localStorage.setItem("division", String(current)); } catch (err) {}
+  render();
+});
+render();
+</script>
+</body>
+</html>
