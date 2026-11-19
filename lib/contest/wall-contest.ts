@@ -10,9 +10,10 @@ export const NOTHING_RUNNING_MESSAGE =
   "No contest is running right now. Open the projector from a contest to show its board.";
 
 const LIVE_STATES: readonly ContestState[] = ["RUNNING", "FROZEN"];
+const SHOWN_AFTER_END: readonly ContestState[] = [...LIVE_STATES, "ENDED"];
 
 /**
- * The contest on the wall: the one whose window contains NOW, else the most recent live one.
+ * The contest on the wall: the one whose window contains NOW, else the most recent one that ran.
  *
  * Shared by `/api/standings` and `/api/team-standings`, which each carried a copy of this query and
  * both ranked RUNNING above FROZEN. A freeze is a running contest with the public board held still,
@@ -25,7 +26,7 @@ const LIVE_STATES: readonly ContestState[] = ["RUNNING", "FROZEN"];
  * fortnight away; the window filter comes first for that reason. The practice arena is excluded
  * because its window always contains now; `?contestId=` still pins it.
  *
- * Null when nothing is live. Each route decides what that means on its own screen.
+ * Null when no contest has ever run. Each route decides what that means on its own screen.
  */
 export async function currentWallContestId(now: Date): Promise<string | null> {
   const live = await prisma.contest.findFirst({
@@ -40,10 +41,12 @@ export async function currentWallContestId(now: Date): Promise<string | null> {
   });
   if (live !== null) return live.id;
 
-  // Past its end and never ENDED is the normal state of the board during the awards, and blanking
-  // the wall at exactly that moment would be worse than showing a contest that is over.
+  // Nothing live: show the most recent contest that has started, finished or not. Past its end and
+  // never ENDED is the normal state of the board during the awards, and after the reveal the home
+  // page's "Live standings" is how people find the final board. A blank wall at either moment is
+  // worse than a contest that is over. DRAFT and SCHEDULED stay out: neither has a board yet.
   const recent = await prisma.contest.findFirst({
-    where: { state: { in: [...LIVE_STATES] }, isPractice: false },
+    where: { state: { in: [...SHOWN_AFTER_END] }, isPractice: false, startsAt: { lte: now } },
     orderBy: [{ startsAt: "desc" }, { id: "asc" }],
     select: { id: true },
   });

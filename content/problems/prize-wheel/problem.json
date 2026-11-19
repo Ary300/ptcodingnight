@@ -1,0 +1,18 @@
+{
+  "slug": "prize-wheel",
+  "title": "Prize Wheel",
+  "difficulty": "H",
+  "timeLimitMs": 2000,
+  "memoryLimitMb": 256,
+  "allowedLanguages": [
+    "PYTHON_312",
+    "JAVA_21",
+    "CPP_17"
+  ],
+  "comparator": {
+    "kind": "whitespace"
+  },
+  "sampleCount": 2,
+  "keepOutOfSets": true,
+  "originAttribution": "Bonus problem for Coding Night 2026, adapted by Aryav Das from a USACO idea. Statement and test data written fresh for this platform."
+}

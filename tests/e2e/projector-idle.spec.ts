@@ -8,23 +8,25 @@ import { closeTestDb, testDb } from "./helpers/seed";
  * It read "Open the projector with ?contestId=<id> not found" (a URL template with the error
  * class's suffix glued on) and logged a 404 on the one machine everybody can see.
  *
- * Nothing may be running for this to mean anything, so the spec parks every running contest for
- * its duration and puts each one back exactly as it was afterwards.
+ * Nothing may have run for this to mean anything, since a finished contest is shown after its end,
+ * so the spec parks every running, frozen and ended contest as ARCHIVED for its duration and puts
+ * each one back exactly as it was afterwards.
  */
 
 test.describe.configure({ mode: "serial" });
 
-let parked: { id: string; state: "RUNNING" | "FROZEN" }[] = [];
+type Parked = "RUNNING" | "FROZEN" | "ENDED";
+let parked: { id: string; state: Parked }[] = [];
 
 test.beforeAll(async () => {
   const running = await testDb().contest.findMany({
-    where: { state: { in: ["RUNNING", "FROZEN"] }, isPractice: false },
+    where: { state: { in: ["RUNNING", "FROZEN", "ENDED"] }, isPractice: false },
     select: { id: true, state: true },
   });
-  parked = running.map((row) => ({ id: row.id, state: row.state as "RUNNING" | "FROZEN" }));
+  parked = running.map((row) => ({ id: row.id, state: row.state as Parked }));
   await testDb().contest.updateMany({
     where: { id: { in: parked.map((row) => row.id) } },
-    data: { state: "ENDED" },
+    data: { state: "ARCHIVED" },
   });
 });
 
@@ -76,4 +78,32 @@ test("the wall says no contest is running, and how to show one", async ({ page }
   expect(rendered).not.toContain("contestId");
   expect(rendered).not.toContain("<id>");
   expect(failures).toEqual([]);
+});
+
+test("once a contest has ended, the bare boards show its final standings instead of nothing", async ({
+  request,
+}) => {
+  const now = Date.now();
+  const ended = await testDb().contest.create({
+    data: {
+      name: `Ended wall ${String(now)}`,
+      joinCode: `ended-wall-${String(now)}`,
+      state: "ENDED",
+      startsAt: new Date(now - 90 * 60_000),
+      endsAt: new Date(now - 5 * 60_000),
+    },
+    select: { id: true },
+  });
+  try {
+    const team = await request.get("/api/team-standings");
+    expect(team.status()).toBe(200);
+    const teamBody = (await team.json()) as { data: { contestId: string; frozen: boolean } };
+    expect(teamBody.data.contestId).toBe(ended.id);
+    expect(teamBody.data.frozen).toBe(false);
+
+    const individual = await request.get("/api/standings");
+    expect(individual.status()).toBe(200);
+  } finally {
+    await testDb().contest.delete({ where: { id: ended.id } });
+  }
 });
